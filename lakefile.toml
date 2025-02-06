@@ -1,0 +1,10 @@
+name = "formal-urchin"
+version = "0.1.0"
+defaultTargets = ["formal-urchin"]
+
+[[lean_lib]]
+name = "FormalUrchin"
+
+[[lean_exe]]
+name = "formal-urchin"
+root = "Main"
