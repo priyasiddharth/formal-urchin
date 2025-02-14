@@ -1,30 +1,9 @@
 import FormalUrchin.accessperm
+import FormalUrchin.units
+
 import Lean.Data.AssocList
 
 namespace oseair
-
-abbrev Word := Nat
-abbrev BB := Word
-abbrev PC := Word
-abbrev AddrStart := Word
-abbrev Addr := Word
-abbrev Tag := Word
-
-inductive TyVal
-| NatTy : Word → TyVal
-| PtrTy : Addr → TyVal
-| TupTy : List TyVal → TyVal
-
-partial def TyVal.toString : TyVal → String
-  | TyVal.NatTy n => s!"NatTy({n})"
-  | TyVal.PtrTy addr => s!"PlaceTy({addr})"
-  | TyVal.TupTy tys  =>
-    let _ : ToString TyVal := ⟨TyVal.toString⟩
-    s!"TupTy({String.intercalate ", " (tys.map toString)})"
--- We should be able to typecheck a program so that load statements use a ptr register type
-
-instance : ToString TyVal where
-  toString := TyVal.toString
 
 inductive Register
 | R (idx : Nat)
@@ -107,7 +86,7 @@ instance : ToString Mem where
 -- Helper function for structural recursion
 def typeSizeAux : List TyVal → Word → Word
 | [], acc => acc
-| TyVal.NatTy _ :: rest, acc | TyVal.PtrTy _ :: rest,acc  => typeSizeAux rest (acc + 1)
+| TyVal.NatTy :: rest, acc | TyVal.PTy :: rest,acc  => typeSizeAux rest (acc + 1)
 | TyVal.TupTy nested :: rest, acc =>
     let nestedSize := typeSizeAux nested 0 -- Process the nested tuple first
     typeSizeAux rest (acc + nestedSize)    -- Add its size to the accumulator
@@ -115,12 +94,12 @@ def typeSizeAux : List TyVal → Word → Word
 -- Main `typeSize` function
 def typeSize (ty : TyVal) : Nat :=
   match ty with
-  | TyVal.NatTy _ | TyVal.PtrTy _ => 1
+  | TyVal.NatTy | TyVal.PTy => 1
   | TyVal.TupTy tys => typeSizeAux tys 0
 
 def ReadWordSeq (mem : Mem) (addr : Word) (ty : TyVal) : List Val :=
   match ty with
-  | TyVal.NatTy _ | TyVal.PtrTy _ =>
+  | TyVal.NatTy | TyVal.PTy =>
       -- Single value at the given address
       match mem.mMap.find? addr with
       | some (v) => [v]
@@ -164,8 +143,14 @@ inductive Rhs
 inductive Stmt
 | assgn (l : Register) (r : Rhs)
 | store (ty : TyVal) (src: Register) (ptr: Register)
-| memcpy (dst: Register) (src: Register)
+| memcpy (dst: Register) (src: Register) (dstTy: TyVal)
 | halt
+
+instance : ToString Rhs where
+  toString
+  | Rhs.load ty reg => s!"load {ty} {reg}"
+  | Rhs.alloc ty => s!"alloc {ty}"
+  | Rhs.bor_offset base offset => s!"bor_offset {base} {offset}"
 
 
 -- Result type for RHS expr to val
@@ -195,10 +180,23 @@ def RhsToValues : Rhs → RegMap → Mem → accessperm.AccessPerms → RhsResul
         let newAddr := addr + offset
         -- freshtag
         let (tag, newAP) := freshTag ap
-        RhsResult.Ok [Val.Ptr newAddr tag] (TyVal.PtrTy newAddr) mem newAP
+        RhsResult.Ok [Val.Ptr newAddr tag] (TyVal.PTy) mem newAP
       | _ => RhsResult.Err s!"Register type of {base} is not pointer."
 
 abbrev Prog := Lean.AssocList BB (List Stmt)
+instance : ToString Stmt where
+  toString
+  | Stmt.assgn l r => s!"{l}={r}"
+  | Stmt.store ty src ptr => s!"store {ty} {src} {ptr}"
+  | Stmt.memcpy dst src dty => s!"memcpy {dst} {src} {dty}"
+  | Stmt.halt => "halt"
+
+instance : ToString Prog where
+  toString prog :=
+    let entries := prog.toList.map (fun (bb, stmts) =>
+      let stmtStrs := stmts.map (fun stmt => toString stmt)
+      s!"BB {bb}:\n{String.intercalate "\n" stmtStrs}")
+    String.intercalate "\n" entries
 
 inductive Eval : BB × PC × Prog × RegMap × Mem × accessperm.AccessPerms →
                     BB × PC × Prog × RegMap × Mem × accessperm.AccessPerms → Prop
@@ -228,10 +226,10 @@ inductive Eval : BB × PC × Prog × RegMap × Mem × accessperm.AccessPerms →
 | evalMemcpy : ∀ (bb: BB)  (pc: PC) (prog: Prog) (regMap: RegMap) (mem : Mem) (newMem: Mem),
     prog.find? bb = some stmt_list →
     (h : pc < stmt_list.length) →
-    stmt_list.get ⟨pc, h⟩ = Stmt.memcpy dst src →
+    stmt_list.get ⟨pc, h⟩ = Stmt.memcpy dst src dty →
     regMap.find? dst = some (_ty1, [Val.Ptr dstAddr _tag1]) →
     regMap.find? src = some (_ty2, [Val.Ptr srcAddr _tag2]) →
-    -- TODO: check that ty1 == ty2 (or sizes are the same)
+    -- TODO: check that ty1 == ty2 == dty (or sizes are the same)
     -- TODO: change ap
     ReadWordSeq mem srcAddr ty = values →
     WriteWordSeq mem dstAddr values = newMem →

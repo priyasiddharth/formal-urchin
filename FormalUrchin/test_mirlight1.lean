@@ -17,13 +17,13 @@ def testProgram : Prog :=
   Lean.AssocList.empty.insert 0 [Stmt.Assgn [0] (RExpr.CopyOp [1]), Stmt.Halt]
 
 def testEnvWithValues : Env :=
-  testEnv.insert 1 (0, TyVal.NatTy 42, 0)
+  testEnv.insert 1 (0, TyVal.NatTy, 0)
 
 def testMemWithValues : Mem :=
   {{ testMem with mMap := testMem.mMap.insert 0 (MemValue.Val 42) } with addrStart := 1 }
 
 def expectedEnv : Env :=
-  testEnvWithValues.insert 0 (1, TyVal.NatTy 42, 0)
+  testEnvWithValues.insert 0 (1, TyVal.NatTy, 0)
 
 def expectedMem : Mem :=
   {{ testMem with mMap := testMemWithValues.mMap.insert 1 (MemValue.Val 42) } with addrStart := 2 }
