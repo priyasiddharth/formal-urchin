@@ -162,79 +162,15 @@ def typeSize (ty : TyVal) : Nat :=
   | TyVal.NatTy | TyVal.PTy => 1
   | TyVal.TupTy tys => typeSizeAux tys 0
 
-def ReadWordSeq (mem : Mem) (addr : Word) (ty : TyVal) : List MemValue :=
-  match ty with
-  | TyVal.NatTy | TyVal.PTy =>
-      -- Single value at the given address
-      match mem.mMap.find? addr with
+def ReadWordSeq (mem : Mem) (addr : Word) (sz : Word) : List MemValue :=
+  match sz with
+  | 0 => []
+  | s + 1  =>  -- Process the list of types explicitly
+      let value := match mem.mMap.find? addr with
       | some v => [v]
-      | _ => [] -- Return an empty list if the value is not found
-  | TyVal.TupTy tys =>
-      -- Process the list of types explicitly
-      let rec process (addr : Nat) (tys : List TyVal) : List MemValue :=
-        match tys with
-        | [] => []
-        | ty :: rest =>
-            let values := ReadWordSeq mem addr ty -- Recursive call for individual `ty`
-            let newAddr := addr + typeSize ty
-            values ++ process newAddr rest    -- Continue with the rest of the types
-      process addr tys
-
-theorem readWordSeq_concat (mem : Mem) (addr : Word) (head : MemValue) (tail : List MemValue) (tail_ty : TyVal) :
-  ReadWordSeq mem addr TyVal.NatTy = [head] →
-  ReadWordSeq mem (addr + 1) tail_ty = tail →
-  ReadWordSeq mem addr (TyVal.TupTy (TyVal.NatTy :: tail_ty :: [])) = head :: tail := by
-    intros h_head h_tail
-    simp [ReadWordSeq, ReadWordSeq.process, typeSize, typeSizeAux]
-    simp [h_head, h_tail]
-    --simp [ReadWordSeq, ReadWordSeq.process, typeSize, typeSizeAux] at h_vals
-    have h_read_head : ReadWordSeq mem addr TyVal.NatTy = [head] →
-      mem.mMap.find? addr = some head  := by
-      simp [ReadWordSeq, ReadWordSeq.process, *]
-      intros h_read_head1
-      cases heq : Lean.AssocList.find? addr mem.mMap
-      case some v' =>
-        rw [heq] at h_read_head1
-        injection h_read_head1 with h_eq
-        congr
-      case none =>
-        rw [heq] at h_read_head1
-        contradiction
-    have h_some_head := h_read_head h_head
-    rw [h_some_head]
-    simp
-
-theorem readWordSeq_returns_sequence_of_bytes (mem : Mem) (addr : Word) (values : List MemValue) :
-  (∀ i, (h: i < values.length) → mem.mMap.find? (addr + i) = some (values.get ⟨i, h⟩)) →
-  ReadWordSeq mem addr (TyVal.TupTy (List.replicate values.length TyVal.NatTy)) = values := by
-  intros h_memhasvalues
-  induction values generalizing addr
-  case nil =>
-    simp [ReadWordSeq, ReadWordSeq.process]
-  case cons head tail ih =>
-    have h_head_eq : mem.mMap.find? addr = some head := h_memhasvalues 0 (by simp)
-    have h_tail_eq : ∀ i, (h: i < tail.length) → mem.mMap.find? (addr + i + 1) = some (tail.get ⟨i, h⟩) := by
-      intros i h_i
-      specialize h_memhasvalues (i + 1)
-      simp at h_memhasvalues
-      simp
-      apply h_memhasvalues h_i
-    have h_head_read_ok : ReadWordSeq mem addr TyVal.NatTy = [head] := by
-      simp [ReadWordSeq]
-      simp [h_head_eq]
-    have h_tail_read_ok : ReadWordSeq mem (addr + 1)
-      (TyVal.TupTy (List.replicate tail.length TyVal.NatTy)) = tail := by
-      apply ih
-      intros i h_i
-      specialize h_memhasvalues (i + 1)
-      simp at h_memhasvalues
-      rw [Nat.add_assoc,Nat.add_comm 1 i,]
-      exact h_memhasvalues h_i
-    have h_concat := readWordSeq_concat mem addr head tail
-      (TyVal.TupTy (List.replicate tail.length TyVal.NatTy)) h_head_read_ok h_tail_read_ok
-    simp
-    rw [List.replicate_succ]
-    
+      | none => [] -- Return an empty list if the value is not found
+      let rest := ReadWordSeq mem (addr + 1) s
+      value ++ rest  -- Continue with the rest of the types
 
 def getPlaceTypeFromBase (place : Place) (bty : TyVal) : Option TyVal :=
 match place with
@@ -334,7 +270,7 @@ def RExprToValFn : RExpr → Env → Mem → accessperm.AccessPerms → RhsResul
   | none => Err s!"Place {place} or address not found in environment."
   | some addr => match getPlaceType place env with
     | none => Err s!"Place {place} or address not found in environment."
-    | some ty => match ReadWordSeq mem addr ty with
+    | some ty => match ReadWordSeq mem addr (typeSize ty) with
       | [] => Err s!"Address {addr} not found in memory."
       | values => Ok values ty ap mem
 
@@ -343,7 +279,7 @@ def RExprToValFn : RExpr → Env → Mem → accessperm.AccessPerms → RhsResul
   | none => Err s!"Place {place} or address not found in environment."
   | some addr => match getPlaceType place env with
     | none => Err s!"Place {place} or address not found in environment."
-    | some ty => match ReadWordSeq mem addr ty with
+    | some ty => match ReadWordSeq mem addr (typeSize ty) with
       | [] => Err s!"Address {addr} not found in memory."
       | values => Ok values ty ap mem
 
@@ -361,13 +297,13 @@ def RExprToValFn : RExpr → Env → Mem → accessperm.AccessPerms → RhsResul
   | none => Err s!"Place {place} or address not found in environment."
   | some addr => match getPlaceType place env with
     | none => Err s!"Place {place} or address not found in environment."
-    | some ty => match ReadWordSeq mem addr ty with
+    | some ty => match ReadWordSeq mem addr (typeSize ty) with
       | [PlaceTag tplace _ttag] =>
         match getPlaceAddr tplace env with
           | none => Err s!"Target Place {place} or address not found in environment."
            | some taddr => match getPlaceType tplace env with
             | none => Err s!"Target Place {place} or address not found in environment."
-            | some tty => match ReadWordSeq mem taddr tty with
+            | some tty => match ReadWordSeq mem taddr (typeSize tty) with
               | [] => Err s!"Target Address {addr} not found in memory."
               | values => Ok values tty ap mem
       | _ => Err s!"Address {addr} does not contain a place."
@@ -509,35 +445,6 @@ inductive Eval2 : BB × PC  × Prog × Env × Mem × accessperm.AccessPerms →
     (h: pc < stmt_list.length) →
     stmt_list.get ⟨pc, h⟩ = Stmt.Halt →
     Eval2 (bb, pc, prog, env, mem, ap) (bb, pc, prog, env, mem, ap)
-
-@[simp]
-theorem step_pc_stays_same_iff_halt2
-    {bb: BB} {pc : PC} {prog : Prog} {env : Env} {mem : Mem} {ap : accessperm.AccessPerms}
-    {stmt_list : List Stmt}
-    (h_bb : prog.find? bb = some stmt_list)
-    (h_stmt: pc < stmt_list.length):
-      (stmt_list.get ⟨pc, h_stmt⟩ = Stmt.Halt) ↔
-    Eval2 (bb, pc, prog, env, mem, ap) (bb, pc, prog, env, mem, ap) := by
-  apply Iff.intro
-  { intros h_stmt_eq
-    apply Eval2.HaltRel
-    exact h_bb
-    exact h_stmt_eq
-  }
-  {
-    intros h
-    cases h
-    case HaltRel s1 s2 s3 s4 =>
-     -- Unify stmt_list and s1
-      have : stmt_list = s1 := by
-        rw [s4] at h_bb
-        injection h_bb with h_eq
-        symm
-        exact h_eq
-      subst this
-      exact s3
-}
-
 
  /-   theorem assgn_updates_env :
     ∀ (pc : ProgCount) (lplace : Place) (rexpr : RExpr) (env : Env) (mem : Mem) (ap : accessperm.AccessPerms)
