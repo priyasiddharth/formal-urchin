@@ -96,7 +96,7 @@ theorem getPlaceAddr_returns_some_iff_in_env
   intros h_src h_ty_validty h_InEnv
   simp [getPlaceAddr, h_src, h_InEnv, h_ty_validty]
 
-theorem readFromMem_returns_value
+theorem copyFromMem_returns_value
     (ap: accessperm.AccessPerms)
      (src_baseaddr: Addr) (offset: Word) (values : List MemValue)
     (env: Env)
@@ -109,7 +109,6 @@ theorem readFromMem_returns_value
     (∀ i, (h: i < values.length) → mem.mMap.find? (src_baseaddr + offset + i) = some (values.get ⟨i, h⟩)) →
     -- mir step
     env.find? srcbase = some (src_baseaddr, srcty, srctag) →
-    -- getPlaceAddr src env = some (src_baseaddr + offset) →
     mir.getPlaceType src env = some srcty →
     getPlaceOffset (srcbase :: srcrest) srcty = some offset →
     mir.typeSize srcty = values.length →
