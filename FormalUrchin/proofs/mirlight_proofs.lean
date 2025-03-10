@@ -1,5 +1,5 @@
 import FormalUrchin.mirlight
-
+import FormalUrchin.units
 open mir
 
 theorem readWordSeq_concat (mem : Mem) (addr : Word) (head : MemValue) (tail : List MemValue) :
@@ -36,7 +36,6 @@ theorem readWordSeq_returns_sequence_of_bytes (mem : Mem) (addr : Word) (values 
   case nil =>
     simp [ReadWordSeq]
   case cons head tail ih =>
-    simp [ReadWordSeq]
     have h_head_eq : mem.mMap.find? addr = some head := h_memhasvalues 0 (by simp)
     have h_tail_eq : ∀ i, (h: i < tail.length) → mem.mMap.find? (addr + i + 1) = some (tail.get ⟨i, h⟩) := by
       intros i h_i
@@ -53,7 +52,7 @@ theorem readWordSeq_returns_sequence_of_bytes (mem : Mem) (addr : Word) (values 
       intros i h_i
       specialize h_memhasvalues (i + 1)
       simp at h_memhasvalues
-      rw [Nat.add_assoc,Nat.add_comm 1 i,]
+      rw [Nat.add_assoc,Nat.add_comm 1 i]
       exact h_memhasvalues h_i
     have h_concat := readWordSeq_concat mem addr head tail h_head_read_ok h_tail_read_ok
     exact h_concat
@@ -86,3 +85,37 @@ theorem step_pc_stays_same_iff_halt2
       subst this
       exact s3
 }
+@[simp]
+theorem getPlaceAddr_returns_some_iff_in_env
+    {base : Word} {rest: List Word}
+    (env: Env) (place: Place) (addr: Addr) (offset: Word) (anyty: TyVal) (anytag: mir.Tag) :
+    place = base :: rest →
+    getPlaceOffset (base :: rest) anyty = some offset →
+    env.find? base = some (addr, anyty, anytag) →
+    getPlaceAddr place env = some (addr + offset) := by
+  intros h_src h_ty_validty h_InEnv
+  simp [getPlaceAddr, h_src, h_InEnv, h_ty_validty]
+
+theorem readFromMem_returns_value
+    (ap: accessperm.AccessPerms)
+     (src_baseaddr: Addr) (offset: Word) (values : List MemValue)
+    (env: Env)
+    (srcbase : Word)
+    (srcrest : Place)
+    (src : Place) (srcty: TyVal) (srctag: mir.Tag)
+    (mem: Mem) :
+    (h_src : src = srcbase :: srcrest) →
+    (h_val : values ≠ []) →
+    (∀ i, (h: i < values.length) → mem.mMap.find? (src_baseaddr + offset + i) = some (values.get ⟨i, h⟩)) →
+    -- mir step
+    env.find? srcbase = some (src_baseaddr, srcty, srctag) →
+    -- getPlaceAddr src env = some (src_baseaddr + offset) →
+    mir.getPlaceType src env = some srcty →
+    getPlaceOffset (srcbase :: srcrest) srcty = some offset →
+    mir.typeSize srcty = values.length →
+    RExprToValFn (mir.RExpr.CopyOp src) env mem ap = RhsResult.Ok values srcty ap mem := by
+  intros h_src h_val h_memhasvalues h_srcInEnv h_getPlaceTy h_getPlaceOffset h_tysz
+  have h_read_word_seq :=
+    readWordSeq_returns_sequence_of_bytes mem (src_baseaddr + offset) values h_memhasvalues
+  have h_getPlaceAddr := getPlaceAddr_returns_some_iff_in_env env src src_baseaddr offset srcty srctag h_src h_getPlaceOffset h_srcInEnv
+  simp [RExprToValFn, h_getPlaceAddr, h_srcInEnv, h_getPlaceTy, h_read_word_seq, h_tysz, h_val]

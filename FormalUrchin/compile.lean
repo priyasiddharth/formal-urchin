@@ -136,14 +136,14 @@ def compileStmt (stmt: mir.Stmt) (cctx: CompileCtx) : CompileResult :=
       case AssgnRel h1 h2_lplace h3_rplace h4 h5 h6 h7 h8 h9 h10 =>
         have : h2_lplace = [1] := by
           rw [h8] at h_cpy_stmt
-          
+
 
   -- TODO: Can we break this up into smaller lemmas?
   theorem bisim_copy :
     ∀
     (N : Word) (bb: BB) (pc: PC) (pc' : PC) (ap: accessperm.AccessPerms) (ap' : accessperm.AccessPerms)
     (prog: mir.Prog) (cctx: CompileCtx) (mem: mir.Mem) (env: mir.Env)
-    (srcplace: mir.Place) (srcaddr: Addr) (srcty: TyVal) (srctag: Tag) (destplace: mir.Place)
+    (srcplace: Place) (srcaddr: Addr) (srcty: TyVal) (srctag: Tag) (destplace: Place)
     (mem': mir.Mem)
     (seaRegMap : oseair.RegMap) (seaRegMap': oseair.RegMap)
     (seaMem: oseair.Mem) (seaMem': oseair.Mem),

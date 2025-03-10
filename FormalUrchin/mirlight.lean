@@ -21,7 +21,6 @@ def ProgCount.beq : ProgCount → ProgCount → Bool
 instance : BEq ProgCount where
   beq := ProgCount.beq
 
-abbrev Place := List Word
 abbrev Tag := Word
 
 /- Can use dep types? -/
@@ -169,8 +168,8 @@ def ReadWordSeq (mem : Mem) (addr : Word) (sz : Word) : List MemValue :=
       let value := match mem.mMap.find? addr with
       | some v => [v]
       | none => [] -- Return an empty list if the value is not found
-      let rest := ReadWordSeq mem (addr + 1) s
-      value ++ rest  -- Continue with the rest of the types
+      let rest := ReadWordSeq mem (addr + 1) s -- read the rest of the words
+      value ++ rest
 
 def getPlaceTypeFromBase (place : Place) (bty : TyVal) : Option TyVal :=
 match place with
