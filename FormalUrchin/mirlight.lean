@@ -23,8 +23,7 @@ instance : BEq ProgCount where
 
 abbrev Tag := Word
 
-/- Can use dep types? -/
--- Memory mapping
+-- A value in memory can be undefined, a primitive or a place (ref)
 inductive MemValue
 | Undef
 | Val (value : Word)         -- A simple `Nat` value
@@ -155,12 +154,16 @@ def typeSizeAux : List TyVal → Word → Word
     let nestedSize := typeSizeAux nested 0 -- Process the nested tuple first
     typeSizeAux rest (acc + nestedSize)    -- Add its size to the accumulator
 
--- Main `typeSize` function
+-- Get size of type in words
 def typeSize (ty : TyVal) : Nat :=
   match ty with
   | TyVal.NatTy | TyVal.PTy => 1
   | TyVal.TupTy tys => typeSizeAux tys 0
 
+  /--
+  Reads a sequence of `sz` words from the given `mem` at `addr`.
+  Returns [] if sz is zero or mem contains no data.
+  --/
 def ReadWordSeq (mem : Mem) (addr : Word) (sz : Word) : List MemValue :=
   match sz with
   | 0 => []
@@ -171,6 +174,8 @@ def ReadWordSeq (mem : Mem) (addr : Word) (sz : Word) : List MemValue :=
       let rest := ReadWordSeq mem (addr + 1) s -- read the rest of the words
       value ++ rest
 
+-- Function to get the type of a sub-place, given a composite base type
+-- E.g.,place = 0.0.1, bty = [(Nat, (Nat, Nat, Nat)), [Nat, Nat]] will return (Nat, Nat, Nat)
 def getPlaceTypeFromBase (place : Place) (bty : TyVal) : Option TyVal :=
 match place with
 | [] => none
@@ -324,14 +329,12 @@ def RExprToValFn : RExpr → Env → Mem → accessperm.AccessPerms → RhsResul
     else Err "Error initializing structure." -/
 
 def WriteWordSeq (mem : Mem) (addr : Word) (values : List MemValue) : Mem :=
-  let rec process (addr : Nat) (values : List MemValue) (mMap : MemMap) : MemMap :=
-    match values with
-    | [] => mMap
-    | value :: rest =>
-        let newMap := mMap.insert addr value
-        process (addr + 1) rest newMap
-  let newMap := process addr values mem.mMap
-  { mem with mMap := newMap }
+  match values with
+  | [] => mem
+  | value :: rest =>
+    let mem' := WriteWordSeq mem (addr + 1) rest
+    let newMap := mem'.mMap.insert addr value
+    {mem' with mMap := newMap}
 
 partial def EvalStmt: Stmt → Env → Mem → accessperm.AccessPerms → LhsResult
   | Assgn lplace rexpr, env, mem, ap =>
@@ -427,10 +430,10 @@ inductive Eval2 : BB × PC  × Prog × Env × Mem × accessperm.AccessPerms →
     RExprToValFn rexpr env mem ap = RhsResult.Ok values ty newAp newMem →
     (match lplace with
     | [newplace] =>
-      let (newAddr, allocatedMem) := allocate newMem (typeSize ty)
-      let updatedMem := WriteWordSeq allocatedMem newAddr values
+      let (newBaseAddr, allocatedMem) := allocate newMem (typeSize ty)
+      let updatedMem := WriteWordSeq allocatedMem newBaseAddr values
       let (tag, newAp) := freshTag newAp
-      let updatedEnv := env.insert newplace (newAddr, ty, tag)
+      let updatedEnv := env.insert newplace (newBaseAddr, ty, tag)
       LhsResult.Ok updatedEnv newAp updatedMem
     | _ =>
       match getPlaceAddr lplace env with
