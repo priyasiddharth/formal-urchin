@@ -122,29 +122,112 @@ theorem copyFromMem_returns_value
   simp [RExprToValFn, h_getPlaceAddr, h_srcInEnv, h_getPlaceTy, h_read_word_seq, h_tysz, h_val]
 
 
+-- https://sourcegraph.com/github.com/leanprover/lean4/-/commit/c7939cfb03c78820b069ba9c931900d44b11f58e
+-- changed definition of insert to replace if contains else insertNew so we need this theorem
+variable {α β : Type} [BEq α] [LawfulBEq α]
+theorem AssocList.find?_replace_eq
+  (a : α) (b : β) :
+  ∀ (l : Lean.AssocList α β),
+    Lean.AssocList.contains a l = true →
+    Lean.AssocList.find? a (Lean.AssocList.replace a b l) = some b := by
+  intro l
+  induction l with
+  | nil =>
+    intro h
+    contradiction  -- can't happen since contains a [] = false
+  | cons k v es ih =>
+    intro h_contains
+    simp only [Lean.AssocList.replace, Lean.AssocList.find?, Lean.AssocList.contains] at *
+    have : (k == a) || Lean.AssocList.contains a es := h_contains
+    cases h : (k == a)
+    case false =>
+      -- k ≠ a, so recurse on the tail
+      simp [h]
+      simp [h] at h_contains
+      let ih_1 := ih h_contains
+      simp [Lean.AssocList.find?] at ih_1
+      simp [Lean.AssocList.find?, h]
+      exact ih_1
+    case true =>
+      -- k == a, so replacement happens at head
+      simp [Lean.AssocList.find?, h]
+
+variable {α β : Type} [BEq α] [LawfulBEq α]
+theorem AssocList_insert_only_affects_key
+  (a : α) (b : β) (k : α)(n : α) :
+  ∀ (l : Lean.AssocList α β),
+  o_k ≠ k →
+  Lean.AssocList.find? k (Lean.AssocList.insert l o_k val) = Lean.AssocList.find? k l := by
+  intro l h_ne
+  induction l generalizing k
+  case nil =>
+    -- Base case: m = ∅
+    simp [Lean.AssocList.insert, Lean.AssocList.find?, Lean.AssocList.contains, h_ne]
+    have h_ok : (o_k == k) = false := by
+      simp [h_ne]
+    simp [h_ok]
+  case cons k' v' tail ih =>
+    simp [Lean.AssocList.insert, Lean.AssocList.find?, Lean.AssocList.contains] at *
+    by_cases h : (k' = o_k)
+    case pos =>
+      simp [h]
+      simp [Lean.AssocList.replace, h]
+      symm
+      have h_ne' : (k' == k) = false := by
+        simp [h, h_ne]
+      rw [h] at h_ne'
+      simp [h_ne']
+      symm
+      simp [Lean.AssocList.insertNew, Lean.AssocList.replace, Lean.AssocList.contains] at ih
+      by_cases h_contains : (Lean.AssocList.contains o_k tail = true)
+      case pos =>
+        simp [h_contains, Lean.AssocList.replace, Lean.AssocList.find?]
+        simp [h_ne']
+      case neg =>
+        simp [h_contains, Lean.AssocList.replace, Lean.AssocList.find?] at ih
+        simp [h_contains, Lean.AssocList.replace, Lean.AssocList.find?]
+        exact ih
+    case neg =>
+      simp [h]
+      by_cases h_contains : Lean.AssocList.contains o_k tail = true
+      case pos =>
+        simp [h_contains, Lean.AssocList.replace, Lean.AssocList.find?]
+        simp [h_contains, Lean.AssocList.replace, Lean.AssocList.find?] at ih
+        have h_ne' : (k' == o_k) = false := by
+          simp [h, h_ne]
+        have h_ne'' : (k' == k) = false := by
+          sorry
+        simp [Lean.AssocList.replace, Lean.AssocList.find?, h_ne', h, h_ne'']
+        exact ih
+
 theorem findval_after_insert (mem : Mem) (addr : Word) (head : MemValue) :
   -- The `insert` function ensures that `find?` will return the newly inserted value for the given key.
   Lean.AssocList.find? addr (Lean.AssocList.insert mem.mMap addr head) = some head := by
   simp [Lean.AssocList.insert]
   by_cases h_contains : Lean.AssocList.contains addr mem.mMap
   case pos =>
-    simp [Lean.AssocList.find?, Lean.AssocList.replace, h_contains]
-    
+    simp [Lean.AssocList.find?, Lean.AssocList.replace, h_contains, AssocList.find?_replace_eq]
   case neg =>
-    simp [Lean.AssocList.find?, Lean.AssocList.cons, h_contains]
+    simp [Lean.AssocList.find?, h_contains]
 
 theorem find_after_insert (mem : Mem) (addr : Word) (head : MemValue) (tail : List MemValue) :
   -- The `insert` function ensures that `find?` will return the newly inserted value for the given key.
   Lean.AssocList.find? addr (Lean.AssocList.insert (WriteWordSeq mem (addr + 1) tail).mMap addr head) = some head := by
-  simp [Lean.AssocList.find?, Lean.AssocList.insert]
+  simp [findval_after_insert]
 
 theorem insert_only_updates_key (m : Lean.AssocList Word MemValue) (location : Word) (val : MemValue) (k : Word) :
   ¬location = k →
   Lean.AssocList.find? k (Lean.AssocList.insert m location val) = Lean.AssocList.find? k m := by
   intros h_cond
-  simp [Lean.AssocList.insert, Lean.AssocList.find?]
-  -- Use `h_cond` to deduce `location == k = false`
-  sorry
+  have h_neq : location ≠ k := by
+    exact Ne.symm (Ne.symm h_cond)
+  simp [Lean.AssocList.insert, Lean.AssocList.find?, Lean.AssocList.replace]
+  split
+  case inl h_eq =>
+    simp [h_eq]
+    contradiction
+  case inr h_neq =>
+    simp [h_neq]
 
 theorem writeWordSeq_returns_word (mem : Mem) (mem': Mem) (addr : Word) (addr': Word) (value : MemValue) :
   WriteWordSeq mem addr [value] = mem' →
@@ -258,13 +341,20 @@ theorem get_tail_eq
   simp [h_m_eq]
 
 
+/--
+  This theorem states that
+  1. If we write a sequence of words to memory, then the memory at the address
+  of the first word in the sequence will be the first word, and the memory at the address of the
+  second word in the sequence will be the second word, and so on.
+  2. Additionally, if the address is not in the range of the sequence, then the memory at that address
+  will be the same as the original memory.
+-/
 theorem writeWordSeq_returns_sequence_of_words  {mem': Mem} (mem : Mem) (addr : Word) (addr': Word) (values : List MemValue) :
-  ∃ mem' : Mem, WriteWordSeq mem addr values = mem' →
+  WriteWordSeq mem addr values = mem' →
   (if h : addr' ≥ addr ∧ addr' - addr  < values.length then
     mem'.mMap.find? addr' = some (values.get ⟨addr' - addr, h.right⟩)
   else
     mem'.mMap.find? addr' = mem.mMap.find? addr') := by
-  exists mem'
   intros h_write
   induction values generalizing mem' addr
   case nil =>
@@ -275,7 +365,6 @@ theorem writeWordSeq_returns_sequence_of_words  {mem': Mem} (mem : Mem) (addr : 
     simp
   case cons head tail ih =>
     obtain ⟨mem_intmd, h_iff⟩ := WriteWordSeq_concat mem addr head tail
-    --specialize ih (addr + 1)
     let h_0 := (h_iff.mpr h_write).left
     let ih_1 := ih (addr + 1) h_0
     let h_1 := (h_iff.mpr h_write).right
@@ -285,9 +374,11 @@ theorem writeWordSeq_returns_sequence_of_words  {mem': Mem} (mem : Mem) (addr : 
     simp
     let h_4 := And.intro h_3 ih_1
     simp at h_4
+    -- Now we split into conditions based on whether the address is in the range of the sequence or not
     by_cases h_cond : addr' ≥ addr ∧ addr' - addr < tail.length + 1
     case pos =>
       simp [h_cond]
+      -- Now we split into two cases based on whether the address is the first address in the sequence or not
       by_cases h_addr : addr' = addr
       case pos =>
         simp [h_addr] at h_3
@@ -303,6 +394,7 @@ theorem writeWordSeq_returns_sequence_of_words  {mem': Mem} (mem : Mem) (addr : 
           have h_gt : addr' > addr := Nat.lt_of_le_of_ne h_ge (Ne.symm h_neq)
           -- Apply the fact that `addr' > addr` implies `addr + 1 ≤ addr'`
           exact Nat.succ_le_of_lt h_gt
+        -- Now we split into two cases whether the tail is empty or not
         by_cases h_no_tail : tail = []
         case pos =>
           -- This is an impossible case
@@ -335,7 +427,7 @@ theorem writeWordSeq_returns_sequence_of_words  {mem': Mem} (mem : Mem) (addr : 
           rw [h_22, ih_1]
           let h_skip_head := get_tail_eq head tail h_cond.right h_addr_tail h_tail_ne_zero_length
           simp [←h_skip_head]
-
+    -- This is the cases when address is not in the sequence
     case neg =>
       simp [h_cond]
       have h_ih_neg :
