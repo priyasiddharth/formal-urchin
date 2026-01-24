@@ -1,10 +1,27 @@
 import Lean.Data.AssocList
 
 namespace accessperm
-  abbrev Word := Nat
+
+abbrev Word := Nat
+
+inductive RefKind
+| Own (tag: Word)
+| MutRef (tag: Word)
+| Ref (tag: Word)
+| RawPtr (tag: Word)
+deriving Inhabited, Repr
+
+instance : BEq RefKind where
+  beq
+    | RefKind.Own t1, RefKind.Own t2 => t1 == t2
+    | RefKind.MutRef t1, RefKind.MutRef t2 => t1 == t2
+    | RefKind.Ref t1, RefKind.Ref t2 => t1 == t2
+    | RefKind.RawPtr t1, RefKind.RawPtr t2 => t1 == t2
+    | _, _ => false
+
   -- Borrow stack
-  abbrev BorrowStack := List Word -- Borrow stack as a list of `Nat` tags
-  deriving instance Inhabited, Repr for BorrowStack
+  abbrev BorrowStack := List RefKind -- Borrow stack as a list of `Nat` tags
+  deriving instance Inhabited, Repr, BEq for BorrowStack
 
   abbrev SB:= Lean.AssocList (Word) (BorrowStack)
   deriving instance Inhabited for SB
@@ -36,4 +53,19 @@ namespace accessperm
 
   instance : Inhabited AccessPerms where
   default := { StackMap := Lean.AssocList.nil, NextTag := 0 }
+
+  def getRefKind (addr: Word) (tag : Word) (ap : AccessPerms) : Option RefKind :=
+    match ap.StackMap.find? addr with
+    | some borrowstack =>
+      match borrowstack with
+      | [] => none
+      | borrowstack =>
+        borrowstack.find? (fun rk =>
+          match rk with
+          | RefKind.Own t => t == tag
+          | RefKind.MutRef t => t == tag
+          | RefKind.Ref t => t == tag
+          | RefKind.RawPtr t => t == tag
+        )
+    | _ => none
 end accessperm

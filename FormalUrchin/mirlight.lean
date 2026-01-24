@@ -70,12 +70,13 @@ structure Mem where
   addrStart: Word
 deriving Inhabited, Repr
 
-partial def MemMap.beq : MemMap → MemMap → Bool
-  | Lean.AssocList.nil, Lean.AssocList.nil => true
-  | Lean.AssocList.cons k1 v1 rest1, Lean.AssocList.cons k2 v2 rest2 =>
-    let _ : BEq MemMap := ⟨MemMap.beq⟩
-    k1 == k2 && v1 == v2 && rest1 == rest2
-  | _, _ => false
+def MemMap.beq : MemMap → MemMap → Bool
+  | m1, m2 =>
+    let l1 := m1.toList
+    let l2 := m2.toList
+    -- Compare as sets: every (addr, val) in l1 is in l2 and vice versa
+    l1.all (fun (addr, val) => m2.find? addr == some val) &&
+    l2.all (fun (addr, val) => m1.find? addr == some val)
 
 instance : BEq MemMap where
   beq := MemMap.beq
@@ -94,32 +95,41 @@ inductive RefOp
 | BorrowRef
 | MutRef
 | Raw
+deriving Repr
 
 -- Expressions
 inductive RExpr
 --| PlaceTy (place : Place)       -- Place represented as a list of Nat
---| ConstTy (constant : Word)
+| ConstOp (constant : Word)
 | CopyOp (place : Place)
 | MoveOp (place : Place)
 | RefrOp (refop : RefOp) (place : Place)
 | DrefOp (place : Place)
-/- | BinaryOp (lop : RExpr) (rop : RExpr)
-| StructInitOp (fields : List RExpr) -/
+| BinaryOp (lop : RExpr) (rop : RExpr)
+| StructInitOp (fields : List RExpr)
+deriving Repr
+
+inductive LhsPlace
+| Place (place : Place)
+| RExpr.DrefOp (place : Place)
+deriving Repr
 
 inductive Stmt
-| Assgn (lplace : Place) (rexpr : RExpr) : Stmt
+| Assgn (lhs : LhsPlace) (rexpr : RExpr) : Stmt
 | Halt : Stmt
+deriving Repr
 
 abbrev Prog := Lean.AssocList BasicBlock (List Stmt)
 
 abbrev Env := Lean.AssocList (BasePlace) (Word × TyVal × Tag) -- Env maps Baseplaces to `(address, type, tag)`
 
-partial def Env.beq : Env → Env → Bool
-  | Lean.AssocList.nil, Lean.AssocList.nil => true
-  | Lean.AssocList.cons k1 (w1, ty1, tag1) rest1, Lean.AssocList.cons k2 (w2, ty2, tag2) rest2 =>
-    let _ : BEq Env := ⟨Env.beq⟩
-    k1 == k2 && w1 == w2 && ty1 == ty2 && tag1 == tag2 && rest1 == rest2
-   | _, _ => false
+def Env.beq : Env → Env → Bool
+  | env1, env2 =>
+    let l1 := env1.toList
+    let l2 := env2.toList
+    -- Compare as sets: every (bp, val) in l1 is in l2 and vice versa
+    l1.all (fun (bp, val) => env2.find? bp == some val) &&
+    l2.all (fun (bp, val) => env1.find? bp == some val)
 
 instance : BEq Env where
   beq := Env.beq
@@ -137,6 +147,33 @@ inductive LhsResult
 | Ok (E : Env) (ap : accessperm.AccessPerms) (mem : Mem)
 | Err (message : String)
 
+instance : Repr RefOp where
+  reprPrec
+    | RefOp.BorrowRef, _ => "&"
+    | RefOp.MutRef, _ => "&mut"
+    | RefOp.Raw, _ => "&raw"
+
+instance : Repr RExpr where
+  reprPrec
+    | RExpr.ConstOp c, _ => s!"ConstOp({repr c})"
+    | RExpr.CopyOp p, _ => s!"CopyOp({repr p})"
+    | RExpr.MoveOp p, _ => s!"MoveOp({repr p})"
+    | RExpr.RefrOp ro p, _ => s!"RefrOp({repr ro}, {repr p})"
+    | RExpr.DrefOp p, _ => s!"DrefOp({repr p})"
+    | RExpr.BinaryOp l r, _ => s!"BinaryOp({repr l}, {repr r})"
+    | RExpr.StructInitOp fs, _ => s!"StructInitOp({repr fs})"
+
+instance : Repr Stmt where
+  reprPrec
+    | Stmt.Assgn lhs rexpr, _ => s!"{repr lhs} = {repr rexpr}"
+    | Stmt.Halt, _ => "Halt"
+
+instance : Repr LhsPlace where
+  reprPrec
+    | LhsPlace.Place place, _ => s!"(_{repr place})"
+    | LhsPlace.RExpr.DrefOp place, _ => s!"*({repr place})"
+
+
 
 open Stmt RExpr RhsResult LhsResult MemValue
 
@@ -145,70 +182,49 @@ def freshTag (ap : accessperm.AccessPerms) : Tag × accessperm.AccessPerms :=
   let newAP := { ap with NextTag := ap.NextTag + 1 }
   (newTag, newAP)
 
-
--- Helper function for structural recursion
-def typeSizeAux : List TyVal → Word → Word
-| [], acc => acc
-| TyVal.NatTy :: rest, acc | TyVal.PTy :: rest,acc  => typeSizeAux rest (acc + 1)
-| TyVal.TupTy nested :: rest, acc =>
-    let nestedSize := typeSizeAux nested 0 -- Process the nested tuple first
-    typeSizeAux rest (acc + nestedSize)    -- Add its size to the accumulator
-
--- Get size of type in words
-def typeSize (ty : TyVal) : Nat :=
-  match ty with
-  | TyVal.NatTy | TyVal.PTy => 1
-  | TyVal.TupTy tys => typeSizeAux tys 0
-
   /--
   Reads a sequence of `sz` words from the given `mem` at `addr`.
   Returns [] if sz is zero or mem contains no data.
   --/
 def ReadWordSeq (mem : Mem) (addr : Word) (sz : Word) : List MemValue :=
   match sz with
-  | 0 => []
-  | s + 1  =>  -- Process the list of types explicitly
+  | 0 =>
+      dbg_trace s!"ReadWordSeq: sz=0, addr={addr} → []"
+      []
+  | s + 1 =>
       let value := match mem.mMap.find? addr with
-      | some v => [v]
-      | none => [] -- Return an empty list if the value is not found
-      let rest := ReadWordSeq mem (addr + 1) s -- read the rest of the words
+        | some v =>
+            dbg_trace s!"ReadWordSeq: addr={addr} found value={v}"
+            [v]
+        | none =>
+            dbg_trace s!"ReadWordSeq: addr={addr} not found"
+            []
+      let rest := ReadWordSeq mem (addr + 1) s
+      dbg_trace s!"ReadWordSeq: addr={addr}, sz={sz}, value={value}, rest={rest}"
       value ++ rest
-
--- Function to get the type of a sub-place, given a composite base type
--- E.g.,place = 0.0.1, bty = [(Nat, (Nat, Nat, Nat)), [Nat, Nat]] will return (Nat, Nat, Nat)
-def getPlaceTypeFromBase (place : Place) (bty : TyVal) : Option TyVal :=
-match place with
-| [] => none
-| _basePlace :: rest =>
-  -- Traverse the rest of the place to find the subtype
-  let rec traverse (ty : TyVal) (path : Place) : Option TyVal :=
-    match path with
-    | [] => some ty
-    | idx :: rest =>
-      match ty with
-      | TyVal.TupTy tys =>
-        if h : idx < tys.length then
-          traverse (tys.get ⟨idx, h⟩) rest
-        else
-          none
-      | _ => none
-  traverse bty rest
 
 -- Function to get the type of a place from the environment
 def getPlaceType (place : Place) (env : Env) : Option TyVal :=
-match place with
-| [] => none
-| basePlace :: rest =>
-  match env.find? basePlace with
-  | some (_, ty, _) => getPlaceTypeFromBase rest ty
-  | none => none
+  match place with
+  | [] => none
+  | basePlace :: rest =>
+    match env.find? basePlace with
+    | some (_, ty, _) =>
+      dbg_trace s!"getPlaceType: basePlace={basePlace}, ty={ty}, rest={rest}"
+      match rest with
+      | [] => some ty
+      | _ =>
+        let result := getPlaceTypeFromBase rest ty
+        dbg_trace s!"getPlaceType: getPlaceTypeFromBase(rest={rest}, ty={ty}) = {result}"
+        result
+    | none => none
 
 def getPlaceOffset (place: Place) (ty: TyVal) : Option Word :=
   match place with
   | [] => some 0
   | _basePlace :: rest =>
-    let rec calcOffset (path: Place) (currTy: TyVal) (acc: Word) : Option Word :=
-      match path with
+    let rec calcOffset (subplace: Place) (currTy: TyVal) (acc: Word) : Option Word :=
+      match subplace with
       | [] => some acc
       | idx :: rest =>
         match currTy with
@@ -220,9 +236,30 @@ def getPlaceOffset (place: Place) (ty: TyVal) : Option Word :=
             let nextTy := tys.get ⟨idx, h⟩
             -- Recurse with accumulated offset
             calcOffset rest nextTy (acc + precedingOffset)
-          else none
-        | _ => none
-    calcOffset rest ty 0
+          else
+            dbg_trace s!"getPlaceOffset: index out of bounds idx={idx}, len={tys.length}, currTy={currTy}, subplace={subplace}"
+            none
+        | _ =>
+          dbg_trace s!"getPlaceOffset: expected tuple type but got {currTy} at subplace={subplace}"
+          none
+    let result := calcOffset rest ty 0
+    match result with
+    | none =>
+      dbg_trace s!"getPlaceOffset: failed to compute offset for place={place} with base type={ty}"
+      none
+    | some _ => result
+
+/--
+  Returns the base address for a place, i.e., the address of its base place in the environment.
+  Returns none if the place is empty or the base place is not found.
+--/
+def getPlaceBaseAddress (place : Place) (env : Env) : Option Word :=
+  match place with
+  | [] => none
+  | basePlace :: _ =>
+    match env.find? basePlace with
+    | some (addr, _, _) => some addr
+    | none => none
 
 def exampleTupleType : TyVal :=
   TyVal.TupTy [
@@ -252,39 +289,46 @@ theorem test_getPlaceOffset :
 
 
 def getPlaceAddr (place : Place) (env : Env) : Option Word :=
-    match place with
-    | [] => none
-    | basePlace :: _ =>
-        match env.find? basePlace with
-        | some (addr, ty, _) =>
-          match getPlaceOffset place ty with
-          | none => none
-          | some offset => some (addr + offset)
-        | none => none
+  match place with
+  | [] => none
+  | basePlace :: _ =>
+    match env.find? basePlace with
+    | some (addr, ty, _) =>
+      match getPlaceOffset place ty with
+      | none => none
+      | some offset =>
+      let computedAddr := addr + offset
+      dbg_trace s!"getPlaceAddr: basePlace={basePlace}, addr={addr}, offset={offset}, computedAddr={computedAddr}"
+      some computedAddr
+    | none => none
 
 def allocate (mem : Mem) (size : Nat) : Word × Mem :=
+  dbg_trace s!"allocate: size={size}"
   let newAddrStart := mem.addrStart + size
   let newMem := { mem with addrStart := newAddrStart }
   (mem.addrStart, newMem)
 
 -- RExprToVal Function
 def RExprToValFn : RExpr → Env → Mem → accessperm.AccessPerms → RhsResult
+| ConstOp constant, _env, mem, ap =>
+  Ok [Val constant] TyVal.NatTy ap mem
+
 | CopyOp place, env, mem, ap =>
   match getPlaceAddr place env with
-  | none => Err s!"Place {place} or address not found in environment."
+  | none => Err s!"ERR_CP00:Place {place} or address not found in environment."
   | some addr => match getPlaceType place env with
-    | none => Err s!"Place {place} or address not found in environment."
+    | none => Err s!"ERR_CP01:Place {place} or address not found in environment."
     | some ty => match ReadWordSeq mem addr (typeSize ty) with
-      | [] => Err s!"Address {addr} not found in memory."
+      | [] => Err s!"ERR_CP02:Address {addr} not found in memory."
       | values => Ok values ty ap mem
 
 | MoveOp place, env, mem, ap =>
   match getPlaceAddr place env with
-  | none => Err s!"Place {place} or address not found in environment."
+  | none => Err s!"ERR_MV00:Place {place} or address not found in environment."
   | some addr => match getPlaceType place env with
-    | none => Err s!"Place {place} or address not found in environment."
+    | none => Err s!"ERR_MV01:Place {place} or address not found in environment."
     | some ty => match ReadWordSeq mem addr (typeSize ty) with
-      | [] => Err s!"Address {addr} not found in memory."
+      | [] => Err s!"ERR_MV02:Address {addr} not found in memory."
       | values => Ok values ty ap mem
 
 | RefrOp _refop place, env, mem, ap =>
@@ -296,42 +340,65 @@ def RExprToValFn : RExpr → Env → Mem → accessperm.AccessPerms → RhsResul
         let (newTag, newAP) := freshTag ap
         Ok [PlaceTag place newTag] TyVal.PTy newAP mem
 
-| DrefOp place, env, mem, ap =>
-  match getPlaceAddr place env with
-  | none => Err s!"Place {place} or address not found in environment."
-  | some addr => match getPlaceType place env with
-    | none => Err s!"Place {place} or address not found in environment."
-    | some ty => match ReadWordSeq mem addr (typeSize ty) with
-      | [PlaceTag tplace _ttag] =>
-        match getPlaceAddr tplace env with
-          | none => Err s!"Target Place {place} or address not found in environment."
-           | some taddr => match getPlaceType tplace env with
-            | none => Err s!"Target Place {place} or address not found in environment."
-            | some tty => match ReadWordSeq mem taddr (typeSize tty) with
-              | [] => Err s!"Target Address {addr} not found in memory."
-              | values => Ok values tty ap mem
-      | _ => Err s!"Address {addr} does not contain a place."
-/-
-| BinaryOp lop rop, env, mem, sb =>
-    match (RExprToVal lop env mem sb, RExprToVal rop env mem sb) with
-    | (Ok v1 ty1 sb1 mem1, Ok v2 ty2 sb2 mem2) =>
-        if ty1 = ty2 then Ok (v1 + v2) ty1 sb2 mem2 -- Simplified binary operation
-        else Err s!"Type mismatch: {ty1} vs {ty2}"
-    | (Err msg, _) => Err msg
-    | (_, Err msg) => Err msg
+| DrefOp  place, env, mem, ap =>
+  match place with
+  | [] => Err "Empty place."
+  | base :: rest =>
+    -- We handle two kinds of deref
+    -- 1. Deref _1
+    -- 2. Deref (*_1)._2
+    -- We DO NOT handle *(_1.2) yet
+    match getPlaceAddr [base] env with
+    | none => Err s!"Place {base} or address not found in environment."
+    | some addr => match getPlaceType [base] env with
+      | none => Err s!"Place {base} or address not found in environment."
+      | some ty => match ReadWordSeq mem addr (typeSize ty) with
+        | [PlaceTag tplace _ttag] =>
+          match getPlaceAddr (tplace ++ rest) env with
+            | none => Err s!"Target Place {tplace} or address not found in environment."
+            | some taddr => match getPlaceType (tplace ++ rest) env with
+              | none => Err s!"Target Place {tplace} or address not found in environment."
+              | some tty => match ReadWordSeq mem taddr (typeSize tty) with
+                | [] => Err s!"Target Address {addr} not found in memory."
+                | values => Ok values tty ap mem
+        | _ => Err s!"Address {addr} does not contain a place."
 
-| StructInitOp fields, env, mem, sb =>
-    let results := fields.map (fun field => RExprToVal field env mem sb)
-    if results.all (fun r => match r with | Ok _ _ _ _ => true | _ => false) then
-      let values := results.map (fun r => match r with | Ok v _ _ _ => v | _ => 0)
-      let tys := results.map (fun r => match r with | Ok _ ty _ _ => ty | _ => "")
-      Ok 0 (tys.foldl (· ++ " ") "") sb mem -- Simplified structure creation
-    else Err "Error initializing structure." -/
+| BinaryOp lop rop, env, mem, ap =>
+  -- thread env, mem, ap from left to right
+  match RExprToValFn lop env mem ap with
+  | RhsResult.Ok v1 ty1 ap1 mem1 =>
+    match RExprToValFn rop env mem1 ap1 with
+    | RhsResult.Ok v2 ty2 ap2 mem2 =>
+    if ty1 == TyVal.NatTy && ty2 == TyVal.NatTy then
+      match (v1, v2) with
+      | ([MemValue.Val n1], [MemValue.Val n2]) =>
+        Ok [MemValue.Val (n1 + n2)] ty1 ap2 mem2 -- Simplified binary operation
+      | _ => Err "BinaryOp expects single Nat values"
+    else
+      Err s!"Type mismatch: {ty1} vs {ty2} for {v1}, {v2}"
+    | RhsResult.Err msg => Err msg
+  | RhsResult.Err msg => Err msg
+
+| StructInitOp fields, env, mem, ap =>
+  let rec evalFields (fields : List RExpr) (env : Env) (curMem : Mem) (curAP : accessperm.AccessPerms)
+    (accVals : List MemValue) (accTys : List TyVal) : RhsResult :=
+    match fields with
+    | [] => RhsResult.Ok accVals (TyVal.TupTy accTys) curAP curMem
+    | f :: fs =>
+      match RExprToValFn f env curMem curAP with
+      | RhsResult.Ok vals ty newAP newMem =>
+        -- dbg_trace s!"StructInitOp: vals={vals}, ty={ty}, accVals={accVals}, accTys={accTys}"
+        evalFields fs env newMem newAP (accVals ++ vals) (accTys ++ [ty])
+      | RhsResult.Err msg => RhsResult.Err msg
+  evalFields fields env mem ap [] []
+
+
 
 def WriteWordSeq (mem : Mem) (addr : Word) (values : List MemValue) : Mem :=
   match values with
   | [] => mem
   | value :: rest =>
+    dbg_trace s!"WriteWordSeq: addr={addr}, value={value}, rest={rest}"
     let mem' := WriteWordSeq mem (addr + 1) rest
     let newMap := mem'.mMap.insert addr value
     {mem' with mMap := newMap}
@@ -341,18 +408,39 @@ partial def EvalStmt: Stmt → Env → Mem → accessperm.AccessPerms → LhsRes
     match RExprToValFn rexpr env mem ap with
     | RhsResult.Ok values ty newAp newMem =>
       match lplace with
-      | [newplace] =>
-        let (newAddr, allocatedMem) := allocate newMem (typeSize ty)
-        let updatedMem := WriteWordSeq allocatedMem newAddr values
-        let (tag, newAp) := freshTag newAp
-        let updatedEnv := env.insert newplace (newAddr, ty, tag)
-        LhsResult.Ok updatedEnv newAp updatedMem
-      | _ =>
-        match getPlaceAddr lplace env with
-        | none => LhsResult.Err s!"lhs Place {lplace} not found in environment."
+      | LhsPlace.Place place =>
+        match getPlaceAddr place env with
         | some addr =>
           let updatedMem := WriteWordSeq newMem addr values
           LhsResult.Ok env newAp updatedMem
+        | none =>
+          match place with
+          | [newplace] =>
+            let (newAddr, allocatedMem) := allocate newMem (typeSize ty)
+            let updatedMem := WriteWordSeq allocatedMem newAddr values
+            let (tag, newAp) := freshTag newAp
+            let updatedEnv := env.insert newplace (newAddr, ty, tag)
+            LhsResult.Ok updatedEnv newAp updatedMem
+          | _ =>
+            LhsResult.Err s!"lhs Place {place} does not have an address in the environment."
+      | LhsPlace.RExpr.DrefOp place =>
+        match getPlaceAddr place env with
+        | some addr =>
+          -- Read the pointer value at addr, then write to the address it points to
+          match getPlaceType place env with
+          | none => LhsResult.Err s!"lhs Dref Place {place} does not have a type in the environment."
+          | some ty =>
+            match ReadWordSeq mem addr (typeSize ty) with
+            | [PlaceTag tplace _ttag] =>
+              match getPlaceAddr tplace env with
+              | none => LhsResult.Err s!"lhs Dref Target Place {tplace} does not have an address in the environment."
+              | some taddr =>
+                let updatedMem := WriteWordSeq newMem taddr values
+                dbg_trace s!"Deref assignment: Writing to taddr={taddr} values={values}"
+                LhsResult.Ok env newAp updatedMem
+            | _ => LhsResult.Err s!"lhs Dref Address {addr} does not contain a place."
+        | none =>
+          LhsResult.Err s!"lhs Dref Place {place} does not have an address in the environment."
     | RhsResult.Err msg => LhsResult.Err msg
   | Halt, env, mem, ap => LhsResult.Ok env ap mem
 
@@ -364,7 +452,7 @@ inductive Eval : ProgCount × Prog × Env × Mem × accessperm.AccessPerms →
     (newMem : Mem) (newEnv : Env) (prog: Prog) (stmt_list: List Stmt),
     prog.find? pc.bb = some stmt_list →
     (h : pc.stmt < stmt_list.length) →
-    stmt_list.get ⟨pc.stmt, h⟩ = Stmt.Assgn lplace rexpr →
+    stmt_list.get ⟨pc.stmt, h⟩ = Stmt.Assgn (LhsPlace.Place lplace) rexpr →
     RExprToValFn rexpr env mem ap = RhsResult.Ok values ty newAp newMem →
     (match lplace with
     | [newplace] =>
@@ -426,7 +514,7 @@ inductive Eval2 : BB × PC  × Prog × Env × Mem × accessperm.AccessPerms →
     (newMem : Mem) (newEnv : Env) (prog: Prog),
     prog.find? bb = some stmt_list →
     (h : pc < stmt_list.length) →
-    stmt_list.get ⟨pc, h⟩ = Stmt.Assgn lplace rexpr →
+    stmt_list.get ⟨pc, h⟩ = Stmt.Assgn (LhsPlace.Place lplace) rexpr →
     RExprToValFn rexpr env mem ap = RhsResult.Ok values ty newAp newMem →
     (match lplace with
     | [newplace] =>
@@ -502,7 +590,8 @@ partial def EvalProg : ProgCount → Prog → Env → Mem → accessperm.AccessP
         match stmts.get ⟨pc.stmt, h⟩ with
         | Halt => LhsResult.Ok env ap mem
         | stmt =>
-          match EvalStmt stmt env mem ap with
+            dbg_trace s!"EvalStmt: {repr stmt}"
+            match EvalStmt stmt env mem ap with
           | LhsResult.Ok newEnv newAp newMem => EvalProg {pc with stmt := pc.stmt + 1} prog newEnv newMem newAp
           | LhsResult.Err msg => LhsResult.Err msg
       else
