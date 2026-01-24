@@ -28,7 +28,7 @@ deriving Repr, BEq, Inhabited
 abbrev RegMap := List (Register × (TyVal × List Val))
 
 def RegMap.lookup (r : RegMap) (reg : Register) : Option (TyVal × List Val) :=
-  r.lookup reg
+  List.lookup reg r
 
 def RegMap.insert (r : RegMap) (reg : Register) (val : TyVal × List Val) : RegMap :=
   (reg, val) :: r.filter (fun (rg, _) => rg != reg)
@@ -41,17 +41,19 @@ structure Mem where
 deriving Repr, Inhabited
 
 def Mem.find? (m : Mem) (addr : Word) : Option Val :=
-  m.mMap.lookup addr
+  List.lookup addr m.mMap
 
 def Mem.write (m : Mem) (addr : Word) (v : Val) : Mem :=
   { m with mMap := (addr, v) :: m.mMap.filter (fun (a, _) => a != addr) }
 
 -- Helpers
 def readWordSeq (m : Mem) (addr : Word) (sz : Nat) : List Val :=
-  if sz == 0 then []
-  else match m.find? addr with
-       | some v => v :: readWordSeq m (addr + 1) (sz - 1)
-       | none => Val.Undef :: readWordSeq m (addr + 1) (sz - 1)
+  match sz with
+  | 0 => []
+  | n + 1 =>
+    match m.find? addr with
+    | some v => v :: readWordSeq m (addr + 1) n
+    | none => Val.Undef :: readWordSeq m (addr + 1) n
 
 def writeWordSeq (m : Mem) (addr : Word) (vals : List Val) : Mem :=
   match vals with
@@ -129,8 +131,6 @@ def evalRhs (state : State) (rhs : Rhs) : RhsResult :=
   | Rhs.BorOffset baseReg offset =>
      match state.reg.lookup baseReg with
      | some (_, [Val.Ptr base baseOff size tag]) =>
-       -- "ref(b, base, tag) -> sb', g' fresh"
-       -- New ptr is (base, baseOff + offset, size, g')
        let addr := base + baseOff + offset
        if addr >= base + size then RhsResult.Err "OOB"
        else
@@ -157,14 +157,6 @@ def evalRhs (state : State) (rhs : Rhs) : RhsResult :=
   | Rhs.CopyOffset baseReg offset =>
      match state.reg.lookup baseReg with
      | some (_, [Val.Ptr base baseOff size tag]) =>
-       -- copy_offset produces a raw pointer? Or just same pointer?
-       -- Table 4: `rval-bor-offset` handles `bor`, `mutbor`, `copy`.
-       -- For `copy_offset` (corresponds to `RefKind.Raw` or just copy?), rule `place-to-reg-2` uses `copy_offset` for `r`.
-       -- `RefKind` r corresponds to `copy_offset`.
-       -- `ref(r, ...)` -> `sb_new_mut_ref` (as per previous finding) or `sb_read_use_raw`?
-       -- Table 1 says `ref(rf, ...)` where `rf \in {mb, r}` uses `sb-new-mut-ref`.
-       -- So `copy_offset` (which seems to implement raw reborrow) uses `sb_new_mut_ref`.
-       -- We should check if `RefKind` is `RawPtr`.
        let addr := base + baseOff + offset
        if addr >= base + size then RhsResult.Err "OOB"
        else

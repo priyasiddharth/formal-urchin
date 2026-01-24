@@ -16,6 +16,9 @@ inductive TyVal
 | TupTy (tys : List TyVal)
 deriving Repr, BEq, Inhabited
 
+instance : ToString TyVal where
+  toString t := reprStr t
+
 def typeSize : TyVal → Nat
 | TyVal.NatTy => 1
 | TyVal.PTy => 1 -- Pointer size
@@ -36,7 +39,7 @@ structure Mem where
 deriving Repr, Inhabited
 
 def Mem.find? (m : Mem) (addr : Word) : Option MemValue :=
-  m.mMap.lookup addr
+  List.lookup addr m.mMap
 
 def Mem.write (m : Mem) (addr : Word) (v : MemValue) : Mem :=
   { m with mMap := (addr, v) :: m.mMap.filter (fun (a, _) => a != addr) }
@@ -46,7 +49,7 @@ def Mem.write (m : Mem) (addr : Word) (v : MemValue) : Mem :=
 abbrev Env := List (Word × (Word × TyVal × Tag))
 
 def Env.lookup (e : Env) (base : Word) : Option (Word × TyVal × Tag) :=
-  e.lookup base
+  List.lookup base e
 
 def Env.insert (e : Env) (base : Word) (info : Word × TyVal × Tag) : Env :=
   (base, info) :: e.filter (fun (b, _) => b != base)
@@ -57,7 +60,7 @@ inductive RefKind
 | Shared
 | Mut
 | Raw
-deriving Repr, BEq
+deriving Repr, BEq, Inhabited
 
 inductive RExpr
 | ConstOp (val : Word)
@@ -66,7 +69,7 @@ inductive RExpr
 | RefOp (kind : RefKind) (place : Place)
 | DrefOp (place : Place)
 | StructInitOp (fields : List RExpr)
-| BinaryOp (lhs : RExpr) (rhs : RExpr) -- Added BinaryOp as per Table 2 example
+| BinaryOp (lhs : RExpr) (rhs : RExpr)
 deriving Repr, Inhabited
 
 inductive LExpr
@@ -101,10 +104,12 @@ deriving Repr, Inhabited
 
 -- Helpers
 def readWordSeq (m : Mem) (addr : Word) (sz : Nat) : List MemValue :=
-  if sz == 0 then []
-  else match m.find? addr with
-       | some v => v :: readWordSeq m (addr + 1) (sz - 1)
-       | none => MemValue.Undef :: readWordSeq m (addr + 1) (sz - 1)
+  match sz with
+  | 0 => []
+  | n + 1 =>
+    match m.find? addr with
+    | some v => v :: readWordSeq m (addr + 1) n
+    | none => MemValue.Undef :: readWordSeq m (addr + 1) n
 
 def writeWordSeq (m : Mem) (addr : Word) (vals : List MemValue) : Mem :=
   match vals with
@@ -120,7 +125,12 @@ structure PlaceRes where
   tag : Tag
   ty : TyVal
   state : State
-deriving Repr
+deriving Repr, Inhabited
+
+def list_get_opt {α} : List α → Nat → Option α
+| [], _ => none
+| a :: _, 0 => some a
+| _ :: as, n+1 => list_get_opt as n
 
 -- Helper to compute offset and type for sub-place
 def resolvePath (ty : TyVal) (path : List Word) : Option (Nat × TyVal) :=
@@ -129,12 +139,13 @@ def resolvePath (ty : TyVal) (path : List Word) : Option (Nat × TyVal) :=
   | idx :: rest =>
     match ty with
     | TyVal.TupTy tys =>
-      if idx < tys.length then
+      match list_get_opt tys idx with
+      | some subTy =>
         let preSize := (tys.take idx).foldl (fun acc t => acc + typeSize t) 0
-        match resolvePath (tys.get! idx) rest with
-        | some (off, subTy) => some (preSize + off, subTy)
+        match resolvePath subTy rest with
+        | some (off, finalTy) => some (preSize + off, finalTy)
         | none => none
-      else none
+      | none => none
     | _ => none
 
 -- Place Resolution (plc-resolv, alloc-plc-resolv, dref-plc-resolv)
@@ -147,60 +158,32 @@ partial def resolvePlace (state : State) (l : LExpr) (forWrite : Bool) : Result 
       match resolvePath baseTy p.path with
       | some (offset, ty) =>
         (Result.Ok state, { addr := baseAddr + offset, tag := baseTag, ty := ty, state := state })
-      | none => (Result.Err s!"Invalid path {p.path} for type {baseTy}", { addr := 0, tag := 0, ty := TyVal.NatTy, state := state }) -- Dummy return
+      | none => (Result.Err s!"Invalid path {repr p.path} for type {baseTy}", default)
     | none =>
-      -- alloc-plc-resolv (Only allowed if path is empty and we are resolving for a write - typically lhs of assgn)
-      -- But here we just check if it exists. If not, and path is empty, we allocate.
+      -- alloc-plc-resolv
       if p.path == [] then
-         -- We need a type hint for allocation.
-         -- The paper says `alloc(m, sizeof(t))`. Where does `t` come from?
-         -- "If the base b is not yet in E... allocate a fresh block... update E".
-         -- This implies we know the type.
-         -- In the interpreter, we usually infer type from RHS.
-         -- So `resolvePlace` might need an expected type if allocating.
-         -- For now, let's assume we handle allocation in Assgn explicitly if Env lookup fails.
-         (Result.Err s!"Place base {p.base} not found", { addr := 0, tag := 0, ty := TyVal.NatTy, state := state })
+         (Result.Err s!"Place base {p.base} not found", default)
       else
-         (Result.Err s!"Place base {p.base} not found", { addr := 0, tag := 0, ty := TyVal.NatTy, state := state })
+         (Result.Err s!"Place base {p.base} not found", default)
 
   | LExpr.DrefOp p =>
      -- dref-plc-resolv
-     -- First resolve p (as a value? No, p is a place holding a pointer).
-     -- "Resolve the pointer place to a pointer value <ap, g, P>"
-     -- This calls resolvePlace recursively on p.
      match resolvePlace state (LExpr.Place p) false with
      | (Result.Ok s1, res1) =>
-        -- Issue read(res1.addr, res1.tag) on the pointer's base to obtain stored place q and tag gq
+        -- Issue read
         match sb_read_safe s1.ap res1.addr res1.tag with
         | SBResult.Ok ap2 =>
            let s2 := { s1 with ap := ap2 }
-           match readWordSeq s2.mem res1.addr 1 with -- Ptr size is 1
+           match readWordSeq s2.mem res1.addr 1 with
            | [MemValue.PlaceTag q gq] =>
-             -- Recursive resolve of q
-             resolvePlace s2 (LExpr.Place q) forWrite -- Assuming q is the target place
-             -- Wait, q is a Place. We need to resolve it using gq?
-             -- The paper says: "Resolve q with down-arrow-p to yield final target (at, gq, tt)".
-             -- Note it uses `gq` from the value.
-             -- But `resolvePlace` uses the tag from Env.
-             -- If `q` is resolved, it looks up `q.base` in Env to get `(addr, ty, tag)`.
-             -- But here we override the tag with `gq`?
-             -- "resolves to target address, tag, and type"
-             -- Let's call `resolvePlace` on `q`.
-             -- And then replace the tag?
-             -- Actually, `PlaceTag` in my `MemValue` stores `Place` and `Tag`.
-             -- This `Tag` `gq` is likely the one we must use.
-             -- But `resolvePlace` logic uses Env tag.
-             -- If `q` is just an address, we don't need env lookup.
-             -- But MIRLITE `Place` is symbolic `(base, path)`.
-             -- So we resolve `q` to get `addr`. The tag we use for access is `gq`.
-             -- Yes.
+             -- Recursive resolve of q. q is a Place.
              match resolvePlace s2 (LExpr.Place q) false with
              | (Result.Ok s3, res3) =>
                 (Result.Ok s3, { res3 with tag := gq })
-             | err => err
-           | _ => (Result.Err "Deref: Memory did not contain a PlaceTag", { addr := 0, tag := 0, ty := TyVal.NatTy, state := s2 })
-        | SBResult.Err msg => (Result.Err msg, { addr := 0, tag := 0, ty := TyVal.NatTy, state := s1 })
-     | err => err
+             | (Result.Err msg, _) => (Result.Err msg, default)
+           | _ => (Result.Err "Deref: Memory did not contain a PlaceTag", default)
+        | SBResult.Err msg => (Result.Err msg, default)
+     | (Result.Err msg, _) => (Result.Err msg, default)
 
 -- Eval RExpr
 partial def evalRExpr (state : State) (expr : RExpr) : ValRes :=
@@ -213,7 +196,7 @@ partial def evalRExpr (state : State) (expr : RExpr) : ValRes :=
        | f :: rest =>
          match evalRExpr s f with
          | ValRes.Ok vals ty s' => loop rest s' (accVals ++ vals) (accTys ++ [ty])
-         | err => err
+         | ValRes.Err msg => ValRes.Err msg
      loop fields state [] []
 
   | RExpr.CopyOp p =>
@@ -247,7 +230,7 @@ partial def evalRExpr (state : State) (expr : RExpr) : ValRes :=
       let (sbRes, newTag) := match kind with
         | RefKind.Mut => sb_new_mut_ref_kind s1.ap res.addr res.tag obseq.RefKind.MutRef
         | RefKind.Shared => sb_new_ref s1.ap res.addr res.tag
-        | RefKind.Raw => sb_new_mut_ref_kind s1.ap res.addr res.tag obseq.RefKind.RawPtr -- Treated as mut ref for creation? Table 1 says ref(rf) where rf \in {mb, r} uses sb-new-mut-ref premise.
+        | RefKind.Raw => sb_new_mut_ref_kind s1.ap res.addr res.tag obseq.RefKind.RawPtr
       match sbRes with
       | SBResult.Ok ap2 =>
         let s2 := { s1 with ap := ap2 }
@@ -257,8 +240,6 @@ partial def evalRExpr (state : State) (expr : RExpr) : ValRes :=
 
   | RExpr.DrefOp p =>
     -- deref-place (Deref on RHS)
-    -- Same as LExpr.DrefOp logic basically, but reading.
-    -- "Resolve p ... read(ab, g) ... read(m, at, tt)"
     match resolvePlace state (LExpr.DrefOp p) false with
     | (Result.Ok s1, res) =>
        match sb_read_safe s1.ap res.addr res.tag with
@@ -271,15 +252,15 @@ partial def evalRExpr (state : State) (expr : RExpr) : ValRes :=
 
   | RExpr.BinaryOp lhs rhs =>
      match evalRExpr state lhs with
-     | ValRes.Ok v1 ty1 s1 =>
+     | ValRes.Ok v1 _ s1 =>
        match evalRExpr s1 rhs with
-       | ValRes.Ok v2 ty2 s2 =>
+       | ValRes.Ok v2 _ s2 =>
          match (v1, v2) with
          | ([MemValue.Val n1], [MemValue.Val n2]) =>
              ValRes.Ok [MemValue.Val (n1 + n2)] TyVal.NatTy s2
          | _ => ValRes.Err "BinaryOp expects Nat"
-       | err => err
-     | err => err
+       | ValRes.Err msg => ValRes.Err msg
+     | ValRes.Err msg => ValRes.Err msg
 
 
 -- Eval Stmt
@@ -316,10 +297,6 @@ def step (state : State) (prog : Prog) : Result :=
                 match sbRes with
                 | SBResult.Ok ap2 =>
                    let env2 := s1.env.insert p.base (addr, ty, tag)
-                   -- "Assgn performs the store ... consuming sb-use-mb"
-                   -- Wait, alloc creates (g, o).
-                   -- Writing initial value requires permission.
-                   -- sb-use-mb requires (g, k). (g, o) works.
                    match sb_use_mb ap2 addr tag with
                    | SBResult.Ok ap3 =>
                       let mem3 := writeWordSeq mem2 addr vals
