@@ -1,5 +1,8 @@
 import interp.compile
 import interp.oseairlight
+
+namespace Interp.TestCompile
+
 def assert (cond : Bool) (msg : String) : IO Unit :=
   if cond then pure () else panic! s!"Assertion failed: {msg}"
 
@@ -29,8 +32,6 @@ def testCompileCopy : IO Unit := do
       assert (cctx.prog == testCompileCopy_expected) "Compiled program does not match expected"
   | compiler.CompileResult.Err msg =>
       assert false s!"testCompileCopy failed: {msg}"
-
-#eval testCompileCopy
 
 -- Test: Compile and check memory for _2 = 1 + 41
 
@@ -105,7 +106,6 @@ def testCompileAdd : IO Unit := do
       | none => assert false "Could not find environment entry for _2"
   | mir.LhsResult.Err msg => assert false s!"MIR eval failed: {msg}"
 
-#eval testCompileAdd
 -- Additional test: Compile MIR program with MutRef and DrefOp
 
 def testProgram2_mirProg : mir.Prog :=
@@ -140,8 +140,6 @@ def testCompileProgram2 : IO Unit := do
       assert (cctx.prog == testProgram2_expectedOseair) "Compiled program does not match expected"
   | compiler.CompileResult.Err msg =>
       assert false s!"testCompileProgram2 failed: {msg}"
-
-#eval testCompileProgram2
 
 -- Test: Compile and check memory for mutref assignment
 -- _0 = 41
@@ -199,8 +197,6 @@ def testCompileMutRefAssign : IO Unit := do
         | _ => assert false "MIR memory at _0's address does not contain 42"
       | none => assert false "Could not find environment entry for _0"
   | mir.LhsResult.Err msg => assert false s!"MIR eval failed: {msg}"
-
-#eval testCompileMutRefAssign
 
 -- Test: Tuple, reference, dereference, and binary operations
 -- _0 = {0: 1, 1: 2}
@@ -273,4 +269,11 @@ def testCompileTupleRefDerefAdd : IO Unit := do
       | none => assert false "Could not find environment entry for _6"
   | mir.LhsResult.Err msg => assert false s!"MIR eval failed: {msg}"
 
-#eval testCompileTupleRefDerefAdd
+def runAll : IO Unit := do
+  testCompileCopy
+  testCompileAdd
+  testCompileProgram2
+  testCompileMutRefAssign
+  testCompileTupleRefDerefAdd
+
+end Interp.TestCompile

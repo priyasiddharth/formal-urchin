@@ -275,7 +275,6 @@ def exampleTupleType : TyVal :=
   ]
 
 def examplePlace : Place := [0, 1, 1]  -- BasePlace, 1, 2
-#eval getPlaceOffset examplePlace exampleTupleType -- expected: some 2
 
 theorem test_getPlaceOffset :
   getPlaceOffset examplePlace exampleTupleType = some 2 := by

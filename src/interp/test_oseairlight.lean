@@ -1,6 +1,8 @@
 import interp.oseairlight
 import interp.accessperm
 
+namespace Interp.TestOseairlight
+
 open oseair
 
 def assert (cond : Bool) (msg : String) : IO Unit :=
@@ -46,8 +48,6 @@ def testEval1 := do
       assert (mem == expectedMem1) "Mem does not match expected"
   | LhsResult.Err msg => do
       assert false s!"Test 1 failed: {msg}"
-
-#eval testEval1
 
 -- Test 2: Store and load
 
@@ -95,8 +95,6 @@ def testProg2 : Prog :=
       | LhsResult.Err msg =>
         assert false s!"Test 2 failed: {msg}"
 
-#eval testEval2
-
 -- Test 3: Memcpy
 
 def testRegMap3 : RegMap :=
@@ -143,8 +141,6 @@ def testEval3 :=
     assert (mem == expectedMem3) "Mem does not match expected"
   | LhsResult.Err msg =>
     assert false s!"Test 3 failed: {msg}"
-
-#eval testEval3
 
 -- Test: struct initialization and field access with binary addition (OseairLight style)
 
@@ -194,8 +190,6 @@ def testEval_add : IO Unit := do
       assert (mem == expectedMem_add) "Mem does not match expected"
   | oseair.LhsResult.Err msg =>
       assert false s!"Test failed: {msg}"
-#eval testEval_add
-
 -- Test: borrow_offset and load
 def testRegMap_borrow : oseair.RegMap :=
   Lean.AssocList.empty
@@ -246,8 +240,6 @@ def testEval_borrow : IO Unit := do
       | _ => assert false "R1 not found or incorrect value"
   | oseair.LhsResult.Err msg =>
       assert false s!"Test failed: {msg}"
-#eval testEval_borrow
-
 -- Test: mutable borrow (mutref) and dereference (deref) like in MIR
 
 def testRegMap_mutref : oseair.RegMap :=
@@ -307,4 +299,12 @@ def testEval_mutref : IO Unit := do
   | oseair.LhsResult.Err msg =>
       assert false s!"Test failed: {msg}"
 
-#eval testEval_mutref
+def runAll : IO Unit := do
+  testEval1
+  testEval2
+  testEval3
+  testEval_add
+  testEval_borrow
+  testEval_mutref
+
+end Interp.TestOseairlight

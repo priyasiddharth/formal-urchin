@@ -14,3 +14,7 @@ lean_lib Obseq where
 lean_exe «formal-urchin» where
   root := `Main
   supportInterpreter := true
+
+lean_exe «interp-tests» where
+  root := `InterpTests
+  supportInterpreter := true

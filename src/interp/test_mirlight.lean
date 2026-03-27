@@ -1,6 +1,8 @@
 import interp.mirlight
 import interp.accessperm
 
+namespace Interp.TestMirlight
+
 def assert (cond : Bool) (msg : String) : IO Unit :=
   if cond then pure () else panic! s!"Assertion failed: {msg}"
 
@@ -43,8 +45,6 @@ def testEvalProg1 :=
   | LhsResult.Err (String.mk msg) => do
     assert false s!"Test 1 should not fail: {msg}"
 
-#eval testEvalProg1
-
 -- Test from ref/dref op
 
 def testEnv2 : Env := Lean.AssocList.empty
@@ -80,8 +80,6 @@ def testEvalProg2 :=
     assert (mem == expectedMem2) "Mem is not as expected"
   | LhsResult.Err (String.mk msg) => do
     assert false s!"Test 2 should not fail: {msg}"
-
-#eval testEvalProg2
 
 -- Test binary addition
 
@@ -121,8 +119,6 @@ def testEvalProg3 :=
     assert (mem.mMap.find? 2 == some (MemValue.Val 43)) "Memory at _2 is not 43"
   | LhsResult.Err (String.mk msg) => do
     assert false s!"Test 3 should not fail: {msg}"
-
-#eval testEvalProg3
 
 -- Test Struct initialization
 
@@ -165,8 +161,6 @@ def testEvalProg4 :=
   | LhsResult.Err (String.mk msg) => do
     assert false s!"Test 4 should not fail: {msg}"
 
-#eval testEvalProg4
-
 -- Test indirect store
 
 def testEnv5 : Env :=
@@ -201,7 +195,6 @@ def testEvalProg5 :=
   | LhsResult.Err (String.mk msg) => do
     assert false s!"Test 5 should not fail: {msg}"
 
-#eval testEvalProg5
 -- Test struct initialization and field access with binary addition
 
 def testEnv6 : Env :=
@@ -246,8 +239,6 @@ def testEvalProg6 :=
     assert (mem == expectedMem6) "Mem is not as expected"
   | LhsResult.Err (String.mk msg) => do
     assert false s!"Test 6 should not fail: {msg}"
-
-#eval testEvalProg6
 
 -- Test deref where the value is a struct
 
@@ -297,4 +288,13 @@ def testEvalProg7 :=
   | LhsResult.Err (String.mk msg) => do
     assert false s!"Test 7 should not fail: {msg}"
 
-#eval testEvalProg7
+def runAll : IO Unit := do
+  testEvalProg1
+  testEvalProg2
+  testEvalProg3
+  testEvalProg4
+  testEvalProg5
+  testEvalProg6
+  testEvalProg7
+
+end Interp.TestMirlight
