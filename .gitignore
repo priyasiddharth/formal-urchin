@@ -1,0 +1,7 @@
+.lake/
+.vscode/
+*.olean
+*.ilean
+*.c
+*.so
+.DS_Store
