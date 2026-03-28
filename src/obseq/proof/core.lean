@@ -76,24 +76,6 @@ theorem tail
 
 end StartsAt
 
-def shiftMirPc (basePc : Nat) (s : mirlite.State) : mirlite.State :=
-  { s with pc := basePc + s.pc }
-
-def shiftOseaPc (basePc : Nat) (s : oseair.State) : oseair.State :=
-  { s with pc := basePc + s.pc }
-
-def shiftMirResultPc (basePc : Nat) : mirlite.Result → mirlite.Result
-  | mirlite.Result.Ok s => mirlite.Result.Ok (shiftMirPc basePc s)
-  | mirlite.Result.Err msg => mirlite.Result.Err msg
-
-def shiftOseaResultPc (basePc : Nat) : oseair.Result → oseair.Result
-  | oseair.Result.Ok s => oseair.Result.Ok (shiftOseaPc basePc s)
-  | oseair.Result.Err msg => oseair.Result.Err msg
-
-def shiftOseaRhsResultPc (basePc : Nat) : oseair.RhsResult → oseair.RhsResult
-  | oseair.RhsResult.Ok vals ty s => oseair.RhsResult.Ok vals ty (shiftOseaPc basePc s)
-  | oseair.RhsResult.Err msg => oseair.RhsResult.Err msg
-
 def CompilerEmpty (cs : CompilerState) : Prop :=
   cs.instrs = []
 
@@ -134,59 +116,80 @@ inductive mem_vals_eq : List mirlite.MemValue → List oseair.Val → Prop
     mem_vals_eq vals_mir vals_osea →
     mem_vals_eq (v_mir :: vals_mir) (v_osea :: vals_osea)
 
-abbrev AddrRenaming := obseq.AddrRenaming
-abbrev TagRenaming := obseq.TagRenaming
-
-/-- Global stacked-borrows agreement for the current proof fragment. -/
-def sb_eq
-  (s_mir : mirlite.State)
-  (s_osea : oseair.State) : Prop :=
-  s_mir.ap = s_osea.ap
+abbrev AddrRenaming := AddrRenameMap
+abbrev TagRenaming := TagRenameMap
 
 /--
-`base_ptr_sim` is the exact per-base simulation relation for one entry of the
-compiler's place-to-register map `π`.
+`place_runtime_sim` is the renaming-aware per-base simulation relation for one
+entry of the compiler's place-to-register map `π`.
 
-Unlike the earlier version of this relation, the static compiler fact
-`π[base] = (reg, layout)` is part of the definition rather than carried as a
-separate side hypothesis. The relation still uses exact address/tag equality;
-the more general renaming-based interface is `place_runtime_sim`.
+The static compiler fact `π[base] = (reg, layout)` is packaged together with
+the runtime source environment entry, the runtime target register entry, and
+the address/tag renaming witnesses that relate the two pointers.
 -/
-def base_ptr_sim
+def place_runtime_sim
   (π : PlaceMap)
+  (ρa : AddrRenaming)
+  (ρt : TagRenaming)
   (s_mir : mirlite.State)
   (s_osea : oseair.State)
   (base : Word)
   (reg : Register)
-  (addr tag : Word)
+  (addr_m addr_o tag_m tag_o : Word)
   (layout : LayoutTy) : Prop :=
   π.lookup base = some (reg, layout) ∧
-  s_mir.env.lookup base = some (addr, layoutToTyVal layout, tag) ∧
-  s_osea.reg.lookup reg = some (TyVal.PTy, [oseair.Val.Ptr addr 0 (blockSize layout) tag])
+  s_mir.env.lookup base = some (addr_m, layoutToTyVal layout, tag_m) ∧
+  s_osea.reg.lookup reg = some (TyVal.PTy, [oseair.Val.Ptr addr_o 0 (blockSize layout) tag_o]) ∧
+  ρa addr_m = some addr_o ∧
+  ρt tag_m = some tag_o
 
-/--
-`sim_mem_at` is the memory-side relation for one tracked allocation block.
+namespace place_runtime_sim
 
-For the current base-place fragment we only need:
+theorem env
+  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {s_mir : mirlite.State} {s_osea : oseair.State}
+  {base : Word} {reg : Register}
+  {addr_m addr_o tag_m tag_o : Word} {layout : LayoutTy}
+  (h :
+    place_runtime_sim π ρa ρt s_mir s_osea base reg addr_m addr_o tag_m tag_o layout) :
+  s_mir.env.lookup base = some (addr_m, layoutToTyVal layout, tag_m) := h.2.1
 
-- equal allocation fronts (`addrStart`), and
-- pointwise value agreement across the tracked block starting at `addr`.
--/
-def sim_mem_at
-  (s_mir : mirlite.State)
-  (s_osea : oseair.State)
-  (addr : Word)
-  (layout : LayoutTy) : Prop :=
-  s_mir.mem.addrStart = s_osea.mem.addrStart ∧
-  ∀ i, i < blockSize layout →
-    mem_val_eq_opt (s_mir.mem.find? (addr + i)) (s_osea.mem.find? (addr + i))
+theorem reg
+  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {s_mir : mirlite.State} {s_osea : oseair.State}
+  {base : Word} {reg : Register}
+  {addr_m addr_o tag_m tag_o : Word} {layout : LayoutTy}
+  (h :
+    place_runtime_sim π ρa ρt s_mir s_osea base reg addr_m addr_o tag_m tag_o layout) :
+  s_osea.reg.lookup reg = some (TyVal.PTy, [oseair.Val.Ptr addr_o 0 (blockSize layout) tag_o]) :=
+  h.2.2.1
+
+theorem addr
+  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {s_mir : mirlite.State} {s_osea : oseair.State}
+  {base : Word} {reg : Register}
+  {addr_m addr_o tag_m tag_o : Word} {layout : LayoutTy}
+  (h :
+    place_runtime_sim π ρa ρt s_mir s_osea base reg addr_m addr_o tag_m tag_o layout) :
+  ρa addr_m = some addr_o := h.2.2.2.1
+
+theorem tag
+  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {s_mir : mirlite.State} {s_osea : oseair.State}
+  {base : Word} {reg : Register}
+  {addr_m addr_o tag_m tag_o : Word} {layout : LayoutTy}
+  (h :
+    place_runtime_sim π ρa ρt s_mir s_osea base reg addr_m addr_o tag_m tag_o layout) :
+  ρt tag_m = some tag_o := h.2.2.2.2
+
+end place_runtime_sim
 
 /--
 `block_sim_at` is the renaming-friendly memory relation for one tracked block.
 
-Unlike `sim_mem_at`, it compares a source block at `addr` against a target
-block at `addr'`, so the theorem interface no longer needs exact address
-equality between the two machines.
+It compares a source block at `addr` against a target block at `addr'`, so the
+theorem interface no longer needs exact address equality between the two
+machines.
 -/
 def block_sim_at
   (s_mir : mirlite.State)
@@ -195,34 +198,6 @@ def block_sim_at
   (layout : LayoutTy) : Prop :=
   ∀ i, i < blockSize layout →
     mem_val_eq_opt (s_mir.mem.find? (addr + i)) (s_osea.mem.find? (addr' + i))
-
-/--
-`interval_disjoint base1 size1 base2 size2` says the half-open intervals
-`[base1, base1 + size1)` and `[base2, base2 + size2)` do not overlap.
--/
-def interval_disjoint
-  (base1 size1 base2 size2 : Word) : Prop :=
-  base1 + size1 ≤ base2 ∨ base2 + size2 ≤ base1
-
-/--
-All `π`-tracked runtime blocks are disjoint from the current fresh-allocation
-interval.
-
-This packages the proof-only non-overlap fact needed in fresh-allocation
-proofs: when both machines allocate `[addrStart, addrStart + freshSize)`,
-that fresh block cannot shadow any previously mapped base.
--/
-def mapped_blocks_fresh_interval
-  (π : PlaceMap)
-  (s_mir : mirlite.State)
-  (s_osea : oseair.State)
-  (freshSize : Word) : Prop :=
-  ∀ base reg layout addr addr' tag tag',
-    π.lookup base = some (reg, layout) →
-    s_mir.env.lookup base = some (addr, layoutToTyVal layout, tag) →
-    s_osea.reg.lookup reg = some (TyVal.PTy, [oseair.Val.Ptr addr' 0 (blockSize layout) tag']) →
-    interval_disjoint addr (blockSize layout) s_mir.mem.addrStart freshSize ∧
-    interval_disjoint addr' (blockSize layout) s_osea.mem.addrStart freshSize
 
 /--
 `StateSim π` is the theorem-facing exact simulation interface for the currently
@@ -236,81 +211,39 @@ For every entry of the compiler place map `π`, the two machines agree on:
 - the global stacked-borrows state.
 
 This is still a fragment-local relation: it only constrains the `π`-tracked
-places plus the validity side conditions. The tracked-block fresh-interval fact
-is treated separately as a proof axiom via `StateSim.fresh_interval`.
+places, with SB well-formedness bundled inside `sb_sim`.
 -/
 def StateSim
   (π : PlaceMap)
+  (ρa : AddrRenaming)
+  (ρt : TagRenaming)
   (s_mir : mirlite.State)
   (s_osea : oseair.State) : Prop :=
-  SBValid s_mir.ap ∧
-  SBValid s_osea.ap ∧
-  s_mir.ap = s_osea.ap ∧
-  s_mir.mem.addrStart = s_osea.mem.addrStart ∧
+  sb_sim ρa ρt s_mir.ap s_osea.ap ∧
   (∀ base reg layout,
     π.lookup base = some (reg, layout) →
-    ∃ addr tag,
-      base_ptr_sim π s_mir s_osea base reg addr tag layout ∧
-      sim_mem_at s_mir s_osea addr layout)
+    ∃ addr_m addr_o tag_m tag_o,
+      place_runtime_sim π ρa ρt s_mir s_osea base reg addr_m addr_o tag_m tag_o layout ∧
+      block_sim_at s_mir s_osea addr_m addr_o layout)
 
 namespace StateSim
 
-theorem ap_eq
-  {π : PlaceMap}
-  {s_mir : mirlite.State}
-  {s_osea : oseair.State}
-  (h : StateSim π s_mir s_osea) :
-  s_mir.ap = s_osea.ap := h.2.2.1
-
-theorem addrStart_eq
-  {π : PlaceMap}
-  {s_mir : mirlite.State}
-  {s_osea : oseair.State}
-  (h : StateSim π s_mir s_osea) :
-  s_mir.mem.addrStart = s_osea.mem.addrStart := h.2.2.2.1
+theorem sb
+  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {s_mir : mirlite.State} {s_osea : oseair.State}
+  (h : StateSim π ρa ρt s_mir s_osea) :
+  sb_sim ρa ρt s_mir.ap s_osea.ap := h.1
 
 theorem place
-  {π : PlaceMap}
-  {s_mir : mirlite.State}
-  {s_osea : oseair.State}
-  (h : StateSim π s_mir s_osea)
+  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {s_mir : mirlite.State} {s_osea : oseair.State}
+  (h : StateSim π ρa ρt s_mir s_osea)
   {base : Word} {reg : Register} {layout : LayoutTy}
   (h_lookup : π.lookup base = some (reg, layout)) :
-  ∃ addr tag,
-    base_ptr_sim π s_mir s_osea base reg addr tag layout ∧
-    sim_mem_at s_mir s_osea addr layout := by
-  exact h.2.2.2.2 base reg layout h_lookup
-
-theorem valid_mir
-  {π : PlaceMap}
-  {s_mir : mirlite.State}
-  {s_osea : oseair.State}
-  (h : StateSim π s_mir s_osea) :
-  SBValid s_mir.ap := h.1
-
-theorem valid_osea
-  {π : PlaceMap}
-  {s_mir : mirlite.State}
-  {s_osea : oseair.State}
-  (h : StateSim π s_mir s_osea) :
-  SBValid s_osea.ap := h.2.1
-
-/-- Proof-only interval-disjointness axiom for tracked blocks vs fresh allocation. -/
-axiom fresh_interval
-  {π : PlaceMap}
-  {s_mir : mirlite.State}
-  {s_osea : oseair.State}
-  (h : StateSim π s_mir s_osea)
-  {freshSize : Word}
-  {base : Word} {reg : Register} {layout : LayoutTy}
-  {addr addr' tag tag' : Word}
-  (h_lookup : π.lookup base = some (reg, layout))
-  (h_env : s_mir.env.lookup base = some (addr, layoutToTyVal layout, tag))
-  (h_reg :
-    s_osea.reg.lookup reg =
-      some (TyVal.PTy, [oseair.Val.Ptr addr' 0 (blockSize layout) tag'])) :
-  interval_disjoint addr (blockSize layout) s_mir.mem.addrStart freshSize ∧
-  interval_disjoint addr' (blockSize layout) s_osea.mem.addrStart freshSize
+  ∃ addr_m addr_o tag_m tag_o,
+    place_runtime_sim π ρa ρt s_mir s_osea base reg addr_m addr_o tag_m tag_o layout ∧
+    block_sim_at s_mir s_osea addr_m addr_o layout := by
+  exact h.2 base reg layout h_lookup
 
 end StateSim
 
@@ -338,5 +271,24 @@ theorem StepStar.trans
       exact h23
   | tail s1 s2 sMid prog h_step _h_rest ih =>
       exact StepStar.tail s1 s2 s3 prog h_step (ih h23)
+
+theorem StepStar.of_runN_ok
+  {n : Nat}
+  {s s' : oseair.State}
+  {prog : oseair.Prog}
+  (h : oseair.runN n s prog = oseair.Result.Ok s') :
+  StepStar s prog s' := by
+  induction n generalizing s with
+  | zero =>
+      simp at h
+      subst s'
+      exact StepStar.refl s prog
+  | succ n ih =>
+      cases h_step : oseair.step s prog with
+      | Err _ =>
+          simp [oseair.runN, h_step] at h
+      | Ok s1 =>
+          simp [oseair.runN, h_step] at h
+          exact StepStar.tail s s1 s' prog h_step (ih h)
 
 end obseq.proof

@@ -252,4 +252,25 @@ def step (state : State) (prog : Prog) : Result :=
        | _, _ => Result.Err "Memcpy invalid regs"
   else Result.Ok state
 
+def runN : Nat → State → Prog → Result
+  | 0, state, _prog => Result.Ok state
+  | n + 1, state, prog =>
+      match step state prog with
+      | Result.Ok state' => runN n state' prog
+      | Result.Err msg => Result.Err msg
+
+@[simp] theorem runN_zero
+  (state : State)
+  (prog : Prog) :
+  runN 0 state prog = Result.Ok state := rfl
+
+@[simp] theorem runN_succ
+  (n : Nat)
+  (state : State)
+  (prog : Prog) :
+  runN (n + 1) state prog =
+    match step state prog with
+    | Result.Ok state' => runN n state' prog
+    | Result.Err msg => Result.Err msg := rfl
+
 end obseq.oseair

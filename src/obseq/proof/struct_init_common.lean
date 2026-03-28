@@ -153,6 +153,49 @@ theorem osea_step_cstore_ok
     exact (Nat.lt_irrefl addr) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
   simp [instr, h_reg, h_use, h_bound]
 
+theorem osea_run_cstore_embedded_ok
+  (s_osea : oseair.State)
+  (prog : oseair.Prog)
+  (layout : LayoutTy)
+  (vals : List oseair.Val)
+  (addr tag : Word)
+  (reg : Register)
+  (ap' : AccessPerms)
+  (h_start : StartsAt prog s_osea.pc [oseair.Instr.CStore (layoutToTyVal layout) vals reg])
+  (h_size : 0 < blockSize layout)
+  (h_reg :
+    s_osea.reg.lookup reg =
+      some (TyVal.PTy, [oseair.Val.Ptr addr 0 (blockSize layout) tag]))
+  (h_use : sb_use_mb s_osea.ap addr tag = SBResult.Ok ap') :
+  oseair.runN 1 s_osea prog =
+    oseair.Result.Ok
+      { s_osea with
+        ap := ap',
+        mem := oseair.writeWordSeq s_osea.mem addr vals,
+        pc := s_osea.pc + 1 } := by
+  have h_stmt :
+      prog.get? s_osea.pc =
+        some (oseair.Instr.CStore (layoutToTyVal layout) vals reg) := StartsAt.singleton h_start
+  rcases List.get?_eq_some_iff.mp h_stmt with ⟨h_pc, h_get⟩
+  have h_step :
+      oseair.step s_osea prog =
+        oseair.Result.Ok
+          { s_osea with
+            ap := ap',
+            mem := oseair.writeWordSeq s_osea.mem addr vals,
+            pc := s_osea.pc + 1 } := by
+    unfold oseair.step oseair.writeThroughPtr
+    rw [dif_pos h_pc, h_get]
+    have h_in_bounds : addr < addr + blockSize layout := by
+      have h_add : addr + 0 < addr + blockSize layout :=
+        Nat.add_lt_add_left h_size addr
+      simpa using h_add
+    have h_bound : ¬ addr >= addr + blockSize layout := by
+      intro h_ge
+      exact (Nat.lt_irrefl addr) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
+    simp [h_reg, h_use, h_bound]
+  simp [oseair.runN, h_step]
+
 theorem osea_steps_alloc_cstore_ok
   (s_osea : oseair.State)
   (layout : LayoutTy)
@@ -248,5 +291,181 @@ theorem osea_steps_alloc_cstore_ok
       exact (Nat.lt_irrefl s_osea.mem.addrStart) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
     simp [s1, h_use, h_bound]
   exact StepStar.trans (StepStar.single h_step1) (StepStar.single h_step2)
+
+theorem osea_run_alloc_cstore_ok
+  (s_osea : oseair.State)
+  (layout : LayoutTy)
+  (vals : List oseair.Val)
+  (reg : Register)
+  (tag : Word)
+  (ap2 ap3 : AccessPerms)
+  (h_size : 0 < blockSize layout)
+  (h_own : sb_own s_osea.ap s_osea.mem.addrStart = (SBResult.Ok ap2, tag))
+  (h_use : sb_use_mb ap2 s_osea.mem.addrStart tag = SBResult.Ok ap3) :
+  oseair.runN 2
+    { s_osea with pc := 0 }
+    [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+     oseair.Instr.CStore (layoutToTyVal layout) vals reg] =
+    oseair.Result.Ok
+      { s_osea with
+        reg := s_osea.reg.insert reg
+          (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
+        mem := oseair.writeWordSeq
+          { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout }
+          s_osea.mem.addrStart vals,
+        ap := ap3,
+        pc := 2 } := by
+  let s1 : oseair.State :=
+    { s_osea with
+      reg := s_osea.reg.insert reg
+        (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
+      mem := { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout },
+      ap := ap2,
+      pc := 1 }
+  have h_step1 :
+      oseair.step { s_osea with pc := 0 }
+        [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+         oseair.Instr.CStore (layoutToTyVal layout) vals reg] =
+        oseair.Result.Ok s1 := by
+    unfold oseair.step
+    have h_pc :
+        ({ s_osea with pc := 0 }).pc <
+          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+           oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := by
+      exact Nat.succ_pos 1
+    rw [dif_pos h_pc]
+    have h_get :
+        List.get
+          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+           oseair.Instr.CStore (layoutToTyVal layout) vals reg]
+          ⟨0, h_pc⟩ =
+          oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)) := by
+      rfl
+    rw [h_get]
+    unfold oseair.evalRhs
+    simp [h_own, s1, oseair.allocate, blockSize]
+  have h_reg :
+      s1.reg.lookup reg =
+        some (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]) := by
+    simp [s1]
+  have h_step2 :
+      oseair.step s1
+        [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+         oseair.Instr.CStore (layoutToTyVal layout) vals reg] =
+        oseair.Result.Ok
+          { s_osea with
+            reg := s_osea.reg.insert reg
+              (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
+            mem := oseair.writeWordSeq
+              { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout }
+              s_osea.mem.addrStart vals,
+            ap := ap3,
+            pc := 2 } := by
+    unfold oseair.step oseair.writeThroughPtr
+    have h_pc :
+        s1.pc <
+          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+           oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := by
+      exact Nat.succ_lt_succ (Nat.succ_pos 0)
+    rw [dif_pos h_pc]
+    have h_get :
+        List.get
+          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+           oseair.Instr.CStore (layoutToTyVal layout) vals reg]
+          ⟨1, h_pc⟩ =
+          oseair.Instr.CStore (layoutToTyVal layout) vals reg := by
+      rfl
+    rw [h_get]
+    have h_in_bounds :
+        s_osea.mem.addrStart < s_osea.mem.addrStart + blockSize layout := by
+      have h_add :
+          s_osea.mem.addrStart + 0 < s_osea.mem.addrStart + blockSize layout :=
+        Nat.add_lt_add_left h_size s_osea.mem.addrStart
+      simpa using h_add
+    have h_bound :
+        ¬ s_osea.mem.addrStart >= s_osea.mem.addrStart + blockSize layout := by
+      intro h_ge
+      exact (Nat.lt_irrefl s_osea.mem.addrStart) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
+    simp [s1, h_use, h_bound]
+  simp [oseair.runN, h_step1, h_step2]
+
+theorem osea_run_alloc_cstore_embedded_ok
+  (s_osea : oseair.State)
+  (prog : oseair.Prog)
+  (layout : LayoutTy)
+  (vals : List oseair.Val)
+  (reg : Register)
+  (tag : Word)
+  (ap2 ap3 : AccessPerms)
+  (h_start :
+    StartsAt prog s_osea.pc
+      [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+       oseair.Instr.CStore (layoutToTyVal layout) vals reg])
+  (h_size : 0 < blockSize layout)
+  (h_own : sb_own s_osea.ap s_osea.mem.addrStart = (SBResult.Ok ap2, tag))
+  (h_use : sb_use_mb ap2 s_osea.mem.addrStart tag = SBResult.Ok ap3) :
+  oseair.runN 2 s_osea prog =
+    oseair.Result.Ok
+      { s_osea with
+        reg := s_osea.reg.insert reg
+          (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
+        mem := oseair.writeWordSeq
+          { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout }
+          s_osea.mem.addrStart vals,
+        ap := ap3,
+        pc := s_osea.pc + 2 } := by
+  have h_stmt0 :
+      prog.get? s_osea.pc =
+        some (oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout))) := by
+    simpa [StartsAt, Nat.zero_add] using (h_start 0).symm
+  have h_tail := StartsAt.tail h_start
+  have h_stmt1 :
+      prog.get? (s_osea.pc + 1) =
+        some (oseair.Instr.CStore (layoutToTyVal layout) vals reg) := by
+    simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using StartsAt.singleton h_tail
+  rcases List.get?_eq_some_iff.mp h_stmt0 with ⟨h_pc0, h_get0⟩
+  rcases List.get?_eq_some_iff.mp h_stmt1 with ⟨h_pc1, h_get1⟩
+  let s1 : oseair.State :=
+    { s_osea with
+      reg := s_osea.reg.insert reg
+        (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
+      mem := { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout },
+      ap := ap2,
+      pc := s_osea.pc + 1 }
+  have h_step1 :
+      oseair.step s_osea prog = oseair.Result.Ok s1 := by
+    unfold oseair.step
+    rw [dif_pos h_pc0, h_get0]
+    unfold oseair.evalRhs
+    simp [h_own, s1, oseair.allocate, blockSize]
+  have h_reg1 :
+      s1.reg.lookup reg =
+        some (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]) := by
+    simp [s1]
+  have h_step2 :
+      oseair.step s1 prog =
+        oseair.Result.Ok
+          { s_osea with
+            reg := s_osea.reg.insert reg
+              (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
+            mem := oseair.writeWordSeq
+              { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout }
+              s_osea.mem.addrStart vals,
+            ap := ap3,
+            pc := s_osea.pc + 2 } := by
+    unfold oseair.step oseair.writeThroughPtr
+    rw [dif_pos h_pc1, h_get1]
+    have h_in_bounds :
+        s_osea.mem.addrStart < s_osea.mem.addrStart + blockSize layout := by
+      have h_add :
+          s_osea.mem.addrStart + 0 < s_osea.mem.addrStart + blockSize layout :=
+        Nat.add_lt_add_left h_size s_osea.mem.addrStart
+      simpa using h_add
+    have h_bound :
+        ¬ s_osea.mem.addrStart >= s_osea.mem.addrStart + blockSize layout := by
+      intro h_ge
+      exact (Nat.lt_irrefl s_osea.mem.addrStart) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
+    simp [s1, h_reg1, h_use, h_bound]
+  simp [oseair.runN, h_step1, h_step2]
 
 end obseq.proof
