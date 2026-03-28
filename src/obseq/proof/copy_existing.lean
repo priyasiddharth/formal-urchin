@@ -81,7 +81,8 @@ theorem CopyExistingCtx.compiled_eq
     rw [ctx.h_dst_lookup]
     simp [layoutResolvePath]
   unfold CopyExistingCtx.compiled CopyExistingCtx.stmt
-  simp [compileStmt, obseq.notation.basePlace, obseq.notation.copyRhs,
+  simp [compileStmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
+    obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
     h_src_place, h_dst_place, emit, cleanupInstrs, ctx.instrs_nil, layoutToTyVal, List.map]
 
 namespace CopyExisting
@@ -143,18 +144,21 @@ theorem mirlite_step_inv
   rw [dif_pos h_pc_mir, h_get_mir] at h_step
   cases h_read : sb_read s_mir.ap srcAddr srcTag with
   | Err _ =>
-      simp [CopyExistingCtx.stmt, obseq.notation.basePlace, obseq.notation.copyRhs,
+      simp [CopyExistingCtx.stmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
+        obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
         mirlite.stepAssignCopy, mirlite.finishPlaceAssign, mirlite.writeResolvedPlace,
         h_src, h_dst, h_read, blockSize] at h_step
   | Ok apRead =>
       cases h_write : sb_use_mb apRead dstAddr dstTag with
       | Err _ =>
-          simp [CopyExistingCtx.stmt, obseq.notation.basePlace, obseq.notation.copyRhs,
+          simp [CopyExistingCtx.stmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
+            obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
             mirlite.stepAssignCopy, mirlite.finishPlaceAssign, mirlite.writeResolvedPlace,
             h_src, h_dst, h_read, h_write, blockSize] at h_step
       | Ok apWrite =>
           refine ⟨apRead, apWrite, rfl, h_write, ?_⟩
-          simpa [CopyExistingCtx.stmt, obseq.notation.basePlace, obseq.notation.copyRhs,
+          simpa [CopyExistingCtx.stmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
+            obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
             mirlite.stepAssignCopy, mirlite.finishPlaceAssign, mirlite.writeResolvedPlace,
             h_src, h_dst, h_read, h_write, blockSize, CopyMirPost] using h_step.symm
 
@@ -233,15 +237,21 @@ theorem simulation
       (π := ctx.cs.placeMap)
       (ρa := ρa)
       (ρt := ρt)
+      (dst_base := ctx.dstBase)
+      (dst_reg := ctx.dstReg)
+      (dst_layout := ctx.layout)
       (dst_mir := dstAddr_m)
       (dst_osea := dstAddr_o)
+      (dst_tag_m := dstTag_m)
+      (dst_tag_o := dstTag_o)
       (ap_m' := apWrite_m)
       (ap_o' := apWrite_o)
       (pc_mir := s_mir.pc + 1)
       (pc_osea := s_osea.pc + 1)
       (vals_mir := mirlite.readWordSeq s_mir.mem srcAddr_m (blockSize ctx.layout))
       (vals_osea := oseair.readWordSeq s_osea.mem srcAddr_o (blockSize ctx.layout))
-      h_sim h_sb_write h_src_vals
+      h_sim h_dst_ptr h_sb_write h_src_vals
+      (mirlite_readWordSeq_length s_mir.mem srcAddr_m (blockSize ctx.layout))
 
 end CopyExisting
 

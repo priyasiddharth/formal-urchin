@@ -126,7 +126,7 @@ def evalRhs (state : State) (rhs : Rhs) : RhsResult :=
        let addr := base + offset
        if addr < base || addr >= base + size then RhsResult.Err "OOB"
        else
-         match sb_read state.ap base tag with -- Read using base tag
+         match sb_read state.ap addr tag with
          | SBResult.Ok ap2 =>
            let s2 := { state with ap := ap2 }
            let vals := readWordSeq s2.mem addr (typeSize ty)
@@ -150,7 +150,7 @@ def evalRhs (state : State) (rhs : Rhs) : RhsResult :=
        let addr := base + baseOff + offset
        if addr >= base + size then RhsResult.Err "OOB"
        else
-          match sb_ref state.ap base tag RefOpKind.Shared with
+          match sb_ref state.ap addr tag RefOpKind.Shared with
           | (SBResult.Ok ap2, newTag) =>
              let s2 := { state with ap := ap2 }
              RhsResult.Ok [Val.Ptr base (baseOff + offset) size newTag] TyVal.PTy s2
@@ -163,7 +163,7 @@ def evalRhs (state : State) (rhs : Rhs) : RhsResult :=
        let addr := base + baseOff + offset
        if addr >= base + size then RhsResult.Err "OOB"
        else
-          match sb_ref state.ap base tag RefOpKind.Mut with
+          match sb_ref state.ap addr tag RefOpKind.Mut with
           | (SBResult.Ok ap2, newTag) =>
              let s2 := { state with ap := ap2 }
              RhsResult.Ok [Val.Ptr base (baseOff + offset) size newTag] TyVal.PTy s2
@@ -176,7 +176,7 @@ def evalRhs (state : State) (rhs : Rhs) : RhsResult :=
        let addr := base + baseOff + offset
        if addr >= base + size then RhsResult.Err "OOB"
        else
-          match sb_ref state.ap base tag RefOpKind.Raw with
+          match sb_ref state.ap addr tag RefOpKind.Raw with
           | (SBResult.Ok ap2, newTag) =>
              let s2 := { state with ap := ap2 }
              RhsResult.Ok [Val.Ptr base (baseOff + offset) size newTag] TyVal.PTy s2
@@ -195,7 +195,7 @@ def writeThroughPtr (state : State) (ptr : Register) (vals : List Val) (invalidM
      let addr := base + offset
      if addr >= base + size then Result.Err "OOB"
      else
-       match sb_use_mb state.ap base tag with
+       match sb_use_mb state.ap addr tag with
        | SBResult.Ok ap2 =>
           let mem2 := writeWordSeq state.mem addr vals
           Result.Ok { state with ap := ap2, mem := mem2, pc := state.pc + 1 }
@@ -225,8 +225,8 @@ def step (state : State) (prog : Prog) : Result :=
 
     | Instr.Die reg =>
        match state.reg.lookup reg with
-       | some (_, [Val.Ptr base _ _ tag]) =>
-          match sb_die state.ap base tag with
+       | some (_, [Val.Ptr base offset _ tag]) =>
+          match sb_die state.ap (base + offset) tag with
           | SBResult.Ok ap2 =>
             Result.Ok { state with ap := ap2, pc := state.pc + 1 }
           | SBResult.Err msg => Result.Err msg
@@ -240,9 +240,9 @@ def step (state : State) (prog : Prog) : Result :=
           let sz := typeSize ty
           if dAddr + sz > dBase + dSize || sAddr + sz > sBase + sSize then Result.Err "OOB"
           else
-            match sb_read state.ap sBase sTag with
+            match sb_read state.ap sAddr sTag with
             | SBResult.Ok ap2 =>
-               match sb_use_mb ap2 dBase dTag with
+               match sb_use_mb ap2 dAddr dTag with
                | SBResult.Ok ap3 =>
                   let vals := readWordSeq state.mem sAddr sz
                   let mem2 := writeWordSeq state.mem dAddr vals

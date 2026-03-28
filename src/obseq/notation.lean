@@ -4,17 +4,29 @@ namespace obseq.notation
 
 open obseq
 
+/-- Proof-facing helper for an arbitrary MIR place. -/
+def mkPlace (base : Word) (path : List Word) : mirlite.Place :=
+  { base := base, path := path }
+
+/-- Proof-facing notation helper for an arbitrary place expression. -/
+def placeExpr (p : mirlite.Place) : mirlite.LExpr :=
+  mirlite.LExpr.Place p
+
 /-- Proof-facing notation helper for the base place with no projection path. -/
 def basePlace (base : Word) : mirlite.LExpr :=
-  mirlite.LExpr.Place { base := base, path := [] }
+  placeExpr (mkPlace base [])
 
 /-- Proof-facing notation helper for constant RHS expressions. -/
 def constRhs (n : Word) : mirlite.RExpr :=
   mirlite.RExpr.ConstOp n
 
 /-- Proof-facing notation helper for base-place copy RHS expressions. -/
+def copyPlaceRhs (p : mirlite.Place) : mirlite.RExpr :=
+  mirlite.RExpr.CopyOp p
+
+/-- Proof-facing notation helper for base-place copy RHS expressions. -/
 def copyRhs (base : Word) : mirlite.RExpr :=
-  mirlite.RExpr.CopyOp { base := base, path := [] }
+  copyPlaceRhs (mkPlace base [])
 
 /--
 Proof-facing notation helper for the supported binary-op fragment:

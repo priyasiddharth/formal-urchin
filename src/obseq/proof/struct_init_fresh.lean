@@ -8,7 +8,9 @@ tuple fragment.
 
 As in `const_fresh`, the only freshness-specific work is allocating the new
 block, extending the source environment and place map, and then writing the
-flattened tuple payload.
+flattened tuple payload. As above, fresh allocation is still base-only:
+projected fresh destinations remain unsupported by the current
+compiler/runtime semantics.
 -/
 
 namespace obseq.proof
@@ -25,7 +27,6 @@ structure StructInitFreshCtx where
   cs : CompilerState
   h_instrs : CompilerEmpty cs
   h_absent : BaseAbsent cs base
-  h_regs : MappedRegsBelowNext cs
   h_fields : fields ≠ []
 
 namespace StructInitFreshCtx
@@ -82,6 +83,7 @@ theorem instrs_nil (ctx : StructInitFreshCtx) : ctx.cs.instrs = [] :=
   unfold StructInitFreshCtx.compiled StructInitFreshCtx.stmt
   simp [compileStmt, compile.structConstWords?, h_words, h_place', emit, cleanupInstrs,
     ctx.instrs_nil, obseq.notation.basePlace, wordStructRhs, wordStructFields,
+    obseq.notation.placeExpr, obseq.notation.mkPlace,
     wordStructTy, wordStructOseaVals]
 
 end StructInitFreshCtx
@@ -150,7 +152,8 @@ theorem mirlite_step_inv
       cases ownRes with
       | Err _ =>
           have : False := by
-            simp [StructInitFreshCtx.stmt, obseq.notation.basePlace, wordStructRhs, wordStructFields,
+            simp [StructInitFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.placeExpr,
+              obseq.notation.mkPlace, wordStructRhs, wordStructFields,
               mirlite.structConstWords?, h_words, mirlite.stepAssignStructWords,
               mirlite.finishPlaceAssign, mirlite.allocateBaseAndWrite,
               h_env, h_own, mirlite.allocate, blockSize, wordStructTy, wordStructMirVals] at h_step
@@ -159,7 +162,8 @@ theorem mirlite_step_inv
           cases h_use : sb_use_mb ap2 s_mir.mem.addrStart tag with
           | Err _ =>
               have : False := by
-                simp [StructInitFreshCtx.stmt, obseq.notation.basePlace, wordStructRhs, wordStructFields,
+                simp [StructInitFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.placeExpr,
+                  obseq.notation.mkPlace, wordStructRhs, wordStructFields,
                   mirlite.structConstWords?, h_words, mirlite.stepAssignStructWords,
                   mirlite.finishPlaceAssign, mirlite.allocateBaseAndWrite,
                   h_env, h_own, h_use, mirlite.allocate, blockSize, wordStructTy, wordStructMirVals]
@@ -167,7 +171,8 @@ theorem mirlite_step_inv
               contradiction
           | Ok ap3 =>
               refine ⟨tag, ap2, ap3, rfl, h_use, ?_⟩
-              simpa [StructInitFreshCtx.stmt, obseq.notation.basePlace, wordStructRhs, wordStructFields,
+              simpa [StructInitFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.placeExpr,
+                obseq.notation.mkPlace, wordStructRhs, wordStructFields,
                 mirlite.structConstWords?, h_words, mirlite.stepAssignStructWords,
                 mirlite.finishPlaceAssign, mirlite.allocateBaseAndWrite,
                 h_env, h_own, h_use, mirlite.allocate, blockSize, wordStructTy, wordStructMirVals]
@@ -248,7 +253,14 @@ theorem simulation
       (pc_osea := s_osea.pc + 2)
       (vals_mir := wordStructMirVals ctx.fields)
       (vals_osea := wordStructOseaVals ctx.fields)
-      h_sim h_sb3 h_new_addr h_new_tag (mem_vals_eq_words ctx.fields)
+      h_sim
+      rfl
+      rfl
+      (by
+        simpa [StructInitFreshCtx.reg] using (alloc_fresh_reg (cs := ctx.cs)))
+      h_sb3
+      (mem_vals_eq_words ctx.fields)
+      (wordStructMirVals_length ctx.fields)
 
 end StructInitFresh
 

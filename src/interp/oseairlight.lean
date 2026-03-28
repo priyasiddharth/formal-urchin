@@ -435,30 +435,4 @@ inductive Eval : BB × PC × Prog × RegMap × Mem × accessperm.AccessPerms →
     Eval (bb, pc, prog, regMap, mem, ap)
           (bb, pc, prog, regMap, mem, ap)
 
-
-theorem step_pc_stays_same_iff_halt2
-    {bb: BB} {pc : PC} {prog : Prog} {regMap : RegMap} {mem : Mem} {ap : accessperm.AccessPerms}
-    (h_bb : prog.find? bb = some stmt_list)
-    (h_stmt: pc < stmt_list.length):
-      (stmt_list.get ⟨pc, h_stmt⟩ = Stmt.halt) ↔
-    Eval (bb, pc, prog, regMap, mem, ap) (bb, pc, prog, regMap, mem, ap) := by
-  apply Iff.intro
-  { intros h_stmt_eq
-    apply Eval.evalHalt
-    exact h_bb
-    exact h_stmt_eq
-  }
-  {
-    intros h
-    cases h
-    case mpr.evalHalt s1 s2 s3 s4 =>
-     -- Unify stmt_list and s1
-      have : stmt_list = s1 := by
-        rw [s4] at h_bb
-        injection h_bb with h_eq
-        symm
-        exact h_eq
-      subst this
-      exact s3
-}
 end oseair

@@ -118,27 +118,28 @@ deriving Repr, Inhabited
 def resolvePath (ty : TyVal) (path : List Word) : Option (Nat × TyVal) :=
   tyResolvePath ty path
 
+def resolveDirectPlace (state : State) (p : Place) : Result × PlaceRes :=
+  match state.env.lookup p.base with
+  | some (baseAddr, baseTy, baseTag) =>
+    match resolvePath baseTy p.path with
+    | some (offset, ty) =>
+      (Result.Ok state, { addr := baseAddr + offset, tag := baseTag, ty := ty, state := state })
+    | none => (Result.Err s!"Invalid path {repr p.path} for type {baseTy}", default)
+  | none =>
+    if p.path == [] then
+       (Result.Err s!"Place base {p.base} not found", default)
+    else
+       (Result.Err s!"Place base {p.base} not found", default)
+
 -- Place Resolution (plc-resolv, alloc-plc-resolv, dref-plc-resolv)
 partial def resolvePlace (state : State) (l : LExpr) (_forWrite : Bool) : Result × PlaceRes :=
   match l with
   | LExpr.Place p =>
-    match state.env.lookup p.base with
-    | some (baseAddr, baseTy, baseTag) =>
-      -- plc-resolv
-      match resolvePath baseTy p.path with
-      | some (offset, ty) =>
-        (Result.Ok state, { addr := baseAddr + offset, tag := baseTag, ty := ty, state := state })
-      | none => (Result.Err s!"Invalid path {repr p.path} for type {baseTy}", default)
-    | none =>
-      -- alloc-plc-resolv
-      if p.path == [] then
-         (Result.Err s!"Place base {p.base} not found", default)
-      else
-         (Result.Err s!"Place base {p.base} not found", default)
+    resolveDirectPlace state p
 
   | LExpr.DrefOp p =>
      -- dref-plc-resolv
-     match resolvePlace state (LExpr.Place p) false with
+     match resolveDirectPlace state p with
      | (Result.Ok s1, res1) =>
         -- Issue read
         match sb_read s1.ap res1.addr res1.tag with
@@ -174,7 +175,7 @@ mutual
 
     | RExpr.CopyOp p =>
        -- copy-plc
-       match resolvePlace state (LExpr.Place p) false with
+       match resolveDirectPlace state p with
        | (Result.Ok s1, res) =>
          match sb_read s1.ap res.addr res.tag with
          | SBResult.Ok ap2 =>
@@ -186,7 +187,7 @@ mutual
 
     | RExpr.MoveOp p =>
        -- move-place
-       match resolvePlace state (LExpr.Place p) false with
+       match resolveDirectPlace state p with
        | (Result.Ok s1, res) =>
          match sb_move s1.ap res.addr res.tag with
          | SBResult.Ok ap2 =>
@@ -198,7 +199,7 @@ mutual
 
     | RExpr.RefOp kind p =>
       -- ref-place
-      match resolvePlace state (LExpr.Place p) false with
+      match resolveDirectPlace state p with
       | (Result.Ok s1, res) =>
         let (sbRes, newTag) := match kind with
           | RefKind.Mut => sb_ref s1.ap res.addr res.tag RefOpKind.Mut
@@ -267,7 +268,7 @@ def finishPlaceAssign
     if p.path == [] then
       writeResolvedPlace pc0 state addr tag vals
     else
-      match resolvePlace state (LExpr.Place p) true with
+      match resolveDirectPlace state p with
       | (Result.Ok s', res) => writeResolvedPlace pc0 s' res.addr res.tag vals
       | (Result.Err msg, _) => Result.Err msg
   | none =>
@@ -301,7 +302,7 @@ def stepAssignCopy (state : State) (dst src : Place) : Result :=
       | SBResult.Err msg => Result.Err msg
     | none => Result.Err s!"Place base {src.base} not found"
   else
-    match resolvePlace state (LExpr.Place src) false with
+    match resolveDirectPlace state src with
     | (Result.Ok s1, srcRes) =>
       match sb_read s1.ap srcRes.addr srcRes.tag with
       | SBResult.Ok ap2 =>

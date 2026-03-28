@@ -703,13 +703,6 @@ def stack_tag_live (stack : BorrowStack) (tag : Tag) : Prop :=
 def tag_live (ap : AccessPerms) (tag : Tag) : Prop :=
   ∃ addr, stack_tag_live (stackAt ap addr) tag
 
-/--
-`NextTag` is treated as an abstract freshness source.
--/
-axiom freshTag_fresh
-  {ap : AccessPerms} :
-  ¬ tag_live ap ap.NextTag
-
 structure SbSimData
   (ρa : AddrRenameMap)
   (ρt : TagRenameMap)
@@ -736,6 +729,73 @@ def sb_sim
   (ρt : TagRenameMap)
   (ap_m ap_o : AccessPerms) : Prop :=
   SbSimData ρa ρt ap_m ap_o
+
+theorem SBValid_of_stackMap_eq
+  {ap ap' : AccessPerms}
+  (h_stack : ap'.StackMap = ap.StackMap)
+  (h_valid : SBValid ap) :
+  SBValid ap' := by
+  simpa [SBValid, h_stack] using h_valid
+
+theorem sb_sim_of_right_stackMap_eq
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
+  {ap_m ap_o ap_o' : AccessPerms}
+  (h_sim : sb_sim ρa ρt ap_m ap_o)
+  (h_stack : ap_o'.StackMap = ap_o.StackMap) :
+  sb_sim ρa ρt ap_m ap_o' := by
+  cases h_sim with
+  | mk valid_mir valid_osea at_sim addr_inj tag_mapped tag_inj =>
+      refine ⟨valid_mir, SBValid_of_stackMap_eq h_stack valid_osea, ?_, addr_inj, tag_mapped, tag_inj⟩
+      intro addr addr' h_addr
+      simpa [sb_at_sim, stackAt, h_stack] using at_sim addr addr' h_addr
+
+axiom sb_ref_mut_use_die_stack_eq
+  {ap ap_ref ap_use ap_final ap_parent : AccessPerms}
+  {addr tag tempTag : Word}
+  (h_parent : sb_use_mb ap addr tag = Ok ap_parent)
+  (h_ref : sb_ref ap addr tag RefOpKind.Mut = (Ok ap_ref, tempTag))
+  (h_use : sb_use_mb ap_ref addr tempTag = Ok ap_use)
+  (h_die : sb_die ap_use addr tempTag = Ok ap_final) :
+  ap_final.StackMap = ap_parent.StackMap
+
+axiom sb_ref_shared_read_die_stack_eq
+  {ap ap_ref ap_read ap_final ap_parent : AccessPerms}
+  {addr tag tempTag : Word}
+  (h_parent : sb_read ap addr tag = Ok ap_parent)
+  (h_ref : sb_ref ap addr tag RefOpKind.Shared = (Ok ap_ref, tempTag))
+  (h_read : sb_read ap_ref addr tempTag = Ok ap_read)
+  (h_die : sb_die ap_read addr tempTag = Ok ap_final) :
+  ap_final.StackMap = ap_parent.StackMap
+
+axiom sb_ref_mut_use_die_ok_of_use_ok
+  {ap ap_parent : AccessPerms}
+  {addr tag : Word}
+  (h_parent : sb_use_mb ap addr tag = Ok ap_parent) :
+  ∃ tempTag ap_ref ap_use ap_final,
+    sb_ref ap addr tag RefOpKind.Mut = (Ok ap_ref, tempTag) ∧
+    sb_use_mb ap_ref addr tempTag = Ok ap_use ∧
+    sb_die ap_use addr tempTag = Ok ap_final ∧
+    ap_final.StackMap = ap_parent.StackMap
+
+axiom sb_ref_shared_read_die_ok_of_read_ok
+  {ap ap_parent : AccessPerms}
+  {addr tag : Word}
+  (h_parent : sb_read ap addr tag = Ok ap_parent) :
+  ∃ tempTag ap_ref ap_read ap_final,
+    sb_ref ap addr tag RefOpKind.Shared = (Ok ap_ref, tempTag) ∧
+    sb_read ap_ref addr tempTag = Ok ap_read ∧
+    sb_die ap_read addr tempTag = Ok ap_final ∧
+    ap_final.StackMap = ap_parent.StackMap
+
+/-! ## Axioms -/
+
+/--
+`NextTag` is treated as an abstract freshness source.
+-/
+axiom freshTag_fresh
+  {ap : AccessPerms} :
+  ¬ tag_live ap ap.NextTag
 
 axiom sb_read_sim_ok
   {ρa : AddrRenameMap} {ρt : TagRenameMap}

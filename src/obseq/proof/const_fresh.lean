@@ -9,7 +9,10 @@ fragment.
 
 As in `const_existing`, this is the paper-level `ConstOp(n)` case. The only
 freshness-specific work is extending the source environment and the compiler
-place map with the newly allocated base/register pair.
+place map with the newly allocated base/register pair. Fresh allocation into a
+proper projection path is still intentionally out of scope: this fragment
+remains base-only because the runtime/compiler semantics still reject fresh
+sub-path writes.
 -/
 
 namespace obseq.proof
@@ -26,7 +29,6 @@ structure ConstFreshCtx where
   cs : CompilerState
   h_instrs : CompilerEmpty cs
   h_absent : BaseAbsent cs base
-  h_regs : MappedRegsBelowNext cs
 
 namespace ConstFreshCtx
 
@@ -65,7 +67,8 @@ namespace ConstFresh
     rw [ctx.h_absent]
     simp [freshReg, emit, setPlace, layoutToTyVal, typeSize]
   unfold ConstFreshCtx.compiled ConstFreshCtx.stmt
-  simp [compileStmt, obseq.notation.basePlace, obseq.notation.constRhs,
+  simp [compileStmt, obseq.notation.basePlace, obseq.notation.placeExpr,
+    obseq.notation.mkPlace, obseq.notation.constRhs,
     h_place, emit, cleanupInstrs, List.map, ctx.instrs_nil, layoutToTyVal, typeSize]
 
 theorem osea_run_ok
@@ -120,18 +123,21 @@ theorem mirlite_step_inv
   | mk ownRes tag =>
       cases ownRes with
       | Err _ =>
-          simp [ConstFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.constRhs,
+          simp [ConstFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.placeExpr,
+            obseq.notation.mkPlace, obseq.notation.constRhs,
             mirlite.stepAssignConst, mirlite.finishPlaceAssign, mirlite.allocateBaseAndWrite,
             h_env, h_own, mirlite.allocate, blockSize, mirlite.writeWordSeq, layoutToTyVal] at h_step
       | Ok ap2 =>
           cases h_use : sb_use_mb ap2 s_mir.mem.addrStart tag with
           | Err _ =>
-              simp [ConstFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.constRhs,
+              simp [ConstFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.placeExpr,
+                obseq.notation.mkPlace, obseq.notation.constRhs,
                 mirlite.stepAssignConst, mirlite.finishPlaceAssign, mirlite.allocateBaseAndWrite,
                 h_env, h_own, h_use, mirlite.allocate, blockSize, mirlite.writeWordSeq, layoutToTyVal] at h_step
           | Ok ap3 =>
               refine ⟨tag, ap2, ap3, rfl, h_use, ?_⟩
-              simpa [ConstFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.constRhs,
+              simpa [ConstFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.placeExpr,
+                obseq.notation.mkPlace, obseq.notation.constRhs,
                 mirlite.stepAssignConst, mirlite.finishPlaceAssign, mirlite.allocateBaseAndWrite,
                 h_env, h_own, h_use, mirlite.allocate, blockSize, mirlite.writeWordSeq, layoutToTyVal]
                 using h_step.symm
@@ -210,7 +216,14 @@ theorem simulation
       (pc_osea := s_osea.pc + 2)
       (vals_mir := [mirlite.MemValue.Val ctx.n])
       (vals_osea := [oseair.Val.Dat ctx.n])
-      h_sim h_sb3 h_new_addr h_new_tag (mem_vals_eq_word ctx.n)
+      h_sim
+      rfl
+      rfl
+      (by
+        simpa [ConstFreshCtx.reg] using (alloc_fresh_reg (cs := ctx.cs)))
+      h_sb3
+      (mem_vals_eq_word ctx.n)
+      rfl
 
 end ConstFresh
 

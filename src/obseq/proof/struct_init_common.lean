@@ -68,11 +68,13 @@ theorem typeSizeList_replicate_natty (n : Nat) :
 
 @[simp] theorem wordStructMirVals_length (fields : List Word) :
   (wordStructMirVals fields).length = blockSize (wordStructLayout fields) := by
-  simp [wordStructMirVals, blockSize_wordStructLayout]
+  rw [blockSize_wordStructLayout]
+  simp [wordStructMirVals]
 
 @[simp] theorem wordStructOseaVals_length (fields : List Word) :
   (wordStructOseaVals fields).length = blockSize (wordStructLayout fields) := by
-  simp [wordStructOseaVals, blockSize_wordStructLayout]
+  rw [blockSize_wordStructLayout]
+  simp [wordStructOseaVals]
 
 theorem mem_vals_eq_words (fields : List Word) :
   mem_vals_eq (wordStructMirVals fields) (wordStructOseaVals fields) := by
@@ -144,6 +146,8 @@ theorem osea_step_cstore_ok
   have h_get : List.get [instr] ⟨0, h_pc⟩ = instr := by
     rfl
   rw [h_get]
+  have h_size' : 0 < layoutSize layout := by
+    simpa [blockSize_eq_layoutSize] using h_size
   have h_in_bounds : addr < addr + blockSize layout := by
     have h_add : addr + 0 < addr + blockSize layout :=
       Nat.add_lt_add_left h_size addr
@@ -151,7 +155,7 @@ theorem osea_step_cstore_ok
   have h_bound : ¬ addr >= addr + blockSize layout := by
     intro h_ge
     exact (Nat.lt_irrefl addr) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
-  simp [instr, h_reg, h_use, h_bound]
+  simp [instr, h_reg, h_use, h_bound, h_size', blockSize_eq_layoutSize]
 
 theorem osea_run_cstore_embedded_ok
   (s_osea : oseair.State)
@@ -173,28 +177,12 @@ theorem osea_run_cstore_embedded_ok
         ap := ap',
         mem := oseair.writeWordSeq s_osea.mem addr vals,
         pc := s_osea.pc + 1 } := by
-  have h_stmt :
-      prog.get? s_osea.pc =
-        some (oseair.Instr.CStore (layoutToTyVal layout) vals reg) := StartsAt.singleton h_start
-  rcases List.get?_eq_some_iff.mp h_stmt with ⟨h_pc, h_get⟩
-  have h_step :
-      oseair.step s_osea prog =
-        oseair.Result.Ok
-          { s_osea with
-            ap := ap',
-            mem := oseair.writeWordSeq s_osea.mem addr vals,
-            pc := s_osea.pc + 1 } := by
-    unfold oseair.step oseair.writeThroughPtr
-    rw [dif_pos h_pc, h_get]
-    have h_in_bounds : addr < addr + blockSize layout := by
-      have h_add : addr + 0 < addr + blockSize layout :=
-        Nat.add_lt_add_left h_size addr
-      simpa using h_add
-    have h_bound : ¬ addr >= addr + blockSize layout := by
-      intro h_ge
-      exact (Nat.lt_irrefl addr) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
-    simp [h_reg, h_use, h_bound]
-  simp [oseair.runN, h_step]
+  simpa [Nat.zero_add] using
+    osea_run_ptr_cstore_embedded_ok
+      s_osea prog layout vals
+      addr 0 (blockSize layout) tag reg ap'
+      h_start h_reg h_size
+      (by simpa [Nat.zero_add] using h_use)
 
 theorem osea_steps_alloc_cstore_ok
   (s_osea : oseair.State)
@@ -279,6 +267,8 @@ theorem osea_steps_alloc_cstore_ok
           oseair.Instr.CStore (layoutToTyVal layout) vals reg := by
       rfl
     rw [h_get]
+    have h_size' : 0 < layoutSize layout := by
+      simpa [blockSize_eq_layoutSize] using h_size
     have h_in_bounds :
         s_osea.mem.addrStart < s_osea.mem.addrStart + blockSize layout := by
       have h_add :
@@ -289,7 +279,7 @@ theorem osea_steps_alloc_cstore_ok
         ¬ s_osea.mem.addrStart >= s_osea.mem.addrStart + blockSize layout := by
       intro h_ge
       exact (Nat.lt_irrefl s_osea.mem.addrStart) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
-    simp [s1, h_use, h_bound]
+    simp [s1, h_use, h_bound, h_size', blockSize_eq_layoutSize]
   exact StepStar.trans (StepStar.single h_step1) (StepStar.single h_step2)
 
 theorem osea_run_alloc_cstore_ok
@@ -376,6 +366,8 @@ theorem osea_run_alloc_cstore_ok
           oseair.Instr.CStore (layoutToTyVal layout) vals reg := by
       rfl
     rw [h_get]
+    have h_size' : 0 < layoutSize layout := by
+      simpa [blockSize_eq_layoutSize] using h_size
     have h_in_bounds :
         s_osea.mem.addrStart < s_osea.mem.addrStart + blockSize layout := by
       have h_add :
@@ -386,7 +378,7 @@ theorem osea_run_alloc_cstore_ok
         ¬ s_osea.mem.addrStart >= s_osea.mem.addrStart + blockSize layout := by
       intro h_ge
       exact (Nat.lt_irrefl s_osea.mem.addrStart) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
-    simp [s1, h_use, h_bound]
+    simp [s1, h_use, h_bound, h_size', blockSize_eq_layoutSize]
   simp [oseair.runN, h_step1, h_step2]
 
 theorem osea_run_alloc_cstore_embedded_ok
@@ -455,6 +447,8 @@ theorem osea_run_alloc_cstore_embedded_ok
             pc := s_osea.pc + 2 } := by
     unfold oseair.step oseair.writeThroughPtr
     rw [dif_pos h_pc1, h_get1]
+    have h_size' : 0 < layoutSize layout := by
+      simpa [blockSize_eq_layoutSize] using h_size
     have h_in_bounds :
         s_osea.mem.addrStart < s_osea.mem.addrStart + blockSize layout := by
       have h_add :
@@ -465,7 +459,7 @@ theorem osea_run_alloc_cstore_embedded_ok
         ¬ s_osea.mem.addrStart >= s_osea.mem.addrStart + blockSize layout := by
       intro h_ge
       exact (Nat.lt_irrefl s_osea.mem.addrStart) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
-    simp [s1, h_reg1, h_use, h_bound]
+    simp [s1, h_reg1, h_use, h_bound, h_size', blockSize_eq_layoutSize]
   simp [oseair.runN, h_step1, h_step2]
 
 end obseq.proof
