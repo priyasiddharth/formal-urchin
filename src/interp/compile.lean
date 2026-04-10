@@ -275,8 +275,9 @@ def compileExpr (dstReg: oseair.Register) (ty: TyVal) (rexpr: mir.RExpr) (cctx: 
             | _ =>
               let (newRegSuffix, cctx3) := freshRegSuffix cctx''
               let new_dstreg := oseair.Register.P newRegSuffix
-              let borStmt := oseair.Stmt.assgn new_dstreg (oseair.Rhs.bor_offset dstReg (layoutTypeSize layout))
-            compileFieldsAux new_dstreg rest cctx3 (acc ++ stmts' ++ [borStmt])
+              -- The next projected field pointer is used as a write destination.
+              let borStmt := oseair.Stmt.assgn new_dstreg (oseair.Rhs.mutbor_offset dstReg (layoutTypeSize layout))
+              compileFieldsAux new_dstreg rest cctx3 (acc ++ stmts' ++ [borStmt])
     compileFieldsAux dstReg fields cctx []
   | _ => CompileExprResult.Err "{repr rexpr} not supported for now."
 

@@ -198,6 +198,87 @@ def testCompileMutRefAssign : IO Unit := do
       | none => assert false "Could not find environment entry for _0"
   | mir.LhsResult.Err msg => assert false s!"MIR eval failed: {msg}"
 
+-- Test: tuple field addition without explicit refs/derefs
+-- _0 = {0: 1, 1: 2}
+-- _1 = {0: 1, 1: 41}
+-- _3 = copy _0.0 + copy _1.1
+
+def testCompileTupleFieldAdd_mirProg : mir.Prog :=
+  Lean.AssocList.empty.insert 0 [
+    mir.Stmt.Assgn (mir.LhsPlace.Place [0]) (mir.RExpr.StructInitOp [mir.RExpr.ConstOp 1, mir.RExpr.ConstOp 2]),
+    mir.Stmt.Assgn (mir.LhsPlace.Place [1]) (mir.RExpr.StructInitOp [mir.RExpr.ConstOp 1, mir.RExpr.ConstOp 41]),
+    mir.Stmt.Assgn (mir.LhsPlace.Place [3]) (mir.RExpr.BinaryOp (mir.RExpr.CopyOp [0, 0]) (mir.RExpr.CopyOp [1, 1])),
+    mir.Stmt.Halt
+  ]
+
+def testCompileTupleFieldAdd_expectedOseair : oseair.Prog :=
+  Lean.AssocList.empty.insert 0 [
+    oseair.Stmt.assgn (oseair.Register.P 0) (oseair.Rhs.alloc (TyVal.TupTy [TyVal.NatTy, TyVal.NatTy])),
+    oseair.Stmt.cstore TyVal.NatTy [oseair.Val.Dat 1] (oseair.Register.P 0),
+    oseair.Stmt.assgn (oseair.Register.P 1) (oseair.Rhs.mutbor_offset (oseair.Register.P 0) 1),
+    oseair.Stmt.cstore TyVal.NatTy [oseair.Val.Dat 2] (oseair.Register.P 1),
+    oseair.Stmt.assgn (oseair.Register.P 2) (oseair.Rhs.alloc (TyVal.TupTy [TyVal.NatTy, TyVal.NatTy])),
+    oseair.Stmt.cstore TyVal.NatTy [oseair.Val.Dat 1] (oseair.Register.P 2),
+    oseair.Stmt.assgn (oseair.Register.P 3) (oseair.Rhs.mutbor_offset (oseair.Register.P 2) 1),
+    oseair.Stmt.cstore TyVal.NatTy [oseair.Val.Dat 41] (oseair.Register.P 3),
+    oseair.Stmt.assgn (oseair.Register.P 4) (oseair.Rhs.alloc TyVal.NatTy),
+    oseair.Stmt.assgn (oseair.Register.P 5) (oseair.Rhs.bor_offset (oseair.Register.P 2) 1),
+    oseair.Stmt.assgn (oseair.Register.R 6) (oseair.Rhs.load TyVal.NatTy (oseair.Register.P 0)),
+    oseair.Stmt.assgn (oseair.Register.R 7) (oseair.Rhs.load TyVal.NatTy (oseair.Register.P 5)),
+    oseair.Stmt.assgn (oseair.Register.R 8) (oseair.Rhs.binop (oseair.Register.R 6) (oseair.Register.R 7)),
+    oseair.Stmt.rstore TyVal.NatTy (oseair.Register.R 8) (oseair.Register.P 4),
+    oseair.Stmt.halt
+  ]
+
+def testCompileTupleFieldAdd : IO Unit := do
+  let ctx : compiler.CompileCtx := {
+    placemap := Lean.AssocList.empty
+    prog := Lean.AssocList.empty.insert 0 []
+    regSuffix := 0
+    currBB := 0
+    layoutmap := Lean.AssocList.empty
+  }
+  let result := compiler.CompileBB testCompileTupleFieldAdd_mirProg 0 ctx
+  match result with
+  | compiler.CompileResult.Ok cctx =>
+      IO.println s!"testCompileTupleFieldAdd: compiled prog = \n{cctx.prog}"
+      assert (cctx.prog == testCompileTupleFieldAdd_expectedOseair) "Compiled program does not match expected"
+
+      let regMap : oseair.RegMap := Lean.AssocList.empty
+      let mem : oseair.Mem := { mMap := Lean.AssocList.empty, addrStart := 0 }
+      let ap : accessperm.AccessPerms := { StackMap := Lean.AssocList.empty, NextTag := 0 }
+      let pc : oseair.ProgCount := { bb := 0, stmt := 0 }
+      let evalResult := oseair.EvalProg pc cctx.prog regMap mem ap
+      match evalResult with
+      | oseair.LhsResult.Ok regMap _ap mem =>
+          match cctx.placemap.find? 3 with
+          | some (_, oseair.Register.P reg3) =>
+            match regMap.find? (oseair.Register.P reg3) with
+            | some (_ty, [oseair.Val.Ptr base offset _sz _tag]) =>
+              match mem.mMap.find? (base + offset) with
+              | some (oseair.Val.Dat 42) => pure ()
+              | _ => assert false "OseairLight memory at _3's address does not contain 42"
+            | _ => assert false "Could not find address for _3's pointer register in regMap"
+          | _ => assert false "Could not find placemap entry for _3"
+      | oseair.LhsResult.Err msg => assert false s!"OseairLight eval failed: {msg}"
+
+      let env : mir.Env := Lean.AssocList.empty
+      let mem : mir.Mem := { mMap := Lean.AssocList.empty, addrStart := 0 }
+      let ap : accessperm.AccessPerms := { StackMap := Lean.AssocList.empty, NextTag := 0 }
+      let pc : mir.ProgCount := { bb := 0, stmt := 0 }
+      let evalResult := mir.EvalProg pc testCompileTupleFieldAdd_mirProg env mem ap
+      match evalResult with
+      | mir.LhsResult.Ok env _ap mem =>
+          match env.find? 3 with
+          | some (addr, _ty, _tag) =>
+            match mem.mMap.find? addr with
+            | some (mir.MemValue.Val 42) => pure ()
+            | _ => assert false "MIR memory at _3's address does not contain 42"
+          | none => assert false "Could not find environment entry for _3"
+      | mir.LhsResult.Err msg => assert false s!"MIR eval failed: {msg}"
+  | compiler.CompileResult.Err msg =>
+      assert false s!"Compile failed: {msg}"
+
 -- Test: Tuple, reference, dereference, and binary operations
 -- _0 = {0: 1, 1: 2}
 -- _1 = {0: 1, 1: 41}
@@ -274,6 +355,7 @@ def runAll : IO Unit := do
   testCompileAdd
   testCompileProgram2
   testCompileMutRefAssign
+  testCompileTupleFieldAdd
   testCompileTupleRefDerefAdd
 
 end Interp.TestCompile
