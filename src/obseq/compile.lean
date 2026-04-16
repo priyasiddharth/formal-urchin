@@ -205,8 +205,9 @@ mutual
               cleanupInstrs srcRes.cleanup)
         | mirlite.RExpr.RefOp kind p =>
             let srcRes := placeToBorrowReg cs p kind
-            emit srcRes.cs ([oseair.Instr.RStore TyVal.PTy srcRes.reg dstPtr] ++
-              cleanupInstrs srcRes.cleanup)
+            -- No cleanup: the borrow register's tag must stay live on the SB
+            -- stack — it *is* the reference being created, not a temporary.
+            emit srcRes.cs [oseair.Instr.RStore TyVal.PTy srcRes.reg dstPtr]
         | mirlite.RExpr.DrefOp p =>
             let pRes := placeToReg cs p mirlite.RefKind.Shared
             match layoutDeref? pRes.layout with
