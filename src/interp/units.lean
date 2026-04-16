@@ -1,4 +1,5 @@
 -- This file contains the definitions of the types used in the formalization of the Urchin language.
+import obseq.ListCompat
 import Lean.Data.AssocList
 
 abbrev Word := Nat

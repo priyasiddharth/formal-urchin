@@ -273,4 +273,81 @@ def runN : Nat → State → Prog → Result
     | Result.Ok state' => runN n state' prog
     | Result.Err msg => Result.Err msg := rfl
 
+/-! ## Per-Instruction Step Lemmas -/
+
+theorem step_Assgn_MutBorOffset
+  (s : State) (prog : Prog) (tmpReg baseReg : Register) (off : Word)
+  (addr baseOff size tag : Word) (ap' : AccessPerms) (newTag : Tag)
+  (h_pc : s.pc < prog.length)
+  (h_get : prog.get ⟨s.pc, h_pc⟩ = Instr.Assgn tmpReg (Rhs.MutBorOffset baseReg off))
+  (h_base_reg : s.reg.lookup baseReg = some (TyVal.PTy, [Val.Ptr addr baseOff size tag]))
+  (h_off : addr + baseOff + off < addr + size)
+  (h_ref : sb_ref s.ap (addr + baseOff + off) tag RefOpKind.Mut = (SBResult.Ok ap', newTag)) :
+  step s prog = Result.Ok {
+    reg := s.reg.insert tmpReg (TyVal.PTy, [Val.Ptr addr (baseOff + off) size newTag]),
+    ap := ap', mem := s.mem, pc := s.pc + 1 } := by
+  unfold step; rw [dif_pos h_pc, h_get]; simp only [evalRhs, h_base_reg]
+  have : ¬(addr + baseOff + off ≥ addr + size) := Nat.not_le_of_lt h_off
+  simp [this, h_ref]
+
+theorem step_CStore
+  (s : State) (prog : Prog) (ty : TyVal) (vals : List Val) (ptrReg : Register)
+  (base off size tag : Word) (ap' : AccessPerms)
+  (h_pc : s.pc < prog.length)
+  (h_get : prog.get ⟨s.pc, h_pc⟩ = Instr.CStore ty vals ptrReg)
+  (h_ptr_reg : s.reg.lookup ptrReg = some (TyVal.PTy, [Val.Ptr base off size tag]))
+  (h_off : base + off < base + size)
+  (h_use : sb_use_mb s.ap (base + off) tag = SBResult.Ok ap') :
+  step s prog = Result.Ok {
+    reg := s.reg, ap := ap',
+    mem := writeWordSeq s.mem (base + off) vals, pc := s.pc + 1 } := by
+  unfold step; rw [dif_pos h_pc, h_get]; simp only [writeThroughPtr, h_ptr_reg]
+  have : ¬(base + off ≥ base + size) := Nat.not_le_of_lt h_off
+  simp [this, h_use]
+
+theorem step_Die
+  (s : State) (prog : Prog) (reg : Register)
+  (base off size tag : Word) (ap' : AccessPerms)
+  (h_pc : s.pc < prog.length)
+  (h_get : prog.get ⟨s.pc, h_pc⟩ = Instr.Die reg)
+  (h_ptr_reg : s.reg.lookup reg = some (TyVal.PTy, [Val.Ptr base off size tag]))
+  (h_die : sb_die s.ap (base + off) tag = SBResult.Ok ap') :
+  step s prog = Result.Ok {
+    reg := s.reg, ap := ap', mem := s.mem, pc := s.pc + 1 } := by
+  unfold step; rw [dif_pos h_pc, h_get]; simp only [h_ptr_reg, h_die]
+
+theorem step_Assgn_Alloc
+  (s : State) (prog : Prog) (reg : Register) (ty : TyVal)
+  (ap' : AccessPerms) (newTag : Tag) (size : Nat)
+  (h_pc : s.pc < prog.length)
+  (h_get : prog.get ⟨s.pc, h_pc⟩ = Instr.Assgn reg (Rhs.Alloc ty))
+  (h_size : typeSize ty = size)
+  (h_alloc : sb_own s.ap s.mem.addrStart = (SBResult.Ok ap', newTag)) :
+  step s prog = Result.Ok {
+    reg := s.reg.insert reg (TyVal.PTy, [Val.Ptr s.mem.addrStart 0 size newTag]),
+    ap := ap', mem := { s.mem with addrStart := s.mem.addrStart + size },
+    pc := s.pc + 1 } := by
+  unfold step; rw [dif_pos h_pc, h_get]; simp only [evalRhs, h_size, allocate, h_alloc]
+
+theorem step_Memcpy
+  (s : State) (prog : Prog) (dstReg srcReg : Register) (ty : TyVal)
+  (dBase dOff dSize dTag sBase sOff sSize sTag : Word)
+  (apRead apWrite : AccessPerms)
+  (h_pc : s.pc < prog.length)
+  (h_get : prog.get ⟨s.pc, h_pc⟩ = Instr.Memcpy dstReg srcReg ty)
+  (h_dst_reg : s.reg.lookup dstReg = some (TyVal.PTy, [Val.Ptr dBase dOff dSize dTag]))
+  (h_src_reg : s.reg.lookup srcReg = some (TyVal.PTy, [Val.Ptr sBase sOff sSize sTag]))
+  (h_dst_fit : dBase + dOff + typeSize ty ≤ dBase + dSize)
+  (h_src_fit : sBase + sOff + typeSize ty ≤ sBase + sSize)
+  (h_read : sb_read s.ap (sBase + sOff) sTag = SBResult.Ok apRead)
+  (h_write : sb_use_mb apRead (dBase + dOff) dTag = SBResult.Ok apWrite) :
+  step s prog = Result.Ok {
+    reg := s.reg, ap := apWrite,
+    mem := writeWordSeq s.mem (dBase + dOff) (readWordSeq s.mem (sBase + sOff) (typeSize ty)),
+    pc := s.pc + 1 } := by
+  unfold step; rw [dif_pos h_pc, h_get]; simp only [h_dst_reg, h_src_reg]
+  have : ¬(dBase + dOff + typeSize ty > dBase + dSize) := Nat.not_lt_of_le h_dst_fit
+  have : ¬(sBase + sOff + typeSize ty > sBase + sSize) := Nat.not_lt_of_le h_src_fit
+  simp [*, h_read, h_write]
+
 end obseq.oseair

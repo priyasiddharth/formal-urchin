@@ -138,24 +138,12 @@ theorem osea_step_cstore_ok
         ap := ap',
         mem := oseair.writeWordSeq s_osea.mem addr vals,
         pc := 1 } := by
-  let instr := oseair.Instr.CStore (layoutToTyVal layout) vals reg
-  unfold oseair.step oseair.writeThroughPtr
-  have h_pc : ({ s_osea with pc := 0 }).pc < [instr].length := by
-    exact Nat.succ_pos 0
-  rw [dif_pos h_pc]
-  have h_get : List.get [instr] ⟨0, h_pc⟩ = instr := by
-    rfl
-  rw [h_get]
-  have h_size' : 0 < layoutSize layout := by
-    simpa [blockSize_eq_layoutSize] using h_size
-  have h_in_bounds : addr < addr + blockSize layout := by
-    have h_add : addr + 0 < addr + blockSize layout :=
-      Nat.add_lt_add_left h_size addr
-    simpa using h_add
-  have h_bound : ¬ addr >= addr + blockSize layout := by
-    intro h_ge
-    exact (Nat.lt_irrefl addr) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
-  simp [instr, h_reg, h_use, h_bound, h_size', blockSize_eq_layoutSize]
+  have h_pc : 0 < [oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := Nat.succ_pos 0
+  have h_get : [oseair.Instr.CStore (layoutToTyVal layout) vals reg].get ⟨0, h_pc⟩ =
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg := rfl
+  have h_off : addr + 0 < addr + blockSize layout := Nat.add_lt_add_left h_size addr
+  exact step_CStore { s_osea with pc := 0 } _ (layoutToTyVal layout) vals reg
+    addr 0 (blockSize layout) tag ap' h_pc h_get h_reg h_off h_use
 
 theorem osea_run_cstore_embedded_ok
   (s_osea : oseair.State)
@@ -213,73 +201,25 @@ theorem osea_steps_alloc_cstore_ok
       mem := { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout },
       ap := ap2,
       pc := 1 }
-  have h_step1 :
-      oseair.step { s_osea with pc := 0 }
-        [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-         oseair.Instr.CStore (layoutToTyVal layout) vals reg] =
-        oseair.Result.Ok s1 := by
-    unfold oseair.step
-    have h_pc :
-        ({ s_osea with pc := 0 }).pc <
-          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-           oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := by
-      exact Nat.succ_pos 1
-    rw [dif_pos h_pc]
-    have h_get :
-        List.get
-          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-           oseair.Instr.CStore (layoutToTyVal layout) vals reg]
-          ⟨0, h_pc⟩ =
-          oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)) := by
-      rfl
-    rw [h_get]
-    unfold oseair.evalRhs
-    simp [h_own, s1, oseair.allocate, blockSize]
-  have h_reg :
-      s1.reg.lookup reg =
-        some (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]) := by
-    simp [s1]
-  have h_step2 :
-      oseair.step s1
-        [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-         oseair.Instr.CStore (layoutToTyVal layout) vals reg] =
-        oseair.Result.Ok
-          { s_osea with
-            reg := s_osea.reg.insert reg
-              (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
-            mem := oseair.writeWordSeq
-              { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout }
-              s_osea.mem.addrStart vals,
-            ap := ap3,
-            pc := 2 } := by
-    unfold oseair.step oseair.writeThroughPtr
-    have h_pc :
-        s1.pc <
-          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-           oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := by
-      exact Nat.succ_lt_succ (Nat.succ_pos 0)
-    rw [dif_pos h_pc]
-    have h_get :
-        List.get
-          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-           oseair.Instr.CStore (layoutToTyVal layout) vals reg]
-          ⟨1, h_pc⟩ =
-          oseair.Instr.CStore (layoutToTyVal layout) vals reg := by
-      rfl
-    rw [h_get]
-    have h_size' : 0 < layoutSize layout := by
-      simpa [blockSize_eq_layoutSize] using h_size
-    have h_in_bounds :
-        s_osea.mem.addrStart < s_osea.mem.addrStart + blockSize layout := by
-      have h_add :
-          s_osea.mem.addrStart + 0 < s_osea.mem.addrStart + blockSize layout :=
-        Nat.add_lt_add_left h_size s_osea.mem.addrStart
-      simpa using h_add
-    have h_bound :
-        ¬ s_osea.mem.addrStart >= s_osea.mem.addrStart + blockSize layout := by
-      intro h_ge
-      exact (Nat.lt_irrefl s_osea.mem.addrStart) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
-    simp [s1, h_use, h_bound, h_size', blockSize_eq_layoutSize]
+  have h_pc0 : 0 < [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := Nat.succ_pos 1
+  have h_get0 : [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg].get ⟨0, h_pc0⟩ =
+      oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)) := rfl
+  have h_step1 := step_Assgn_Alloc { s_osea with pc := 0 } _ reg (layoutToTyVal layout)
+    ap2 tag (blockSize layout) h_pc0 h_get0 rfl h_own
+  have h_reg : s1.reg.lookup reg =
+      some (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]) := by simp [s1]
+  have h_pc1 : (1 : Nat) < [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := Nat.succ_lt_succ (Nat.succ_pos 0)
+  have h_get1 : [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg].get ⟨1, h_pc1⟩ =
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg := rfl
+  have h_off : s_osea.mem.addrStart + 0 < s_osea.mem.addrStart + blockSize layout :=
+    Nat.add_lt_add_left h_size s_osea.mem.addrStart
+  have h_step2 := step_CStore s1 _ (layoutToTyVal layout) vals reg
+    s_osea.mem.addrStart 0 (blockSize layout) tag ap3 h_pc1 h_get1 h_reg h_off h_use
+  simp only [s1] at h_step2
   exact StepStar.trans (StepStar.single h_step1) (StepStar.single h_step2)
 
 theorem osea_run_alloc_cstore_ok
@@ -305,81 +245,34 @@ theorem osea_run_alloc_cstore_ok
           s_osea.mem.addrStart vals,
         ap := ap3,
         pc := 2 } := by
+  simp only [blockSize_eq_layoutSize]
   let s1 : oseair.State :=
     { s_osea with
       reg := s_osea.reg.insert reg
-        (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
-      mem := { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout },
+        (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (layoutSize layout) tag]),
+      mem := { s_osea.mem with addrStart := s_osea.mem.addrStart + layoutSize layout },
       ap := ap2,
       pc := 1 }
-  have h_step1 :
-      oseair.step { s_osea with pc := 0 }
-        [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-         oseair.Instr.CStore (layoutToTyVal layout) vals reg] =
-        oseair.Result.Ok s1 := by
-    unfold oseair.step
-    have h_pc :
-        ({ s_osea with pc := 0 }).pc <
-          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-           oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := by
-      exact Nat.succ_pos 1
-    rw [dif_pos h_pc]
-    have h_get :
-        List.get
-          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-           oseair.Instr.CStore (layoutToTyVal layout) vals reg]
-          ⟨0, h_pc⟩ =
-          oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)) := by
-      rfl
-    rw [h_get]
-    unfold oseair.evalRhs
-    simp [h_own, s1, oseair.allocate, blockSize]
-  have h_reg :
-      s1.reg.lookup reg =
-        some (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]) := by
-    simp [s1]
-  have h_step2 :
-      oseair.step s1
-        [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-         oseair.Instr.CStore (layoutToTyVal layout) vals reg] =
-        oseair.Result.Ok
-          { s_osea with
-            reg := s_osea.reg.insert reg
-              (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
-            mem := oseair.writeWordSeq
-              { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout }
-              s_osea.mem.addrStart vals,
-            ap := ap3,
-            pc := 2 } := by
-    unfold oseair.step oseair.writeThroughPtr
-    have h_pc :
-        s1.pc <
-          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-           oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := by
-      exact Nat.succ_lt_succ (Nat.succ_pos 0)
-    rw [dif_pos h_pc]
-    have h_get :
-        List.get
-          [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
-           oseair.Instr.CStore (layoutToTyVal layout) vals reg]
-          ⟨1, h_pc⟩ =
-          oseair.Instr.CStore (layoutToTyVal layout) vals reg := by
-      rfl
-    rw [h_get]
-    have h_size' : 0 < layoutSize layout := by
-      simpa [blockSize_eq_layoutSize] using h_size
-    have h_in_bounds :
-        s_osea.mem.addrStart < s_osea.mem.addrStart + blockSize layout := by
-      have h_add :
-          s_osea.mem.addrStart + 0 < s_osea.mem.addrStart + blockSize layout :=
-        Nat.add_lt_add_left h_size s_osea.mem.addrStart
-      simpa using h_add
-    have h_bound :
-        ¬ s_osea.mem.addrStart >= s_osea.mem.addrStart + blockSize layout := by
-      intro h_ge
-      exact (Nat.lt_irrefl s_osea.mem.addrStart) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
-    simp [s1, h_use, h_bound, h_size', blockSize_eq_layoutSize]
-  simp [oseair.runN, h_step1, h_step2]
+  have h_pc0 : 0 < [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := Nat.succ_pos 1
+  have h_get0 : [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg].get ⟨0, h_pc0⟩ =
+      oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)) := rfl
+  have h_step1 := step_Assgn_Alloc { s_osea with pc := 0 } _ reg (layoutToTyVal layout)
+    ap2 tag (layoutSize layout) h_pc0 h_get0 (typeSize_layoutToTyVal layout) h_own
+  have h_reg : s1.reg.lookup reg =
+      some (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (layoutSize layout) tag]) := by simp [s1]
+  have h_pc1 : (1 : Nat) < [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg].length := Nat.succ_lt_succ (Nat.succ_pos 0)
+  have h_get1 : [oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout)),
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg].get ⟨1, h_pc1⟩ =
+      oseair.Instr.CStore (layoutToTyVal layout) vals reg := rfl
+  have h_off : s_osea.mem.addrStart + 0 < s_osea.mem.addrStart + layoutSize layout :=
+    Nat.add_lt_add_left (by simpa [blockSize_eq_layoutSize] using h_size) s_osea.mem.addrStart
+  have h_step2 := step_CStore s1 _ (layoutToTyVal layout) vals reg
+    s_osea.mem.addrStart 0 (layoutSize layout) tag ap3 h_pc1 h_get1 h_reg h_off h_use
+  simp only [s1] at h_step2
+  simp only [oseair.runN, h_step1, h_step2, Nat.add_zero]
 
 theorem osea_run_alloc_cstore_embedded_ok
   (s_osea : oseair.State)
@@ -406,10 +299,11 @@ theorem osea_run_alloc_cstore_embedded_ok
           s_osea.mem.addrStart vals,
         ap := ap3,
         pc := s_osea.pc + 2 } := by
+  simp only [blockSize_eq_layoutSize]
   have h_stmt0 :
       prog.get? s_osea.pc =
         some (oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout))) := by
-    simpa [StartsAt, Nat.zero_add] using (h_start 0).symm
+    simpa [StartsAt, Nat.zero_add, List.get?] using (h_start 0).symm
   have h_tail := StartsAt.tail h_start
   have h_stmt1 :
       prog.get? (s_osea.pc + 1) =
@@ -420,46 +314,20 @@ theorem osea_run_alloc_cstore_embedded_ok
   let s1 : oseair.State :=
     { s_osea with
       reg := s_osea.reg.insert reg
-        (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
-      mem := { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout },
+        (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (layoutSize layout) tag]),
+      mem := { s_osea.mem with addrStart := s_osea.mem.addrStart + layoutSize layout },
       ap := ap2,
       pc := s_osea.pc + 1 }
-  have h_step1 :
-      oseair.step s_osea prog = oseair.Result.Ok s1 := by
-    unfold oseair.step
-    rw [dif_pos h_pc0, h_get0]
-    unfold oseair.evalRhs
-    simp [h_own, s1, oseair.allocate, blockSize]
-  have h_reg1 :
-      s1.reg.lookup reg =
-        some (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]) := by
+  have h_step1 := step_Assgn_Alloc s_osea prog reg (layoutToTyVal layout)
+    ap2 tag (layoutSize layout) h_pc0 h_get0 (typeSize_layoutToTyVal layout) h_own
+  have h_reg1 : s1.reg.lookup reg =
+      some (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (layoutSize layout) tag]) := by
     simp [s1]
-  have h_step2 :
-      oseair.step s1 prog =
-        oseair.Result.Ok
-          { s_osea with
-            reg := s_osea.reg.insert reg
-              (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag]),
-            mem := oseair.writeWordSeq
-              { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout }
-              s_osea.mem.addrStart vals,
-            ap := ap3,
-            pc := s_osea.pc + 2 } := by
-    unfold oseair.step oseair.writeThroughPtr
-    rw [dif_pos h_pc1, h_get1]
-    have h_size' : 0 < layoutSize layout := by
-      simpa [blockSize_eq_layoutSize] using h_size
-    have h_in_bounds :
-        s_osea.mem.addrStart < s_osea.mem.addrStart + blockSize layout := by
-      have h_add :
-          s_osea.mem.addrStart + 0 < s_osea.mem.addrStart + blockSize layout :=
-        Nat.add_lt_add_left h_size s_osea.mem.addrStart
-      simpa using h_add
-    have h_bound :
-        ¬ s_osea.mem.addrStart >= s_osea.mem.addrStart + blockSize layout := by
-      intro h_ge
-      exact (Nat.lt_irrefl s_osea.mem.addrStart) (Nat.lt_of_lt_of_le h_in_bounds h_ge)
-    simp [s1, h_reg1, h_use, h_bound, h_size', blockSize_eq_layoutSize]
-  simp [oseair.runN, h_step1, h_step2]
+  have h_off : s_osea.mem.addrStart + 0 < s_osea.mem.addrStart + layoutSize layout :=
+    Nat.add_lt_add_left (by simpa [blockSize_eq_layoutSize] using h_size) s_osea.mem.addrStart
+  have h_step2 := step_CStore s1 prog (layoutToTyVal layout) vals reg
+    s_osea.mem.addrStart 0 (layoutSize layout) tag ap3 h_pc1 h_get1 h_reg1 h_off h_use
+  simp only [s1] at h_step2
+  simp only [oseair.runN, h_step1, h_step2, Nat.add_zero]
 
 end obseq.proof

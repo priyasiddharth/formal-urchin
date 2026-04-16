@@ -42,7 +42,7 @@ def testEvalProg1 :=
     printTestResult "Test 1: CopyOp" env mem
     assert (env == expectedEnv1) "Env is not as expected"
     assert (mem == expectedMem1) "Mem is not as expected"
-  | LhsResult.Err (String.mk msg) => do
+  | LhsResult.Err msg => do
     assert false s!"Test 1 should not fail: {msg}"
 
 -- Test from ref/dref op
@@ -78,7 +78,7 @@ def testEvalProg2 :=
     printTestResult "Test 2: Ref and Dref" env mem
     assert (env == expectedEnv2) "Env is not as expected"
     assert (mem == expectedMem2) "Mem is not as expected"
-  | LhsResult.Err (String.mk msg) => do
+  | LhsResult.Err msg => do
     assert false s!"Test 2 should not fail: {msg}"
 
 -- Test binary addition
@@ -117,7 +117,7 @@ def testEvalProg3 :=
     printTestResult "Test 3: Binary addition to new place" env mem
     assert (env == expectedEnv3) "Env is not as expected"
     assert (mem.mMap.find? 2 == some (MemValue.Val 43)) "Memory at _2 is not 43"
-  | LhsResult.Err (String.mk msg) => do
+  | LhsResult.Err msg => do
     assert false s!"Test 3 should not fail: {msg}"
 
 -- Test Struct initialization
@@ -158,7 +158,7 @@ def testEvalProg4 :=
     assert (env == expectedEnv4) "Env is not as expected"
     assert (mem.mMap.find? 2 == some (MemValue.Val 42)) "Memory at struct field 0 is not 42"
     assert (mem.mMap.find? 3 == some (MemValue.Val 43)) "Memory at struct field 1 is not 43"
-  | LhsResult.Err (String.mk msg) => do
+  | LhsResult.Err msg => do
     assert false s!"Test 4 should not fail: {msg}"
 
 -- Test indirect store
@@ -192,7 +192,7 @@ def testEvalProg5 :=
   | LhsResult.Ok env _ap mem => do
     printTestResult "Test 5: Reference and dereference" env mem
     assert (mem.mMap.find? 0 == some (MemValue.Val 42)) "Memory at _0 is not 42"
-  | LhsResult.Err (String.mk msg) => do
+  | LhsResult.Err msg => do
     assert false s!"Test 5 should not fail: {msg}"
 
 -- Test struct initialization and field access with binary addition
@@ -237,7 +237,7 @@ def testEvalProg6 :=
     assert (mem.mMap.find? 4 == some (MemValue.Val 3)) "Memory at _4 is not 3"
     assert (env == expectedEnv6) "Env is not as expected"
     assert (mem == expectedMem6) "Mem is not as expected"
-  | LhsResult.Err (String.mk msg) => do
+  | LhsResult.Err msg => do
     assert false s!"Test 6 should not fail: {msg}"
 
 -- Test deref where the value is a struct
@@ -285,7 +285,7 @@ def testEvalProg7 :=
     assert (mem == expectedMem7) "Mem is not as expected"
     assert (mem.mMap.find? 3 == some (MemValue.Val 10)) "Struct field 0 is not 10"
     assert (mem.mMap.find? 4 == some (MemValue.Val 20)) "Struct field 1 is not 20"
-  | LhsResult.Err (String.mk msg) => do
+  | LhsResult.Err msg => do
     assert false s!"Test 7 should not fail: {msg}"
 
 def runAll : IO Unit := do

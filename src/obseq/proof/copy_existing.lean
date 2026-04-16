@@ -83,14 +83,14 @@ theorem CopyExistingCtx.compiled_eq
   unfold CopyExistingCtx.compiled CopyExistingCtx.stmt
   simp [compileStmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
     obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
-    h_src_place, h_dst_place, emit, cleanupInstrs, ctx.instrs_nil, layoutToTyVal, List.map]
+    h_src_place, h_dst_place, emit, cleanupInstrs, ctx.instrs_nil]
 
 namespace CopyExisting
 
 abbrev LocalSim
   (ctx : CopyExistingCtx)
-  (ρa : AddrRenaming)
-  (ρt : TagRenaming)
+  (ρa : AddrRenameMap)
+  (ρt : TagRenameMap)
   (s_mir : mirlite.State)
   (s_osea : oseair.State) : Prop :=
   StateSim ctx.cs.placeMap ρa ρt s_mir s_osea
@@ -146,40 +146,28 @@ theorem mirlite_step_inv
   | Err _ =>
       simp [CopyExistingCtx.stmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
         obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
-        mirlite.stepAssignCopy, mirlite.finishPlaceAssign, mirlite.writeResolvedPlace,
-        h_src, h_dst, h_read, blockSize] at h_step
+        mirlite.stepAssignCopy, h_src, h_read] at h_step
   | Ok apRead =>
       cases h_write : sb_use_mb apRead dstAddr dstTag with
       | Err _ =>
           simp [CopyExistingCtx.stmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
             obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
             mirlite.stepAssignCopy, mirlite.finishPlaceAssign, mirlite.writeResolvedPlace,
-            h_src, h_dst, h_read, h_write, blockSize] at h_step
+            h_src, h_dst, h_read, h_write] at h_step
       | Ok apWrite =>
           refine ⟨apRead, apWrite, rfl, h_write, ?_⟩
           simpa [CopyExistingCtx.stmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
             obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
             mirlite.stepAssignCopy, mirlite.finishPlaceAssign, mirlite.writeResolvedPlace,
-            h_src, h_dst, h_read, h_write, blockSize, CopyMirPost] using h_step.symm
+            h_src, h_dst, h_read, h_write, CopyMirPost] using h_step.symm
 
 variable (ctx : CopyExistingCtx)
 variable (s_mir : mirlite.State)
 variable (s_osea : oseair.State)
 variable (s_mir_next : mirlite.State)
-variable (ρa : AddrRenaming)
-variable (ρt : TagRenaming)
+variable (ρa : AddrRenameMap)
+variable (ρt : TagRenameMap)
 
-/--
-Paper-style embedded simulation for `place(dst) ::= copy src` with existing
-source and destination bases:
-
-1. recover the tracked source and destination pointer/register pairs from
-   `StateSim`,
-2. invert the MIR step,
-3. transport the successful SB read and write to the target and execute the
-   singleton `Memcpy`, and
-4. rebuild `StateSim` after the matching block copy.
--/
 theorem simulation
   (prog_mir : mirlite.Prog)
   (prog_osea : oseair.Prog)
@@ -233,31 +221,9 @@ theorem simulation
   refine ⟨s_osea_post, StepStar.of_runN_ok h_target_run, ?_⟩
   rw [h_next_full]
   simpa [LocalSim, CopyMirPost, CopyOseaPost, s_osea_post] using
-    state_sim_write
-      (π := ctx.cs.placeMap)
-      (ρa := ρa)
-      (ρt := ρt)
-      (dst_base := ctx.dstBase)
-      (dst_reg := ctx.dstReg)
-      (dst_layout := ctx.layout)
-      (dst_mir := dstAddr_m)
-      (dst_osea := dstAddr_o)
-      (dst_tag_m := dstTag_m)
-      (dst_tag_o := dstTag_o)
-      (ap_m' := apWrite_m)
-      (ap_o' := apWrite_o)
-      (pc_mir := s_mir.pc + 1)
-      (pc_osea := s_osea.pc + 1)
-      (vals_mir := mirlite.readWordSeq s_mir.mem srcAddr_m (blockSize ctx.layout))
-      (vals_osea := oseair.readWordSeq s_osea.mem srcAddr_o (blockSize ctx.layout))
-      h_sim h_dst_ptr h_sb_write h_src_vals
+    state_sim_write h_sim h_dst_ptr h_sb_write h_src_vals
       (mirlite_readWordSeq_length s_mir.mem srcAddr_m (blockSize ctx.layout))
 
 end CopyExisting
-
-/-! ## Remaining Work -/
-
--- TODO: Add the fresh-destination copy case in the block-sized setting.
--- TODO: Extend the supported fragment proof to block-sized binop cases.
 
 end obseq.proof

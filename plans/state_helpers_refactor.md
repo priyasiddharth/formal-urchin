@@ -121,8 +121,8 @@ Extracts the equality conclusions directly, avoiding repeated rcases.
 ```lean
 theorem addr_tag_eq_of_place_runtime_sim_alloc_write_eq_old
   {π : PlaceMap}
-  {ρa_pre ρa_post : AddrRenaming}
-  {ρt_pre ρt_post : TagRenaming}
+  {ρa_pre ρa_post : AddrRenameMap}
+  {ρt_pre ρt_post : TagRenameMap}
   ... -- same hypotheses as place_runtime_sim_alloc_write_eq_old
   (h_pre : place_runtime_sim π ρa_pre ρt_pre s_mir s_osea base' reg' addr_pre_m addr_pre_o tag_pre_m tag_pre_o layout')
   (h_post : place_runtime_sim ((base, (reg, layout)) :: π) ρa_post ρt_post s_mir' s_osea' base' reg' addr_m addr_o tag_m' tag_o' layout')
@@ -143,8 +143,8 @@ Handles the new vs old place disjointness case.
 ```lean
 theorem disjoint_new_vs_old
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}
@@ -178,8 +178,8 @@ Handles the both-old places disjointness case.
 ```lean
 theorem disjoint_old_vs_old
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}

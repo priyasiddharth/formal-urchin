@@ -156,7 +156,7 @@ theorem mirlite_step_inv
               obseq.notation.mkPlace, wordStructRhs, wordStructFields,
               mirlite.structConstWords?, h_words, mirlite.stepAssignStructWords,
               mirlite.finishPlaceAssign, mirlite.allocateBaseAndWrite,
-              h_env, h_own, mirlite.allocate, blockSize, wordStructTy, wordStructMirVals] at h_step
+              h_env, h_own, mirlite.allocate, blockSize] at h_step
           contradiction
       | Ok ap2 =>
           cases h_use : sb_use_mb ap2 s_mir.mem.addrStart tag with
@@ -164,10 +164,9 @@ theorem mirlite_step_inv
               have : False := by
                 simp [StructInitFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.placeExpr,
                   obseq.notation.mkPlace, wordStructRhs, wordStructFields,
-                  mirlite.structConstWords?, h_words, mirlite.stepAssignStructWords,
+                  h_words, mirlite.stepAssignStructWords,
                   mirlite.finishPlaceAssign, mirlite.allocateBaseAndWrite,
-                  h_env, h_own, h_use, mirlite.allocate, blockSize, wordStructTy, wordStructMirVals]
-                  at h_step
+                  h_env, h_own, h_use, mirlite.allocate] at h_step
               contradiction
           | Ok ap3 =>
               refine ⟨tag, ap2, ap3, rfl, h_use, ?_⟩
@@ -175,15 +174,15 @@ theorem mirlite_step_inv
                 obseq.notation.mkPlace, wordStructRhs, wordStructFields,
                 mirlite.structConstWords?, h_words, mirlite.stepAssignStructWords,
                 mirlite.finishPlaceAssign, mirlite.allocateBaseAndWrite,
-                h_env, h_own, h_use, mirlite.allocate, blockSize, wordStructTy, wordStructMirVals]
+                h_env, h_own, h_use, mirlite.allocate, blockSize]
                 using h_step.symm
 
 variable (ctx : StructInitFreshCtx)
 variable (s_mir : mirlite.State)
 variable (s_osea : oseair.State)
 variable (s_mir_next : mirlite.State)
-variable (ρa : AddrRenaming)
-variable (ρt : TagRenaming)
+variable (ρa : AddrRenameMap)
+variable (ρt : TagRenameMap)
 
 theorem simulation
   (prog_mir : mirlite.Prog)
@@ -199,68 +198,14 @@ theorem simulation
   let ⟨tag_m, ap2_m, ap3_m, h_own, h_use, h_next_full⟩ :=
     mirlite_step_inv
       ctx s_mir s_mir_next prog_mir h_env h_mir_start h_mir_step
-  let ρa' := extendAddrRenameMap ρa s_mir.mem.addrStart s_osea.mem.addrStart
-  let ⟨tag_o, ap2_o, h_target_own, h_sb2⟩ :=
-    sb_own_sim_extend
-      (addr_o := s_osea.mem.addrStart)
-      (h_sim := StateSim.sb h_sim)
-      h_own
-  let ρt' := extendTagRenameMap ρt tag_m tag_o
-  have h_new_addr : ρa' s_mir.mem.addrStart = some s_osea.mem.addrStart := by
-    simp [ρa']
-  have h_new_tag : ρt' tag_m = some tag_o := by
-    simp [ρt']
-  let ⟨ap3_o, h_target_use, h_sb3⟩ :=
-    sb_use_mb_sim_ok
-      (ρa := ρa')
-      (ρt := ρt')
-      (h_sim := h_sb2)
-      h_new_addr h_new_tag h_use
-  let s_osea_post :=
-    { s_osea with
-      reg := s_osea.reg.insert ctx.reg
-        (TyVal.PTy,
-          [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize (wordStructLayout ctx.fields)) tag_o]),
-      mem := oseair.writeWordSeq
-        { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize (wordStructLayout ctx.fields) }
-        s_osea.mem.addrStart (wordStructOseaVals ctx.fields),
-      ap := ap3_o,
-      pc := s_osea.pc + 2 }
-  have h_target_run :
-      oseair.runN 2 s_osea prog_osea = oseair.Result.Ok s_osea_post := by
-    simpa [s_osea_post] using
-      osea_run_ok
-        ctx s_osea prog_osea tag_o ap2_o ap3_o h_osea_start h_target_own h_target_use
-  refine ⟨ρa', ρt', s_osea_post, StepStar.of_runN_ok h_target_run, ?_⟩
-  rw [h_next_full]
-  simpa [StructInitFreshCtx.postPlaceMap, StructInitFreshCtx.reg, s_osea_post] using
-    state_sim_alloc_write
-      (π := ctx.cs.placeMap)
-      (ρa := ρa)
-      (ρa' := ρa')
-      (ρt := ρt)
-      (ρt' := ρt')
-      (base := ctx.base)
-      (reg := ctx.reg)
-      (layout := wordStructLayout ctx.fields)
-      (freshAddr_m := s_mir.mem.addrStart)
-      (freshAddr_o := s_osea.mem.addrStart)
-      (tag_m := tag_m)
-      (tag_o := tag_o)
-      (ap_m' := ap3_m)
-      (ap_o' := ap3_o)
-      (pc_mir := s_mir.pc + 1)
-      (pc_osea := s_osea.pc + 2)
-      (vals_mir := wordStructMirVals ctx.fields)
-      (vals_osea := wordStructOseaVals ctx.fields)
-      h_sim
-      rfl
-      rfl
-      (by
-        simpa [StructInitFreshCtx.reg] using (alloc_fresh_reg (cs := ctx.cs)))
-      h_sb3
-      (mem_vals_eq_words ctx.fields)
-      (wordStructMirVals_length ctx.fields)
+  rw [← layoutToTyVal_wordStructLayout] at h_next_full
+  simpa [StructInitFreshCtx.postPlaceMap, StructInitFreshCtx.reg] using
+    fresh_write_simulation h_sim
+      (by simpa [StructInitFreshCtx.reg] using (alloc_fresh_reg (cs := ctx.cs)))
+      h_own h_use
+      (fun tag_o ap2_o ap3_o h_target_own h_target_use =>
+        osea_run_ok ctx s_osea prog_osea tag_o ap2_o ap3_o h_osea_start h_target_own h_target_use)
+      h_next_full (mem_vals_eq_words ctx.fields) (wordStructMirVals_length ctx.fields)
 
 end StructInitFresh
 

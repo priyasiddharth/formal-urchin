@@ -1,3 +1,5 @@
+import obseq.ListCompat
+
 namespace obseq
 
 inductive TyVal

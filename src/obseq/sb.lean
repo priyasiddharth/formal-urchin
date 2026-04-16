@@ -834,23 +834,23 @@ axiom sb_own_sim_extend
       (extendTagRenameMap ρt tag_m tag_o)
       ap_m' ap_o'
 
-@[simp] theorem extendAddrRenaming_self
+@[simp] theorem extendAddrRenameMap_self
   (ρa : AddrRenameMap) (src dst : Word) :
   (extendAddrRenameMap ρa src dst) src = some dst := by
   simp [extendAddrRenameMap]
 
-@[simp] theorem extendAddrRenaming_ne
+@[simp] theorem extendAddrRenameMap_ne
   (ρa : AddrRenameMap) (src dst addr : Word)
   (h_ne : addr ≠ src) :
   (extendAddrRenameMap ρa src dst) addr = ρa addr := by
   simp [extendAddrRenameMap, h_ne]
 
-@[simp] theorem extendTagRenaming_self
+@[simp] theorem extendTagRenameMap_self
   (ρt : TagRenameMap) (src dst : Tag) :
   (extendTagRenameMap ρt src dst) src = some dst := by
   simp [extendTagRenameMap]
 
-@[simp] theorem extendTagRenaming_ne
+@[simp] theorem extendTagRenameMap_ne
   (ρt : TagRenameMap) (src dst tag : Tag)
   (h_ne : tag ≠ src) :
   (extendTagRenameMap ρt src dst) tag = ρt tag := by

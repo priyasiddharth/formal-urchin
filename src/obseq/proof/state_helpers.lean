@@ -30,8 +30,8 @@ open scoped obseq.notation
 
 axiom alloc_fresh_disjoint
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {freshAddr_m freshAddr_o : Word}
@@ -51,8 +51,8 @@ axiom alloc_fresh_disjoint
 
 axiom alloc_fresh_tag
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {freshTag : Word}
@@ -76,8 +76,8 @@ same contract.
 -/
 axiom alloc_fresh_block
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {freshAddr_m freshAddr_o : Word}
@@ -150,36 +150,17 @@ theorem list_lookup_filter_ne
   (h_ne : key ≠ banned) :
   List.lookup key (xs.filter (fun x => x.fst != banned)) = List.lookup key xs := by
   induction xs with
-  | nil =>
-      simp [List.lookup]
+  | nil => rfl
   | cons x xs ih =>
-      cases x with
-      | mk k v =>
-          by_cases h_key : key = k
-          · subst k
-            have h_keep : (key != banned) = true := by
-              simp [h_ne]
-            have h_self : (key == key) = true := by
-              exact LawfulBEq.rfl
-            simp [List.filter, List.lookup, h_keep, h_self]
-          · by_cases h_banned : k = banned
-            · subst k
-              have h_key_false : (key == banned) = false := by
-                cases h_eq : (key == banned) with
-                | true =>
-                    exact False.elim (h_key (LawfulBEq.eq_of_beq h_eq))
-                | false =>
-                    rfl
-              simp [List.filter, List.lookup, h_key_false, ih]
-            · have h_key_false : (key == k) = false := by
-                cases h_eq : (key == k) with
-                | true =>
-                    exact False.elim (h_key (LawfulBEq.eq_of_beq h_eq))
-                | false =>
-                    rfl
-              have h_keep : (k != banned) = true := by
-                simp [h_banned]
-              simp [List.filter, List.lookup, h_key_false, h_keep, ih]
+      obtain ⟨k, v⟩ := x
+      simp only [List.filter]
+      by_cases hk : k = banned
+      · subst hk
+        have : (key == k) = false := by simp [show key ≠ k from h_ne]
+        simp [List.lookup, this, ih]
+      · have : (k != banned) = true := by simp [hk]
+        simp only [this, List.lookup]
+        split <;> simp [ih]
 
 @[simp] theorem env_lookup_insert_ne
   (e : Env) (base other : Word) (info : Word × TyVal × Tag)
@@ -594,8 +575,8 @@ theorem block_sim_at_write_subrange
 
 theorem place_runtime_sim_write_post_iff
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}
@@ -623,68 +604,12 @@ theorem place_runtime_sim_write_post_iff
              · simpa using place_runtime_sim.env h
              · simpa using place_runtime_sim.reg h)
 
-theorem place_runtime_sim_write_post
-  {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
-  {s_mir : mirlite.State}
-  {s_osea : oseair.State}
-  {base : Word}
-  {reg : Register}
-  {addr_m addr_o tag_m tag_o : Word}
-  {layout : LayoutTy}
-  {dst_mir dst_osea : Word}
-  {ap_m' ap_o' : AccessPerms}
-  {pc_mir pc_osea : Nat}
-  {vals_mir : List mirlite.MemValue}
-  {vals_osea : List oseair.Val}
-  (h :
-    place_runtime_sim π ρa ρt s_mir s_osea base reg addr_m addr_o tag_m tag_o layout) :
-  place_runtime_sim π ρa ρt
-    { s_mir with
-      ap := ap_m',
-      mem := mirlite.writeWordSeq s_mir.mem dst_mir vals_mir,
-      pc := pc_mir }
-    { s_osea with
-      ap := ap_o',
-      mem := oseair.writeWordSeq s_osea.mem dst_osea vals_osea,
-      pc := pc_osea }
-    base reg addr_m addr_o tag_m tag_o layout :=
-  place_runtime_sim_write_post_iff.mp h
 
-theorem place_runtime_sim_of_write_post
-  {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
-  {s_mir : mirlite.State}
-  {s_osea : oseair.State}
-  {base : Word}
-  {reg : Register}
-  {addr_m addr_o tag_m tag_o : Word}
-  {layout : LayoutTy}
-  {dst_mir dst_osea : Word}
-  {ap_m' ap_o' : AccessPerms}
-  {pc_mir pc_osea : Nat}
-  {vals_mir : List mirlite.MemValue}
-  {vals_osea : List oseair.Val}
-  (h :
-    place_runtime_sim π ρa ρt
-      { s_mir with
-        ap := ap_m',
-        mem := mirlite.writeWordSeq s_mir.mem dst_mir vals_mir,
-        pc := pc_mir }
-      { s_osea with
-        ap := ap_o',
-        mem := oseair.writeWordSeq s_osea.mem dst_osea vals_osea,
-        pc := pc_osea }
-      base reg addr_m addr_o tag_m tag_o layout) :
-  place_runtime_sim π ρa ρt s_mir s_osea base reg addr_m addr_o tag_m tag_o layout :=
-  place_runtime_sim_write_post_iff.mpr h
 
 theorem place_runtime_sim_reg_insert_other_iff
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}
@@ -702,45 +627,7 @@ theorem place_runtime_sim_reg_insert_other_iff
   all_goals (refine ⟨h.1, place_runtime_sim.env h, ?_, place_runtime_sim.addr h, place_runtime_sim.tag h⟩
              · simpa [h_ne] using place_runtime_sim.reg h)
 
-theorem place_runtime_sim_reg_insert_other
-  {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
-  {s_mir : mirlite.State}
-  {s_osea : oseair.State}
-  {base : Word}
-  {reg tmpReg : Register}
-  {addr_m addr_o tag_m tag_o : Word}
-  {layout : LayoutTy}
-  {tmpVal : TyVal × List oseair.Val}
-  (h :
-    place_runtime_sim π ρa ρt s_mir s_osea base reg addr_m addr_o tag_m tag_o layout)
-  (h_ne : reg ≠ tmpReg) :
-  place_runtime_sim π ρa ρt
-    s_mir
-    { s_osea with reg := s_osea.reg.insert tmpReg tmpVal }
-    base reg addr_m addr_o tag_m tag_o layout :=
-  (place_runtime_sim_reg_insert_other_iff h_ne).mp h
 
-theorem place_runtime_sim_of_reg_insert_other
-  {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
-  {s_mir : mirlite.State}
-  {s_osea : oseair.State}
-  {base : Word}
-  {reg tmpReg : Register}
-  {addr_m addr_o tag_m tag_o : Word}
-  {layout : LayoutTy}
-  {tmpVal : TyVal × List oseair.Val}
-  (h :
-    place_runtime_sim π ρa ρt
-      s_mir
-      { s_osea with reg := s_osea.reg.insert tmpReg tmpVal }
-      base reg addr_m addr_o tag_m tag_o layout)
-  (h_ne : reg ≠ tmpReg) :
-  place_runtime_sim π ρa ρt s_mir s_osea base reg addr_m addr_o tag_m tag_o layout :=
-  (place_runtime_sim_reg_insert_other_iff h_ne).mpr h
 
 theorem blocks_disjoint_symm
   {addr₁ addr₂ : Word}
@@ -752,8 +639,8 @@ theorem blocks_disjoint_symm
 
 theorem state_sim_reg_insert_other
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {tmpReg : Register}
@@ -771,7 +658,7 @@ theorem state_sim_reg_insert_other
       intro h_eq
       subst h_eq
       exact h_fresh base layout h_lookup
-    refine ⟨addr_m, addr_o, tag_m, tag_o, place_runtime_sim_reg_insert_other h_ptr h_ne, h_block⟩
+    refine ⟨addr_m, addr_o, tag_m, tag_o, (place_runtime_sim_reg_insert_other_iff h_ne).mp h_ptr, h_block⟩
   · intro base₁ reg₁ layout₁ base₂ reg₂ layout₂ h_lookup₁ h_lookup₂ h_ne
       addr₁_m addr₁_o tag₁_m tag₁_o addr₂_m addr₂_o tag₂_m tag₂_o h_ptr₁ h_ptr₂
     have h_reg₁_ne : reg₁ ≠ tmpReg := by
@@ -784,13 +671,13 @@ theorem state_sim_reg_insert_other
       exact h_fresh base₂ layout₂ h_lookup₂
     exact StateSim.disjoint
       h_sim h_lookup₁ h_lookup₂ h_ne
-      (place_runtime_sim_of_reg_insert_other h_ptr₁ h_reg₁_ne)
-      (place_runtime_sim_of_reg_insert_other h_ptr₂ h_reg₂_ne)
+      ((place_runtime_sim_reg_insert_other_iff h_reg₁_ne).mpr h_ptr₁)
+      ((place_runtime_sim_reg_insert_other_iff h_reg₂_ne).mpr h_ptr₂)
 
 theorem place_runtime_sim_alloc_write_old
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}
@@ -834,8 +721,8 @@ theorem place_runtime_sim_alloc_write_old
 
 theorem place_runtime_sim_alloc_write_eq_old
   {π : PlaceMap}
-  {ρa_pre ρa_post : AddrRenaming}
-  {ρt_pre ρt_post : TagRenaming}
+  {ρa_pre ρa_post : AddrRenameMap}
+  {ρt_pre ρt_post : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}
@@ -897,8 +784,8 @@ theorem place_runtime_sim_alloc_write_eq_old
 
 theorem place_runtime_sim_alloc_write_new_eq
   {π : PlaceMap}
-  {ρa' : AddrRenaming}
-  {ρt' : TagRenaming}
+  {ρa' : AddrRenameMap}
+  {ρt' : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}
@@ -930,8 +817,8 @@ theorem place_runtime_sim_alloc_write_new_eq
 
 theorem state_sim_write_subrange
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {dst_base : Word}
@@ -976,7 +863,7 @@ theorem state_sim_write_subrange
       rcases h_eq_dst with ⟨h_addr_m, h_addr_o, h_tag_m, h_tag_o⟩
       subst h_addr_m h_addr_o h_tag_m h_tag_o
       refine ⟨addr_m', addr_o', tag_m', tag_o', ?_, ?_⟩
-      · exact place_runtime_sim_write_post h_ptr_dst
+      · exact place_runtime_sim_write_post_iff.mp h_ptr_dst
       · simpa using
           block_sim_at_write_subrange
             (s_mir := s_mir)
@@ -1001,7 +888,7 @@ theorem state_sim_write_subrange
       have h_sep_o :
           blocks_disjoint addr_o (blockSize layout) (dst_osea + off) vals_osea.length := by
         exact blocks_disjoint_subrange_right h_sep.2 (by simpa [h_len_o] using h_fit)
-      refine ⟨addr_m, addr_o, tag_m, tag_o, place_runtime_sim_write_post h_ptr, ?_⟩
+      refine ⟨addr_m, addr_o, tag_m, tag_o, place_runtime_sim_write_post_iff.mp h_ptr, ?_⟩
       simpa using
         block_sim_at_write_other
           (s_mir := s_mir)
@@ -1018,8 +905,8 @@ theorem state_sim_write_subrange
       addr₁_m addr₁_o tag₁_m tag₁_o addr₂_m addr₂_o tag₂_m tag₂_o h_ptr₁ h_ptr₂
     exact StateSim.disjoint
       h_sim h_lookup₁ h_lookup₂ h_ne
-      (place_runtime_sim_of_write_post h_ptr₁)
-      (place_runtime_sim_of_write_post h_ptr₂)
+      (place_runtime_sim_write_post_iff.mpr h_ptr₁)
+      (place_runtime_sim_write_post_iff.mpr h_ptr₂)
 
 /--
 `state_sim_write` is the exact-write specialization of
@@ -1027,8 +914,8 @@ theorem state_sim_write_subrange
 -/
 theorem state_sim_write
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {dst_base : Word}
@@ -1057,27 +944,7 @@ theorem state_sim_write
       mem := oseair.writeWordSeq s_osea.mem dst_osea vals_osea,
       pc := pc_osea } := by
   simpa [Nat.zero_add] using
-    state_sim_write_subrange
-      (π := π)
-      (ρa := ρa)
-      (ρt := ρt)
-      (dst_base := dst_base)
-      (dst_reg := dst_reg)
-      (baseLayout := dst_layout)
-      (subLayout := dst_layout)
-      (dst_mir := dst_mir)
-      (dst_osea := dst_osea)
-      (dst_tag_m := dst_tag_m)
-      (dst_tag_o := dst_tag_o)
-      (off := 0)
-      (ap_m' := ap_m')
-      (ap_o' := ap_o')
-      (pc_mir := pc_mir)
-      (pc_osea := pc_osea)
-      (vals_mir := vals_mir)
-      (vals_osea := vals_osea)
-      h_sim h_dst h_sb h_vals h_len
-      (by simp)
+    state_sim_write_subrange (off := 0) h_sim h_dst h_sb h_vals h_len (by simp)
 
 /-! ## Allocator Abstraction -/
 
@@ -1115,7 +982,7 @@ irrelevant, which is the key that lets allocator-specific bookkeeping be
 kept out of simulation theorems.
 -/
 theorem StateSim.of_mem_mMap_eq
-    {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+    {π : PlaceMap} {ρa : AddrRenameMap} {ρt : TagRenameMap}
     {s₁ s₂ : mirlite.State} {o₁ o₂ : oseair.State}
     (h : StateSim π ρa ρt s₁ o₁)
     (h_env   : s₁.env       = s₂.env)
@@ -1170,8 +1037,8 @@ register inequality proof.
 -/
 theorem place_lookup_old
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}
@@ -1201,8 +1068,8 @@ the place_runtime_sim (without block_sim_at), for use in disjointness proofs.
 -/
 theorem place_lookup_old_ptr
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}
@@ -1235,8 +1102,8 @@ bookkeeping via `mirlite/oseair_writeWordSeq_addrStart`.
 -/
 theorem state_sim_alloc
   {π : PlaceMap}
-  {ρa ρa' : AddrRenaming}
-  {ρt ρt' : TagRenaming}
+  {ρa ρa' : AddrRenameMap}
+  {ρt ρt' : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}
@@ -1412,8 +1279,8 @@ theorem state_sim_alloc
 
 theorem state_sim_alloc_write
   {π : PlaceMap}
-  {ρa ρa' : AddrRenaming}
-  {ρt ρt' : TagRenaming}
+  {ρa ρa' : AddrRenameMap}
+  {ρt ρt' : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {base : Word}
@@ -1491,22 +1358,9 @@ theorem osea_run_ptr_cstore_embedded_ok
         ap := ap',
         mem := oseair.writeWordSeq s_osea.mem (base + off) vals,
         pc := s_osea.pc + 1 } := by
-  have h_stmt :
-      prog.get? s_osea.pc =
-        some (oseair.Instr.CStore (layoutToTyVal layout) vals reg) := StartsAt.singleton h_start
-  rcases List.get?_eq_some_iff.mp h_stmt with ⟨h_pc, h_get⟩
-  have h_step :
-      oseair.step s_osea prog =
-        oseair.Result.Ok
-          { s_osea with
-            ap := ap',
-            mem := oseair.writeWordSeq s_osea.mem (base + off) vals,
-            pc := s_osea.pc + 1 } := by
-    unfold oseair.step oseair.writeThroughPtr
-    rw [dif_pos h_pc, h_get]
-    have h_bound : ¬ base + off >= base + size := by
-      exact Nat.not_le_of_lt (Nat.add_lt_add_left h_off base)
-    simp [h_reg, h_use, h_bound]
+  have ⟨h_pc, h_get⟩ := StartsAt.get_instr h_start
+  have h_step := oseair.step_CStore s_osea prog (layoutToTyVal layout) vals reg base off size tag ap'
+    h_pc h_get h_reg (Nat.add_lt_add_left h_off base) h_use
   simp [oseair.runN, h_step]
 
 theorem osea_run_ptr_memcpy_embedded_ok
@@ -1536,32 +1390,15 @@ theorem osea_run_ptr_memcpy_embedded_ok
         mem := oseair.writeWordSeq s_osea.mem (dstBase + dstOff)
           (oseair.readWordSeq s_osea.mem (srcBase + srcOff) (blockSize layout)),
         pc := s_osea.pc + 1 } := by
-  have h_stmt :
-      prog_osea.get? s_osea.pc =
-        some (oseair.Instr.Memcpy dstReg srcReg (layoutToTyVal layout)) := by
-    simpa using StartsAt.singleton h_start
-  rcases List.get?_eq_some_iff.mp h_stmt with ⟨h_pc, h_get⟩
-  have h_step :
-      oseair.step s_osea prog_osea =
-        oseair.Result.Ok
-          { s_osea with
-            ap := apWrite,
-            mem := oseair.writeWordSeq s_osea.mem (dstBase + dstOff)
-              (oseair.readWordSeq s_osea.mem (srcBase + srcOff) (blockSize layout)),
-            pc := s_osea.pc + 1 } := by
-    unfold oseair.step
-    rw [dif_pos h_pc, h_get]
-    have h_dst_bound : dstBase + dstOff + blockSize layout ≤ dstBase + dstSize := by
-      simpa [Nat.add_assoc] using Nat.add_le_add_left h_dst_fit dstBase
-    have h_src_bound : srcBase + srcOff + blockSize layout ≤ srcBase + srcSize := by
-      simpa [Nat.add_assoc] using Nat.add_le_add_left h_src_fit srcBase
-    have h_dst_bound' : dstBase + dstOff + layoutSize layout ≤ dstBase + dstSize := by
-      simpa [blockSize_eq_layoutSize] using h_dst_bound
-    have h_src_bound' : srcBase + srcOff + layoutSize layout ≤ srcBase + srcSize := by
-      simpa [blockSize_eq_layoutSize] using h_src_bound
-    simp [h_src_reg, h_dst_reg, h_read, h_write, blockSize, blockSize_eq_layoutSize,
-      h_dst_bound, h_src_bound, h_dst_bound', h_src_bound']
-  simp [oseair.runN, h_step]
+  have ⟨h_pc, h_get⟩ := StartsAt.get_instr h_start
+  have h_dst_bound : dstBase + dstOff + typeSize (layoutToTyVal layout) ≤ dstBase + dstSize := by
+    simpa [Nat.add_assoc, ←blockSize_eq_layoutSize] using Nat.add_le_add_left h_dst_fit dstBase
+  have h_src_bound : srcBase + srcOff + typeSize (layoutToTyVal layout) ≤ srcBase + srcSize := by
+    simpa [Nat.add_assoc, ←blockSize_eq_layoutSize] using Nat.add_le_add_left h_src_fit srcBase
+  have h_step := step_Memcpy s_osea prog_osea dstReg srcReg (layoutToTyVal layout)
+    dstBase dstOff dstSize dstTag srcBase srcOff srcSize srcTag apRead apWrite
+    h_pc h_get h_dst_reg h_src_reg h_dst_bound h_src_bound h_read h_write
+  simp only [runN, h_step, typeSize_layoutToTyVal, blockSize_eq_layoutSize]
 
 theorem osea_run_memcpy_embedded_ok
   (s_osea : oseair.State)
@@ -1629,10 +1466,10 @@ theorem osea_run_projected_cstore_embedded_ok
         ap := apFinal,
         mem := oseair.writeWordSeq s_osea.mem (addr + off) vals,
         pc := s_osea.pc + 3 } := by
-  have h_stmt0 :
-      prog_osea.get? s_osea.pc =
-        some (oseair.Instr.Assgn tmpReg (oseair.Rhs.MutBorOffset baseReg off)) := by
-    simpa [Nat.zero_add] using (h_start 0).symm
+  -- Step 1: Assgn MutBorOffset
+  have h_stmt0 : prog_osea.get? s_osea.pc =
+      some (oseair.Instr.Assgn tmpReg (oseair.Rhs.MutBorOffset baseReg off)) := by
+    simpa [Nat.zero_add, List.get?] using (h_start 0).symm
   rcases List.get?_eq_some_iff.mp h_stmt0 with ⟨h_pc0, h_get0⟩
   let s1 : oseair.State :=
     { s_osea with
@@ -1640,22 +1477,18 @@ theorem osea_run_projected_cstore_embedded_ok
         (TyVal.PTy, [oseair.Val.Ptr addr off (blockSize baseLayout) tempTag]),
       ap := apRef,
       pc := s_osea.pc + 1 }
-  have h_step0 :
-      oseair.step s_osea prog_osea = oseair.Result.Ok s1 := by
-    unfold oseair.step oseair.evalRhs
-    rw [dif_pos h_pc0, h_get0]
-    have h_off_bound : ¬ layoutSize baseLayout ≤ off := by
-      simpa [blockSize_eq_layoutSize] using Nat.not_le_of_lt h_off
-    simp [h_base_reg, h_off_bound, h_ref, s1, blockSize_eq_layoutSize]
-  have h_start1 :
-      StartsAt prog_osea (s_osea.pc + 1)
-        [oseair.Instr.CStore (layoutToTyVal subLayout) vals tmpReg,
-         oseair.Instr.Die tmpReg] :=
-    StartsAt.tail h_start
-  have h_stmt1 :
-      prog_osea.get? (s_osea.pc + 1) =
-        some (oseair.Instr.CStore (layoutToTyVal subLayout) vals tmpReg) := by
-    simpa [Nat.zero_add] using (h_start1 0).symm
+  have h_off_addr : addr + 0 + off < addr + blockSize baseLayout := by
+    simpa [Nat.zero_add] using Nat.add_lt_add_left h_off addr
+  have h_step0 := step_Assgn_MutBorOffset s_osea prog_osea tmpReg baseReg off
+    addr 0 (blockSize baseLayout) tag apRef tempTag
+    h_pc0 h_get0 h_base_reg h_off_addr h_ref
+  simp only [Nat.zero_add] at h_step0
+  -- Step 2: CStore
+  have h_stmt1 : prog_osea.get? (s_osea.pc + 1) =
+      some (oseair.Instr.CStore (layoutToTyVal subLayout) vals tmpReg) := by
+    have h := h_start 1
+    simp only [Nat.add_assoc] at h
+    exact h.symm
   rcases List.get?_eq_some_iff.mp h_stmt1 with ⟨h_pc1, h_get1⟩
   let s2 : oseair.State :=
     { s_osea with
@@ -1664,39 +1497,23 @@ theorem osea_run_projected_cstore_embedded_ok
       ap := apWrite,
       mem := oseair.writeWordSeq s_osea.mem (addr + off) vals,
       pc := s_osea.pc + 2 }
-  have h_tmp_reg :
-      s1.reg.lookup tmpReg =
-        some (TyVal.PTy, [oseair.Val.Ptr addr off (blockSize baseLayout) tempTag]) := by
-    simp [s1]
-  have h_step1 :
-      oseair.step s1 prog_osea = oseair.Result.Ok s2 := by
-    unfold oseair.step oseair.writeThroughPtr
-    rw [dif_pos h_pc1, h_get1]
-    have h_off_size : off < layoutSize baseLayout := by
-      simpa [blockSize_eq_layoutSize] using h_off
-    have h_bound : ¬ addr + off >= addr + blockSize baseLayout := by
-      exact Nat.not_le_of_lt (Nat.add_lt_add_left h_off addr)
-    simp [s1, s2, h_tmp_reg, h_bound, h_use, h_off_size, blockSize_eq_layoutSize]
-  have h_start2 :
-      StartsAt prog_osea (s_osea.pc + 2) [oseair.Instr.Die tmpReg] := by
-    exact StartsAt.tail h_start1
-  have h_stmt2 :
-      prog_osea.get? (s_osea.pc + 2) = some (oseair.Instr.Die tmpReg) := by
-    simpa [Nat.zero_add] using (h_start2 0).symm
+  have h_tmp_reg : s1.reg.lookup tmpReg =
+      some (TyVal.PTy, [Val.Ptr addr off (blockSize baseLayout) tempTag]) := by simp [s1]
+  have h_off_bound : addr + off < addr + blockSize baseLayout := by
+    simpa [Nat.zero_add] using Nat.add_lt_add_left h_off addr
+  have h_step1 := step_CStore s1 prog_osea (layoutToTyVal subLayout) vals tmpReg
+    addr off (blockSize baseLayout) tempTag apWrite
+    h_pc1 h_get1 h_tmp_reg h_off_bound h_use
+  -- Step 3: Die
+  have h_stmt2 : prog_osea.get? (s_osea.pc + 2) = some (oseair.Instr.Die tmpReg) := by
+    have h := h_start 2
+    simp only at h
+    exact h.symm
   rcases List.get?_eq_some_iff.mp h_stmt2 with ⟨h_pc2, h_get2⟩
-  have h_step2 :
-      oseair.step s2 prog_osea =
-        oseair.Result.Ok
-          { s_osea with
-            reg := s_osea.reg.insert tmpReg
-              (TyVal.PTy, [oseair.Val.Ptr addr off (blockSize baseLayout) tempTag]),
-            ap := apFinal,
-            mem := oseair.writeWordSeq s_osea.mem (addr + off) vals,
-            pc := s_osea.pc + 3 } := by
-    unfold oseair.step
-    rw [dif_pos h_pc2, h_get2]
-    simp [s2, h_tmp_reg, h_die]
-  simp [oseair.runN, h_step0, h_step1, h_step2]
+  have h_step2 := step_Die s2 prog_osea tmpReg addr off (blockSize baseLayout) tempTag apFinal
+    h_pc2 h_get2 h_tmp_reg h_die
+  -- Chain steps
+  simp only [runN, h_step0, h_step1, h_step2, s1, s2]
 
 /--
 Shared target-side simulation shell for existing-place writes that lower to
@@ -1708,8 +1525,8 @@ packages the common target execution and `StateSim` reconstruction.
 -/
 theorem existing_write_simulation
   {π : PlaceMap}
-  {ρa : AddrRenaming}
-  {ρt : TagRenaming}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
   {s_mir : mirlite.State}
   {s_osea : oseair.State}
   {s_mir_next : mirlite.State}
@@ -1785,26 +1602,7 @@ theorem existing_write_simulation
     refine ⟨s_osea_post, StepStar.of_runN_ok h_target_run, ?_⟩
     rw [h_next_full]
     simpa [s_osea_post, h_off] using
-      state_sim_write_subrange
-        (π := π)
-        (ρa := ρa)
-        (ρt := ρt)
-        (dst_base := dst_base)
-        (dst_reg := dst_reg)
-        (baseLayout := baseLayout)
-        (subLayout := subLayout)
-        (dst_mir := dst_mir)
-        (dst_osea := dst_osea)
-        (dst_tag_m := dst_tag_m)
-        (dst_tag_o := dst_tag_o)
-        (off := off)
-        (ap_m' := ap_m')
-        (ap_o' := ap_parent_o)
-        (pc_mir := s_mir.pc + 1)
-        (pc_osea := s_osea.pc + 1)
-        (vals_mir := vals_mir)
-        (vals_osea := vals_osea)
-        h_sim h_dst h_sb_parent h_vals h_len h_fit
+      state_sim_write_subrange h_sim h_dst h_sb_parent h_vals h_len h_fit
   · have h_off_lt : off < blockSize baseLayout := by
       exact Nat.lt_of_lt_of_le
         (Nat.lt_add_of_pos_right h_sub_nonempty)
@@ -1846,29 +1644,104 @@ theorem existing_write_simulation
             reg := s_osea.reg.insert tmpReg
               (TyVal.PTy, [oseair.Val.Ptr dst_osea off (blockSize baseLayout) tempTag]) }
           dst_base dst_reg dst_mir dst_osea dst_tag_m dst_tag_o baseLayout :=
-      place_runtime_sim_reg_insert_other h_dst h_reg_ne
+      (place_runtime_sim_reg_insert_other_iff h_reg_ne).mp h_dst
     refine ⟨s_osea_post, StepStar.of_runN_ok h_target_run, ?_⟩
     rw [h_next_full]
     simpa [s_osea_post] using
-      state_sim_write_subrange
-        (π := π)
-        (ρa := ρa)
-        (ρt := ρt)
-        (dst_base := dst_base)
-        (dst_reg := dst_reg)
-        (baseLayout := baseLayout)
-        (subLayout := subLayout)
-        (dst_mir := dst_mir)
-        (dst_osea := dst_osea)
-        (dst_tag_m := dst_tag_m)
-        (dst_tag_o := dst_tag_o)
-        (off := off)
-        (ap_m' := ap_m')
-        (ap_o' := ap_final_o)
-        (pc_mir := s_mir.pc + 1)
-        (pc_osea := s_osea.pc + 3)
-        (vals_mir := vals_mir)
-        (vals_osea := vals_osea)
-        h_sim_reg h_dst_reg h_sb_final h_vals h_len h_fit
+      state_sim_write_subrange h_sim_reg h_dst_reg h_sb_final h_vals h_len h_fit
+
+/--
+Reusable simulation shell for **fresh-destination** writes (Alloc + CStore).
+
+Handles the common pattern shared by `const_fresh` and `struct_init_fresh`:
+extend the address/tag renamings via `sb_own_sim_extend`, transport the
+`sb_use_mb` to the target, execute the two-instruction Alloc+CStore sequence,
+and rebuild `StateSim` on the extended place map via `state_sim_alloc_write`.
+
+The caller is responsible for:
+1. inverting the MIR step (`h_own`, `h_use`, `h_next_full`),
+2. proving that the target Alloc+CStore sequence succeeds (`h_osea_run`), and
+3. supplying the value agreement (`h_vals`) and length fact (`h_len`).
+-/
+theorem fresh_write_simulation
+  {π : PlaceMap}
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
+  {s_mir : mirlite.State}
+  {s_osea : oseair.State}
+  {s_mir_next : mirlite.State}
+  {prog_osea : oseair.Prog}
+  {base : Word}
+  {reg : Register}
+  {layout : LayoutTy}
+  {tag_m : Word}
+  {ap2_m ap3_m : AccessPerms}
+  {vals_mir : List mirlite.MemValue}
+  {vals_osea : List oseair.Val}
+  (h_sim : StateSim π ρa ρt s_mir s_osea)
+  (h_reg_fresh : ∀ base' layout', π.lookup base' = some (reg, layout') → False)
+  (h_own : sb_own s_mir.ap s_mir.mem.addrStart = (SBResult.Ok ap2_m, tag_m))
+  (h_use : sb_use_mb ap2_m s_mir.mem.addrStart tag_m = SBResult.Ok ap3_m)
+  (h_osea_run :
+    ∀ (tag_o : Word) (ap2_o ap3_o : AccessPerms),
+      sb_own s_osea.ap s_osea.mem.addrStart = (SBResult.Ok ap2_o, tag_o) →
+      sb_use_mb ap2_o s_osea.mem.addrStart tag_o = SBResult.Ok ap3_o →
+      oseair.runN 2 s_osea prog_osea =
+        oseair.Result.Ok
+          { s_osea with
+            reg := s_osea.reg.insert reg
+              (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag_o]),
+            mem := oseair.writeWordSeq
+              { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout }
+              s_osea.mem.addrStart vals_osea,
+            ap := ap3_o,
+            pc := s_osea.pc + 2 })
+  (h_next_full :
+    s_mir_next =
+      { s_mir with
+        env := s_mir.env.insert base (s_mir.mem.addrStart, layoutToTyVal layout, tag_m),
+        mem := mirlite.writeWordSeq
+          { s_mir.mem with addrStart := s_mir.mem.addrStart + blockSize layout }
+          s_mir.mem.addrStart vals_mir,
+        ap := ap3_m,
+        pc := s_mir.pc + 1 })
+  (h_vals : mem_vals_eq vals_mir vals_osea)
+  (h_len : vals_mir.length = blockSize layout) :
+  ∃ ρa' ρt' s_osea_next,
+    StepStar s_osea prog_osea s_osea_next ∧
+    StateSim ((base, (reg, layout)) :: π) ρa' ρt' s_mir_next s_osea_next := by
+  let ρa' := extendAddrRenameMap ρa s_mir.mem.addrStart s_osea.mem.addrStart
+  let ⟨tag_o, ap2_o, h_target_own, h_sb2⟩ :=
+    sb_own_sim_extend
+      (addr_o := s_osea.mem.addrStart)
+      (h_sim := StateSim.sb h_sim)
+      h_own
+  let ρt' := extendTagRenameMap ρt tag_m tag_o
+  have h_new_addr : ρa' s_mir.mem.addrStart = some s_osea.mem.addrStart := by
+    simp [ρa']
+  have h_new_tag : ρt' tag_m = some tag_o := by
+    simp [ρt']
+  let ⟨ap3_o, h_target_use, h_sb3⟩ :=
+    sb_use_mb_sim_ok
+      (ρa := ρa')
+      (ρt := ρt')
+      (h_sim := h_sb2)
+      h_new_addr h_new_tag h_use
+  let s_osea_post :=
+    { s_osea with
+      reg := s_osea.reg.insert reg
+        (TyVal.PTy, [oseair.Val.Ptr s_osea.mem.addrStart 0 (blockSize layout) tag_o]),
+      mem := oseair.writeWordSeq
+        { s_osea.mem with addrStart := s_osea.mem.addrStart + blockSize layout }
+        s_osea.mem.addrStart vals_osea,
+      ap := ap3_o,
+      pc := s_osea.pc + 2 }
+  have h_target_run :
+      oseair.runN 2 s_osea prog_osea = oseair.Result.Ok s_osea_post := by
+    simpa [s_osea_post] using h_osea_run tag_o ap2_o ap3_o h_target_own h_target_use
+  refine ⟨ρa', ρt', s_osea_post, StepStar.of_runN_ok h_target_run, ?_⟩
+  rw [h_next_full]
+  simpa [s_osea_post] using
+    state_sim_alloc_write h_sim rfl rfl h_reg_fresh h_sb3 h_vals h_len
 
 end obseq.proof

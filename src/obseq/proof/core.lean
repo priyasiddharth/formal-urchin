@@ -76,7 +76,8 @@ theorem singleton
   {x : α}
   (h : StartsAt prog pc [x]) :
   prog.get? pc = some x := by
-  simpa [StartsAt, Nat.zero_add] using (h 0).symm
+  unfold StartsAt at h
+  simpa [Nat.zero_add, List.get?] using (h 0).symm
 
 theorem tail
   {prog : List α}
@@ -85,9 +86,19 @@ theorem tail
   {frag : List α}
   (h : StartsAt prog pc (x :: frag)) :
   StartsAt prog (pc + 1) frag := by
+  unfold StartsAt at h ⊢
   intro i
   have h_i := h (i + 1)
-  simpa [StartsAt, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using h_i
+  simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using h_i
+
+theorem get_instr
+  {prog : List α}
+  {pc : Nat}
+  {instr : α}
+  (h_start : StartsAt prog pc [instr]) :
+  ∃ h_pc : pc < prog.length, prog.get ⟨pc, h_pc⟩ = instr := by
+  have h_stmt : prog.get? pc = some instr := StartsAt.singleton h_start
+  exact (List.get?_eq_some_iff.mp h_stmt)
 
 end StartsAt
 
@@ -137,8 +148,6 @@ inductive mem_vals_eq : List mirlite.MemValue → List oseair.Val → Prop
     mem_vals_eq vals_mir vals_osea →
     mem_vals_eq (v_mir :: vals_mir) (v_osea :: vals_osea)
 
-abbrev AddrRenaming := AddrRenameMap
-abbrev TagRenaming := TagRenameMap
 
 /--
 `place_runtime_sim` is the renaming-aware per-base simulation relation for one
@@ -150,8 +159,8 @@ the address/tag renaming witnesses that relate the two pointers.
 -/
 def place_runtime_sim
   (π : PlaceMap)
-  (ρa : AddrRenaming)
-  (ρt : TagRenaming)
+  (ρa : AddrRenameMap)
+  (ρt : TagRenameMap)
   (s_mir : mirlite.State)
   (s_osea : oseair.State)
   (base : Word)
@@ -167,7 +176,7 @@ def place_runtime_sim
 namespace place_runtime_sim
 
 theorem env
-  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {π : PlaceMap} {ρa : AddrRenameMap} {ρt : TagRenameMap}
   {s_mir : mirlite.State} {s_osea : oseair.State}
   {base : Word} {reg : Register}
   {addr_m addr_o tag_m tag_o : Word} {layout : LayoutTy}
@@ -176,7 +185,7 @@ theorem env
   s_mir.env.lookup base = some (addr_m, layoutToTyVal layout, tag_m) := h.2.1
 
 theorem reg
-  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {π : PlaceMap} {ρa : AddrRenameMap} {ρt : TagRenameMap}
   {s_mir : mirlite.State} {s_osea : oseair.State}
   {base : Word} {reg : Register}
   {addr_m addr_o tag_m tag_o : Word} {layout : LayoutTy}
@@ -186,7 +195,7 @@ theorem reg
   h.2.2.1
 
 theorem addr
-  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {π : PlaceMap} {ρa : AddrRenameMap} {ρt : TagRenameMap}
   {s_mir : mirlite.State} {s_osea : oseair.State}
   {base : Word} {reg : Register}
   {addr_m addr_o tag_m tag_o : Word} {layout : LayoutTy}
@@ -195,7 +204,7 @@ theorem addr
   ρa addr_m = some addr_o := h.2.2.2.1
 
 theorem tag
-  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {π : PlaceMap} {ρa : AddrRenameMap} {ρt : TagRenameMap}
   {s_mir : mirlite.State} {s_osea : oseair.State}
   {base : Word} {reg : Register}
   {addr_m addr_o tag_m tag_o : Word} {layout : LayoutTy}
@@ -204,7 +213,7 @@ theorem tag
   ρt tag_m = some tag_o := h.2.2.2.2
 
 theorem eq
-  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {π : PlaceMap} {ρa : AddrRenameMap} {ρt : TagRenameMap}
   {s_mir : mirlite.State} {s_osea : oseair.State}
   {base : Word} {reg : Register}
   {addr₁_m addr₁_o tag₁_m tag₁_o : Word}
@@ -287,8 +296,8 @@ places, with SB well-formedness bundled inside `sb_sim`.
 -/
 def StateSim
   (π : PlaceMap)
-  (ρa : AddrRenaming)
-  (ρt : TagRenaming)
+  (ρa : AddrRenameMap)
+  (ρt : TagRenameMap)
   (s_mir : mirlite.State)
   (s_osea : oseair.State) : Prop :=
   sb_sim ρa ρt s_mir.ap s_osea.ap ∧
@@ -310,13 +319,13 @@ def StateSim
 namespace StateSim
 
 theorem sb
-  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {π : PlaceMap} {ρa : AddrRenameMap} {ρt : TagRenameMap}
   {s_mir : mirlite.State} {s_osea : oseair.State}
   (h : StateSim π ρa ρt s_mir s_osea) :
   sb_sim ρa ρt s_mir.ap s_osea.ap := h.1
 
 theorem place
-  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {π : PlaceMap} {ρa : AddrRenameMap} {ρt : TagRenameMap}
   {s_mir : mirlite.State} {s_osea : oseair.State}
   (h : StateSim π ρa ρt s_mir s_osea)
   {base : Word} {reg : Register} {layout : LayoutTy}
@@ -327,7 +336,7 @@ theorem place
   exact h.2.1 base reg layout h_lookup
 
 theorem place_projected
-  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {π : PlaceMap} {ρa : AddrRenameMap} {ρt : TagRenameMap}
   {s_mir : mirlite.State} {s_osea : oseair.State}
   (h : StateSim π ρa ρt s_mir s_osea)
   {p : mirlite.Place}
@@ -345,7 +354,7 @@ theorem place_projected
   exact block_sim_at_offset h_block (layoutResolvePath_blockSize_le h_path)
 
 theorem disjoint
-  {π : PlaceMap} {ρa : AddrRenaming} {ρt : TagRenaming}
+  {π : PlaceMap} {ρa : AddrRenameMap} {ρt : TagRenameMap}
   {s_mir : mirlite.State} {s_osea : oseair.State}
   (h : StateSim π ρa ρt s_mir s_osea)
   {base₁ base₂ : Word}
@@ -414,10 +423,10 @@ theorem finishPlaceAssign_existing_eq
     simp [layoutResolvePath] at h_path'
     rcases h_path' with ⟨rfl, rfl⟩
     cases h_use : sb_use_mb state.ap addr tag <;>
-      simp [h_env, h_empty, h_use, mirlite.writeResolvedPlace]
+      simp [h_empty, h_use, mirlite.writeResolvedPlace]
   · rw [resolveDirectPlace_eq_of_env_lookup h_env h_path]
     cases h_use : sb_use_mb state.ap (addr + off) tag <;>
-      simp [h_env, h_empty, h_use, mirlite.writeResolvedPlace]
+      simp [h_empty, h_use, mirlite.writeResolvedPlace]
 
 inductive StepStar : oseair.State → oseair.Prog → oseair.State → Prop
 | refl (s : oseair.State) (prog : oseair.Prog) : StepStar s prog s
