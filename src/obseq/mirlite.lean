@@ -1,5 +1,5 @@
 import obseq.types
-import obseq.sb
+import obseq.allocator
 
 namespace obseq.mirlite
 
@@ -106,6 +106,22 @@ def writeWordSeq (m : Mem) (addr : Word) (vals : List MemValue) : Mem :=
 def allocate (m : Mem) (sz : Nat) : Word × Mem :=
   (m.addrStart, { m with addrStart := m.addrStart + sz })
 
+structure AllocatorSpec extends obseq.AllocatorSpec Mem where
+  alloc_mMap : ∀ m sz, (alloc m sz).2.mMap = m.mMap
+
+def bumpAllocator : AllocatorSpec where
+  alloc := allocate
+  alloc_mMap := by
+    intro m sz
+    rfl
+
+theorem AllocatorSpec.alloc_mMap_eq
+  (A : AllocatorSpec)
+  (m : Mem)
+  (sz : Nat) :
+  (A.alloc m sz).2.mMap = m.mMap := by
+  exact A.alloc_mMap m sz
+
 -- Place Resolution Result
 structure PlaceRes where
   addr : Word
@@ -113,6 +129,64 @@ structure PlaceRes where
   ty : TyVal
   state : State
 deriving Repr, Inhabited
+
+def lExprFuel : LExpr → Nat
+  | LExpr.Place _ => 0
+  | LExpr.DrefOp _ => 1
+
+mutual
+  def rExprFuel : RExpr → Nat
+    | RExpr.ConstOp _ => 1
+    | RExpr.CopyOp _ => 1
+    | RExpr.MoveOp _ => 1
+    | RExpr.RefOp _ _ => 1
+    | RExpr.DrefOp _ => 1
+    | RExpr.StructInitOp fields => rExprListFuel fields + 1
+    | RExpr.BinaryOp lhs rhs => rExprFuel lhs + rExprFuel rhs + 1
+
+  def rExprListFuel : List RExpr → Nat
+    | [] => 0
+    | expr :: rest => rExprFuel expr + rExprListFuel rest + 1
+end
+
+@[simp] theorem rExprFuel_binary (lhs rhs : RExpr) :
+    rExprFuel (RExpr.BinaryOp lhs rhs) = rExprFuel lhs + rExprFuel rhs + 1 := rfl
+
+@[simp] theorem rExprFuel_struct (fields : List RExpr) :
+    rExprFuel (RExpr.StructInitOp fields) = rExprListFuel fields + 1 := rfl
+
+@[simp] theorem rExprListFuel_cons (expr : RExpr) (rest : List RExpr) :
+    rExprListFuel (expr :: rest) = rExprFuel expr + rExprListFuel rest + 1 := rfl
+
+theorem rExprListFuel_lt_cons (expr : RExpr) (rest : List RExpr) :
+    rExprListFuel rest < rExprListFuel (expr :: rest) := by
+  have h_pos : 0 < rExprFuel expr := by
+    cases expr <;> simp [rExprFuel]
+  simp [rExprListFuel]
+  omega
+
+theorem rExprFuel_lt_listFuel_head (expr : RExpr) (rest : List RExpr) :
+    rExprFuel expr < rExprListFuel (expr :: rest) := by
+  simp [rExprListFuel]
+  omega
+
+theorem rExprListFuel_lt_struct (fields : List RExpr) :
+    rExprListFuel fields < rExprFuel (RExpr.StructInitOp fields) := by
+  simp [rExprFuel]
+
+theorem rExprFuel_lt_binary_left (lhs rhs : RExpr) :
+    rExprFuel lhs < rExprFuel (RExpr.BinaryOp lhs rhs) := by
+  have h_pos : 0 < rExprFuel rhs := by
+    cases rhs <;> simp [rExprFuel]
+  simp [rExprFuel]
+  omega
+
+theorem rExprFuel_lt_binary_right (lhs rhs : RExpr) :
+    rExprFuel rhs < rExprFuel (RExpr.BinaryOp lhs rhs) := by
+  have h_pos : 0 < rExprFuel lhs := by
+    cases lhs <;> simp [rExprFuel]
+  simp [rExprFuel]
+  omega
 
 -- Helper to compute offset and type for sub-place
 def resolvePath (ty : TyVal) (path : List Word) : Option (Nat × TyVal) :=
@@ -132,109 +206,115 @@ def resolveDirectPlace (state : State) (p : Place) : Result × PlaceRes :=
        (Result.Err s!"Place base {p.base} not found", default)
 
 -- Place Resolution (plc-resolv, alloc-plc-resolv, dref-plc-resolv)
-partial def resolvePlace (state : State) (l : LExpr) (_forWrite : Bool) : Result × PlaceRes :=
-  match l with
-  | LExpr.Place p =>
-    resolveDirectPlace state p
-
-  | LExpr.DrefOp p =>
-     -- dref-plc-resolv
-     match resolveDirectPlace state p with
-     | (Result.Ok s1, res1) =>
-        -- Issue read
-        match sb_read s1.ap res1.addr res1.tag with
-        | SBResult.Ok ap2 =>
-           let s2 := { s1 with ap := ap2 }
-           match readWordSeq s2.mem res1.addr 1 with
-           | [MemValue.PlaceTag q gq] =>
-             -- Recursive resolve of q. q is a Place.
-             match resolvePlace s2 (LExpr.Place q) false with
-             | (Result.Ok s3, res3) =>
-                (Result.Ok s3, { res3 with tag := gq })
-             | (Result.Err msg, _) => (Result.Err msg, default)
-           | _ => (Result.Err "Deref: Memory did not contain a PlaceTag", default)
-        | SBResult.Err msg => (Result.Err msg, default)
-     | (Result.Err msg, _) => (Result.Err msg, default)
+def resolvePlace (state : State) : LExpr → Bool → Result × PlaceRes
+  | LExpr.Place p, _ =>
+      resolveDirectPlace state p
+  | LExpr.DrefOp p, _ =>
+      -- dref-plc-resolv
+      match resolveDirectPlace state p with
+      | (Result.Ok s1, res1) =>
+          match sb_read s1.ap res1.addr res1.tag with
+          | SBResult.Ok ap2 =>
+              let s2 := { s1 with ap := ap2 }
+              match readWordSeq s2.mem res1.addr 1 with
+              | [MemValue.PlaceTag q gq] =>
+                  match resolvePlace s2 (LExpr.Place q) false with
+                  | (Result.Ok s3, res3) =>
+                      (Result.Ok s3, { res3 with tag := gq })
+                  | (Result.Err msg, _) => (Result.Err msg, default)
+              | _ => (Result.Err "Deref: Memory did not contain a PlaceTag", default)
+          | SBResult.Err msg => (Result.Err msg, default)
+      | (Result.Err msg, _) => (Result.Err msg, default)
+termination_by l _ => lExprFuel l
+decreasing_by
+  simp [lExprFuel]
 
 mutual
-  partial def evalStructFields (fields : List RExpr) (state : State)
-      (accVals : List MemValue := []) (accTys : List TyVal := []) : ValRes :=
-    match fields with
-    | [] => ValRes.Ok accVals (TyVal.TupTy accTys) state
-    | f :: rest =>
-      match evalRExpr state f with
-      | ValRes.Ok vals ty s' => evalStructFields rest s' (accVals ++ vals) (accTys ++ [ty])
-      | ValRes.Err msg => ValRes.Err msg
+  def evalStructFields : List RExpr → State → List MemValue → List TyVal → ValRes
+    | [], state, accVals, accTys =>
+        ValRes.Ok accVals (TyVal.TupTy accTys) state
+    | f :: rest, state, accVals, accTys =>
+        match evalRExpr state f with
+        | ValRes.Ok vals ty s' => evalStructFields rest s' (accVals ++ vals) (accTys ++ [ty])
+        | ValRes.Err msg => ValRes.Err msg
+  termination_by fields => rExprListFuel fields
+  decreasing_by
+    all_goals
+      first
+      | exact rExprFuel_lt_listFuel_head f rest
+      | exact rExprListFuel_lt_cons f rest
 
   -- Eval RExpr
-  partial def evalRExpr (state : State) (expr : RExpr) : ValRes :=
-    match expr with
+  def evalRExpr (state : State) : RExpr → ValRes
     | RExpr.ConstOp n => ValRes.Ok [MemValue.Val n] TyVal.NatTy state
     | RExpr.StructInitOp fields =>
-       evalStructFields fields state
-
+        evalStructFields fields state [] []
     | RExpr.CopyOp p =>
-       -- copy-plc
-       match resolveDirectPlace state p with
-       | (Result.Ok s1, res) =>
-         match sb_read s1.ap res.addr res.tag with
-         | SBResult.Ok ap2 =>
-           let s2 := { s1 with ap := ap2 }
-           let vals := readWordSeq s2.mem res.addr (typeSize res.ty)
-           ValRes.Ok vals res.ty s2
-         | SBResult.Err msg => ValRes.Err msg
-       | (Result.Err msg, _) => ValRes.Err msg
-
+        -- copy-plc
+        match resolveDirectPlace state p with
+        | (Result.Ok s1, res) =>
+            match sb_read s1.ap res.addr res.tag with
+            | SBResult.Ok ap2 =>
+                let s2 := { s1 with ap := ap2 }
+                let vals := readWordSeq s2.mem res.addr (typeSize res.ty)
+                ValRes.Ok vals res.ty s2
+            | SBResult.Err msg => ValRes.Err msg
+        | (Result.Err msg, _) => ValRes.Err msg
     | RExpr.MoveOp p =>
-       -- move-place
-       match resolveDirectPlace state p with
-       | (Result.Ok s1, res) =>
-         match sb_move s1.ap res.addr res.tag with
-         | SBResult.Ok ap2 =>
-           let s2 := { s1 with ap := ap2 }
-           let vals := readWordSeq s2.mem res.addr (typeSize res.ty)
-           ValRes.Ok vals res.ty s2
-         | SBResult.Err msg => ValRes.Err msg
-       | (Result.Err msg, _) => ValRes.Err msg
-
+        -- move-place
+        match resolveDirectPlace state p with
+        | (Result.Ok s1, res) =>
+            match sb_move s1.ap res.addr res.tag with
+            | SBResult.Ok ap2 =>
+                let s2 := { s1 with ap := ap2 }
+                let vals := readWordSeq s2.mem res.addr (typeSize res.ty)
+                ValRes.Ok vals res.ty s2
+            | SBResult.Err msg => ValRes.Err msg
+        | (Result.Err msg, _) => ValRes.Err msg
     | RExpr.RefOp kind p =>
-      -- ref-place
-      match resolveDirectPlace state p with
-      | (Result.Ok s1, res) =>
-        let (sbRes, newTag) := match kind with
-          | RefKind.Mut => sb_ref s1.ap res.addr res.tag RefOpKind.Mut
-          | RefKind.Shared => sb_ref s1.ap res.addr res.tag RefOpKind.Shared
-          | RefKind.Raw => sb_ref s1.ap res.addr res.tag RefOpKind.Raw
-        match sbRes with
-        | SBResult.Ok ap2 =>
-          let s2 := { s1 with ap := ap2 }
-          ValRes.Ok [MemValue.PlaceTag p newTag] TyVal.PTy s2
-        | SBResult.Err msg => ValRes.Err msg
-      | (Result.Err msg, _) => ValRes.Err msg
-
+        -- ref-place
+        match resolveDirectPlace state p with
+        | (Result.Ok s1, res) =>
+            let (sbRes, newTag) := match kind with
+              | RefKind.Mut => sb_ref s1.ap res.addr res.tag RefOpKind.Mut
+              | RefKind.Shared => sb_ref s1.ap res.addr res.tag RefOpKind.Shared
+              | RefKind.Raw => sb_ref s1.ap res.addr res.tag RefOpKind.Raw
+            match sbRes with
+            | SBResult.Ok ap2 =>
+                let s2 := { s1 with ap := ap2 }
+                ValRes.Ok [MemValue.PlaceTag p newTag] TyVal.PTy s2
+            | SBResult.Err msg => ValRes.Err msg
+        | (Result.Err msg, _) => ValRes.Err msg
     | RExpr.DrefOp p =>
-      -- deref-place (Deref on RHS)
-      match resolvePlace state (LExpr.DrefOp p) false with
-      | (Result.Ok s1, res) =>
-         match sb_read s1.ap res.addr res.tag with
-         | SBResult.Ok ap2 =>
-           let s2 := { s1 with ap := ap2 }
-           let vals := readWordSeq s2.mem res.addr (typeSize res.ty)
-           ValRes.Ok vals res.ty s2
-         | SBResult.Err msg => ValRes.Err msg
-      | (Result.Err msg, _) => ValRes.Err msg
-
+        -- deref-place (Deref on RHS)
+        match resolvePlace state (LExpr.DrefOp p) false with
+        | (Result.Ok s1, res) =>
+            match sb_read s1.ap res.addr res.tag with
+            | SBResult.Ok ap2 =>
+                let s2 := { s1 with ap := ap2 }
+                let vals := readWordSeq s2.mem res.addr (typeSize res.ty)
+                ValRes.Ok vals res.ty s2
+            | SBResult.Err msg => ValRes.Err msg
+        | (Result.Err msg, _) => ValRes.Err msg
     | RExpr.BinaryOp lhs rhs =>
-       match evalRExpr state lhs with
-       | ValRes.Ok v1 _ s1 =>
-         match evalRExpr s1 rhs with
-         | ValRes.Ok v2 _ s2 =>
-           match (v1, v2) with
-           | ([MemValue.Val n1], [MemValue.Val n2]) =>
-               ValRes.Ok [MemValue.Val (n1 + n2)] TyVal.NatTy s2
-           | _ => ValRes.Err "BinaryOp expects Nat"
-         | ValRes.Err msg => ValRes.Err msg
-       | ValRes.Err msg => ValRes.Err msg
+        match evalRExpr state lhs with
+        | ValRes.Ok v1 _ s1 =>
+            match evalRExpr s1 rhs with
+            | ValRes.Ok v2 _ s2 =>
+                match (v1, v2) with
+                | ([MemValue.Val n1], [MemValue.Val n2]) =>
+                    ValRes.Ok [MemValue.Val (n1 + n2)] TyVal.NatTy s2
+                | _ => ValRes.Err "BinaryOp expects Nat"
+            | ValRes.Err msg => ValRes.Err msg
+        | ValRes.Err msg => ValRes.Err msg
+  termination_by expr => rExprFuel expr
+  decreasing_by
+    all_goals
+      first
+      | exact rExprListFuel_lt_struct _
+      | exact rExprFuel_lt_listFuel_head _ _
+      | exact rExprFuel_lt_binary_left _ _
+      | exact rExprFuel_lt_binary_right _ _
 end
 
 def writeResolvedPlace
@@ -246,9 +326,10 @@ def writeResolvedPlace
     Result.Ok s'
   | SBResult.Err msg => Result.Err msg
 
-def allocateBaseAndWrite
+def allocateBaseAndWriteWith
+  (A : AllocatorSpec)
   (pc0 : Nat) (state : State) (base : Word) (ty : TyVal) (vals : List MemValue) : Result :=
-  let (addr, mem') := allocate state.mem (typeSize ty)
+  let (addr, mem') := A.alloc state.mem (typeSize ty)
   let (sbRes, tag) := sb_own state.ap addr
   match sbRes with
   | SBResult.Ok ap' =>
@@ -261,7 +342,12 @@ def allocateBaseAndWrite
     | SBResult.Err msg => Result.Err msg
   | SBResult.Err msg => Result.Err msg
 
-def finishPlaceAssign
+def allocateBaseAndWrite
+  (pc0 : Nat) (state : State) (base : Word) (ty : TyVal) (vals : List MemValue) : Result :=
+  allocateBaseAndWriteWith bumpAllocator pc0 state base ty vals
+
+def finishPlaceAssignWith
+  (A : AllocatorSpec)
   (pc0 : Nat) (state : State) (p : Place) (vals : List MemValue) (ty : TyVal) : Result :=
   match state.env.lookup p.base with
   | some (addr, _, tag) =>
@@ -273,12 +359,19 @@ def finishPlaceAssign
       | (Result.Err msg, _) => Result.Err msg
   | none =>
     if p.path == [] then
-      allocateBaseAndWrite pc0 state p.base ty vals
+      allocateBaseAndWriteWith A pc0 state p.base ty vals
     else
       Result.Err "Cannot allocate sub-path"
 
+def finishPlaceAssign
+  (pc0 : Nat) (state : State) (p : Place) (vals : List MemValue) (ty : TyVal) : Result :=
+  finishPlaceAssignWith bumpAllocator pc0 state p vals ty
+
+def stepAssignConstWith (A : AllocatorSpec) (state : State) (p : Place) (n : Word) : Result :=
+  finishPlaceAssignWith A state.pc state p [MemValue.Val n] TyVal.NatTy
+
 def stepAssignConst (state : State) (p : Place) (n : Word) : Result :=
-  finishPlaceAssign state.pc state p [MemValue.Val n] TyVal.NatTy
+  stepAssignConstWith bumpAllocator state p n
 
 def structConstWords? : List RExpr → Option (List Word)
   | [] => some []
@@ -286,11 +379,14 @@ def structConstWords? : List RExpr → Option (List Word)
       Option.map (List.cons n) (structConstWords? rest)
   | _ => none
 
-def stepAssignStructWords (state : State) (p : Place) (fields : List Word) : Result :=
-  finishPlaceAssign state.pc state p (fields.map MemValue.Val)
+def stepAssignStructWordsWith (A : AllocatorSpec) (state : State) (p : Place) (fields : List Word) : Result :=
+  finishPlaceAssignWith A state.pc state p (fields.map MemValue.Val)
     (TyVal.TupTy (List.replicate fields.length TyVal.NatTy))
 
-def stepAssignCopy (state : State) (dst src : Place) : Result :=
+def stepAssignStructWords (state : State) (p : Place) (fields : List Word) : Result :=
+  stepAssignStructWordsWith bumpAllocator state p fields
+
+def stepAssignCopyWith (A : AllocatorSpec) (state : State) (dst src : Place) : Result :=
   if src.path == [] then
     match state.env.lookup src.base with
     | some (srcAddr, srcTy, srcTag) =>
@@ -298,7 +394,7 @@ def stepAssignCopy (state : State) (dst src : Place) : Result :=
       | SBResult.Ok ap2 =>
         let s2 := { state with ap := ap2 }
         let vals := readWordSeq s2.mem srcAddr (typeSize srcTy)
-        finishPlaceAssign state.pc s2 dst vals srcTy
+        finishPlaceAssignWith A state.pc s2 dst vals srcTy
       | SBResult.Err msg => Result.Err msg
     | none => Result.Err s!"Place base {src.base} not found"
   else
@@ -308,16 +404,19 @@ def stepAssignCopy (state : State) (dst src : Place) : Result :=
       | SBResult.Ok ap2 =>
         let s2 := { s1 with ap := ap2 }
         let vals := readWordSeq s2.mem srcRes.addr (typeSize srcRes.ty)
-        finishPlaceAssign state.pc s2 dst vals srcRes.ty
+        finishPlaceAssignWith A state.pc s2 dst vals srcRes.ty
       | SBResult.Err msg => Result.Err msg
     | (Result.Err msg, _) => Result.Err msg
 
-def stepAssignGeneric (state : State) (lhs : LExpr) (rhs : RExpr) : Result :=
+def stepAssignCopy (state : State) (dst src : Place) : Result :=
+  stepAssignCopyWith bumpAllocator state dst src
+
+def stepAssignGenericWith (A : AllocatorSpec) (state : State) (lhs : LExpr) (rhs : RExpr) : Result :=
   match evalRExpr state rhs with
   | ValRes.Ok vals ty s1 =>
     match lhs with
     | LExpr.Place p =>
-       finishPlaceAssign state.pc s1 p vals ty
+       finishPlaceAssignWith A state.pc s1 p vals ty
     | LExpr.DrefOp _ =>
        match resolvePlace s1 lhs true with
        | (Result.Ok s2, res) =>
@@ -325,19 +424,35 @@ def stepAssignGeneric (state : State) (lhs : LExpr) (rhs : RExpr) : Result :=
        | (Result.Err msg, _) => Result.Err msg
   | ValRes.Err msg => Result.Err msg
 
+def stepAssignGeneric (state : State) (lhs : LExpr) (rhs : RExpr) : Result :=
+  stepAssignGenericWith bumpAllocator state lhs rhs
+
 -- Eval Stmt
-def step (state : State) (prog : Prog) : Result :=
+def stepWith (A : AllocatorSpec) (state : State) (prog : Prog) : Result :=
   if h : state.pc < prog.length then
     let stmt := prog.get ⟨state.pc, h⟩
     match stmt with
     | Stmt.Halt => Result.Ok state
-    | Stmt.Assgn (LExpr.Place p) (RExpr.ConstOp c) => stepAssignConst state p c
+    | Stmt.Assgn (LExpr.Place p) (RExpr.ConstOp c) => stepAssignConstWith A state p c
     | Stmt.Assgn (LExpr.Place p) (RExpr.StructInitOp fields) =>
         match structConstWords? fields with
-        | some words => stepAssignStructWords state p words
-        | none => stepAssignGeneric state (LExpr.Place p) (RExpr.StructInitOp fields)
-    | Stmt.Assgn (LExpr.Place dst) (RExpr.CopyOp src) => stepAssignCopy state dst src
-    | Stmt.Assgn lhs rhs => stepAssignGeneric state lhs rhs
+        | some words => stepAssignStructWordsWith A state p words
+        | none => stepAssignGenericWith A state (LExpr.Place p) (RExpr.StructInitOp fields)
+    | Stmt.Assgn (LExpr.Place dst) (RExpr.CopyOp src) => stepAssignCopyWith A state dst src
+    | Stmt.Assgn lhs rhs => stepAssignGenericWith A state lhs rhs
   else Result.Ok state -- PC out of bounds
+
+def step (state : State) (prog : Prog) : Result :=
+  stepWith bumpAllocator state prog
+
+def runNWith (A : AllocatorSpec) : Nat → State → Prog → Result
+  | 0, state, _ => Result.Ok state
+  | n + 1, state, prog =>
+      match stepWith A state prog with
+      | Result.Ok state' => runNWith A n state' prog
+      | Result.Err msg => Result.Err msg
+
+def runN : Nat → State → Prog → Result :=
+  runNWith bumpAllocator
 
 end obseq.mirlite

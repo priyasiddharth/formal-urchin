@@ -15,6 +15,8 @@ open obseq.oseair hiding State Result
 open obseq.compile
 open scoped obseq.notation
 
+variable {A_m : mirlite.AllocatorSpec} {A_o : oseair.AllocatorSpec}
+
 structure StructInitExistingCtx where
   dst : mirlite.Place
   reg : Register
@@ -127,7 +129,7 @@ theorem mirlite_step_inv
   (addr tag : Word)
   (h_env : s_mir.env.lookup ctx.dst.base = some (addr, layoutToTyVal ctx.baseLayout, tag))
   (h_start : StartsAt prog_mir s_mir.pc [ctx.stmt])
-  (h_step : mirlite.step s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
+  (h_step : mirlite.stepWith A_m s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
   ∃ ap',
     sb_use_mb s_mir.ap (addr + ctx.off) tag = SBResult.Ok ap' ∧
     s_mir_next =
@@ -139,11 +141,11 @@ theorem mirlite_step_inv
   rcases List.get?_eq_some_iff.mp h_stmt_mir with ⟨h_pc_mir, h_get_mir⟩
   have h_words : mirlite.structConstWords? (List.map mirlite.RExpr.ConstOp ctx.fields) = some ctx.fields := by
     simpa [wordStructFields] using mirlite_structConstWords_wordStructFields ctx.fields
-  unfold mirlite.step at h_step
+  unfold mirlite.stepWith at h_step
   rw [dif_pos h_pc_mir, h_get_mir] at h_step
   simp [StructInitExistingCtx.stmt, obseq.notation.placeExpr, wordStructRhs,
-    wordStructFields, h_words, mirlite.stepAssignStructWords] at h_step
-  rw [finishPlaceAssign_existing_eq h_env ctx.h_path] at h_step
+    wordStructFields, h_words, mirlite.stepAssignStructWordsWith] at h_step
+  rw [finishPlaceAssignWith_existing_eq h_env ctx.h_path] at h_step
   cases h_use : sb_use_mb s_mir.ap (addr + ctx.off) tag with
   | Err _ =>
       simp [h_use] at h_step
@@ -164,9 +166,9 @@ theorem simulation
   (h_sim : LocalSim ctx ρa ρt s_mir s_osea)
   (h_mir_start : StartsAt prog_mir s_mir.pc [ctx.stmt])
   (h_osea_start : StartsAt prog_osea s_osea.pc ctx.compiled)
-  (h_mir_step : mirlite.step s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
+  (h_mir_step : mirlite.stepWith A_m s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
   ∃ s_osea_next,
-    StepStar s_osea prog_osea s_osea_next ∧
+    StepStarWith A_o s_osea prog_osea s_osea_next ∧
     LocalSim ctx ρa ρt s_mir_next s_osea_next := by
   let ⟨addr_m, addr_o, tag_m, tag_o, h_ptr, _h_block⟩ :=
     StateSim.place_projected h_sim ctx.h_lookup ctx.h_path

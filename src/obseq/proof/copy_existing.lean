@@ -18,6 +18,8 @@ open obseq.oseair hiding State Result
 open obseq.compile
 open scoped obseq.notation
 
+variable {A_m : mirlite.AllocatorSpec} {A_o : oseair.AllocatorSpec}
+
 def CopyMirPost
   (layout : LayoutTy)
   (s_mir : mirlite.State)
@@ -110,7 +112,7 @@ theorem osea_run_ok
       some (TyVal.PTy, [oseair.Val.Ptr dstAddr 0 (blockSize ctx.layout) dstTag]))
   (h_read : sb_read s_osea.ap srcAddr srcTag = SBResult.Ok apRead)
   (h_write : sb_use_mb apRead dstAddr dstTag = SBResult.Ok apWrite) :
-  oseair.runN 1 s_osea prog_osea =
+  oseair.runNWith A_o 1 s_osea prog_osea =
     oseair.Result.Ok (CopyOseaPost ctx.layout s_osea apWrite srcAddr dstAddr) := by
   rw [ctx.compiled_eq] at h_start
   simpa [CopyOseaPost] using
@@ -133,32 +135,32 @@ theorem mirlite_step_inv
   (h_src : s_mir.env.lookup ctx.srcBase = some (srcAddr, layoutToTyVal ctx.layout, srcTag))
   (h_dst : s_mir.env.lookup ctx.dstBase = some (dstAddr, layoutToTyVal ctx.layout, dstTag))
   (h_start : StartsAt prog_mir s_mir.pc [ctx.stmt])
-  (h_step : mirlite.step s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
+  (h_step : mirlite.stepWith A_m s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
   ∃ apRead apWrite,
     sb_read s_mir.ap srcAddr srcTag = SBResult.Ok apRead ∧
     sb_use_mb apRead dstAddr dstTag = SBResult.Ok apWrite ∧
     s_mir_next = CopyMirPost ctx.layout s_mir apWrite srcAddr dstAddr := by
   have h_stmt_mir : prog_mir.get? s_mir.pc = some ctx.stmt := StartsAt.singleton h_start
   rcases List.get?_eq_some_iff.mp h_stmt_mir with ⟨h_pc_mir, h_get_mir⟩
-  unfold mirlite.step at h_step
+  unfold mirlite.stepWith at h_step
   rw [dif_pos h_pc_mir, h_get_mir] at h_step
   cases h_read : sb_read s_mir.ap srcAddr srcTag with
   | Err _ =>
       simp [CopyExistingCtx.stmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
         obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
-        mirlite.stepAssignCopy, h_src, h_read] at h_step
+        mirlite.stepAssignCopyWith, h_src, h_read] at h_step
   | Ok apRead =>
       cases h_write : sb_use_mb apRead dstAddr dstTag with
       | Err _ =>
           simp [CopyExistingCtx.stmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
             obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
-            mirlite.stepAssignCopy, mirlite.finishPlaceAssign, mirlite.writeResolvedPlace,
+            mirlite.stepAssignCopyWith, mirlite.finishPlaceAssignWith, mirlite.writeResolvedPlace,
             h_src, h_dst, h_read, h_write] at h_step
       | Ok apWrite =>
           refine ⟨apRead, apWrite, rfl, h_write, ?_⟩
           simpa [CopyExistingCtx.stmt, obseq.notation.placeExpr, obseq.notation.mkPlace,
             obseq.notation.copyPlaceRhs, obseq.notation.copyRhs, obseq.notation.basePlace,
-            mirlite.stepAssignCopy, mirlite.finishPlaceAssign, mirlite.writeResolvedPlace,
+            mirlite.stepAssignCopyWith, mirlite.finishPlaceAssignWith, mirlite.writeResolvedPlace,
             h_src, h_dst, h_read, h_write, CopyMirPost] using h_step.symm
 
 variable (ctx : CopyExistingCtx)
@@ -174,9 +176,9 @@ theorem simulation
   (h_sim : LocalSim ctx ρa ρt s_mir s_osea)
   (h_mir_start : StartsAt prog_mir s_mir.pc [ctx.stmt])
   (h_osea_start : StartsAt prog_osea s_osea.pc ctx.compiled)
-  (h_mir_step : mirlite.step s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
+  (h_mir_step : mirlite.stepWith A_m s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
   ∃ s_osea_next,
-    StepStar s_osea prog_osea s_osea_next ∧
+    StepStarWith A_o s_osea prog_osea s_osea_next ∧
     LocalSim ctx ρa ρt s_mir_next s_osea_next := by
   let ⟨srcAddr_m, srcAddr_o, srcTag_m, srcTag_o, h_src_ptr, h_src_mem⟩ := StateSim.place h_sim ctx.h_src_lookup
   let ⟨dstAddr_m, dstAddr_o, dstTag_m, dstTag_o, h_dst_ptr, _h_dst_mem⟩ := StateSim.place h_sim ctx.h_dst_lookup
@@ -208,17 +210,17 @@ theorem simulation
     sb_use_mb_sim_ok h_sb_read h_dst_addr h_dst_tag h_write
   let s_osea_post := CopyOseaPost ctx.layout s_osea apWrite_o srcAddr_o dstAddr_o
   have h_target_run :
-      oseair.runN 1 s_osea prog_osea = oseair.Result.Ok s_osea_post := by
+      oseair.runNWith A_o 1 s_osea prog_osea = oseair.Result.Ok s_osea_post := by
     simpa [s_osea_post] using
       osea_run_ok
         ctx s_osea prog_osea srcAddr_o srcTag_o dstAddr_o dstTag_o
         apRead_o apWrite_o h_osea_start h_src_reg h_dst_reg h_target_read h_target_write
   have h_src_vals :
-      mem_vals_eq
+      mem_vals_eq defaultPtrSim
         (mirlite.readWordSeq s_mir.mem srcAddr_m (blockSize ctx.layout))
         (oseair.readWordSeq s_osea.mem srcAddr_o (blockSize ctx.layout)) :=
     mem_vals_eq_readWordSeq h_src_mem
-  refine ⟨s_osea_post, StepStar.of_runN_ok h_target_run, ?_⟩
+  refine ⟨s_osea_post, StepStarWith.of_runN_ok h_target_run, ?_⟩
   rw [h_next_full]
   simpa [LocalSim, CopyMirPost, CopyOseaPost, s_osea_post] using
     state_sim_write h_sim h_dst_ptr h_sb_write h_src_vals

@@ -414,6 +414,38 @@ theorem SBAddrsUnique_insert
       | inr h_old₂ =>
           exact h_unique h_old₁.1 h_old₂.1
 
+theorem SB.find?_insert_ne
+  {sb : SB} {addr addr' : Word} {stack : BorrowStack}
+  (h_unique : SBAddrsUnique sb)
+  (h_ne : addr' ≠ addr) :
+  SB.find? (SB.insert sb addr stack) addr' = SB.find? sb addr' := by
+  cases h_old : SB.find? sb addr' with
+  | none =>
+      cases h_new : SB.find? (SB.insert sb addr stack) addr' with
+      | none =>
+          rfl
+      | some stack' =>
+          have h_mem_new : (addr', stack') ∈ SB.insert sb addr stack :=
+            SB.find?_some_mem h_new
+          have h_cases := SB.mem_insert_cases h_mem_new
+          cases h_cases with
+          | inl h_eq =>
+              exact False.elim (h_ne h_eq.1)
+          | inr h_old_mem =>
+              have h_old_some : SB.find? sb addr' = some stack' :=
+                SB.find?_of_mem_unique h_unique h_old_mem.1
+              rw [h_old] at h_old_some
+              cases h_old_some
+  | some stack' =>
+      have h_mem_old : (addr', stack') ∈ sb :=
+        SB.find?_some_mem h_old
+      have h_mem_new : (addr', stack') ∈ SB.insert sb addr stack :=
+        SB.mem_insert_of_mem_ne h_mem_old h_ne
+      have h_new_eq : SB.find? (SB.insert sb addr stack) addr' = some stack' :=
+        SB.find?_of_mem_unique (sb := SB.insert sb addr stack)
+          (SBAddrsUnique_insert h_unique) h_mem_new
+      simpa [h_old] using h_new_eq
+
 theorem SBValid_insert
   {ap : AccessPerms} {addr : Word} {stack : BorrowStack}
   (h_valid : SBValid ap)
@@ -797,6 +829,197 @@ axiom freshTag_fresh
   {ap : AccessPerms} :
   ¬ tag_live ap ap.NextTag
 
+theorem tag_live_of_find_mem
+  {ap : AccessPerms} {addr : Word} {stack : BorrowStack} {k : RefKind}
+  (h_find : ap.StackMap.find? addr = some stack)
+  (h_mem : k ∈ stack) :
+  tag_live ap k.tag := by
+  refine ⟨addr, ⟨k, ?_, rfl⟩⟩
+  simpa [stackAt, h_find] using h_mem
+
+theorem stack_unique_cons_of_fresh
+  {ap : AccessPerms} {addr : Word} {stack : BorrowStack} {item : RefKind}
+  (h_valid : SBValid ap)
+  (h_find : ap.StackMap.find? addr = some stack)
+  (h_fresh : ¬ tag_live ap item.tag) :
+  StackTagsUnique (item :: stack) := by
+  have h_mem_stack : (addr, stack) ∈ ap.StackMap :=
+    SB.find?_some_mem h_find
+  have h_unique_stack : StackTagsUnique stack :=
+    h_valid.2 h_mem_stack
+  intro k₁ k₂ hk₁ hk₂ h_eq
+  simp at hk₁ hk₂
+  rcases hk₁ with rfl | hk₁_tail
+  · rcases hk₂ with rfl | hk₂_tail
+    · rfl
+    · exfalso
+      apply h_fresh
+      simpa [h_eq] using tag_live_of_find_mem h_find hk₂_tail
+  · rcases hk₂ with rfl | hk₂_tail
+    · exfalso
+      apply h_fresh
+      simpa [h_eq] using tag_live_of_find_mem h_find hk₁_tail
+    · exact h_unique_stack hk₁_tail hk₂_tail h_eq
+
+theorem stackAt_eq_of_find_eq
+  {ap ap' : AccessPerms} {addr : Word}
+  (h_find : ap'.StackMap.find? addr = ap.StackMap.find? addr) :
+  stackAt ap' addr = stackAt ap addr := by
+  simp [stackAt, h_find]
+
+theorem sb_sim_of_right_stackAt_eq
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
+  {ap_m ap_o ap_o' : AccessPerms}
+  (h_sim : sb_sim ρa ρt ap_m ap_o)
+  (h_valid : SBValid ap_o')
+  (h_stackAt :
+    ∀ addr addr', ρa addr = some addr' → stackAt ap_o' addr' = stackAt ap_o addr') :
+  sb_sim ρa ρt ap_m ap_o' := by
+  cases h_sim with
+  | mk valid_mir _ at_sim addr_inj tag_mapped tag_inj =>
+      refine ⟨valid_mir, h_valid, ?_, addr_inj, tag_mapped, tag_inj⟩
+      intro addr addr' h_addr
+      simpa [sb_at_sim, h_stackAt addr addr' h_addr] using at_sim addr addr' h_addr
+
+theorem sb_die_preserves_valid
+  {ap ap' : AccessPerms} {addr tag : Word}
+  (h_valid : SBValid ap)
+  (h_die : sb_die ap addr tag = Ok ap') :
+  SBValid ap' := by
+  unfold sb_die at h_die
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      simp [h_find] at h_die
+  | some stack =>
+      cases stack with
+      | nil =>
+          simp [h_find] at h_die
+      | cons item y =>
+          by_cases h_tag : item.tag == tag
+          · cases item with
+            | Own t =>
+                simp [h_find, h_tag] at h_die
+            | MutRef t =>
+                simp [h_find, h_tag] at h_die
+                subst ap'
+                have h_mem_stack : (addr, RefKind.MutRef t :: y) ∈ ap.StackMap :=
+                  SB.find?_some_mem h_find
+                have h_tags_unique : StackTagsUnique (RefKind.MutRef t :: y) :=
+                  h_valid.2 h_mem_stack
+                have h_new_unique : StackTagsUnique y := by
+                  refine stack_unique_of_subset h_tags_unique ?_
+                  intro k hk
+                  exact List.Mem.tail _ hk
+                exact SBValid_insert h_valid h_new_unique
+            | Ref t =>
+                simp [h_find, h_tag] at h_die
+                subst ap'
+                have h_mem_stack : (addr, RefKind.Ref t :: y) ∈ ap.StackMap :=
+                  SB.find?_some_mem h_find
+                have h_tags_unique : StackTagsUnique (RefKind.Ref t :: y) :=
+                  h_valid.2 h_mem_stack
+                have h_new_unique : StackTagsUnique y := by
+                  refine stack_unique_of_subset h_tags_unique ?_
+                  intro k hk
+                  exact List.Mem.tail _ hk
+                exact SBValid_insert h_valid h_new_unique
+            | RawPtr t =>
+                simp [h_find, h_tag] at h_die
+                subst ap'
+                have h_mem_stack : (addr, RefKind.RawPtr t :: y) ∈ ap.StackMap :=
+                  SB.find?_some_mem h_find
+                have h_tags_unique : StackTagsUnique (RefKind.RawPtr t :: y) :=
+                  h_valid.2 h_mem_stack
+                have h_new_unique : StackTagsUnique y := by
+                  refine stack_unique_of_subset h_tags_unique ?_
+                  intro k hk
+                  exact List.Mem.tail _ hk
+                exact SBValid_insert h_valid h_new_unique
+          · simp [h_find, h_tag] at h_die
+
+theorem sb_ref_preserves_valid
+  {ap ap' : AccessPerms} {addr tag newTag : Word} {kind : RefOpKind}
+  (h_valid : SBValid ap)
+  (h_ref : sb_ref ap addr tag kind = (Ok ap', newTag)) :
+  SBValid ap' := by
+  cases kind with
+  | Shared =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_read ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          have h_parent_valid : SBValid ap_parent :=
+            sb_read_preserves_valid h_valid h_parent
+          cases h_find : ap_parent.StackMap.find? addr with
+          | none =>
+              simp [h_parent, h_find, freshTag] at h_ref
+          | some stack =>
+              simp [h_parent, h_find, freshTag] at h_ref
+              rcases h_ref with ⟨h_ok, h_tag⟩
+              cases h_ok
+              cases h_tag
+              have h_valid_next : SBValid { ap_parent with NextTag := ap_parent.NextTag + 1 } := by
+                simpa [SBValid] using h_parent_valid
+              have h_new_unique : StackTagsUnique (RefKind.Ref ap_parent.NextTag :: stack) := by
+                refine stack_unique_cons_of_fresh h_parent_valid h_find ?_
+                simpa using (freshTag_fresh (ap := ap_parent))
+              exact
+                SBValid_insert
+                  (ap := { ap_parent with NextTag := ap_parent.NextTag + 1 })
+                  h_valid_next h_new_unique
+  | Mut =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_use_mb ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          have h_parent_valid : SBValid ap_parent :=
+            sb_use_mb_preserves_valid h_valid h_parent
+          cases h_find : ap_parent.StackMap.find? addr with
+          | none =>
+              simp [h_parent, h_find, freshTag] at h_ref
+          | some stack =>
+              simp [h_parent, h_find, freshTag] at h_ref
+              rcases h_ref with ⟨h_ok, h_tag⟩
+              cases h_ok
+              cases h_tag
+              have h_valid_next : SBValid { ap_parent with NextTag := ap_parent.NextTag + 1 } := by
+                simpa [SBValid] using h_parent_valid
+              have h_new_unique : StackTagsUnique (RefKind.MutRef ap_parent.NextTag :: stack) := by
+                refine stack_unique_cons_of_fresh h_parent_valid h_find ?_
+                simpa using (freshTag_fresh (ap := ap_parent))
+              exact
+                SBValid_insert
+                  (ap := { ap_parent with NextTag := ap_parent.NextTag + 1 })
+                  h_valid_next h_new_unique
+  | Raw =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_use_mb ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          have h_parent_valid : SBValid ap_parent :=
+            sb_use_mb_preserves_valid h_valid h_parent
+          cases h_find : ap_parent.StackMap.find? addr with
+          | none =>
+              simp [h_parent, h_find, freshTag] at h_ref
+          | some stack =>
+              simp [h_parent, h_find, freshTag] at h_ref
+              rcases h_ref with ⟨h_ok, h_tag⟩
+              cases h_ok
+              cases h_tag
+              have h_valid_next : SBValid { ap_parent with NextTag := ap_parent.NextTag + 1 } := by
+                simpa [SBValid] using h_parent_valid
+              have h_new_unique : StackTagsUnique (RefKind.RawPtr ap_parent.NextTag :: stack) := by
+                refine stack_unique_cons_of_fresh h_parent_valid h_find ?_
+                simpa using (freshTag_fresh (ap := ap_parent))
+              exact
+                SBValid_insert
+                  (ap := { ap_parent with NextTag := ap_parent.NextTag + 1 })
+                  h_valid_next h_new_unique
+
 axiom sb_read_sim_ok
   {ρa : AddrRenameMap} {ρt : TagRenameMap}
   {ap_m ap_o ap_m' : AccessPerms}
@@ -834,6 +1057,71 @@ axiom sb_own_sim_extend
       (extendTagRenameMap ρt tag_m tag_o)
       ap_m' ap_o'
 
+/-! ### sb_ref bilateral simulation -/
+
+/--
+When `sb_ref` succeeds on the MIR side, the same operation succeeds on the
+OSEA side with a (possibly different) fresh borrow tag.  The resulting access
+permissions are SB-similar under the *same* address renaming but an *extended*
+tag renaming that maps the new MIR borrow tag to the new OSEA borrow tag.
+-/
+axiom sb_ref_sim_ok
+  {ρa : AddrRenameMap} {ρt : TagRenameMap}
+  {ap_m ap_o ap_m' : AccessPerms}
+  {addr_m addr_o tag_m tag_o newTag_m : Word}
+  {kind : RefOpKind}
+  (h_sim : sb_sim ρa ρt ap_m ap_o)
+  (h_addr : ρa addr_m = some addr_o)
+  (h_tag : ρt tag_m = some tag_o)
+  (h_ref : sb_ref ap_m addr_m tag_m kind = (Ok ap_m', newTag_m)) :
+  ∃ newTag_o ap_o',
+    sb_ref ap_o addr_o tag_o kind = (Ok ap_o', newTag_o) ∧
+    sb_sim ρa (extendTagRenameMap ρt newTag_m newTag_o) ap_m' ap_o'
+
+/-! ### OSEA-only operations on unmapped addresses
+
+The following three axioms express the principle that any successful SB
+operation on an OSEA-side address that is **not** in the codomain of `ρa`
+preserves the renaming-based simulation.  Intuitively, these operations only
+touch stacks at addresses that no MIR address maps to, so every mapped
+address's stack stays unchanged. -/
+
+/--
+Unilateral `sb_own` on an OSEA-only address preserves `sb_sim`.
+-/
+axiom sb_osea_only_own_preserves_sim
+  {ρa : AddrRenameMap} {ρt : TagRenameMap}
+  {ap_m ap_o ap_o' : AccessPerms}
+  {addr_o tag_o : Word}
+  (h_sim : sb_sim ρa ρt ap_m ap_o)
+  (h_unmapped : ∀ a, ρa a ≠ some addr_o)
+  (h_own : sb_own ap_o addr_o = (Ok ap_o', tag_o)) :
+  sb_sim ρa ρt ap_m ap_o'
+
+/--
+Unilateral `sb_use_mb` on an OSEA-only address preserves `sb_sim`.
+-/
+axiom sb_osea_only_use_mb_preserves_sim
+  {ρa : AddrRenameMap} {ρt : TagRenameMap}
+  {ap_m ap_o ap_o' : AccessPerms}
+  {addr_o tag_o : Word}
+  (h_sim : sb_sim ρa ρt ap_m ap_o)
+  (h_unmapped : ∀ a, ρa a ≠ some addr_o)
+  (h_use : sb_use_mb ap_o addr_o tag_o = Ok ap_o') :
+  sb_sim ρa ρt ap_m ap_o'
+
+/--
+Unilateral `sb_read` on an OSEA-only address preserves `sb_sim`.
+-/
+axiom sb_osea_only_read_preserves_sim
+  {ρa : AddrRenameMap} {ρt : TagRenameMap}
+  {ap_m ap_o ap_o' : AccessPerms}
+  {addr_o tag_o : Word}
+  (h_sim : sb_sim ρa ρt ap_m ap_o)
+  (h_unmapped : ∀ a, ρa a ≠ some addr_o)
+  (h_read : sb_read ap_o addr_o tag_o = Ok ap_o') :
+  sb_sim ρa ρt ap_m ap_o'
+
 @[simp] theorem extendAddrRenameMap_self
   (ρa : AddrRenameMap) (src dst : Word) :
   (extendAddrRenameMap ρa src dst) src = some dst := by
@@ -855,5 +1143,468 @@ axiom sb_own_sim_extend
   (h_ne : tag ≠ src) :
   (extendTagRenameMap ρt src dst) tag = ρt tag := by
   simp [extendTagRenameMap, h_ne]
+
+/-! ### SB operation success lemmas -/
+
+/--
+`sb_own` succeeds on an address whose borrow stack is absent (`none`) or empty.
+-/
+theorem sb_osea_only_own_ok
+  {ap : AccessPerms} {addr : Word}
+  (h_empty : ap.StackMap.find? addr = none ∨
+             ap.StackMap.find? addr = some []) :
+  ∃ tag ap', sb_own ap addr = (SBResult.Ok ap', tag)
+:= by
+  unfold sb_own
+  rcases h_empty with h_empty | h_empty
+  · rw [h_empty]
+    let ap1 : AccessPerms := { ap with NextTag := ap.NextTag + 1 }
+    refine ⟨ap.NextTag, { ap1 with StackMap := ap1.StackMap.insert addr [RefKind.Own ap.NextTag] }, ?_⟩
+    simp [freshTag, ap1]
+  · rw [h_empty]
+    let ap1 : AccessPerms := { ap with NextTag := ap.NextTag + 1 }
+    refine ⟨ap.NextTag, { ap1 with StackMap := ap1.StackMap.insert addr [RefKind.Own ap.NextTag] }, ?_⟩
+    simp [freshTag, ap1]
+
+/--
+After `sb_own` succeeds at `addr`, the stack there is exactly `[Own tag]`.
+-/
+theorem sb_own_creates_find
+  {ap ap' : AccessPerms} {addr tag : Word}
+  (h_own : sb_own ap addr = (SBResult.Ok ap', tag)) :
+  ap'.StackMap.find? addr = some [RefKind.Own tag]
+:= by
+  unfold sb_own at h_own
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      rw [h_find] at h_own
+      unfold freshTag at h_own
+      injection h_own with h_ok h_tag
+      cases h_ok
+      cases h_tag
+      exact SB.find?_insert_eq _ _ _
+  | some stack =>
+      cases stack with
+      | nil =>
+          rw [h_find] at h_own
+          unfold freshTag at h_own
+          injection h_own with h_ok h_tag
+          cases h_ok
+          cases h_tag
+          exact SB.find?_insert_eq _ _ _
+      | cons item rest =>
+          simp [h_find] at h_own
+
+theorem sb_own_preserves_find_ne
+  {ap ap' : AccessPerms} {addr addr' tag : Word}
+  (h_valid : SBValid ap)
+  (h_own : sb_own ap addr = (SBResult.Ok ap', tag))
+  (h_ne : addr' ≠ addr) :
+  ap'.StackMap.find? addr' = ap.StackMap.find? addr' := by
+  unfold sb_own at h_own
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      rw [h_find] at h_own
+      unfold freshTag at h_own
+      injection h_own with h_ok h_tag
+      cases h_ok
+      cases h_tag
+      simpa using SB.find?_insert_ne h_valid.1 h_ne
+  | some stack =>
+      cases stack with
+      | nil =>
+          rw [h_find] at h_own
+          unfold freshTag at h_own
+          injection h_own with h_ok h_tag
+          cases h_ok
+          cases h_tag
+          simpa using SB.find?_insert_ne h_valid.1 h_ne
+      | cons hd tl =>
+          simp [h_find] at h_own
+
+/--
+`sb_use_mb` succeeds when the stack is a singleton `[Own tag]`.
+Provable from the `sb_use_mb` definition: `splitStack [Own tag] tag` returns
+`some ([], Own tag, [])` and `Own` matches the `Own | MutRef` arm.
+-/
+theorem sb_use_mb_of_find_own
+  {ap : AccessPerms} {addr tag : Word}
+  (h_find : ap.StackMap.find? addr = some [RefKind.Own tag]) :
+  ∃ ap', sb_use_mb ap addr tag = SBResult.Ok ap' := by
+  unfold sb_use_mb
+  simp only [h_find, splitStack, RefKind.tag, beq_self_eq_true, ↓reduceIte]
+  exact ⟨_, rfl⟩
+
+/--
+After `sb_use_mb` on a singleton `[Own tag]` stack, the stack is still
+`[Own tag]`.
+-/
+theorem sb_use_mb_preserves_find_own
+  {ap ap' : AccessPerms} {addr tag : Word}
+  (h_find : ap.StackMap.find? addr = some [RefKind.Own tag])
+  (h_use : sb_use_mb ap addr tag = SBResult.Ok ap') :
+  ap'.StackMap.find? addr = some [RefKind.Own tag] := by
+  unfold sb_use_mb at h_use
+  simp only [h_find, splitStack, RefKind.tag, beq_self_eq_true, ↓reduceIte,
+             SBResult.Ok.injEq] at h_use
+  subst h_use
+  exact SB.find?_insert_eq _ _ _
+
+/--
+`sb_read` succeeds when the stack is a singleton `[Own tag]`.
+Provable from the `sb_read` definition: `splitStack [Own tag] tag` returns
+`some ([], Own tag, [])` and `Own` matches all allowed kinds.
+-/
+theorem sb_read_of_find_own
+  {ap : AccessPerms} {addr tag : Word}
+  (h_find : ap.StackMap.find? addr = some [RefKind.Own tag]) :
+  ∃ ap', sb_read ap addr tag = SBResult.Ok ap' := by
+  unfold sb_read
+  simp only [h_find, splitStack, RefKind.tag, beq_self_eq_true, ↓reduceIte,
+             List.filter, List.nil_append]
+  exact ⟨_, rfl⟩
+
+theorem sb_read_preserves_find_own
+  {ap ap' : AccessPerms} {addr tag : Word}
+  (h_find : ap.StackMap.find? addr = some [RefKind.Own tag])
+  (h_read : sb_read ap addr tag = SBResult.Ok ap') :
+  ap'.StackMap.find? addr = some [RefKind.Own tag] := by
+  unfold sb_read at h_read
+  simp only [h_find, splitStack, RefKind.tag, beq_self_eq_true, ↓reduceIte,
+             List.filter, List.nil_append, SBResult.Ok.injEq] at h_read
+  subst ap'
+  exact SB.find?_insert_eq _ _ _
+
+theorem sb_use_mb_preserves_find_ne
+  {ap ap' : AccessPerms} {addr addr2 tag : Word}
+  (h_valid : SBValid ap)
+  (h_use : sb_use_mb ap addr tag = SBResult.Ok ap')
+  (h_ne : addr2 ≠ addr) :
+  ap'.StackMap.find? addr2 = ap.StackMap.find? addr2 := by
+  unfold sb_use_mb at h_use
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      simp [h_find] at h_use
+  | some stack =>
+      cases h_split : splitStack stack tag with
+      | none =>
+          simp [h_find, h_split] at h_use
+      | some triple =>
+          cases triple with
+          | mk x rest =>
+              cases rest with
+              | mk item y =>
+                  cases item <;>
+                    simp [h_find, h_split] at h_use <;>
+                    subst ap' <;>
+                    try simpa using (SB.find?_insert_ne h_valid.1 h_ne)
+
+theorem sb_read_preserves_find_ne
+  {ap ap' : AccessPerms} {addr addr2 tag : Word}
+  (h_valid : SBValid ap)
+  (h_read : sb_read ap addr tag = SBResult.Ok ap')
+  (h_ne : addr2 ≠ addr) :
+  ap'.StackMap.find? addr2 = ap.StackMap.find? addr2 := by
+  unfold sb_read at h_read
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      simp [h_find] at h_read
+  | some stack =>
+      cases h_split : splitStack stack tag with
+      | none =>
+          simp [h_find, h_split] at h_read
+      | some triple =>
+          cases triple with
+          | mk x rest =>
+              cases rest with
+              | mk item y =>
+                  cases item <;>
+                    simp [h_find, h_split] at h_read <;>
+                    subst ap' <;>
+                    simpa using (SB.find?_insert_ne h_valid.1 h_ne)
+
+theorem sb_die_preserves_find_ne
+  {ap ap' : AccessPerms} {addr addr2 tag : Word}
+  (h_valid : SBValid ap)
+  (h_die : sb_die ap addr tag = SBResult.Ok ap')
+  (h_ne : addr2 ≠ addr) :
+  ap'.StackMap.find? addr2 = ap.StackMap.find? addr2 := by
+  unfold sb_die at h_die
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      simp [h_find] at h_die
+  | some stack =>
+      cases stack with
+      | nil =>
+          simp [h_find] at h_die
+      | cons item y =>
+          by_cases h_tag : item.tag == tag
+          · cases item <;>
+              simp [h_find, h_tag] at h_die <;>
+              subst ap' <;>
+              simpa using (SB.find?_insert_ne h_valid.1 h_ne)
+          · simp [h_find, h_tag] at h_die
+
+/--
+`sb_ref` at `addr` does not change the borrow stack at any other address.
+-/
+theorem sb_ref_preserves_find_ne
+  {ap ap' : AccessPerms} {addr addr2 tag newTag : Word} {kind : RefOpKind}
+  (h_valid : SBValid ap)
+  (h_ref : sb_ref ap addr tag kind = (SBResult.Ok ap', newTag))
+  (h_ne : addr2 ≠ addr) :
+  ap'.StackMap.find? addr2 = ap.StackMap.find? addr2 := by
+  cases kind with
+  | Shared =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_read ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          have h_parent_valid : SBValid ap_parent :=
+            sb_read_preserves_valid h_valid h_parent
+          have h_parent_find :
+              ap_parent.StackMap.find? addr2 = ap.StackMap.find? addr2 :=
+            sb_read_preserves_find_ne h_valid h_parent h_ne
+          cases h_find : ap_parent.StackMap.find? addr with
+          | none =>
+              simp [h_parent, h_find, freshTag] at h_ref
+          | some stack =>
+              simp [h_parent, h_find, freshTag] at h_ref
+              rcases h_ref with ⟨h_ok, h_tag⟩
+              cases h_ok
+              cases h_tag
+              calc
+                (SB.insert ap_parent.StackMap addr (RefKind.Ref ap_parent.NextTag :: stack)).find? addr2
+                    = ap_parent.StackMap.find? addr2 := by
+                      simpa using (SB.find?_insert_ne h_parent_valid.1 h_ne)
+                _ = ap.StackMap.find? addr2 := h_parent_find
+  | Mut =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_use_mb ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          have h_parent_valid : SBValid ap_parent :=
+            sb_use_mb_preserves_valid h_valid h_parent
+          have h_parent_find :
+              ap_parent.StackMap.find? addr2 = ap.StackMap.find? addr2 :=
+            sb_use_mb_preserves_find_ne h_valid h_parent h_ne
+          cases h_find : ap_parent.StackMap.find? addr with
+          | none =>
+              simp [h_parent, h_find, freshTag] at h_ref
+          | some stack =>
+              simp [h_parent, h_find, freshTag] at h_ref
+              rcases h_ref with ⟨h_ok, h_tag⟩
+              cases h_ok
+              cases h_tag
+              calc
+                (SB.insert ap_parent.StackMap addr (RefKind.MutRef ap_parent.NextTag :: stack)).find? addr2
+                    = ap_parent.StackMap.find? addr2 := by
+                      simpa using (SB.find?_insert_ne h_parent_valid.1 h_ne)
+                _ = ap.StackMap.find? addr2 := h_parent_find
+  | Raw =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_use_mb ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          have h_parent_valid : SBValid ap_parent :=
+            sb_use_mb_preserves_valid h_valid h_parent
+          have h_parent_find :
+              ap_parent.StackMap.find? addr2 = ap.StackMap.find? addr2 :=
+            sb_use_mb_preserves_find_ne h_valid h_parent h_ne
+          cases h_find : ap_parent.StackMap.find? addr with
+          | none =>
+              simp [h_parent, h_find, freshTag] at h_ref
+          | some stack =>
+              simp [h_parent, h_find, freshTag] at h_ref
+              rcases h_ref with ⟨h_ok, h_tag⟩
+              cases h_ok
+              cases h_tag
+              calc
+                (SB.insert ap_parent.StackMap addr (RefKind.RawPtr ap_parent.NextTag :: stack)).find? addr2
+                    = ap_parent.StackMap.find? addr2 := by
+                      simpa using (SB.find?_insert_ne h_parent_valid.1 h_ne)
+                _ = ap.StackMap.find? addr2 := h_parent_find
+
+theorem sb_use_mb_exists_of_find_eq
+  {ap ap' ap_after : AccessPerms} {addr tag : Word}
+  (h_find_eq : ap'.StackMap.find? addr = ap.StackMap.find? addr)
+  (h_use : sb_use_mb ap addr tag = Ok ap_after) :
+  ∃ ap_after',
+    sb_use_mb ap' addr tag = Ok ap_after' ∧
+    ap_after'.StackMap.find? addr = ap_after.StackMap.find? addr := by
+  unfold sb_use_mb at h_use
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      simp [h_find] at h_use
+  | some stack =>
+      have h_find' : ap'.StackMap.find? addr = some stack := by
+        simpa [h_find] using h_find_eq
+      cases h_split : splitStack stack tag with
+      | none =>
+          simp [h_find, h_split] at h_use
+      | some triple =>
+          cases triple with
+          | mk x rest =>
+              cases rest with
+              | mk item y =>
+                  cases item with
+                  | Own t =>
+                      simp [h_find, h_split] at h_use
+                      subst ap_after
+                      let ap_after' : AccessPerms :=
+                        { ap' with StackMap := ap'.StackMap.insert addr (RefKind.Own t :: y) }
+                      refine ⟨ap_after', ?_, ?_⟩
+                      · simp [sb_use_mb, h_find', h_split, ap_after']
+                      · simp [ap_after']
+                  | MutRef t =>
+                      simp [h_find, h_split] at h_use
+                      subst ap_after
+                      let ap_after' : AccessPerms :=
+                        { ap' with StackMap := ap'.StackMap.insert addr (RefKind.MutRef t :: y) }
+                      refine ⟨ap_after', ?_, ?_⟩
+                      · simp [sb_use_mb, h_find', h_split, ap_after']
+                      · simp [ap_after']
+                  | Ref t =>
+                      simp [h_find, h_split] at h_use
+                  | RawPtr t =>
+                      simp [h_find, h_split] at h_use
+
+theorem sb_die_exists_of_find_eq
+  {ap ap' ap_after : AccessPerms} {addr tag : Word}
+  (h_find_eq : ap'.StackMap.find? addr = ap.StackMap.find? addr)
+  (h_die : sb_die ap addr tag = Ok ap_after) :
+  ∃ ap_after',
+    sb_die ap' addr tag = Ok ap_after' ∧
+    ap_after'.StackMap.find? addr = ap_after.StackMap.find? addr := by
+  unfold sb_die at h_die
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      simp [h_find] at h_die
+  | some stack =>
+      have h_find' : ap'.StackMap.find? addr = some stack := by
+        simpa [h_find] using h_find_eq
+      cases stack with
+      | nil =>
+          simp [h_find] at h_die
+      | cons item y =>
+          by_cases h_tag : item.tag == tag
+          · cases item with
+            | Own t =>
+                simp [h_find, h_tag] at h_die
+            | MutRef t =>
+                simp [h_find, h_tag] at h_die
+                subst ap_after
+                let ap_after' : AccessPerms :=
+                  { ap' with StackMap := ap'.StackMap.insert addr y }
+                refine ⟨ap_after', ?_, ?_⟩
+                · simp [sb_die, h_find', h_tag, ap_after']
+                · simp [ap_after']
+            | Ref t =>
+                simp [h_find, h_tag] at h_die
+                subst ap_after
+                let ap_after' : AccessPerms :=
+                  { ap' with StackMap := ap'.StackMap.insert addr y }
+                refine ⟨ap_after', ?_, ?_⟩
+                · simp [sb_die, h_find', h_tag, ap_after']
+                · simp [ap_after']
+            | RawPtr t =>
+                simp [h_find, h_tag] at h_die
+                subst ap_after
+                let ap_after' : AccessPerms :=
+                  { ap' with StackMap := ap'.StackMap.insert addr y }
+                refine ⟨ap_after', ?_, ?_⟩
+                · simp [sb_die, h_find', h_tag, ap_after']
+                · simp [ap_after']
+          · simp [h_find, h_tag] at h_die
+
+theorem sb_ref_mut_read_unmapped_use_die_sim_ok
+  {ρa : AddrRenameMap}
+  {ρt : TagRenameMap}
+  {ap_m ap_o ap_m' : AccessPerms}
+  {dst_m dst_o src_o : Word}
+  {dst_tag_m dst_tag_o src_tag_o : Word}
+  (h_sim : sb_sim ρa ρt ap_m ap_o)
+  (h_dst_addr : ρa dst_m = some dst_o)
+  (h_dst_tag : ρt dst_tag_m = some dst_tag_o)
+  (h_use_m : sb_use_mb ap_m dst_m dst_tag_m = Ok ap_m')
+  (h_src_find : ap_o.StackMap.find? src_o = some [RefKind.Own src_tag_o])
+  (h_src_unmapped : ∀ a, ρa a ≠ some src_o) :
+  ∃ tempTag ap_ref_o ap_read_o ap_write_o ap_final_o,
+    sb_ref ap_o dst_o dst_tag_o RefOpKind.Mut = (Ok ap_ref_o, tempTag) ∧
+    sb_read ap_ref_o src_o src_tag_o = Ok ap_read_o ∧
+    sb_use_mb ap_read_o dst_o tempTag = Ok ap_write_o ∧
+    sb_die ap_write_o dst_o tempTag = Ok ap_final_o ∧
+    sb_sim ρa ρt ap_m' ap_final_o := by
+  let ⟨ap_parent_o, h_parent_use, h_sb_parent⟩ :=
+    sb_use_mb_sim_ok h_sim h_dst_addr h_dst_tag h_use_m
+  let ⟨tempTag, ap_ref_o, ap_use_parent_o, ap_final_parent_o,
+      h_ref, h_use_parent, h_die_parent, h_stack_eq_parent⟩ :=
+    sb_ref_mut_use_die_ok_of_use_ok h_parent_use
+  have h_valid_o : SBValid ap_o := h_sim.valid_osea
+  have h_valid_ref : SBValid ap_ref_o :=
+    sb_ref_preserves_valid h_valid_o h_ref
+  have h_valid_use_parent : SBValid ap_use_parent_o :=
+    sb_use_mb_preserves_valid h_valid_ref h_use_parent
+  have h_src_ne_dst : src_o ≠ dst_o := by
+    intro h_eq
+    exact h_src_unmapped dst_m (h_eq ▸ h_dst_addr)
+  have h_src_find_ref : ap_ref_o.StackMap.find? src_o = some [RefKind.Own src_tag_o] := by
+    exact (sb_ref_preserves_find_ne h_valid_o h_ref h_src_ne_dst).trans h_src_find
+  obtain ⟨ap_read_o, h_read⟩ := sb_read_of_find_own h_src_find_ref
+  have h_valid_read : SBValid ap_read_o :=
+    sb_read_preserves_valid h_valid_ref h_read
+  have h_find_dst_after_read :
+      ap_read_o.StackMap.find? dst_o = ap_ref_o.StackMap.find? dst_o := by
+    exact sb_read_preserves_find_ne h_valid_ref h_read h_src_ne_dst.symm
+  obtain ⟨ap_write_o, h_use_read, h_find_dst_after_use⟩ :=
+    sb_use_mb_exists_of_find_eq h_find_dst_after_read h_use_parent
+  have h_valid_write : SBValid ap_write_o :=
+    sb_use_mb_preserves_valid h_valid_read h_use_read
+  obtain ⟨ap_final_o, h_die_read, h_find_dst_after_die⟩ :=
+    sb_die_exists_of_find_eq h_find_dst_after_use h_die_parent
+  have h_valid_final : SBValid ap_final_o :=
+    sb_die_preserves_valid h_valid_write h_die_read
+  have h_sb_final_parent : sb_sim ρa ρt ap_m' ap_final_parent_o :=
+    sb_sim_of_right_stackMap_eq h_sb_parent h_stack_eq_parent
+  have h_mapped_stackAt :
+      ∀ addr addr', ρa addr = some addr' →
+        stackAt ap_final_o addr' = stackAt ap_final_parent_o addr' := by
+    intro addr addr' h_addr
+    have h_ne_src : addr' ≠ src_o := by
+      intro h_eq
+      exact h_src_unmapped addr (h_eq ▸ h_addr)
+    by_cases h_eq_dst : addr' = dst_o
+    · exact stackAt_eq_of_find_eq (by simpa [h_eq_dst] using h_find_dst_after_die)
+    · have h_final_find :
+          ap_final_o.StackMap.find? addr' = ap_final_parent_o.StackMap.find? addr' := by
+        have h_final_left :
+            ap_final_o.StackMap.find? addr' = ap_o.StackMap.find? addr' := by
+          calc
+            ap_final_o.StackMap.find? addr' = ap_write_o.StackMap.find? addr' := by
+              exact sb_die_preserves_find_ne h_valid_write h_die_read h_eq_dst
+            _ = ap_read_o.StackMap.find? addr' := by
+              exact sb_use_mb_preserves_find_ne h_valid_read h_use_read h_eq_dst
+            _ = ap_ref_o.StackMap.find? addr' := by
+              exact sb_read_preserves_find_ne h_valid_ref h_read h_ne_src
+            _ = ap_o.StackMap.find? addr' := by
+              exact sb_ref_preserves_find_ne h_valid_o h_ref h_eq_dst
+        have h_final_right :
+            ap_final_parent_o.StackMap.find? addr' = ap_o.StackMap.find? addr' := by
+          calc
+            ap_final_parent_o.StackMap.find? addr' = ap_use_parent_o.StackMap.find? addr' := by
+              exact sb_die_preserves_find_ne h_valid_use_parent h_die_parent h_eq_dst
+            _ = ap_ref_o.StackMap.find? addr' := by
+              exact sb_use_mb_preserves_find_ne h_valid_ref h_use_parent h_eq_dst
+            _ = ap_o.StackMap.find? addr' := by
+              exact sb_ref_preserves_find_ne h_valid_o h_ref h_eq_dst
+        exact h_final_left.trans h_final_right.symm
+      exact stackAt_eq_of_find_eq h_final_find
+  have h_sb_final : sb_sim ρa ρt ap_m' ap_final_o :=
+    sb_sim_of_right_stackAt_eq h_sb_final_parent h_valid_final h_mapped_stackAt
+  exact ⟨tempTag, ap_ref_o, ap_read_o, ap_write_o, ap_final_o,
+    h_ref, h_read, h_use_read, h_die_read, h_sb_final⟩
 
 end obseq

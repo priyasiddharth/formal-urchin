@@ -92,27 +92,33 @@ def structConstWords? : List mirlite.RExpr → Option (List Word)
       Option.map (List.cons n) (structConstWords? rest)
   | _ => none
 
-partial def inferRExprLayout (cs : CompilerState) : mirlite.RExpr → LayoutTy
-| mirlite.RExpr.ConstOp _ => LayoutTy.NatL
-| mirlite.RExpr.CopyOp p =>
-    match placeLayout? cs p with
-    | some layout => layout
-    | none => LayoutTy.NatL
-| mirlite.RExpr.MoveOp p =>
-    match placeLayout? cs p with
-    | some layout => layout
-    | none => LayoutTy.NatL
-| mirlite.RExpr.RefOp _ p =>
-    LayoutTy.PtrL (match placeLayout? cs p with
-      | some inner => inner
-      | none => LayoutTy.NatL)
-| mirlite.RExpr.DrefOp p =>
-    match placeLayout? cs p with
-    | some (LayoutTy.PtrL inner) => inner
-    | _ => LayoutTy.NatL
-| mirlite.RExpr.StructInitOp fields =>
-    LayoutTy.TupL (fields.map (inferRExprLayout cs))
-| mirlite.RExpr.BinaryOp _ _ => LayoutTy.NatL
+mutual
+  def inferRExprLayoutList (cs : CompilerState) : List mirlite.RExpr → List LayoutTy
+    | [] => []
+    | expr :: rest => inferRExprLayout cs expr :: inferRExprLayoutList cs rest
+
+  def inferRExprLayout (cs : CompilerState) : mirlite.RExpr → LayoutTy
+    | mirlite.RExpr.ConstOp _ => LayoutTy.NatL
+    | mirlite.RExpr.CopyOp p =>
+        match placeLayout? cs p with
+        | some layout => layout
+        | none => LayoutTy.NatL
+    | mirlite.RExpr.MoveOp p =>
+        match placeLayout? cs p with
+        | some layout => layout
+        | none => LayoutTy.NatL
+    | mirlite.RExpr.RefOp _ p =>
+        LayoutTy.PtrL (match placeLayout? cs p with
+          | some inner => inner
+          | none => LayoutTy.NatL)
+    | mirlite.RExpr.DrefOp p =>
+        match placeLayout? cs p with
+        | some (LayoutTy.PtrL inner) => inner
+        | _ => LayoutTy.NatL
+    | mirlite.RExpr.StructInitOp fields =>
+        LayoutTy.TupL (inferRExprLayoutList cs fields)
+    | mirlite.RExpr.BinaryOp _ _ => LayoutTy.NatL
+end
 
 partial def placeToBorrowReg
   (cs : CompilerState)
@@ -190,68 +196,82 @@ partial def placeToReg
 -- Compile RExpr to instructions, returning the pointer register that names the result
 -- plus the result layout needed by later memcpy/load lowering.
 mutual
-  partial def compileRExprTo
-    (cs : CompilerState)
-    (dstPtr : Register)
-    (expr : mirlite.RExpr) : CompilerState :=
-    match staticRExprData? expr with
-    | some (layout, vals) =>
-        emit cs [oseair.Instr.CStore (layoutToTyVal layout) vals dstPtr]
-    | none =>
-        match expr with
-        | mirlite.RExpr.CopyOp p =>
-            let srcRes := placeToReg cs p mirlite.RefKind.Shared
-            emit srcRes.cs ([oseair.Instr.Memcpy dstPtr srcRes.reg (layoutToTyVal srcRes.layout)] ++
-              cleanupInstrs srcRes.cleanup)
-        | mirlite.RExpr.RefOp kind p =>
-            let srcRes := placeToBorrowReg cs p kind
-            -- No cleanup: the borrow register's tag must stay live on the SB
-            -- stack — it *is* the reference being created, not a temporary.
-            emit srcRes.cs [oseair.Instr.RStore TyVal.PTy srcRes.reg dstPtr]
-        | mirlite.RExpr.DrefOp p =>
-            let pRes := placeToReg cs p mirlite.RefKind.Shared
-            match layoutDeref? pRes.layout with
-            | some innerLayout =>
-                let (loadedPtr, cs1) := freshReg pRes.cs
-                emit cs1 ([oseair.Instr.Assgn loadedPtr (oseair.Rhs.Load TyVal.PTy pRes.reg),
-                  oseair.Instr.Memcpy dstPtr loadedPtr (layoutToTyVal innerLayout),
-                  oseair.Instr.Die loadedPtr] ++ cleanupInstrs pRes.cleanup)
-            | none => pRes.cs
-        | mirlite.RExpr.StructInitOp fields =>
-            let rec loop (csAcc : CompilerState) (curOffset : Word) (rest : List mirlite.RExpr) :
-                CompilerState :=
-              match rest with
-              | [] => csAcc
-              | field :: tail =>
-                  let fieldLayout := inferRExprLayout csAcc field
-                  let (fieldPtr, fieldCleanup, cs1) := storePtrAtOffset csAcc dstPtr curOffset
-                  let cs2 := compileRExprTo cs1 fieldPtr field
-                  let cs3 := emit cs2 (cleanupInstrs fieldCleanup)
-                  loop cs3 (curOffset + layoutSize fieldLayout) tail
-            loop cs 0 fields
-        | mirlite.RExpr.BinaryOp lhs rhs =>
-            let lhsRes := compileRExpr cs lhs
-            let rhsRes := compileRExpr lhsRes.cs rhs
-            let (lhsVal, cs1) := freshReg rhsRes.cs
-            let (rhsVal, cs2) := freshReg cs1
-            let (resVal, cs3) := freshReg cs2
-            emit cs3 ([
-              oseair.Instr.Assgn lhsVal (oseair.Rhs.Load TyVal.NatTy lhsRes.reg),
-              oseair.Instr.Assgn rhsVal (oseair.Rhs.Load TyVal.NatTy rhsRes.reg),
-              oseair.Instr.Assgn resVal (oseair.Rhs.BinOp lhsVal rhsVal),
-              oseair.Instr.RStore TyVal.NatTy resVal dstPtr,
-              oseair.Instr.Die lhsRes.reg,
-              oseair.Instr.Die rhsRes.reg
-            ])
-        | _ => cs
+  def compileStructFieldsToFuel :
+      Nat → Register → CompilerState → Word → List mirlite.RExpr → CompilerState
+    | 0, _, cs, _, _ => cs
+    | _ + 1, _, cs, _, [] => cs
+    | fuel + 1, dstPtr, csAcc, curOffset, field :: tail =>
+        let fieldLayout := inferRExprLayout csAcc field
+        let (fieldPtr, fieldCleanup, cs1) := storePtrAtOffset csAcc dstPtr curOffset
+        let cs2 := compileRExprToFuel fuel cs1 fieldPtr field
+        let cs3 := emit cs2 (cleanupInstrs fieldCleanup)
+        compileStructFieldsToFuel fuel dstPtr cs3 (curOffset + layoutSize fieldLayout) tail
 
-  partial def compileRExpr (cs : CompilerState) (expr : mirlite.RExpr) : RExprResult :=
-    let layout := inferRExprLayout cs expr
-    let (resReg, cs1) := freshReg cs
-    let cs2 := emit cs1 [oseair.Instr.Assgn resReg (oseair.Rhs.Alloc (layoutToTyVal layout))]
-    let cs3 := compileRExprTo cs2 resReg expr
-    { reg := resReg, layout := layout, cs := cs3 }
+  def compileRExprToFuel :
+      Nat → CompilerState → Register → mirlite.RExpr → CompilerState
+    | 0, cs, _, _ => cs
+    | fuel + 1, cs, dstPtr, expr =>
+        match staticRExprData? expr with
+        | some (layout, vals) =>
+            emit cs [oseair.Instr.CStore (layoutToTyVal layout) vals dstPtr]
+        | none =>
+            match expr with
+            | mirlite.RExpr.CopyOp p =>
+                let srcRes := placeToReg cs p mirlite.RefKind.Shared
+                emit srcRes.cs ([oseair.Instr.Memcpy dstPtr srcRes.reg (layoutToTyVal srcRes.layout)] ++
+                  cleanupInstrs srcRes.cleanup)
+            | mirlite.RExpr.RefOp kind p =>
+                let srcRes := placeToBorrowReg cs p kind
+                -- No cleanup: the borrow register's tag must stay live on the SB
+                -- stack — it *is* the reference being created, not a temporary.
+                emit srcRes.cs [oseair.Instr.RStore TyVal.PTy srcRes.reg dstPtr]
+            | mirlite.RExpr.DrefOp p =>
+                let pRes := placeToReg cs p mirlite.RefKind.Shared
+                match layoutDeref? pRes.layout with
+                | some innerLayout =>
+                    let (loadedPtr, cs1) := freshReg pRes.cs
+                    emit cs1 ([oseair.Instr.Assgn loadedPtr (oseair.Rhs.Load TyVal.PTy pRes.reg)] ++
+                      cleanupInstrs pRes.cleanup ++
+                      [oseair.Instr.Memcpy dstPtr loadedPtr (layoutToTyVal innerLayout)])
+                | none => pRes.cs
+            | mirlite.RExpr.StructInitOp fields =>
+                compileStructFieldsToFuel fuel dstPtr cs 0 fields
+            | mirlite.RExpr.BinaryOp lhs rhs =>
+                let lhsRes := compileRExprFuel fuel cs lhs
+                let rhsRes := compileRExprFuel fuel lhsRes.cs rhs
+                let (lhsVal, cs1) := freshReg rhsRes.cs
+                let (rhsVal, cs2) := freshReg cs1
+                let (resVal, cs3) := freshReg cs2
+                emit cs3 ([
+                  oseair.Instr.Assgn lhsVal (oseair.Rhs.Load TyVal.NatTy lhsRes.reg),
+                  oseair.Instr.Assgn rhsVal (oseair.Rhs.Load TyVal.NatTy rhsRes.reg),
+                  oseair.Instr.Assgn resVal (oseair.Rhs.BinOp lhsVal rhsVal),
+                  oseair.Instr.RStore TyVal.NatTy resVal dstPtr,
+                  oseair.Instr.Die lhsRes.reg,
+                  oseair.Instr.Die rhsRes.reg
+                ])
+            | _ => cs
+
+  def compileRExprFuel :
+      Nat → CompilerState → mirlite.RExpr → RExprResult
+    | 0, cs, expr =>
+        { reg := Register.R 0, layout := inferRExprLayout cs expr, cs := cs }
+    | fuel + 1, cs, expr =>
+        let layout := inferRExprLayout cs expr
+        let (resReg, cs1) := freshReg cs
+        let cs2 := emit cs1 [oseair.Instr.Assgn resReg (oseair.Rhs.Alloc (layoutToTyVal layout))]
+        let cs3 := compileRExprToFuel fuel cs2 resReg expr
+        { reg := resReg, layout := layout, cs := cs3 }
 end
+
+def compileRExprTo
+  (cs : CompilerState)
+  (dstPtr : Register)
+  (expr : mirlite.RExpr) : CompilerState :=
+  compileRExprToFuel (mirlite.rExprFuel expr + 1) cs dstPtr expr
+
+def compileRExpr (cs : CompilerState) (expr : mirlite.RExpr) : RExprResult :=
+  compileRExprFuel (mirlite.rExprFuel expr + 1) cs expr
 
 -- Compile Stmt
 def compileStmt (cs : CompilerState) (stmt : mirlite.Stmt) : CompilerState :=

@@ -12,3 +12,5 @@ import obseq.proof.struct_init_fresh
 import obseq.proof.const_existing
 import obseq.proof.const_fresh
 import obseq.proof.copy_existing
+import obseq.proof.ref
+import obseq.proof.deref
