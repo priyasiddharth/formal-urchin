@@ -125,6 +125,54 @@ def sb_own (ap : AccessPerms) (addr : Word) : SBResult × Tag :=
     (Ok { ap' with StackMap := newSB }, tag)
   | some _ => (Err s!"sb-own: stack at {addr} not empty", 0)
 
+theorem sb_own_tag_eq_nextTag
+  {ap ap' : AccessPerms}
+  {addr tag : Word}
+  (h_own : sb_own ap addr = (SBResult.Ok ap', tag)) :
+  tag = ap.NextTag := by
+  unfold sb_own at h_own
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      rw [h_find] at h_own
+      unfold freshTag at h_own
+      injection h_own with h_ok h_tag
+      cases h_ok
+      exact h_tag.symm
+  | some stack =>
+      cases stack with
+      | nil =>
+          rw [h_find] at h_own
+          unfold freshTag at h_own
+          injection h_own with h_ok h_tag
+          cases h_ok
+          exact h_tag.symm
+      | cons item rest =>
+          simp [h_find] at h_own
+
+theorem sb_own_nextTag_succ
+  {ap ap' : AccessPerms}
+  {addr tag : Word}
+  (h_own : sb_own ap addr = (SBResult.Ok ap', tag)) :
+  ap'.NextTag = ap.NextTag + 1 := by
+  unfold sb_own at h_own
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      rw [h_find] at h_own
+      unfold freshTag at h_own
+      injection h_own with h_ok _h_tag
+      cases h_ok
+      rfl
+  | some stack =>
+      cases stack with
+      | nil =>
+          rw [h_find] at h_own
+          unfold freshTag at h_own
+          injection h_own with h_ok _h_tag
+          cases h_ok
+          rfl
+      | cons item rest =>
+          simp [h_find] at h_own
+
 -- Helper to find item in stack and split it: returns (above, item, below)
 def splitStack (stack : BorrowStack) (tag : Tag) : Option (BorrowStack × RefKind × BorrowStack) :=
   match stack with
@@ -210,6 +258,29 @@ theorem splitStack_eq_append
                             subst item
                             subst y
                             simp [ih h_tail]
+
+theorem splitStack_found_tag
+  {stack : BorrowStack} {tag : Tag} {x : BorrowStack} {item : RefKind} {y : BorrowStack}
+  (h : splitStack stack tag = some (x, item, y)) :
+  item.tag = tag := by
+  induction stack generalizing x item y with
+  | nil =>
+      simp [splitStack] at h
+  | cons head tail ih =>
+      by_cases h_head : head.tag == tag
+      · have h' : some ([], head, tail) = some (x, item, y) := by
+          simpa [splitStack, h_head] using h
+        cases h'
+        simpa using h_head
+      · cases h_tail : splitStack tail tag with
+        | none =>
+            simp [splitStack, h_head, h_tail] at h
+        | some triple =>
+            rcases triple with ⟨x', item', y'⟩
+            have h' : some (head :: x', item', y') = some (x, item, y) := by
+              simpa [splitStack, h_head, h_tail] using h
+            cases h'
+            exact ih h_tail
 
 theorem SB.find?_some_mem
   {sb : SB} {addr : Word} {stack : BorrowStack}
@@ -491,6 +562,26 @@ def sb_read (ap : AccessPerms) (addr : Word) (tag : Tag) : SBResult :=
         let newSB := ap.StackMap.insert addr newStack
         Ok { ap with StackMap := newSB }
 
+theorem sb_read_nextTag_eq
+  {ap ap' : AccessPerms}
+  {addr tag : Word}
+  (h_read : sb_read ap addr tag = SBResult.Ok ap') :
+  ap'.NextTag = ap.NextTag := by
+  unfold sb_read at h_read
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      simp [h_find] at h_read
+  | some stack =>
+      cases h_split : splitStack stack tag with
+      | none =>
+          simp [h_find, h_split] at h_read
+      | some triple =>
+          rcases triple with ⟨x, item, y⟩
+          cases item <;> simp [h_find, h_split] at h_read
+          all_goals
+            cases h_read
+            rfl
+
 -- Rule: sb-use-mb
 -- Premise: sb[a] = x ++ (g, k) :: y, k \in {o, mb}
 -- Conclusion: sb[a] = (g, k) :: y
@@ -507,6 +598,26 @@ def sb_use_mb (ap : AccessPerms) (addr : Word) (tag : Tag) : SBResult :=
         let newSB := ap.StackMap.insert addr newStack
         Ok { ap with StackMap := newSB }
       | _ => Err s!"sb-use-mb: tag {tag} is not Own or MutRef"
+
+theorem sb_use_mb_nextTag_eq
+  {ap ap' : AccessPerms}
+  {addr tag : Word}
+  (h_use : sb_use_mb ap addr tag = SBResult.Ok ap') :
+  ap'.NextTag = ap.NextTag := by
+  unfold sb_use_mb at h_use
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      simp [h_find] at h_use
+  | some stack =>
+      cases h_split : splitStack stack tag with
+      | none =>
+          simp [h_find, h_split] at h_use
+      | some triple =>
+          rcases triple with ⟨x, item, y⟩
+          cases item <;> simp [h_find, h_split] at h_use
+          all_goals
+            cases h_use
+            rfl
 
 theorem sb_use_mb_preserves_valid
   {ap ap' : AccessPerms} {addr tag : Word}
@@ -836,6 +947,264 @@ theorem tag_live_of_find_mem
   tag_live ap k.tag := by
   refine ⟨addr, ⟨k, ?_, rfl⟩⟩
   simpa [stackAt, h_find] using h_mem
+
+theorem tag_live_of_sb_read_ok
+  {ap ap' : AccessPerms} {addr tag : Word}
+  (h_read : sb_read ap addr tag = SBResult.Ok ap') :
+  tag_live ap' tag := by
+  unfold sb_read at h_read
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      simp [h_find] at h_read
+  | some stack =>
+      cases h_split : splitStack stack tag with
+      | none =>
+          simp [h_find, h_split] at h_read
+      | some triple =>
+          rcases triple with ⟨x, item, y⟩
+          have h_item_tag := splitStack_found_tag h_split
+          cases item with
+          | Own t =>
+              have ht : t = tag := by simpa using h_item_tag
+              cases ht
+              simp [h_find, h_split] at h_read
+              subst ap'
+              exact tag_live_of_find_mem
+                (ap := { ap with StackMap := SB.insert ap.StackMap addr (x.filter (fun k => !k.isMb) ++ RefKind.Own tag :: y) })
+                (addr := addr)
+                (stack := x.filter (fun k => !k.isMb) ++ RefKind.Own tag :: y)
+                (k := RefKind.Own tag)
+                (SB.find?_insert_eq _ _ _)
+                (by simp)
+          | MutRef t =>
+              have ht : t = tag := by simpa using h_item_tag
+              cases ht
+              simp [h_find, h_split] at h_read
+              subst ap'
+              exact tag_live_of_find_mem
+                (ap := { ap with StackMap := SB.insert ap.StackMap addr (x.filter (fun k => !k.isMb) ++ RefKind.MutRef tag :: y) })
+                (addr := addr)
+                (stack := x.filter (fun k => !k.isMb) ++ RefKind.MutRef tag :: y)
+                (k := RefKind.MutRef tag)
+                (SB.find?_insert_eq _ _ _)
+                (by simp)
+          | Ref t =>
+              have ht : t = tag := by simpa using h_item_tag
+              cases ht
+              simp [h_find, h_split] at h_read
+              subst ap'
+              exact tag_live_of_find_mem
+                (ap := { ap with StackMap := SB.insert ap.StackMap addr (x.filter (fun k => !k.isMb) ++ RefKind.Ref tag :: y) })
+                (addr := addr)
+                (stack := x.filter (fun k => !k.isMb) ++ RefKind.Ref tag :: y)
+                (k := RefKind.Ref tag)
+                (SB.find?_insert_eq _ _ _)
+                (by simp)
+          | RawPtr t =>
+              have ht : t = tag := by simpa using h_item_tag
+              cases ht
+              simp [h_find, h_split] at h_read
+              subst ap'
+              exact tag_live_of_find_mem
+                (ap := { ap with StackMap := SB.insert ap.StackMap addr (x.filter (fun k => !k.isMb) ++ RefKind.RawPtr tag :: y) })
+                (addr := addr)
+                (stack := x.filter (fun k => !k.isMb) ++ RefKind.RawPtr tag :: y)
+                (k := RefKind.RawPtr tag)
+                (SB.find?_insert_eq _ _ _)
+                (by simp)
+
+theorem tag_live_of_sb_ref_new_ok
+  {ap ap' : AccessPerms} {addr tag newTag : Word} {kind : RefOpKind}
+  (h_ref : sb_ref ap addr tag kind = (SBResult.Ok ap', newTag)) :
+  tag_live ap' newTag := by
+  cases kind with
+  | Shared =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_read ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          cases h_find : { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap.find? addr with
+          | none =>
+              simp [h_parent, freshTag, h_find] at h_ref
+          | some stack =>
+              simp [h_parent, freshTag, h_find] at h_ref
+              rcases h_ref with ⟨rfl, rfl⟩
+              exact tag_live_of_find_mem
+                (ap :=
+                  { { ap_parent with NextTag := ap_parent.NextTag + 1 } with
+                    StackMap :=
+                      SB.insert { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap
+                        addr (RefKind.Ref ap_parent.NextTag :: stack) })
+                (addr := addr)
+                (stack := RefKind.Ref ap_parent.NextTag :: stack)
+                (k := RefKind.Ref ap_parent.NextTag)
+                (SB.find?_insert_eq _ _ _)
+                (by simp)
+  | Mut =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_use_mb ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          cases h_find : { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap.find? addr with
+          | none =>
+              simp [h_parent, freshTag, h_find] at h_ref
+          | some stack =>
+              simp [h_parent, freshTag, h_find] at h_ref
+              rcases h_ref with ⟨rfl, rfl⟩
+              exact tag_live_of_find_mem
+                (ap :=
+                  { { ap_parent with NextTag := ap_parent.NextTag + 1 } with
+                    StackMap :=
+                      SB.insert { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap
+                        addr (RefKind.MutRef ap_parent.NextTag :: stack) })
+                (addr := addr)
+                (stack := RefKind.MutRef ap_parent.NextTag :: stack)
+                (k := RefKind.MutRef ap_parent.NextTag)
+                (SB.find?_insert_eq _ _ _)
+                (by simp)
+  | Raw =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_use_mb ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          cases h_find : { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap.find? addr with
+          | none =>
+              simp [h_parent, freshTag, h_find] at h_ref
+          | some stack =>
+              simp [h_parent, freshTag, h_find] at h_ref
+              rcases h_ref with ⟨rfl, rfl⟩
+              exact tag_live_of_find_mem
+                (ap :=
+                  { { ap_parent with NextTag := ap_parent.NextTag + 1 } with
+                    StackMap :=
+                      SB.insert { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap
+                        addr (RefKind.RawPtr ap_parent.NextTag :: stack) })
+                (addr := addr)
+                (stack := RefKind.RawPtr ap_parent.NextTag :: stack)
+                (k := RefKind.RawPtr ap_parent.NextTag)
+                (SB.find?_insert_eq _ _ _)
+                (by simp)
+
+        theorem sb_ref_new_stack_find
+          {ap ap' : AccessPerms} {addr tag newTag : Word} {kind : RefOpKind}
+          (h_ref : sb_ref ap addr tag kind = (SBResult.Ok ap', newTag)) :
+          ∃ stack,
+          ap'.StackMap.find? addr = some (kind.toStackKind newTag :: stack) := by
+          cases kind with
+          | Shared =>
+            unfold sb_ref at h_ref
+            cases h_parent : sb_read ap addr tag with
+            | Err msg =>
+              simp [h_parent] at h_ref
+            | Ok ap_parent =>
+              cases h_find : { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap.find? addr with
+              | none =>
+                simp [h_parent, freshTag, h_find] at h_ref
+              | some stack =>
+                simp [h_parent, freshTag, h_find] at h_ref
+                rcases h_ref with ⟨rfl, rfl⟩
+                refine ⟨stack, ?_⟩
+                simpa using
+                (SB.find?_insert_eq
+                  { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap
+                  addr
+                  (RefKind.Ref ap_parent.NextTag :: stack))
+          | Mut =>
+            unfold sb_ref at h_ref
+            cases h_parent : sb_use_mb ap addr tag with
+            | Err msg =>
+              simp [h_parent] at h_ref
+            | Ok ap_parent =>
+              cases h_find : { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap.find? addr with
+              | none =>
+                simp [h_parent, freshTag, h_find] at h_ref
+              | some stack =>
+                simp [h_parent, freshTag, h_find] at h_ref
+                rcases h_ref with ⟨rfl, rfl⟩
+                refine ⟨stack, ?_⟩
+                simpa using
+                (SB.find?_insert_eq
+                  { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap
+                  addr
+                  (RefKind.MutRef ap_parent.NextTag :: stack))
+          | Raw =>
+            unfold sb_ref at h_ref
+            cases h_parent : sb_use_mb ap addr tag with
+            | Err msg =>
+              simp [h_parent] at h_ref
+            | Ok ap_parent =>
+              cases h_find : { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap.find? addr with
+              | none =>
+                simp [h_parent, freshTag, h_find] at h_ref
+              | some stack =>
+                simp [h_parent, freshTag, h_find] at h_ref
+                rcases h_ref with ⟨rfl, rfl⟩
+                refine ⟨stack, ?_⟩
+                simpa using
+                (SB.find?_insert_eq
+                  { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap
+                  addr
+                  (RefKind.RawPtr ap_parent.NextTag :: stack))
+
+theorem sb_ref_nextTag_succ
+  {ap ap' : AccessPerms} {addr tag newTag : Word} {kind : RefOpKind}
+  (h_ref : sb_ref ap addr tag kind = (SBResult.Ok ap', newTag)) :
+  ap'.NextTag = ap.NextTag + 1 := by
+  cases kind with
+  | Shared =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_read ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          have h_parent_next : ap_parent.NextTag = ap.NextTag :=
+            sb_read_nextTag_eq h_parent
+          cases h_find : { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap.find? addr with
+          | none =>
+              simp [h_parent, freshTag, h_find] at h_ref
+          | some stack =>
+              simp [h_parent, freshTag, h_find] at h_ref
+              rcases h_ref with ⟨h_ap, _h_tag⟩
+              have h_next_eq : ap'.NextTag = ap_parent.NextTag + 1 := by
+                simpa using congrArg AccessPerms.NextTag h_ap.symm
+              simpa [h_parent_next] using h_next_eq
+  | Mut =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_use_mb ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          have h_parent_next : ap_parent.NextTag = ap.NextTag :=
+            sb_use_mb_nextTag_eq h_parent
+          cases h_find : { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap.find? addr with
+          | none =>
+              simp [h_parent, freshTag, h_find] at h_ref
+          | some stack =>
+              simp [h_parent, freshTag, h_find] at h_ref
+              rcases h_ref with ⟨h_ap, _h_tag⟩
+              have h_next_eq : ap'.NextTag = ap_parent.NextTag + 1 := by
+                simpa using congrArg AccessPerms.NextTag h_ap.symm
+              simpa [h_parent_next] using h_next_eq
+  | Raw =>
+      unfold sb_ref at h_ref
+      cases h_parent : sb_use_mb ap addr tag with
+      | Err msg =>
+          simp [h_parent] at h_ref
+      | Ok ap_parent =>
+          have h_parent_next : ap_parent.NextTag = ap.NextTag :=
+            sb_use_mb_nextTag_eq h_parent
+          cases h_find : { ap_parent with NextTag := ap_parent.NextTag + 1 }.StackMap.find? addr with
+          | none =>
+              simp [h_parent, freshTag, h_find] at h_ref
+          | some stack =>
+              simp [h_parent, freshTag, h_find] at h_ref
+              rcases h_ref with ⟨h_ap, _h_tag⟩
+              have h_next_eq : ap'.NextTag = ap_parent.NextTag + 1 := by
+                simpa using congrArg AccessPerms.NextTag h_ap.symm
+              simpa [h_parent_next] using h_next_eq
 
 theorem stack_unique_cons_of_fresh
   {ap : AccessPerms} {addr : Word} {stack : BorrowStack} {item : RefKind}
@@ -1195,6 +1564,44 @@ theorem sb_own_creates_find
       | cons item rest =>
           simp [h_find] at h_own
 
+theorem sb_own_preserves_valid
+  {ap ap' : AccessPerms} {addr tag : Word}
+  (h_valid : SBValid ap)
+  (h_own : sb_own ap addr = (SBResult.Ok ap', tag)) :
+  SBValid ap' := by
+  unfold sb_own at h_own
+  cases h_find : ap.StackMap.find? addr with
+  | none =>
+      rw [h_find] at h_own
+      unfold freshTag at h_own
+      injection h_own with h_ok h_tag
+      cases h_ok
+      have h_valid_next : SBValid { ap with NextTag := ap.NextTag + 1 } := by
+        simpa [SBValid] using h_valid
+      refine SBValid_insert h_valid_next ?_
+      intro k₁ k₂ hk₁ hk₂ h_eq
+      simp at hk₁ hk₂
+      rcases hk₁ with rfl
+      rcases hk₂ with rfl
+      rfl
+  | some stack =>
+      cases stack with
+      | nil =>
+          rw [h_find] at h_own
+          unfold freshTag at h_own
+          injection h_own with h_ok h_tag
+          cases h_ok
+          have h_valid_next : SBValid { ap with NextTag := ap.NextTag + 1 } := by
+            simpa [SBValid] using h_valid
+          refine SBValid_insert h_valid_next ?_
+          intro k₁ k₂ hk₁ hk₂ h_eq
+          simp at hk₁ hk₂
+          rcases hk₁ with rfl
+          rcases hk₂ with rfl
+          rfl
+      | cons item rest =>
+          simp [h_find] at h_own
+
 theorem sb_own_preserves_find_ne
   {ap ap' : AccessPerms} {addr addr' tag : Word}
   (h_valid : SBValid ap)
@@ -1221,6 +1628,22 @@ theorem sb_own_preserves_find_ne
           simpa using SB.find?_insert_ne h_valid.1 h_ne
       | cons hd tl =>
           simp [h_find] at h_own
+
+    theorem sb_own_find_nonempty_ne
+      {ap ap' : AccessPerms} {addr addr' tag : Word} {stack : BorrowStack}
+      (h_own : sb_own ap addr = (SBResult.Ok ap', tag))
+      (h_find : ap.StackMap.find? addr' = some stack)
+      (h_nonempty : stack ≠ []) :
+      addr' ≠ addr := by
+      intro h_eq
+      subst h_eq
+      unfold sb_own at h_own
+      rw [h_find] at h_own
+      cases stack with
+      | nil =>
+        exact h_nonempty rfl
+      | cons hd tl =>
+        simp at h_own
 
 /--
 `sb_use_mb` succeeds when the stack is a singleton `[Own tag]`.
@@ -1298,6 +1721,20 @@ theorem sb_use_mb_preserves_find_ne
                     simp [h_find, h_split] at h_use <;>
                     subst ap' <;>
                     try simpa using (SB.find?_insert_ne h_valid.1 h_ne)
+
+theorem sb_own_use_preserves_find_ne
+  {ap ap2 ap3 : AccessPerms} {addr addr' tag : Word}
+  (h_valid : SBValid ap)
+  (h_own : sb_own ap addr = (SBResult.Ok ap2, tag))
+  (h_use : sb_use_mb ap2 addr tag = SBResult.Ok ap3)
+  (h_ne : addr' ≠ addr) :
+  ap3.StackMap.find? addr' = ap.StackMap.find? addr' := by
+  have h_valid_own : SBValid ap2 := sb_own_preserves_valid h_valid h_own
+  calc
+    ap3.StackMap.find? addr' = ap2.StackMap.find? addr' :=
+      sb_use_mb_preserves_find_ne h_valid_own h_use h_ne
+    _ = ap.StackMap.find? addr' :=
+      sb_own_preserves_find_ne h_valid h_own h_ne
 
 theorem sb_read_preserves_find_ne
   {ap ap' : AccessPerms} {addr addr2 tag : Word}
@@ -1427,6 +1864,37 @@ theorem sb_ref_preserves_find_ne
                     = ap_parent.StackMap.find? addr2 := by
                       simpa using (SB.find?_insert_ne h_parent_valid.1 h_ne)
                 _ = ap.StackMap.find? addr2 := h_parent_find
+
+theorem tag_live_of_sb_ref_new_after_use_of_addr_ne
+  {ap ap_ref ap_use : AccessPerms}
+  {srcAddr dstAddr srcTag dstTag newTag : Word}
+  {kind : RefOpKind}
+  (h_valid : SBValid ap)
+  (h_ref : sb_ref ap srcAddr srcTag kind = (SBResult.Ok ap_ref, newTag))
+  (h_use : sb_use_mb ap_ref dstAddr dstTag = SBResult.Ok ap_use)
+  (h_ne : dstAddr ≠ srcAddr) :
+  tag_live ap_use newTag := by
+  have h_valid_ref : SBValid ap_ref := sb_ref_preserves_valid h_valid h_ref
+  rcases sb_ref_new_stack_find h_ref with ⟨stack, h_find_ref⟩
+  have h_find_use : ap_use.StackMap.find? srcAddr = some (kind.toStackKind newTag :: stack) := by
+    rw [sb_use_mb_preserves_find_ne h_valid_ref h_use h_ne.symm]
+    exact h_find_ref
+  cases kind with
+  | Shared =>
+      have h_find_use' : ap_use.StackMap.find? srcAddr = some (RefKind.Ref newTag :: stack) := by
+        simpa [RefOpKind.toStackKind] using h_find_use
+      simpa [RefKind.tag, RefOpKind.toStackKind] using
+        (tag_live_of_find_mem (k := RefKind.Ref newTag) h_find_use' (by simp))
+  | Mut =>
+      have h_find_use' : ap_use.StackMap.find? srcAddr = some (RefKind.MutRef newTag :: stack) := by
+        simpa [RefOpKind.toStackKind] using h_find_use
+      simpa [RefKind.tag, RefOpKind.toStackKind] using
+        (tag_live_of_find_mem (k := RefKind.MutRef newTag) h_find_use' (by simp))
+  | Raw =>
+      have h_find_use' : ap_use.StackMap.find? srcAddr = some (RefKind.RawPtr newTag :: stack) := by
+        simpa [RefOpKind.toStackKind] using h_find_use
+      simpa [RefKind.tag, RefOpKind.toStackKind] using
+        (tag_live_of_find_mem (k := RefKind.RawPtr newTag) h_find_use' (by simp))
 
 theorem sb_use_mb_exists_of_find_eq
   {ap ap' ap_after : AccessPerms} {addr tag : Word}

@@ -45,11 +45,22 @@ open scoped obseq.notation
 
 /-! ## Axioms -/
 
-axiom alloc_fresh_reg
-  {cs : CompilerState} :
+def PlaceMapRegsBelowNextReg (cs : CompilerState) : Prop :=
+  ∀ base regIdx layout,
+    cs.placeMap.lookup base = some (Register.R regIdx, layout) →
+    regIdx < cs.nextReg
+
+theorem alloc_fresh_reg_of_ge
+  {cs : CompilerState}
+  (h_regs_below : PlaceMapRegsBelowNextReg cs)
+  {regIdx : Nat}
+  (h_ge : cs.nextReg ≤ regIdx) :
   ∀ base layout,
-    cs.placeMap.lookup base = some (Register.R cs.nextReg, layout) →
-    False
+    cs.placeMap.lookup base = some (Register.R regIdx, layout) →
+    False := by
+  intro base layout h_lookup
+  have h_lt := h_regs_below base regIdx layout h_lookup
+  exact Nat.not_le_of_gt h_lt h_ge
 
 axiom addr_rename_offset
   {ρa : AddrRenameMap} :
@@ -58,15 +69,15 @@ axiom addr_rename_offset
     ρa (addr_m + off) = some (addr_o + off)
 
 /--
-`StartsAt prog pc frag` says that `frag` is the slice of `prog` beginning at
-`pc`.
+`StartsAt prog pc frag` says that `frag` matches the instructions of `prog`
+starting at `pc` for the whole length of `frag`.
 
 This is the fragment-embedding relation used by the arbitrary-PC wrappers:
-the local theorem proves correctness for the standalone fragment, and
+the local theorem proves correctness for one compiled fragment, and
 `StartsAt` records where that fragment sits inside a larger program.
 -/
 def StartsAt (prog : List α) (pc : Nat) (frag : List α) : Prop :=
-  ∀ i, frag.get? i = prog.get? (pc + i)
+  ∀ i, i < frag.length → frag.get? i = prog.get? (pc + i)
 
 namespace StartsAt
 
@@ -77,7 +88,7 @@ theorem singleton
   (h : StartsAt prog pc [x]) :
   prog.get? pc = some x := by
   unfold StartsAt at h
-  simpa [Nat.zero_add, List.get?] using (h 0).symm
+  simpa [Nat.zero_add, List.get?] using (h 0 (by simp)).symm
 
 theorem tail
   {prog : List α}
@@ -87,8 +98,8 @@ theorem tail
   (h : StartsAt prog pc (x :: frag)) :
   StartsAt prog (pc + 1) frag := by
   unfold StartsAt at h ⊢
-  intro i
-  have h_i := h (i + 1)
+  intro i h_i_lt
+  have h_i := h (i + 1) (by simpa using Nat.succ_lt_succ h_i_lt)
   simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using h_i
 
 theorem get_instr
@@ -99,6 +110,16 @@ theorem get_instr
   ∃ h_pc : pc < prog.length, prog.get ⟨pc, h_pc⟩ = instr := by
   have h_stmt : prog.get? pc = some instr := StartsAt.singleton h_start
   exact (List.get?_eq_some_iff.mp h_stmt)
+
+theorem get_eq
+  {prog : List α}
+  {pc : Nat}
+  {frag : List α}
+  {i : Nat}
+  (h_start : StartsAt prog pc frag)
+  (h_i : i < frag.length) :
+  prog.get? (pc + i) = frag.get? i := by
+  exact (h_start i h_i).symm
 
 end StartsAt
 
@@ -539,6 +560,138 @@ theorem finishPlaceAssignWith_existing_eq
   · rw [resolveDirectPlace_eq_of_env_lookup h_env h_path]
     cases h_use : sb_use_mb state.ap (addr + off) tag <;>
       simp [h_empty, h_use, mirlite.writeResolvedPlace]
+
+def MirDone (prog : mirlite.Prog) (s : mirlite.State) : Prop :=
+  prog.get? s.pc = none ∨ prog.get? s.pc = some mirlite.Stmt.Halt
+
+namespace MirDone
+
+theorem stepWith_eq
+  {A : mirlite.AllocatorSpec}
+  {prog : mirlite.Prog}
+  {s : mirlite.State}
+  (h_done : MirDone prog s) :
+  mirlite.stepWith A s prog = mirlite.Result.Ok s := by
+  rcases h_done with h_oob | h_halt
+  · have h_not_pc : ¬ s.pc < prog.length := Nat.not_lt.mpr (List.get?_eq_none_iff.mp h_oob)
+    simp [mirlite.stepWith, h_not_pc]
+  · rcases List.get?_eq_some_iff.mp h_halt with ⟨h_pc, h_get⟩
+    have h_getElem : prog[s.pc] = mirlite.Stmt.Halt := by
+      simpa using h_get
+    unfold mirlite.stepWith
+    simp [h_pc]
+    rw [h_getElem]
+
+theorem step_eq
+  {prog : mirlite.Prog}
+  {s : mirlite.State}
+  (h_done : MirDone prog s) :
+  mirlite.step s prog = mirlite.Result.Ok s := by
+  exact stepWith_eq h_done
+
+end MirDone
+
+def OseaDone (prog : oseair.Prog) (s : oseair.State) : Prop :=
+  prog.get? s.pc = none ∨ prog.get? s.pc = some oseair.Instr.Halt
+
+namespace OseaDone
+
+theorem stepWith_eq
+  {A : oseair.AllocatorSpec}
+  {prog : oseair.Prog}
+  {s : oseair.State}
+  (h_done : OseaDone prog s) :
+  oseair.stepWith A s prog = oseair.Result.Ok s := by
+  rcases h_done with h_oob | h_halt
+  · have h_not_pc : ¬ s.pc < prog.length := Nat.not_lt.mpr (List.get?_eq_none_iff.mp h_oob)
+    simp [oseair.stepWith, h_not_pc]
+  · rcases List.get?_eq_some_iff.mp h_halt with ⟨h_pc, h_get⟩
+    have h_getElem : prog[s.pc] = oseair.Instr.Halt := by
+      simpa using h_get
+    unfold oseair.stepWith
+    simp [h_pc]
+    rw [h_getElem]
+
+theorem step_eq
+  {prog : oseair.Prog}
+  {s : oseair.State}
+  (h_done : OseaDone prog s) :
+  oseair.step s prog = oseair.Result.Ok s := by
+  exact stepWith_eq h_done
+
+end OseaDone
+
+inductive MirStepStarWith (A : mirlite.AllocatorSpec) : mirlite.State → mirlite.Prog → mirlite.State → Prop
+| refl (s : mirlite.State) (prog : mirlite.Prog) : MirStepStarWith A s prog s
+| tail (s1 s2 s3 : mirlite.State) (prog : mirlite.Prog) :
+    mirlite.stepWith A s1 prog = mirlite.Result.Ok s2 →
+    MirStepStarWith A s2 prog s3 →
+    MirStepStarWith A s1 prog s3
+
+abbrev MirStepStar : mirlite.State → mirlite.Prog → mirlite.State → Prop :=
+  MirStepStarWith mirlite.bumpAllocator
+
+theorem MirStepStarWith.single
+  {A : mirlite.AllocatorSpec}
+  {s1 s2 : mirlite.State} {prog : mirlite.Prog}
+  (h : mirlite.stepWith A s1 prog = mirlite.Result.Ok s2) :
+  MirStepStarWith A s1 prog s2 :=
+  MirStepStarWith.tail s1 s2 s2 prog h (MirStepStarWith.refl s2 prog)
+
+theorem MirStepStar.single
+  {s1 s2 : mirlite.State} {prog : mirlite.Prog}
+  (h : mirlite.step s1 prog = mirlite.Result.Ok s2) :
+  MirStepStar s1 prog s2 :=
+  MirStepStarWith.single h
+
+theorem MirStepStarWith.trans
+  {A : mirlite.AllocatorSpec}
+  {s1 s2 s3 : mirlite.State}
+  {prog : mirlite.Prog}
+  (h12 : MirStepStarWith A s1 prog s2)
+  (h23 : MirStepStarWith A s2 prog s3) :
+  MirStepStarWith A s1 prog s3 := by
+  induction h12 with
+  | refl _ _ =>
+      exact h23
+  | tail s1 s2 sMid prog h_step _h_rest ih =>
+      exact MirStepStarWith.tail s1 s2 s3 prog h_step (ih h23)
+
+theorem MirStepStar.trans
+  {s1 s2 s3 : mirlite.State}
+  {prog : mirlite.Prog}
+  (h12 : MirStepStar s1 prog s2)
+  (h23 : MirStepStar s2 prog s3) :
+  MirStepStar s1 prog s3 := by
+  exact MirStepStarWith.trans h12 h23
+
+theorem MirStepStarWith.of_runN_ok
+  {A : mirlite.AllocatorSpec}
+  {n : Nat}
+  {s s' : mirlite.State}
+  {prog : mirlite.Prog}
+  (h : mirlite.runNWith A n s prog = mirlite.Result.Ok s') :
+  MirStepStarWith A s prog s' := by
+  induction n generalizing s with
+  | zero =>
+      simp [mirlite.runNWith] at h
+      subst s'
+      exact MirStepStarWith.refl s prog
+  | succ n ih =>
+      cases h_step : mirlite.stepWith A s prog with
+      | Err _ =>
+          simp [mirlite.runNWith, h_step] at h
+      | Ok s1 =>
+          simp [mirlite.runNWith, h_step] at h
+          exact MirStepStarWith.tail s s1 s' prog h_step (ih h)
+
+theorem MirStepStar.of_runN_ok
+  {n : Nat}
+  {s s' : mirlite.State}
+  {prog : mirlite.Prog}
+  (h : mirlite.runN n s prog = mirlite.Result.Ok s') :
+  MirStepStar s prog s' := by
+  exact MirStepStarWith.of_runN_ok h
 
 inductive StepStarWith (A : oseair.AllocatorSpec) : oseair.State → oseair.Prog → oseair.State → Prop
 | refl (s : oseair.State) (prog : oseair.Prog) : StepStarWith A s prog s

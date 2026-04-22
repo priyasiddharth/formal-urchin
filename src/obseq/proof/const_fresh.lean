@@ -29,6 +29,7 @@ structure ConstFreshCtx where
   base : Word
   n : Word
   cs : CompilerState
+  h_regs_below : PlaceMapRegsBelowNextReg cs
   h_instrs : CompilerEmpty cs
   h_absent : BaseAbsent cs base
 
@@ -108,6 +109,7 @@ theorem mirlite_step_inv
   (h_start : StartsAt prog_mir s_mir.pc [ctx.stmt])
   (h_step : mirlite.stepWith A_m s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
   ∃ freshAddr allocMem tag ap2 ap3,
+    A_m.alloc s_mir.mem (typeSize TyVal.NatTy) = (freshAddr, allocMem) ∧
     allocMem.mMap = s_mir.mem.mMap ∧
     sb_own s_mir.ap freshAddr = (SBResult.Ok ap2, tag) ∧
     sb_use_mb ap2 freshAddr tag = SBResult.Ok ap3 ∧
@@ -144,7 +146,7 @@ theorem mirlite_step_inv
                 mirlite.stepAssignConstWith, mirlite.finishPlaceAssignWith, mirlite.allocateBaseAndWriteWith,
                 h_env, h_alloc_pair, h_own, h_use] at h_step
           | Ok ap3 =>
-              refine ⟨freshAddr, allocMem, tag, ap2, ap3, h_alloc_mMap, h_own, h_use, ?_⟩
+              refine ⟨freshAddr, allocMem, tag, ap2, ap3, h_alloc_pair, h_alloc_mMap, h_own, h_use, ?_⟩
               simpa [ConstFreshCtx.stmt, obseq.notation.basePlace, obseq.notation.placeExpr,
                 obseq.notation.mkPlace, obseq.notation.constRhs,
                 mirlite.stepAssignConstWith, mirlite.finishPlaceAssignWith, mirlite.allocateBaseAndWriteWith,
@@ -157,38 +159,148 @@ variable (s_osea : oseair.State)
 variable (s_mir_next : mirlite.State)
 variable (ρa : AddrRenameMap)
 variable (ρt : TagRenameMap)
+variable {ptr_sim : PtrSimPred}
 
 theorem simulation
   (prog_mir : mirlite.Prog)
   (prog_osea : oseair.Prog)
-  (h_sim : StateSim ctx.cs.placeMap ρa ρt s_mir s_osea)
+  (h_sim : StateSim ctx.cs.placeMap ρa ρt s_mir s_osea ptr_sim)
+  (h_noninterference : TargetNonInterference ρa s_osea)
+  (h_source_below : SourceBlocksBelowAddrStart ctx.cs.placeMap s_mir)
+  (h_tag_fresh : ∀ tag, s_mir.ap.NextTag ≤ tag → ρt tag = none)
+  (h_source_alloc_base :
+    (A_m.alloc s_mir.mem (typeSize TyVal.NatTy)).1 = s_mir.mem.addrStart)
   (h_env : s_mir.env.lookup ctx.base = none)
   (h_mir_start : StartsAt prog_mir s_mir.pc [ctx.stmt])
   (h_osea_start : StartsAt prog_osea s_osea.pc ctx.compiled)
   (h_mir_step : mirlite.stepWith A_m s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
   ∃ ρa' ρt' s_osea_next,
-    StepStarWith A_o s_osea prog_osea s_osea_next ∧
-    StateSim ctx.postPlaceMap ρa' ρt' s_mir_next s_osea_next := by
-  let ⟨freshAddr_m, allocMem_m, tag_m, ap2_m, ap3_m, h_alloc_mMap_m, h_own, h_use, h_next_full⟩ :=
+    StepStarWith oseair.bumpAllocator s_osea prog_osea s_osea_next ∧
+    StateSim ctx.postPlaceMap ρa' ρt' s_mir_next s_osea_next ptr_sim ∧
+    TargetNonInterference ρa' s_osea_next ∧
+    s_osea_next.pc = s_osea.pc + ctx.compiled.length := by
+  let ⟨freshAddr_m, allocMem_m, tag_m, ap2_m, ap3_m, h_alloc_pair_m, h_alloc_mMap_m, h_own, h_use, h_next_full⟩ :=
     mirlite_step_inv
       ctx s_mir s_mir_next prog_mir h_env h_mir_start h_mir_step
-  let allocBase_o := (A_o.alloc s_osea.mem (blockSize LayoutTy.NatL)).1
-  let allocMem_o := (A_o.alloc s_osea.mem (blockSize LayoutTy.NatL)).2
+  have h_alloc_base_m : freshAddr_m = s_mir.mem.addrStart := by
+    have h_fst := congrArg Prod.fst h_alloc_pair_m
+    exact h_fst.symm.trans h_source_alloc_base
+  have h_tag_fresh' : ∀ tag, tag_m ≤ tag → ρt tag = none := by
+    have h_tag_eq : tag_m = s_mir.ap.NextTag := sb_own_tag_eq_nextTag h_own
+    simpa [h_tag_eq] using h_tag_fresh
+  let allocBase_o := (oseair.bumpAllocator.alloc s_osea.mem (blockSize LayoutTy.NatL)).1
+  let allocMem_o := (oseair.bumpAllocator.alloc s_osea.mem (blockSize LayoutTy.NatL)).2
   have h_alloc_pair :
-      A_o.alloc s_osea.mem (blockSize LayoutTy.NatL) = (allocBase_o, allocMem_o) := by
+      oseair.bumpAllocator.alloc s_osea.mem (blockSize LayoutTy.NatL) =
+        (allocBase_o, allocMem_o) := by
     simp [allocBase_o, allocMem_o]
   have h_alloc_mMap_o : allocMem_o.mMap = s_osea.mem.mMap := by
-    simpa [h_alloc_pair] using A_o.alloc_mMap_eq s_osea.mem (blockSize LayoutTy.NatL)
-  simpa [ConstFreshCtx.postPlaceMap, ConstFreshCtx.reg] using
-    fresh_write_simulation (freshAddr_m := freshAddr_m) h_sim
-      (by simpa [ConstFreshCtx.reg] using (alloc_fresh_reg (cs := ctx.cs)))
-      h_own h_use h_alloc_mMap_m
-      h_alloc_mMap_o
+    simpa [h_alloc_pair] using
+      oseair.AllocatorSpec.alloc_mMap_eq
+        (A := oseair.bumpAllocator) s_osea.mem (blockSize LayoutTy.NatL)
+  have h_alloc_base : allocBase_o = s_osea.mem.addrStart := by
+    simp [allocBase_o, oseair.bumpAllocator, oseair.allocate]
+  have h_alloc_addrStart' :
+      allocMem_o.addrStart = s_osea.mem.addrStart + blockSize LayoutTy.NatL := by
+    simp [allocMem_o, oseair.bumpAllocator, oseair.allocate]
+  obtain ⟨ρa', ρt', s_osea_next, h_steps, h_rest⟩ :=
+    fresh_write_simulation (A_o := oseair.bumpAllocator) (freshAddr_m := freshAddr_m)
+      h_sim h_noninterference h_source_below
+      (by
+        simpa [ConstFreshCtx.reg] using
+          (alloc_fresh_reg_of_ge (cs := ctx.cs) ctx.h_regs_below (Nat.le_refl _)))
+      h_tag_fresh' h_own h_use h_alloc_mMap_m h_alloc_base_m
+      h_alloc_mMap_o h_alloc_base h_alloc_addrStart' (by decide)
       (fun tag_o ap2_o ap3_o h_target_own h_target_use => by
         simpa [allocBase_o, allocMem_o, ConstFreshCtx.reg] using
-          osea_run_ok ctx s_osea prog_osea allocBase_o allocMem_o tag_o ap2_o ap3_o
+          osea_run_ok (A_o := oseair.bumpAllocator)
+            ctx s_osea prog_osea allocBase_o allocMem_o tag_o ap2_o ap3_o
             h_osea_start h_alloc_pair h_target_own h_target_use)
       h_next_full (mem_vals_eq_word ctx.n) rfl
+  rcases h_rest with ⟨h_sim_next, h_noninterference_next, h_pc⟩
+  refine ⟨ρa', ρt', s_osea_next, h_steps, ?_, h_noninterference_next, ?_⟩
+  · simpa [ConstFreshCtx.postPlaceMap, ConstFreshCtx.reg] using h_sim_next
+  · simpa [compiled_eq] using h_pc
+
+theorem simulation_structured
+  (prog_mir : mirlite.Prog)
+  (prog_osea : oseair.Prog)
+  (h_sim : StateSim ctx.cs.placeMap ρa ρt s_mir s_osea ptr_sim)
+  (h_noninterference : TargetNonInterference ρa s_osea)
+  (h_source_below : SourceBlocksBelowAddrStart ctx.cs.placeMap s_mir)
+  (h_tag_fresh : ∀ tag, s_mir.ap.NextTag ≤ tag → ρt tag = none)
+  (h_source_alloc_base :
+    (A_m.alloc s_mir.mem (typeSize TyVal.NatTy)).1 = s_mir.mem.addrStart)
+  (h_env : s_mir.env.lookup ctx.base = none)
+  (h_mir_start : StartsAt prog_mir s_mir.pc [ctx.stmt])
+  (h_osea_start : StartsAt prog_osea s_osea.pc ctx.compiled)
+  (h_mir_step : mirlite.stepWith A_m s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
+  ∃ freshAddr_m allocBase_o tag_m tag_o ρa' ρt' s_osea_next,
+    tag_m = s_mir.ap.NextTag ∧
+    ρa' = extendAddrRenameMap ρa freshAddr_m allocBase_o ∧
+    ρt' = extendTagRenameMap ρt tag_m tag_o ∧
+    StepStarWith oseair.bumpAllocator s_osea prog_osea s_osea_next ∧
+    StateSim ctx.postPlaceMap ρa' ρt' s_mir_next s_osea_next ptr_sim ∧
+    TargetNonInterference ρa' s_osea_next ∧
+    s_mir_next.env = s_mir.env.insert ctx.base (freshAddr_m, TyVal.NatTy, tag_m) ∧
+    s_mir_next.ap.NextTag = s_mir.ap.NextTag + 1 ∧
+    s_osea_next.pc = s_osea.pc + ctx.compiled.length := by
+  let ⟨freshAddr_m, allocMem_m, tag_m, ap2_m, ap3_m, h_alloc_pair_m, h_alloc_mMap_m, h_own, h_use, h_next_full⟩ :=
+    mirlite_step_inv
+      ctx s_mir s_mir_next prog_mir h_env h_mir_start h_mir_step
+  have h_alloc_base_m : freshAddr_m = s_mir.mem.addrStart := by
+    have h_fst := congrArg Prod.fst h_alloc_pair_m
+    exact h_fst.symm.trans h_source_alloc_base
+  have h_tag_fresh' : ∀ tag, tag_m ≤ tag → ρt tag = none := by
+    have h_tag_eq : tag_m = s_mir.ap.NextTag := sb_own_tag_eq_nextTag h_own
+    simpa [h_tag_eq] using h_tag_fresh
+  let allocBase_o := (oseair.bumpAllocator.alloc s_osea.mem (blockSize LayoutTy.NatL)).1
+  let allocMem_o := (oseair.bumpAllocator.alloc s_osea.mem (blockSize LayoutTy.NatL)).2
+  have h_alloc_pair :
+      oseair.bumpAllocator.alloc s_osea.mem (blockSize LayoutTy.NatL) =
+        (allocBase_o, allocMem_o) := by
+    simp [allocBase_o, allocMem_o]
+  have h_alloc_mMap_o : allocMem_o.mMap = s_osea.mem.mMap := by
+    simpa [allocBase_o, allocMem_o] using
+      oseair.AllocatorSpec.alloc_mMap_eq
+        (A := oseair.bumpAllocator) s_osea.mem (blockSize LayoutTy.NatL)
+  have h_alloc_base : allocBase_o = s_osea.mem.addrStart := by
+    simp [allocBase_o, oseair.bumpAllocator, oseair.allocate]
+  have h_alloc_addrStart' :
+      allocMem_o.addrStart = s_osea.mem.addrStart + blockSize LayoutTy.NatL := by
+    simp [allocMem_o, oseair.bumpAllocator, oseair.allocate]
+  obtain ⟨tag_o, ρa', ρt', s_osea_next, h_ρa', h_ρt', h_steps, h_sim_next,
+      h_noninterference_next, h_pc⟩ :=
+    fresh_write_simulation_structured
+      (A_o := oseair.bumpAllocator) (freshAddr_m := freshAddr_m)
+      h_sim h_noninterference h_source_below
+      (by
+        simpa [ConstFreshCtx.reg] using
+          (alloc_fresh_reg_of_ge (cs := ctx.cs) ctx.h_regs_below (Nat.le_refl _)))
+      h_tag_fresh' h_own h_use h_alloc_mMap_m h_alloc_base_m
+      h_alloc_mMap_o h_alloc_base h_alloc_addrStart' (by decide)
+      (fun tag_o ap2_o ap3_o h_target_own h_target_use => by
+        simpa [allocBase_o, allocMem_o, ConstFreshCtx.reg] using
+          osea_run_ok (A_o := oseair.bumpAllocator)
+            ctx s_osea prog_osea allocBase_o allocMem_o tag_o ap2_o ap3_o
+            h_osea_start h_alloc_pair h_target_own h_target_use)
+      h_next_full (mem_vals_eq_word ctx.n) rfl
+  have h_tag_eq : tag_m = s_mir.ap.NextTag :=
+    obseq.sb_own_tag_eq_nextTag h_own
+  have h_ap2_next : ap2_m.NextTag = s_mir.ap.NextTag + 1 :=
+    obseq.sb_own_nextTag_succ h_own
+  have h_ap3_next : ap3_m.NextTag = s_mir.ap.NextTag + 1 := by
+    rw [obseq.sb_use_mb_nextTag_eq h_use]
+    exact h_ap2_next
+  have h_env_next :
+      s_mir_next.env = s_mir.env.insert ctx.base (freshAddr_m, TyVal.NatTy, tag_m) := by
+    simpa [h_next_full]
+  have h_nextTag_post : s_mir_next.ap.NextTag = s_mir.ap.NextTag + 1 := by
+    simpa [h_next_full] using h_ap3_next
+  refine ⟨freshAddr_m, allocBase_o, tag_m, tag_o, ρa', ρt', s_osea_next,
+    h_tag_eq, h_ρa', h_ρt', h_steps, h_sim_next, h_noninterference_next,
+    h_env_next, h_nextTag_post, ?_⟩
+  simpa [compiled_eq] using h_pc
 
 end ConstFresh
 

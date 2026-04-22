@@ -14,3 +14,4 @@ import obseq.proof.const_fresh
 import obseq.proof.copy_existing
 import obseq.proof.ref
 import obseq.proof.deref
+import obseq.proof.compiler

@@ -78,8 +78,10 @@ theorem typeSizeList_replicate_natty (n : Nat) :
   rw [blockSize_wordStructLayout]
   simp [wordStructOseaVals]
 
-theorem mem_vals_eq_words (fields : List Word) :
-  mem_vals_eq defaultPtrSim (wordStructMirVals fields) (wordStructOseaVals fields) := by
+theorem mem_vals_eq_words
+  {ptr_sim : PtrSimPred}
+  (fields : List Word) :
+  mem_vals_eq ptr_sim (wordStructMirVals fields) (wordStructOseaVals fields) := by
   induction fields with
   | nil =>
       exact mem_vals_eq.nil
@@ -312,7 +314,8 @@ theorem osea_run_alloc_cstore_embedded_ok
   have h_stmt0 :
       prog.get? s_osea.pc =
         some (oseair.Instr.Assgn reg (oseair.Rhs.Alloc (layoutToTyVal layout))) := by
-    simpa [StartsAt, Nat.zero_add, List.get?] using (h_start 0).symm
+    have h_head := h_start 0 (by decide : 0 < 2)
+    simpa [Nat.zero_add, List.get?] using h_head.symm
   have h_tail := StartsAt.tail h_start
   have h_stmt1 :
       prog.get? (s_osea.pc + 1) =

@@ -82,6 +82,14 @@ def allocate (m : Mem) (sz : Nat) : Word × Mem :=
 structure AllocatorSpec extends obseq.AllocatorSpec Mem where
   alloc_mMap : ∀ m sz, (alloc m sz).2.mMap = m.mMap
 
+/--
+Proof-oriented allocator interface: in addition to preserving the sparse memory
+map, freshly allocated cells are previously unmapped.
+-/
+structure AllocatorProofSpec extends toRuntimeAllocator : AllocatorSpec where
+  alloc_fresh : ∀ m sz i, i < sz →
+    Mem.find? m (((toRuntimeAllocator.alloc) m sz).1 + i) = none
+
 def bumpAllocator : AllocatorSpec where
   alloc := allocate
   alloc_mMap := by
@@ -94,6 +102,15 @@ theorem AllocatorSpec.alloc_mMap_eq
   (sz : Nat) :
   (A.alloc m sz).2.mMap = m.mMap := by
   exact A.alloc_mMap m sz
+
+theorem AllocatorProofSpec.alloc_fresh_eq
+  (A : AllocatorProofSpec)
+  (m : Mem)
+  (sz : Nat)
+  (i : Nat)
+  (h_lt : i < sz) :
+  Mem.find? m ((((AllocatorProofSpec.toRuntimeAllocator A).alloc) m sz).1 + i) = none := by
+  exact A.alloc_fresh m sz i h_lt
 
 -- Syntax
 inductive Rhs

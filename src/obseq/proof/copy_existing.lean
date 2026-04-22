@@ -94,8 +94,9 @@ abbrev LocalSim
   (ρa : AddrRenameMap)
   (ρt : TagRenameMap)
   (s_mir : mirlite.State)
-  (s_osea : oseair.State) : Prop :=
-  StateSim ctx.cs.placeMap ρa ρt s_mir s_osea
+  (s_osea : oseair.State)
+  (ptr_sim : PtrSimPred := defaultPtrSim) : Prop :=
+  StateSim ctx.cs.placeMap ρa ρt s_mir s_osea ptr_sim
 
 theorem osea_run_ok
   (ctx : CopyExistingCtx)
@@ -169,17 +170,21 @@ variable (s_osea : oseair.State)
 variable (s_mir_next : mirlite.State)
 variable (ρa : AddrRenameMap)
 variable (ρt : TagRenameMap)
+variable {ptr_sim : PtrSimPred}
 
 theorem simulation
   (prog_mir : mirlite.Prog)
   (prog_osea : oseair.Prog)
-  (h_sim : LocalSim ctx ρa ρt s_mir s_osea)
+  (h_sim : LocalSim ctx ρa ρt s_mir s_osea ptr_sim)
+  (h_noninterference : TargetNonInterference ρa s_osea)
   (h_mir_start : StartsAt prog_mir s_mir.pc [ctx.stmt])
   (h_osea_start : StartsAt prog_osea s_osea.pc ctx.compiled)
   (h_mir_step : mirlite.stepWith A_m s_mir prog_mir = mirlite.Result.Ok s_mir_next) :
   ∃ s_osea_next,
     StepStarWith A_o s_osea prog_osea s_osea_next ∧
-    LocalSim ctx ρa ρt s_mir_next s_osea_next := by
+    LocalSim ctx ρa ρt s_mir_next s_osea_next ptr_sim ∧
+    TargetNonInterference ρa s_osea_next ∧
+    s_osea_next.pc = s_osea.pc + ctx.compiled.length := by
   let ⟨srcAddr_m, srcAddr_o, srcTag_m, srcTag_o, h_src_ptr, h_src_mem⟩ := StateSim.place h_sim ctx.h_src_lookup
   let ⟨dstAddr_m, dstAddr_o, dstTag_m, dstTag_o, h_dst_ptr, _h_dst_mem⟩ := StateSim.place h_sim ctx.h_dst_lookup
   have h_src_env :
@@ -200,6 +205,8 @@ theorem simulation
   have h_src_tag : ρt srcTag_m = some srcTag_o := place_runtime_sim.tag h_src_ptr
   have h_dst_addr : ρa dstAddr_m = some dstAddr_o := place_runtime_sim.addr h_dst_ptr
   have h_dst_tag : ρt dstTag_m = some dstTag_o := place_runtime_sim.tag h_dst_ptr
+  have h_src_lt : srcAddr_o < s_osea.mem.addrStart := h_noninterference.1 _ _ h_src_addr
+  have h_dst_lt : dstAddr_o < s_osea.mem.addrStart := h_noninterference.1 _ _ h_dst_addr
   let ⟨apRead_m, apWrite_m, h_read, h_write, h_next_full⟩ :=
     mirlite_step_inv
       ctx s_mir s_mir_next prog_mir
@@ -216,15 +223,36 @@ theorem simulation
         ctx s_osea prog_osea srcAddr_o srcTag_o dstAddr_o dstTag_o
         apRead_o apWrite_o h_osea_start h_src_reg h_dst_reg h_target_read h_target_write
   have h_src_vals :
-      mem_vals_eq defaultPtrSim
+      mem_vals_eq ptr_sim
         (mirlite.readWordSeq s_mir.mem srcAddr_m (blockSize ctx.layout))
         (oseair.readWordSeq s_osea.mem srcAddr_o (blockSize ctx.layout)) :=
-    mem_vals_eq_readWordSeq h_src_mem
-  refine ⟨s_osea_post, StepStarWith.of_runN_ok h_target_run, ?_⟩
+    mem_vals_eq_readWordSeq (ptr_sim := ptr_sim) h_src_mem
+  let s_osea_read : oseair.State := { s_osea with ap := apRead_o }
+  have h_nonempty_read : TargetNonemptyStacksBelowAddrStart s_osea_read := by
+    exact TargetNonemptyStacksBelowAddrStart.sb_read
+      h_noninterference.2 (StateSim.sb h_sim).valid_osea h_src_lt h_target_read
+  have h_nonempty_write_core : TargetNonemptyStacksBelowAddrStart { s_osea with ap := apWrite_o } := by
+    exact TargetNonemptyStacksBelowAddrStart.sb_use_mb
+      (s_osea := s_osea_read)
+      h_nonempty_read
+      (sb_read_preserves_valid (StateSim.sb h_sim).valid_osea h_target_read)
+      (by simpa [s_osea_read] using h_dst_lt)
+      (by simpa [s_osea_read] using h_target_write)
+  have h_nonempty_write : TargetNonemptyStacksBelowAddrStart s_osea_post := by
+    exact TargetNonemptyStacksBelowAddrStart.of_stackMap_eq
+      (s_osea := { s_osea with ap := apWrite_o })
+      (s_osea_next := s_osea_post)
+      h_nonempty_write_core rfl (by simp [s_osea_post, CopyOseaPost])
+  have h_noninterference_next : TargetNonInterference ρa s_osea_post := by
+    refine ⟨?_, ?_⟩
+    · exact TargetAddrRenameBelowAddrStart.mono h_noninterference.1 (by simp [s_osea_post, CopyOseaPost])
+    · exact h_nonempty_write
+  refine ⟨s_osea_post, StepStarWith.of_runN_ok h_target_run, ?_, h_noninterference_next, ?_⟩
   rw [h_next_full]
-  simpa [LocalSim, CopyMirPost, CopyOseaPost, s_osea_post] using
-    state_sim_write h_sim h_dst_ptr h_sb_write h_src_vals
+  · simpa [LocalSim, CopyMirPost, CopyOseaPost, s_osea_post] using
+    state_sim_write (ptr_sim := ptr_sim) h_sim h_dst_ptr h_sb_write h_src_vals
       (mirlite_readWordSeq_length s_mir.mem srcAddr_m (blockSize ctx.layout))
+  · simp [ctx.compiled_eq, s_osea_post, CopyOseaPost]
 
 end CopyExisting
 
