@@ -104,7 +104,7 @@ inductive Instr
 | Halt
 deriving Repr, Inhabited
 
-abbrev Prog := List Instr
+abbrev Prog := Nat → Option Instr
 
 structure State where
   pc : Nat
@@ -201,7 +201,7 @@ def writeThroughPtr (state : State) (ptr : Register) (vals : List Val) (invalidM
   match state.reg.lookup ptr with
   | some (_, [Val.Ptr base offset size tag]) =>
      let addr := base + offset
-     if addr >= base + size then Result.Err "OOB"
+     if addr + vals.length > base + size then Result.Err "OOB"
      else
        match sb_use_mb state.ap addr tag with
        | obseq.SBResult.Ok ap2 =>
@@ -211,9 +211,9 @@ def writeThroughPtr (state : State) (ptr : Register) (vals : List Val) (invalidM
   | _ => Result.Err invalidMsg
 
 def stepWith (A : AllocatorSpec) (state : State) (prog : Prog) : Result :=
-  if h : state.pc < prog.length then
-    let instr := prog.get ⟨state.pc, h⟩
-    match instr with
+  match prog state.pc with
+  | none => Result.Ok state
+  | some instr => match instr with
     | Instr.Halt => Result.Ok state
     | Instr.Assgn reg rhs =>
       match evalRhsWith A state rhs with
@@ -221,13 +221,15 @@ def stepWith (A : AllocatorSpec) (state : State) (prog : Prog) : Result :=
         let reg2 := s1.reg.insert reg (ty, vals)
         Result.Ok { s1 with reg := reg2, pc := state.pc + 1 }
       | RhsResult.Err msg => Result.Err msg
-    | Instr.RStore _ty src ptr =>
+    | Instr.RStore ty src ptr =>
       match state.reg.lookup src, state.reg.lookup ptr with
-      | some (_, vals), some _ =>
-         writeThroughPtr state ptr vals "RStore Invalid Regs"
+      | some (srcTy, vals), some _ =>
+        if srcTy != ty then Result.Err "RStore type mismatch"
+        else writeThroughPtr state ptr vals "RStore Invalid Regs"
       | _, _ => Result.Err "RStore Invalid Regs"
-    | Instr.CStore _ty vals ptr =>
-      writeThroughPtr state ptr vals "CStore Invalid Ptr"
+    | Instr.CStore ty vals ptr =>
+      if vals.length != typeSize ty then Result.Err "CStore size mismatch"
+      else writeThroughPtr state ptr vals "CStore Invalid Ptr"
     | Instr.Die reg =>
        match state.reg.lookup reg with
        | some (_, [Val.Ptr base offset _ tag]) =>
@@ -254,7 +256,6 @@ def stepWith (A : AllocatorSpec) (state : State) (prog : Prog) : Result :=
               | obseq.SBResult.Err msg => Result.Err msg
             | obseq.SBResult.Err msg => Result.Err msg
        | _, _ => Result.Err "Memcpy invalid regs"
-  else Result.Ok state
 
 def step : State → Prog → Result :=
   stepWith bumpAllocator

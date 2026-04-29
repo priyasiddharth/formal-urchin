@@ -9,9 +9,10 @@ open obseq2.oseair (Register Instr Rhs Val)
 abbrev TargetProg := obseq2.oseair.Prog
 
 structure CompilerState where
-  nextReg : Nat
-  instrs : List Instr
-deriving Repr, Inhabited
+  nextReg   : Nat
+  nextLabel : Nat
+  code      : Nat → Option Instr
+deriving Inhabited
 
 structure PtrResult where
   reg : Register
@@ -25,7 +26,14 @@ structure RExprResult where
 deriving Inhabited
 
 def emit (cs : CompilerState) (instrs : List Instr) : CompilerState :=
-  { cs with instrs := cs.instrs ++ instrs }
+  let n := instrs.length
+  { cs with
+    nextLabel := cs.nextLabel + n,
+    code      := fun pc =>
+      if cs.nextLabel ≤ pc ∧ pc < cs.nextLabel + n then
+        instrs.get? (pc - cs.nextLabel)
+      else
+        cs.code pc }
 
 def freshReg (cs : CompilerState) : Register × CompilerState :=
   (Register.R cs.nextReg, { cs with nextReg := cs.nextReg + 1 })
@@ -41,43 +49,51 @@ def pathOffset : PathTo src dst → Nat
   | .field (tys := tys) idx tail =>
       layoutSizeList (tys.take idx.1) + pathOffset tail
 
-def placeBaseLocal : Place Γ τ → Σ σ, Local Γ σ
-  | .local loc => ⟨τ, loc⟩
-  | .proj base _ => placeBaseLocal base
-
-def placeOffset : Place Γ τ → Nat
-  | .local _ => 0
-  | .proj base path => placeOffset base + pathOffset path
-
-def placeBaseReg (place : Place Γ τ) : Register :=
-  localReg (placeBaseLocal place).2
-
 def borrowOffsetRhs (kind : RefKind) (base : Register) (offset : Word) : Rhs :=
   match kind with
   | .Shared => Rhs.BorOffset base offset
   | .Mut => Rhs.MutBorOffset base offset
   | .Raw => Rhs.CopyOffset base offset
 
-def placeToBorrowReg
-  (cs : CompilerState)
-  (kind : RefKind)
-  (place : Place Γ τ) : PtrResult :=
-  let (tmpReg, cs1) := freshReg cs
-  let cs2 := emit cs1 [Instr.Assgn tmpReg (borrowOffsetRhs kind (placeBaseReg place) (placeOffset place))]
-  { reg := tmpReg, cleanup := [tmpReg], cs := cs2 }
+/-- Compile a place to a register holding a pointer to the place's address. -/
+def placeToReg (cs : CompilerState) (kind : RefKind) : Place Γ τ → PtrResult
+  | .local loc =>
+      { reg := localReg loc, cleanup := [], cs := cs }
+  | .proj base path =>
+      let baseRes := placeToReg cs kind base
+      let offset := pathOffset path
+      if offset = 0 then
+        baseRes
+      else
+        let (tmpReg, cs1) := freshReg baseRes.cs
+        let cs2 := emit cs1 [Instr.Assgn tmpReg (borrowOffsetRhs kind baseRes.reg offset)]
+        { reg := tmpReg, cleanup := baseRes.cleanup ++ [tmpReg], cs := cs2 }
+  | .deref ptrPlace =>
+      let ptrRes := placeToReg cs .Shared ptrPlace
+      let (loadedReg, cs1) := freshReg ptrRes.cs
+      let cs2 := emit cs1 [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)]
+      let cs3 := emit cs2 (cleanupInstrs ptrRes.cleanup)
+      { reg := loadedReg, cleanup := [loadedReg], cs := cs3 }
 
-def placeToReg
-  (cs : CompilerState)
-  (kind : RefKind)
-  (place : Place Γ τ) : PtrResult :=
-  let baseReg := placeBaseReg place
-  let offset := placeOffset place
-  if offset = 0 then
-    { reg := baseReg, cleanup := [], cs := cs }
-  else
-    let (tmpReg, cs1) := freshReg cs
-    let cs2 := emit cs1 [Instr.Assgn tmpReg (borrowOffsetRhs kind baseReg offset)]
-    { reg := tmpReg, cleanup := [tmpReg], cs := cs2 }
+def placeToBorrowReg (cs : CompilerState) (kind : RefKind) : Place Γ τ → PtrResult
+  | .local loc =>
+      let (tmpReg, cs1) := freshReg cs
+      let cs2 := emit cs1 [Instr.Assgn tmpReg (borrowOffsetRhs kind (localReg loc) 0)]
+      { reg := tmpReg, cleanup := [tmpReg], cs := cs2 }
+  | .proj base path =>
+      let baseRes := placeToReg cs kind base
+      let offset := pathOffset path
+      let (tmpReg, cs1) := freshReg baseRes.cs
+      let cs2 := emit cs1 [Instr.Assgn tmpReg (borrowOffsetRhs kind baseRes.reg offset)]
+      { reg := tmpReg, cleanup := baseRes.cleanup ++ [tmpReg], cs := cs2 }
+  | .deref ptrPlace =>
+      let ptrRes := placeToReg cs .Shared ptrPlace
+      let (loadedReg, cs1) := freshReg ptrRes.cs
+      let cs2 := emit cs1 [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)]
+      let cs3 := emit cs2 (cleanupInstrs ptrRes.cleanup)
+      let (tmpReg, cs4) := freshReg cs3
+      let cs5 := emit cs4 [Instr.Assgn tmpReg (borrowOffsetRhs kind loadedReg 0)]
+      { reg := tmpReg, cleanup := [loadedReg, tmpReg], cs := cs5 }
 
 def compileRExprTo
   (cs : CompilerState)
@@ -93,12 +109,6 @@ def compileRExprTo
   | .ref kind src =>
       let srcRes := placeToBorrowReg cs kind src
       emit srcRes.cs [Instr.RStore obseq.TyVal.PTy srcRes.reg dstPtr]
-  | .deref (τ := τ) src =>
-      let srcRes := placeToReg cs .Shared src
-      let (loadedPtr, cs1) := freshReg srcRes.cs
-      emit cs1 ([Instr.Assgn loadedPtr (Rhs.Load obseq.TyVal.PTy srcRes.reg)] ++
-        cleanupInstrs srcRes.cleanup ++
-        [Instr.Memcpy dstPtr loadedPtr (layoutToTyVal τ)])
 
 def compileRExpr
   (cs : CompilerState)
@@ -125,12 +135,10 @@ def initLocalsAux : Nat → Ctx → List Instr
 def initLocals (Γ : Ctx) : List Instr :=
   initLocalsAux 0 Γ
 
-def initialState (Γ : Ctx) : CompilerState := {
-  nextReg := Γ.length
-  instrs := initLocals Γ
-}
+def initialState (Γ : Ctx) : CompilerState :=
+  emit { nextReg := Γ.length, nextLabel := 0, code := fun _ => none } (initLocals Γ)
 
-def compileProg (prog : Prog Γ) : TargetProg :=
-  (List.foldl compileStmt (initialState Γ) prog).instrs
+def compileProg (prog : Prog Γ) : Nat → Option Instr :=
+  (List.foldl compileStmt (initialState Γ) prog).code
 
 end obseq2.compile

@@ -38,40 +38,32 @@ def offset : PathTo src dst → Nat
 
 end PathTo
 
-namespace Place
-
-def baseLocal : Place Γ τ → Σ σ, Local Γ σ
-  | .local loc => ⟨τ, loc⟩
-  | .proj base _ => Place.baseLocal base
-
-def offset : Place Γ τ → Nat
-  | .local _ => 0
-  | .proj base path => Place.offset base + PathTo.offset path
-
-end Place
-
-inductive MemValue (Γ : Ctx) where
+/-- Pointer values in memory are concrete (base, offset, size, tag) — matching OSEA-IR's
+    Val.Ptr exactly. This removes Γ from MemValue and eliminates the symbolic placeTag
+    representation, making MemValSim trivial and allowing Γ to be dropped from Mem and
+    the memory portion of State. -/
+inductive MemValue where
 | undef
-| word (value : Word)
-| placeTag {τ : LayoutTy} (place : Place Γ τ) (tag : Tag)
+| word  (value : Word)
+| ptrVal (base : Word) (offset : Word) (size : Word) (tag : Tag)
 
-abbrev MemMap (Γ : Ctx) := List (Word × MemValue Γ)
+abbrev MemMap := List (Word × MemValue)
 
-structure Mem (Γ : Ctx) where
-  mMap : MemMap Γ
+structure Mem where
+  mMap : MemMap
   addrStart : Word
 
 namespace Mem
 
-def find? (m : Mem Γ) (addr : Word) : Option (MemValue Γ) :=
+def find? (m : Mem) (addr : Word) : Option MemValue :=
   List.lookup addr m.mMap
 
-def write (m : Mem Γ) (addr : Word) (value : MemValue Γ) : Mem Γ :=
+def write (m : Mem) (addr : Word) (value : MemValue) : Mem :=
   { m with mMap := (addr, value) :: m.mMap.filter (fun (a, _) => a != addr) }
 
 end Mem
 
-def readWordSeq (m : Mem Γ) (addr : Word) : Nat → List (MemValue Γ)
+def readWordSeq (m : Mem) (addr : Word) : Nat → List MemValue
   | 0 => []
   | n + 1 =>
       match m.find? addr with
@@ -79,7 +71,7 @@ def readWordSeq (m : Mem Γ) (addr : Word) : Nat → List (MemValue Γ)
       | none => MemValue.undef :: readWordSeq m (addr + 1) n
 
 @[simp] theorem readWordSeq_length
-  (m : Mem Γ)
+  (m : Mem)
   (addr : Word)
   (n : Nat) :
   (readWordSeq m addr n).length = n := by
@@ -88,107 +80,117 @@ def readWordSeq (m : Mem Γ) (addr : Word) : Nat → List (MemValue Γ)
   | succ n ih =>
   cases h : m.find? addr <;> simp [readWordSeq, h, ih]
 
-def writeWordSeq (m : Mem Γ) (addr : Word) : List (MemValue Γ) → Mem Γ
+def writeWordSeq (m : Mem) (addr : Word) : List MemValue → Mem
   | [] => m
   | value :: values => writeWordSeq (m.write addr value) (addr + 1) values
 
-def allocate (m : Mem Γ) (sz : Nat) : Word × Mem Γ :=
+def allocate (m : Mem) (sz : Nat) : Word × Mem :=
   let base := m.addrStart
   (base, { m with addrStart := base + sz })
 
+/-- State no longer carries Γ in the memory — Γ is only needed for Env. -/
 structure State (M : PermissionModel) (Γ : Ctx) where
   pc : Nat
   env : Env Γ
-  mem : Mem Γ
+  mem : Mem
   perms : M.State
 
-structure PlaceRes (Γ : Ctx) (τ : LayoutTy) where
-  addr : Word
-  tag : Tag
+/-- Resolved place: concrete address, tag, and allocation bounds.
+    No Γ or τ parameter — all fields are concrete words. -/
+structure PlaceRes where
+  addr     : Word
+  tag      : Tag
+  allocBase : Word
+  allocSize : Word
 
 inductive Result (M : PermissionModel) (Γ : Ctx) where
 | ok (state : State M Γ)
 | err (msg : String)
 
 structure EvalOutput (M : PermissionModel) (Γ : Ctx) (τ : LayoutTy) where
-  values : List (MemValue Γ)
+  values     : List MemValue
   values_len : values.length = blockSize τ
-  state : State M Γ
+  state      : State M Γ
 
 inductive EvalResult (M : PermissionModel) (Γ : Ctx) (τ : LayoutTy) where
 | ok (output : EvalOutput M Γ τ)
 | err (msg : String)
 
-def resolveDirectPlace? (state : State M Γ) (place : Place Γ τ) : Option (PlaceRes Γ τ) :=
-  let base := Place.baseLocal place
-  match state.env.lookup base.2 with
-  | some binding =>
-      some { addr := binding.addr + Place.offset place, tag := binding.tag }
-  | none => none
+/-- Resolve a place to a concrete address and allocation bounds.
+    Handles local, proj, and deref by recursion on the place structure.
+    For deref, follows the ptrVal stored in memory at the pointer place — no
+    intermediate permission check (that is the caller's responsibility via useMut/read). -/
+def resolvePlace? (state : State M Γ) : Place Γ τ → Option PlaceRes
+  | .local loc =>
+      match state.env.lookup loc with
+      | some binding =>
+          some { addr := binding.addr, tag := binding.tag,
+                 allocBase := binding.addr, allocSize := blockSize τ }
+      | none => none
+  | .proj base path =>
+      match resolvePlace? state base with
+      | none => none
+      | some res =>
+          some { res with addr := res.addr + PathTo.offset path }
+  | .deref ptrPlace =>
+      match resolvePlace? state ptrPlace with
+      | none => none
+      | some ptrRes =>
+          match state.mem.find? ptrRes.addr with
+          | some (.ptrVal base offset size tag) =>
+              some { addr := base + offset, tag := tag,
+                     allocBase := base, allocSize := size }
+          | _ => none
 
 def writeResolvedPlace
   (M : PermissionModel)
   (state : State M Γ)
-  (dst : PlaceRes Γ τ)
-  (values : List (MemValue Γ))
+  (dst : PlaceRes)
+  (values : List MemValue)
   (_valuesLen : values.length = blockSize τ) : Result M Γ :=
-  match M.useMut state.perms dst.addr dst.tag with
-  | some perms' =>
-      let mem' := writeWordSeq state.mem dst.addr values
-      .ok { state with perms := perms', mem := mem', pc := state.pc + 1 }
-  | none =>
-      .err "destination write permission failed"
-
-  def allocateBaseAndWrite
-    (M : PermissionModel)
-    (state : State M Γ)
-    (loc : Local Γ τ)
-    (values : List (MemValue Γ))
-    (_valuesLen : values.length = blockSize τ) : Result M Γ :=
-    let (addr, mem') := allocate state.mem (blockSize τ)
-    match M.own state.perms addr with
+  if dst.addr + values.length > dst.allocBase + dst.allocSize then
+    .err "write out of bounds"
+  else
+    match M.useMut state.perms dst.addr dst.tag with
+    | some perms' =>
+        let mem' := writeWordSeq state.mem dst.addr values
+        .ok { state with perms := perms', mem := mem', pc := state.pc + 1 }
     | none =>
-      .err "allocation permission initialization failed"
-    | some (permsOwned, tag) =>
-      match M.useMut permsOwned addr tag with
-      | none =>
-        .err "fresh allocation write permission failed"
-      | some perms' =>
-        let env' := state.env.set loc { addr := addr, tag := tag }
-        let mem'' := writeWordSeq mem' addr values
-        .ok { state with env := env', mem := mem'', perms := perms', pc := state.pc + 1 }
+        .err "destination write permission failed"
 
-  def finishPlaceAssign
-    (M : PermissionModel)
-    (state : State M Γ)
-    (dst : Place Γ τ)
-    (values : List (MemValue Γ))
-    (valuesLen : values.length = blockSize τ) : Result M Γ :=
-    match resolveDirectPlace? state dst with
-    | some resolvedDst =>
-      writeResolvedPlace M state resolvedDst values valuesLen
-    | none =>
-      match dst with
-      | .local loc => allocateBaseAndWrite M state loc values valuesLen
-      | .proj _ _ => .err "destination base place not allocated"
-
-def evalDerefAddr
+def allocateBaseAndWrite
   (M : PermissionModel)
   (state : State M Γ)
-  {τ : LayoutTy}
-  (addr : Word)
-  (guardTag : Tag) : EvalResult M Γ τ :=
-  match M.read state.perms addr guardTag with
+  (loc : Local Γ τ)
+  (values : List MemValue)
+  (_valuesLen : values.length = blockSize τ) : Result M Γ :=
+  let (addr, mem') := allocate state.mem (blockSize τ)
+  match M.own state.perms addr with
   | none =>
-      .err "pointee read permission failed"
-  | some perms' =>
-      let state' := { state with perms := perms' }
-      .ok {
-        values := readWordSeq state'.mem addr (blockSize τ)
-        values_len := by
-          exact readWordSeq_length state'.mem addr (blockSize τ)
-        state := state'
-      }
+    .err "allocation permission initialization failed"
+  | some (permsOwned, tag) =>
+    match M.useMut permsOwned addr tag with
+    | none =>
+      .err "fresh allocation write permission failed"
+    | some perms' =>
+      let env' := state.env.set loc { addr := addr, tag := tag }
+      let mem'' := writeWordSeq mem' addr values
+      .ok { state with env := env', mem := mem'', perms := perms', pc := state.pc + 1 }
+
+def finishPlaceAssign
+  (M : PermissionModel)
+  (state : State M Γ)
+  (dst : Place Γ τ)
+  (values : List MemValue)
+  (valuesLen : values.length = blockSize τ) : Result M Γ :=
+  match resolvePlace? state dst with
+  | some resolvedDst =>
+    writeResolvedPlace M state resolvedDst values valuesLen
+  | none =>
+    match dst with
+    | .local loc => allocateBaseAndWrite M state loc values valuesLen
+    | .proj _ _ => .err "destination base place not allocated"
+    | .deref _ => .err "destination pointer place not allocated or not a pointer"
 
 def evalRExpr
   (M : PermissionModel)
@@ -202,44 +204,34 @@ def evalRExpr
         values_len := rfl
         state := state
       }
-  | .copy _ =>
-      .err "copy is not part of the initial obseq2 MIRLite fragment"
+  | .copy (τ := τ) src =>
+      match resolvePlace? state src with
+      | none => .err "copy source place not allocated"
+      | some resolved =>
+          match M.read state.perms resolved.addr resolved.tag with
+          | none => .err "copy read permission failed"
+          | some perms' =>
+              let state' := { state with perms := perms' }
+              .ok {
+                values := readWordSeq state'.mem resolved.addr (blockSize τ)
+                values_len := readWordSeq_length state'.mem resolved.addr (blockSize τ)
+                state := state'
+              }
   | .ref kind src =>
-        match resolveDirectPlace? state src with
-        | none =>
-          .err "reference source place not allocated"
-        | some resolved =>
+      match resolvePlace? state src with
+      | none => .err "reference source place not allocated"
+      | some resolved =>
           match M.ref state.perms resolved.addr resolved.tag kind with
           | some (perms', freshTag) =>
-            .ok {
-            values := [MemValue.placeTag src freshTag]
-            values_len := rfl
-            state := { state with perms := perms' }
-            }
-          | none =>
-            .err "reference creation permission failed"
-  | .deref (τ := τ) src =>
-        match resolveDirectPlace? state src with
-        | none =>
-          .err "pointer source place not allocated"
-        | some resolvedPtr =>
-          match M.read state.perms resolvedPtr.addr resolvedPtr.tag with
-          | none =>
-            .err "pointer read permission failed"
-          | some perms' =>
-            let state' := { state with perms := perms' }
-            match state'.mem.find? resolvedPtr.addr with
-            | some (@MemValue.placeTag _ τ' pointee guardTag) =>
-              if τ' == τ then
-              match resolveDirectPlace? state' pointee with
-              | some resolvedPointee =>
-                evalDerefAddr M state' resolvedPointee.addr guardTag
-              | none =>
-                .err "pointee place not allocated"
-              else
-              .err "deref type mismatch"
-            | _ =>
-              .err "deref expected a pointer cell"
+              .ok {
+                values := [MemValue.ptrVal resolved.allocBase
+                             (resolved.addr - resolved.allocBase)
+                             resolved.allocSize
+                             freshTag]
+                values_len := rfl
+                state := { state with perms := perms' }
+              }
+          | none => .err "reference creation permission failed"
 
 def stepStmt
   (M : PermissionModel)
