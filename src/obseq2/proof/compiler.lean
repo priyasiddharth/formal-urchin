@@ -1,4 +1,4 @@
-import obseq2.proof.const_init
+import obseq2.proof.const_write
 import obseq2.proof.copy
 import obseq2.proof.ref
 
@@ -12,7 +12,7 @@ open obseq2.oseair (Instr Register Rhs Val)
 -- re-established.
 -- Proof plan (case split on stmt):
 --   halt                    : Halt is a fixed point on both sides; 0 target steps.
---   assign dst (constInit v): delegated to CompilerInv_step_constInit.
+--   assign dst (constInit v): delegated to CompilerInv_step_constWrite.
 --   assign dst (copy src)   : delegated to CompilerInv_step_copy.
 --   assign dst (ref kind src): delegated to CompilerInv_step_ref.
 theorem CompilerInv_step
@@ -22,12 +22,16 @@ theorem CompilerInv_step
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
     {s_mir s_mir' : obseq2.mirlite.State PermissionModel.stackedBorrows Γ}
     {s_osea : oseair.State}
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     (h_step : obseq2.mirlite.step PermissionModel.stackedBorrows s_mir prog
                 = obseq2.mirlite.Result.ok s_mir') :
-    ∃ (s_osea' : oseair.State) (n : Nat),
-      oseair.runN n s_osea (compileProgFrom cs0 prog) = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   simp only [obseq2.mirlite.step] at h_step
   split at h_step
   · rename_i stmt h_get
@@ -35,17 +39,21 @@ theorem CompilerInv_step
     | halt =>
         simp only [obseq2.mirlite.stepStmt] at h_step
         simp at h_step; subst h_step
-        exact ⟨s_osea, 0, by simp [oseair.runN], h_inv⟩
+        exact ⟨ρa, ρt, s_osea, 0,
+          AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
+          by simp [oseair.runN], h_inv⟩
     | assign dst rhs =>
         cases rhs with
         | constInit v =>
-            exact CompilerInv_step_constInit v h_inv h_get h_step
+          exact CompilerInv_step_constWrite compProg v h_comp h_inv h_get h_step
         | copy src =>
-            exact CompilerInv_step_copy h_inv h_get h_step
+          exact CompilerInv_step_copy compProg h_comp h_inv h_get h_step
         | ref kind src =>
-            exact CompilerInv_step_ref kind h_inv h_get h_step
+          exact CompilerInv_step_ref kind compProg h_comp h_inv h_get h_step
   · simp at h_step; subst h_step
-    exact ⟨s_osea, 0, by simp [oseair.runN], h_inv⟩
+    exact ⟨ρa, ρt, s_osea, 0,
+      AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
+      by simp [oseair.runN], h_inv⟩
 
 -- Main compiler correctness theorem.
 -- For every n-step source execution producing s_mir', the compiled target
@@ -62,26 +70,36 @@ theorem compile_correct
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
     {s_mir s_mir' : obseq2.mirlite.State PermissionModel.stackedBorrows Γ}
     {s_osea : oseair.State}
+    (compProg : oseair.Prog)
     (n : Nat)
+    (h_comp : compileProg prog = Except.ok compProg)
     (h_run : obseq2.mirlite.runN PermissionModel.stackedBorrows n s_mir prog
                = obseq2.mirlite.Result.ok s_mir')
     (h_inv : CompilerInv (initialState Γ) prog ρa ρt s_mir s_osea) :
-    ∃ (s_osea' : oseair.State) (m : Nat),
-      oseair.runN m s_osea (compileProg prog) = oseair.Result.Ok s_osea' ∧
-      CompilerInv (initialState Γ) prog ρa ρt s_mir' s_osea' := by
-  induction n generalizing s_mir s_osea with
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State) (m : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN m s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv (initialState Γ) prog ρa' ρt' s_mir' s_osea' := by
+  induction n generalizing ρa ρt s_mir s_osea with
   | zero =>
       simp [obseq2.mirlite.runN] at h_run
-      exact ⟨s_osea, 0, by simp [oseair.runN], h_run ▸ h_inv⟩
+      exact ⟨ρa, ρt, s_osea, 0,
+        AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
+        by simp [oseair.runN], h_run ▸ h_inv⟩
   | succ n ih =>
       simp only [obseq2.mirlite.runN] at h_run
       split at h_run
       · -- halt: runN short-circuits, s_mir' = s_mir; zero target steps suffice.
         simp at h_run; subst h_run
-        exact ⟨s_osea, 0, by simp [oseair.runN], h_inv⟩
+        exact ⟨ρa, ρt, s_osea, 0,
+          AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
+          by simp [oseair.runN], h_inv⟩
       · -- none: runN short-circuits, s_mir' = s_mir; zero target steps suffice.
         simp at h_run; subst h_run
-        exact ⟨s_osea, 0, by simp [oseair.runN], h_inv⟩
+        exact ⟨ρa, ρt, s_osea, 0,
+          AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
+          by simp [oseair.runN], h_inv⟩
       · -- real step: use CompilerInv_step then IH.
         rename_i stmt h_get
         split at h_run
@@ -90,10 +108,16 @@ theorem compile_correct
           have h_step : obseq2.mirlite.step PermissionModel.stackedBorrows s_mir prog
               = obseq2.mirlite.Result.ok s_mid := by
             simp [obseq2.mirlite.step, h_get, h_step_eq]
-          obtain ⟨s_osea_mid, k, h_target_k, h_inv_mid⟩ := CompilerInv_step h_inv h_step
-          obtain ⟨s_osea', m, h_target_m, h_inv'⟩ := ih h_run h_inv_mid
-          exact ⟨s_osea', k + m,
-            (oseair_runN_add k m s_osea (compileProg prog) s_osea_mid h_target_k).trans
+          obtain ⟨ρa_mid, ρt_mid, s_osea_mid, k,
+            hρa_step, hρt_step, h_target_k, h_inv_mid⟩ :=
+            CompilerInv_step compProg (by simpa [compileProg] using h_comp) h_inv h_step
+          obtain ⟨ρa', ρt', s_osea', m,
+            hρa_tail, hρt_tail, h_target_m, h_inv'⟩ :=
+            ih h_run h_inv_mid
+          exact ⟨ρa', ρt', s_osea', k + m,
+            AddrRenameIncr.trans hρa_step hρa_tail,
+            TagRenameIncr.trans hρt_step hρt_tail,
+            (oseair_runN_add k m s_osea compProg s_osea_mid h_target_k).trans
               h_target_m,
             h_inv'⟩
         · -- stepStmt errored: contradicts h_run : ... = .ok.

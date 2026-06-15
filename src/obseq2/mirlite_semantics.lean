@@ -158,6 +158,18 @@ def writeResolvedPlace
     | none =>
         .err "destination write permission failed"
 
+def allocateBase
+  (M : PermissionModel)
+  (state : State M Γ)
+  (loc : Local Γ τ) : Result M Γ :=
+  let (addr, mem') := allocate state.mem (blockSize τ)
+  match M.own state.perms addr with
+  | none =>
+    .err "allocation permission initialization failed"
+  | some (permsOwned, tag) =>
+      let env' := state.env.set loc { addr := addr, tag := tag }
+      .ok { state with env := env', mem := mem', perms := permsOwned }
+
 def allocateBaseAndWrite
   (M : PermissionModel)
   (state : State M Γ)
@@ -189,6 +201,18 @@ def finishPlaceAssign
   | none =>
     match dst with
     | .local loc => allocateBaseAndWrite M state loc values valuesLen
+    | .proj _ _ => .err "destination base place not allocated"
+    | .deref _ => .err "destination pointer place not allocated or not a pointer"
+
+def preparePlaceAssign
+  (M : PermissionModel)
+  (state : State M Γ)
+  (dst : Place Γ τ) : Result M Γ :=
+  match resolvePlace? state dst with
+  | some _ => .ok state
+  | none =>
+    match dst with
+    | .local loc => allocateBase M state loc
     | .proj _ _ => .err "destination base place not allocated"
     | .deref _ => .err "destination pointer place not allocated or not a pointer"
 
@@ -239,7 +263,10 @@ def stepStmt
   Stmt Γ → Result M Γ
   | .halt => .ok state
   | .assign dst rhs =>
-      match evalRExpr M state rhs with
+      match preparePlaceAssign M state dst with
+      | .err msg => .err msg
+      | .ok stateForRhs =>
+      match evalRExpr M stateForRhs rhs with
       | .err msg => .err msg
       | .ok output =>
         finishPlaceAssign M output.state dst output.values output.values_len
