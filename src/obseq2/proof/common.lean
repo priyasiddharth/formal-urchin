@@ -471,6 +471,19 @@ theorem trans {ρt ρt' ρt'' : TagRenameMap}
 
 end TagRenameIncr
 
+/-- A rename map is the identity wherever it is defined. Carried as a `CompilerInv`
+    conjunct so the verbatim `s_osea.ap = s_mir.perms` equality lines up with the renamed
+    target addresses demanded by `PlaceRegReady`: under lockstep bump allocation the source
+    and target share one address/tag namespace, so every live entry maps to itself. This
+    makes permission/bounds transport in the write-simulation lemmas the source facts
+    verbatim, with no renaming-invariance lemmas in `permission.lean`. -/
+def IdentityOnDomain {α : Type} (ρ : α → Option α) : Prop :=
+  ∀ a a', ρ a = some a' → a = a'
+
+theorem IdentityOnDomain.apply {α : Type} {ρ : α → Option α} {a a' : α}
+    (h_id : IdentityOnDomain ρ) (h : ρ a = some a') : a = a' :=
+  h_id a a' h
+
 /- Supporting lemmas needed later:
 - direct local assignment records the allocated target register in `placeRegMap`.
 - direct source allocation updates `LocalBindingSim` only at the assigned local.
@@ -726,7 +739,9 @@ def SourceMemSim
     - Source local bindings are simulated by target registers (`LocalBindingSim`);
       unbound locals have not been allocated yet.
     - Source memory is forward-simulated in target memory (`SourceMemSim`).
-    - Permission states are equal. -/
+    - Permission states are equal.
+    - The rename maps are the identity on their domains (`IdentityOnDomain`), reflecting the
+      shared source/target namespace produced by lockstep bump allocation. -/
 def CompilerInv
   {Γ : Ctx}
   (cs0 : CompilerState)
@@ -742,7 +757,9 @@ def CompilerInv
     LocalBindingSim ρa ρt s_mir.env s_osea csPrefix ∧
     SourceMemSim ρa ρt s_mir.mem s_osea.mem ∧
     s_osea.ap = s_mir.perms ∧
-    PermissionModel.stackedBorrows.WellFormed s_mir.perms
+    PermissionModel.stackedBorrows.WellFormed s_mir.perms ∧
+    IdentityOnDomain ρa ∧
+    IdentityOnDomain ρt
 
 -- Register `reg` holds a pointer to `resolved`, and the tag stored there has
 -- mutable write permission at the target address in `s_ap`.
@@ -1031,6 +1048,254 @@ theorem placeToRegE_emits_no_mem_effects
 --       oseair.runN (cleanupInstrs dies).length s compProg = oseair.Result.Ok s' ∧
 --       s'.mem = s.mem ∧ s'.reg = s.reg ∧ s'.pc = s.pc + (cleanupInstrs dies).length := by
 --   sorry
+
+-- ===========================================================================
+-- Step 2: mechanical execution helpers for the write-simulation lemmas.
+-- These are the straight-line "run the emitted fragment" facts used by the
+-- const-write / copy / ref simulation proofs; they touch neither the rename
+-- maps nor the permission semantics.
+-- ===========================================================================
+
+/-- Fragment locator: an instruction populated in the per-statement code map (below the
+    post-compilation `nextLabel`) appears verbatim at the same slot in the whole compiled
+    program. Combined with `targetLabelAt` (`s_osea.pc = csPrefix.nextLabel`) and
+    `emit_code_at_new`, this places a freshly emitted instruction at the runtime PC. -/
+theorem compileStmt_emitted_in_compProg
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq2.Prog Γ}
+    {compProg : obseq2.oseair.Prog}
+    (h_comp : compileProgFrom cs0 prog = Except.ok compProg)
+    {stmtIdx : Nat} {stmt : Stmt Γ} {csPrefix : CompilerState}
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt)}
+    (h_prefix : csAt cs0 prog stmtIdx csPrefix)
+    (h_get : prog.get? stmtIdx = some stmt)
+    (h_stmt : CheckedCompilerM.value (compileStmtChecked stmt) csPrefix = Except.ok stmtOut)
+    {q : Nat} {instr : Instr}
+    (h_lt : q < (CheckedCompilerM.run (compileStmtChecked stmt) csPrefix).nextLabel)
+    (h_code : (CheckedCompilerM.run (compileStmtChecked stmt) csPrefix).code q = some instr) :
+    compProg q = some instr := by
+  rw [compileProgFrom_code_eq_compileStmt cs0 prog compProg h_comp h_prefix h_get h_stmt h_lt]
+  exact h_code
+
+/-- A `CStore` whose value count matches the declared type size executes in exactly one
+    `runN` step via `writeThroughPtr`. -/
+theorem runN_CStore_step
+    (compProg : oseair.Prog) (s s' : oseair.State)
+    (ty : obseq.TyVal) (vals : List Val) (ptr : Register)
+    (h_instr : compProg s.pc = some (Instr.CStore ty vals ptr))
+    (h_size : vals.length = obseq.typeSize ty)
+    (h_wtp : oseair.writeThroughPtr s ptr vals "CStore Invalid Ptr" = oseair.Result.Ok s') :
+    oseair.runN 1 s compProg = oseair.Result.Ok s' := by
+  have h_step : oseair.step s compProg = oseair.Result.Ok s' := by
+    simp only [oseair.step, oseair.stepWith, h_instr]
+    split
+    · rename_i hc; simp [h_size] at hc
+    · exact h_wtp
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- A single `Die` step leaves the register file unchanged (it only touches `ap` and `pc`). -/
+theorem step_Die_preserves_reg
+    {s s' : oseair.State} {prog : oseair.Prog} {r : Register}
+    (h_instr : prog s.pc = some (Instr.Die r))
+    (h_step : oseair.step s prog = oseair.Result.Ok s') :
+    s'.reg = s.reg := by
+  simp only [oseair.step, oseair.stepWith, h_instr] at h_step
+  repeat (split at h_step <;> try contradiction)
+  injection h_step with h_eq
+  subst h_eq
+  rfl
+
+/-- If a run consisting solely of `Die` instructions completes, it preserves memory and the
+    register file and advances the pc by the number of dies. Whether the run completes (each
+    `sb_die` succeeds) is the caller's obligation — that is where the borrow facts live. -/
+theorem runN_allDie_preserves
+    (compProg : oseair.Prog) :
+    ∀ (instrs : List Instr),
+      (∀ instr ∈ instrs, ∃ r, instr = Instr.Die r) →
+      ∀ (s s' : oseair.State),
+        (∀ (i : Fin instrs.length), compProg (s.pc + i.1) = some (instrs.get i)) →
+        oseair.runN instrs.length s compProg = oseair.Result.Ok s' →
+        s'.mem = s.mem ∧ s'.reg = s.reg ∧ s'.pc = s.pc + instrs.length := by
+  intro instrs
+  induction instrs with
+  | nil =>
+      intro _ s s' _ h_run
+      simp only [List.length_nil, oseair.runN_zero, oseair.Result.Ok.injEq] at h_run
+      subst h_run
+      exact ⟨rfl, rfl, by simp⟩
+  | cons instr rest ih =>
+      intro h_die s s' h_instrs h_run
+      obtain ⟨r, rfl⟩ := h_die instr (List.mem_cons_self)
+      have h0 : compProg s.pc = some (Instr.Die r) := by
+        have h := h_instrs ⟨0, by simp⟩
+        simpa using h
+      cases h_step : oseair.step s compProg with
+      | Err msg =>
+          simp [List.length_cons, oseair.runN_succ, h_step] at h_run
+      | Ok s1 =>
+          have h_tail : oseair.runN rest.length s1 compProg = oseair.Result.Ok s' := by
+            have h := h_run
+            simp only [List.length_cons, oseair.runN_succ, h_step] at h
+            exact h
+          have h_mp := step_preserves_mem_and_pc h0 (by simp [InstrPreservesMem]) h_step
+          have h_reg := step_Die_preserves_reg h0 h_step
+          have h_rest_die : ∀ instr ∈ rest, ∃ r, instr = Instr.Die r :=
+            fun i hi => h_die i (List.mem_cons_of_mem _ hi)
+          have h_rest_instrs : ∀ (i : Fin rest.length),
+              compProg (s1.pc + i.1) = some (rest.get i) := by
+            intro i
+            have h := h_instrs ⟨i.1 + 1, Nat.succ_lt_succ i.2⟩
+            simp only [List.get_cons_succ] at h
+            rw [h_mp.2, show s.pc + 1 + i.1 = s.pc + (i.1 + 1) from by omega]
+            exact h
+          obtain ⟨hm, hr, hp⟩ := ih h_rest_die s1 s' h_rest_instrs h_tail
+          refine ⟨hm.trans h_mp.1, hr.trans h_reg, ?_⟩
+          rw [hp, h_mp.2, List.length_cons]
+          omega
+
+/-- Running the `cleanupInstrs` (a sequence of `Die`s) from `s`, if it completes, leaves
+    memory and the register file unchanged and advances the pc by the cleanup length. -/
+theorem runN_cleanupInstrs
+    (compProg : oseair.Prog) (s s' : oseair.State) (dies : List Register)
+    (h_instrs : ∀ (i : Fin (cleanupInstrs dies).length),
+        compProg (s.pc + i.1) = some ((cleanupInstrs dies).get i))
+    (h_run : oseair.runN (cleanupInstrs dies).length s compProg = oseair.Result.Ok s') :
+    s'.mem = s.mem ∧ s'.reg = s.reg ∧ s'.pc = s.pc + (cleanupInstrs dies).length := by
+  refine runN_allDie_preserves compProg (cleanupInstrs dies) ?_ s s' h_instrs h_run
+  intro instr h_in
+  simp only [cleanupInstrs, List.mem_map] at h_in
+  obtain ⟨r, _, rfl⟩ := h_in
+  exact ⟨r, rfl⟩
+
+-- ===========================================================================
+-- Step 3 support: single-cell memory framing and the useMut/sb_use_mb bridge.
+-- ===========================================================================
+
+/-- `List.lookup` is unaffected by filtering out entries keyed on a different address. -/
+theorem lookup_filter_ne {α β : Type} [BEq α] [LawfulBEq α] {a addr : α} (hne : a ≠ addr) :
+    (l : List (α × β)) →
+    List.lookup a (l.filter (fun p => p.1 != addr)) = List.lookup a l
+  | [] => rfl
+  | (k, val) :: ps => by
+      have ih := lookup_filter_ne (β := β) hne ps
+      by_cases hk : k = addr
+      · subst hk
+        rw [List.filter_cons_of_neg (by simp)]
+        rw [ih, List.lookup_cons]
+        have hb : (a == k) = false := by simp [hne]
+        rw [hb]
+      · rw [List.filter_cons_of_pos (by simp [hk]), List.lookup_cons, List.lookup_cons, ih]
+
+theorem mirlite_find?_write_self (m : obseq2.mirlite.Mem) (addr : Word)
+    (v : obseq2.mirlite.MemValue) :
+    (m.write addr v).find? addr = some v := by
+  simp only [obseq2.mirlite.Mem.write, obseq2.mirlite.Mem.find?, List.lookup_cons,
+    beq_self_eq_true]
+
+theorem mirlite_find?_write_ne (m : obseq2.mirlite.Mem) (a addr : Word)
+    (v : obseq2.mirlite.MemValue) (hne : a ≠ addr) :
+    (m.write addr v).find? a = m.find? a := by
+  have hb : (a == addr) = false := by simp [hne]
+  simp only [obseq2.mirlite.Mem.write, obseq2.mirlite.Mem.find?, List.lookup_cons, hb]
+  exact lookup_filter_ne hne m.mMap
+
+theorem oseair_find?_write_self (m : oseair.Mem) (addr : Word) (v : Val) :
+    (m.write addr v).find? addr = some v := by
+  simp only [oseair.Mem.write, oseair.Mem.find?, List.lookup_cons, beq_self_eq_true]
+
+theorem oseair_find?_write_ne (m : oseair.Mem) (a addr : Word) (v : Val) (hne : a ≠ addr) :
+    (m.write addr v).find? a = m.find? a := by
+  have hb : (a == addr) = false := by simp [hne]
+  simp only [oseair.Mem.write, oseair.Mem.find?, List.lookup_cons, hb]
+  exact lookup_filter_ne hne m.mMap
+
+theorem mirlite_writeWordSeq_single (m : obseq2.mirlite.Mem) (addr : Word)
+    (v : obseq2.mirlite.MemValue) :
+    obseq2.mirlite.writeWordSeq m addr [v] = m.write addr v := rfl
+
+theorem oseair_writeWordSeq_single (m : oseair.Mem) (addr : Word) (v : Val) :
+    oseair.writeWordSeq m addr [v] = m.write addr v := rfl
+
+/-- The stacked-borrows `useMut` succeeding is exactly `sb_use_mb` returning `Ok`. -/
+theorem stackedBorrows_useMut_eq_ok {s s' : obseq2.AccessPerms} {addr : Word} {tag : Tag}
+    (h : PermissionModel.stackedBorrows.useMut s addr tag = some s') :
+    obseq.sb_use_mb s addr tag = obseq.SBResult.Ok s' := by
+  simp only [PermissionModel.stackedBorrows] at h
+  revert h
+  cases hc : obseq.sb_use_mb s addr tag with
+  | Ok s'' => intro h; simp only [Option.some.injEq] at h; rw [h]
+  | Err msg => intro h; simp at h
+
+/-- Single-word memory-write simulation. Under the identity-on-domain conjunct, a source
+    `writeResolvedPlace` is matched by a target `writeThroughPtr` through the corresponding
+    register pointer: the target write succeeds, `SourceMemSim` is re-established, and the
+    register file is unchanged (the pc advances by one). The `useMut`/tag reconciliation needed
+    to relate the resulting `ap` to the source perms is left to the caller. -/
+theorem writeThroughPtr_sim
+    {Γ : Ctx}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_mir' : obseq2.mirlite.State PermissionModel.stackedBorrows Γ}
+    {s_osea : oseair.State}
+    {resolved : obseq2.mirlite.PlaceRes}
+    {dstReg : Register}
+    (v : Word)
+    (h_id_a : IdentityOnDomain ρa)
+    (h_ptr  : PlaceRegReady ρa s_osea.ap s_osea.reg dstReg resolved)
+    (h_sms  : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
+    (h_le   : resolved.allocBase ≤ resolved.addr)
+    (h_dom  : ρa resolved.addr = some resolved.addr)
+    (h_write : obseq2.mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
+                 PermissionModel.stackedBorrows s_mir resolved
+                 [obseq2.mirlite.MemValue.word v] rfl
+               = obseq2.mirlite.Result.ok s_mir') :
+    ∃ s_osea',
+      oseair.writeThroughPtr s_osea dstReg [Val.Dat v] "CStore Invalid Ptr"
+        = oseair.Result.Ok s_osea' ∧
+      SourceMemSim ρa ρt s_mir'.mem s_osea'.mem ∧
+      s_osea'.reg = s_osea.reg ∧
+      s_osea'.pc = s_osea.pc + 1 := by
+  obtain ⟨b', t', h_rho_base, h_entry, ap2, h_useMut⟩ := h_ptr
+  have hb : b' = resolved.allocBase := (h_id_a _ _ h_rho_base).symm
+  subst hb
+  have h_addr : resolved.allocBase + (resolved.addr - resolved.allocBase) = resolved.addr :=
+    Nat.add_sub_cancel' h_le
+  have h_lookup : s_osea.reg.lookup dstReg =
+      some (obseq.TyVal.PTy, [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase)
+              resolved.allocSize t']) := h_entry
+  have h_sb : obseq.sb_use_mb s_osea.ap resolved.addr t' = obseq.SBResult.Ok ap2 :=
+    stackedBorrows_useMut_eq_ok (by rw [← h_addr]; exact h_useMut)
+  simp only [obseq2.mirlite.writeResolvedPlace, List.length_cons, List.length_nil] at h_write
+  split at h_write
+  · exact absurd h_write (by simp)
+  · rename_i h_nb
+    split at h_write
+    · rename_i perms' h_useMut_src
+      have h_mem' : s_mir'.mem = s_mir.mem.write resolved.addr (obseq2.mirlite.MemValue.word v) := by
+        injection h_write with h_eq
+        rw [← h_eq]
+        exact mirlite_writeWordSeq_single s_mir.mem resolved.addr (obseq2.mirlite.MemValue.word v)
+      refine ⟨(⟨s_osea.pc + 1, s_osea.reg, s_osea.mem.write resolved.addr (Val.Dat v), ap2⟩ : oseair.State), ?_, ?_, rfl, rfl⟩
+      · simp only [oseair.writeThroughPtr, h_lookup, h_addr, List.length_cons, List.length_nil]
+        split
+        · rename_i h_oob; exact (h_nb h_oob).elim
+        · simp only [h_sb, oseair_writeWordSeq_single]
+      · rw [h_mem']
+        intro a value h_find
+        by_cases ha : a = resolved.addr
+        · subst ha
+          rw [mirlite_find?_write_self s_mir.mem resolved.addr (obseq2.mirlite.MemValue.word v)]
+            at h_find
+          injection h_find with h_val
+          subst h_val
+          exact ⟨resolved.addr, Val.Dat v, h_dom, oseair_find?_write_self _ _ _,
+            by simp [MemValSim]⟩
+        · rw [mirlite_find?_write_ne s_mir.mem a resolved.addr (obseq2.mirlite.MemValue.word v) ha]
+            at h_find
+          obtain ⟨a', value', h_ra, h_of, h_mvs⟩ := h_sms a value h_find
+          have haa' : a = a' := h_id_a a a' h_ra
+          refine ⟨a', value', h_ra, ?_, h_mvs⟩
+          rw [oseair_find?_write_ne s_osea.mem a' resolved.addr (Val.Dat v) (by rw [← haa']; exact ha)]
+          exact h_of
+    · exact absurd h_write (by simp)
 
 -- runN is composable: running m steps then n more equals m+n steps.
 theorem oseair_runN_add

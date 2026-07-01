@@ -28,7 +28,7 @@ theorem const_write_stmt_evidence
       csAt cs0 prog s_mir.pc csPrefix ∧
       CheckedCompilerM.value (compileStmtChecked (.assign dst (.constInit v)))
         csPrefix = Except.ok stmtOut := by
-  obtain ⟨csPrefix, h_label, h_wf, h_tlr, h_lbs, h_sms, h_ap, h_wf_perms⟩ := h_inv
+  obtain ⟨csPrefix, h_label, h_wf, h_tlr, h_lbs, h_sms, h_ap, h_wf_perms, h_id_a, h_id_t⟩ := h_inv
   rcases h_label with ⟨h_csAt, h_pc⟩
   cases dst with
   | «local» loc =>
@@ -153,7 +153,7 @@ theorem CompilerInv_step_constWrite
       oseair.runN n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   have h_inv_full := h_inv
-  obtain ⟨csPrefix, h_label, h_wf, h_tlr, h_lbs, h_sms, h_ap, h_wf_perms⟩ := h_inv
+  obtain ⟨csPrefix, h_label, h_wf, h_tlr, h_lbs, h_sms, h_ap, h_wf_perms, h_id_a, h_id_t⟩ := h_inv
   rcases h_label with ⟨h_csAt, h_pc⟩
   simp only [obseq2.mirlite.stepStmt] at h_step
   cases h_prep :
