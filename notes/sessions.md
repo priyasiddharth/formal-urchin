@@ -12,7 +12,8 @@ identity-on-domain invariant, steps 1–3 landed.
 - Step-2 execution helpers (fragment locator, `runN_CStore_step`,
   `runN_cleanupInstrs` in conditional form)
 - `writeThroughPtr_sim` proved (the semantic core) + memory-framing
-  helpers — all in src/obseq2/proof/common.lean, **uncommitted**
+  helpers — all in src/obseq2/proof/common.lean (committed as
+  `9706889` in the follow-up terminal session)
 - Dev-log entry 2026-06-17 committed as `4fb5e45`; Aristotle docs
   committed as `d3fa01e`
 **Critical corrections:**
@@ -22,11 +23,11 @@ identity-on-domain invariant, steps 1–3 landed.
   the WF layer (`RegValWF`/`InstrWF`/`CompiledWF`) was never built
 - `s_osea.ap = s_mir.perms` unnecessary in `writeThroughPtr_sim`'s
   signature — dropped
-**Status:** paused — proof-code commit pending; step 4 confirmed as
-next step but parked for workflow reasons (user on another project),
-not technical ones.
-**Next-session pickup:** loose-ends/parked.md → "Commit steps 1–3
-proof code", then "Step 4: regime-A already-mapped-local milestone".
+**Status:** paused — step 4 confirmed as next step but parked for
+workflow reasons (user on another project), not technical ones.
+Proof-code commit landed as `9706889`.
+**Next-session pickup:** loose-ends/parked.md → "Step 4: regime-A
+already-mapped-local milestone".
 
 ## 2026-07-01
 **Session:** `29f0765f` (terminal) — notes bootstrap + doc sweep

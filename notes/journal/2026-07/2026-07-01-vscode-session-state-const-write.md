@@ -35,10 +35,10 @@ ran, ρ extends with identity entries) gets its own
 `const_write_fresh_local_simulation`; dispatch in
 `CompilerInv_step_constWrite` by casing on `resolvePlace?`.
 
-[OBS 2026-07-01] Uncommitted at session end: the steps-1–3 code in
-src/obseq2/proof/common.lean + src/obseq2/proof/const_write.lean. A
-commit was prepared but blocked (model/permission outage). Prepared
-message — see loose-ends/parked.md "Commit steps 1–3 proof code".
+[OBS 2026-07-01] The steps-1–3 code was uncommitted at VSCode-session
+end (commit prepared but blocked by a model/permission outage).
+Resolved later the same day in the terminal session: committed as
+`9706889` (common.lean +269/-4, const_write.lean +4 lines changed).
 
 Corrections captured during the session (pre-notebook, so recorded
 here rather than as supersedes):

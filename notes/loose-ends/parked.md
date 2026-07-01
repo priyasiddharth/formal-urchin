@@ -20,22 +20,6 @@ lemma, then the tactic. Payoff rises with copy/ref/proj work
 **References:** plans/osea_symbolic_exec.md,
 durable/where-design-knowledge-lives.md
 
-## Commit steps 1–3 proof code
-**Status:** parked 2026-07-01
-**Context:** common.lean + const_write.lean carry the IdentityOnDomain
-conjunct, step-2 execution helpers, and writeThroughPtr_sim — all
-described as "landed" in the committed dev log, but the code itself is
-uncommitted. User approved the commit; it was blocked by a
-model/permission outage at VSCode-session end.
-**Why parked:** tooling outage, then session ended.
-**To resume:** stage exactly `src/obseq2/proof/common.lean` and
-`src/obseq2/proof/const_write.lean`; message: "feat(obseq2):
-identity-on-domain CompilerInv conjunct and write-simulation core" with
-body noting steps 1–3 of the const_write plan (dev log 2026-06-17
-entry), the conditional runN_cleanupInstrs deviation, no new sorries.
-**Effort estimate:** ~5 min
-**References:** journal/2026-07/2026-07-01-vscode-session-state-const-write.md
-
 ## Step 4: regime-A already-mapped-local milestone — THE next step
 **Status:** parked 2026-07-01
 **Context:** close the n=1 slice of `const_write_resolved_simulation`
