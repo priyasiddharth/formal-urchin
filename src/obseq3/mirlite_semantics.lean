@@ -79,6 +79,11 @@ def allocate (m : Mem) (sz : Nat) : Word × Mem :=
   let base := m.addrStart
   (base, { m with addrStart := base + sz })
 
+/-- Remove the cells of a deallocated range. The bump allocator never
+    reuses addresses, so dangling pointers into the range keep failing. -/
+def Mem.removeRange (m : Mem) (base : Word) (sz : Nat) : Mem :=
+  { m with mMap := m.mMap.filter (fun (a, _) => decide (a < base) || decide (base + sz ≤ a)) }
+
 structure State (M : PermissionModel) (Γ : Ctx) where
   pc : Nat
   env : Env Γ
@@ -243,6 +248,36 @@ def evalRExpr
               }
           | .error e => .err s!"retag failed: {e}"
 
+def doAssign
+  (M : PermissionModel)
+  (state : State M Γ)
+  (dst : Place Γ τ)
+  (rhs : RExpr Γ τ) : Result M Γ :=
+  match preparePlaceAssign M state dst with
+  | .err msg => .err msg
+  | .ok stateForRhs =>
+  match evalRExpr M stateForRhs rhs with
+  | .err msg => .err msg
+  | .ok output =>
+    finishPlaceAssign M output.state dst output.values output.values_len
+
+/-- Read a runtime word for an `AllocLen`. A `fromPlace` read is a real
+    SB read access through the place's tag. -/
+def readAllocLen
+  (M : PermissionModel)
+  (state : State M Γ) : AllocLen Γ → Except String (Nat × State M Γ)
+  | .const n => .ok (n, state)
+  | .fromPlace p =>
+      match resolvePlace? state p with
+      | none => .error "allocation size place not allocated"
+      | some res =>
+          match M.read state.perms res.addr 1 res.tag with
+          | .error e => .error s!"allocation size read failed: {e}"
+          | .ok perms' =>
+              match state.mem.find? res.addr with
+              | some (.word n) => .ok (n, { state with perms := perms' })
+              | _ => .error "allocation size is not a concrete word"
+
 def stepStmt
   (M : PermissionModel)
   (state : State M Γ) :
@@ -254,14 +289,49 @@ def stepStmt
       match M.popFrame state.perms with
       | .ok perms' => .ok { state with perms := perms', pc := state.pc + 1 }
       | .error e => .err s!"popProtectors failed: {e}"
-  | .assign dst rhs =>
+  | .assign dst rhs => doAssign M state dst rhs
+  | .assignIf discr val dst rhs =>
+      match resolvePlace? state discr with
+      | none => .err "assignIf discriminant place not allocated"
+      | some res =>
+          match state.mem.find? res.addr with
+          | some (.word v) =>
+              if v == val then doAssign M state dst rhs
+              else .ok { state with pc := state.pc + 1 }
+          | _ => .err "assignIf discriminant is not a concrete word"
+  | .alloc (τ := τ) dst len =>
       match preparePlaceAssign M state dst with
       | .err msg => .err msg
-      | .ok stateForRhs =>
-      match evalRExpr M stateForRhs rhs with
-      | .err msg => .err msg
-      | .ok output =>
-        finishPlaceAssign M output.state dst output.values output.values_len
+      | .ok state =>
+      match readAllocLen M state len with
+      | .error e => .err e
+      | .ok (n, state) =>
+          let units := n * blockSize τ
+          let (base, mem') := allocate state.mem units
+          match M.own state.perms base units with
+          | .error e => .err s!"heap allocation failed: {e}"
+          | .ok (perms', tag) =>
+              let state := { state with mem := mem', perms := perms' }
+              finishPlaceAssign M state dst
+                [MemValue.ptrVal base 0 units tag] rfl
+  | .dealloc dst =>
+      match resolvePlace? state dst with
+      | none => .err "dealloc pointer place not allocated"
+      | some res =>
+          match M.read state.perms res.addr 1 res.tag with
+          | .error e => .err s!"dealloc pointer read failed: {e}"
+          | .ok perms' =>
+              match state.mem.find? res.addr with
+              | some (.ptrVal base offset size tag) =>
+                  if offset != 0 then
+                    .err "deallocation of a pointer that is not the beginning of its allocation"
+                  else
+                    match M.dealloc perms' base size tag with
+                    | .error e => .err s!"deallocation failed: {e}"
+                    | .ok permsD =>
+                        let mem' := state.mem.removeRange base size
+                        .ok { state with perms := permsD, mem := mem', pc := state.pc + 1 }
+              | _ => .err "dealloc argument is not a pointer value"
 
 def runN
   (M : PermissionModel) : Nat → State M Γ → Prog Γ → Result M Γ

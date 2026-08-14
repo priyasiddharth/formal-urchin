@@ -37,18 +37,21 @@ unsupported-marked test now loads — update the manifest).
 
 ## Current score (miri @ PIN)
 
-- fail tests: 27/75 verdict-conformant (line-accurate on 23), 0 xfail,
-  48 unsupported with per-test reasons.
+- fail tests: 33/75 verdict-conformant (line-accurate on 29), 0 xfail,
+  40 unsupported with per-test reasons.
 - pass scenarios: 9 supported and clean; the rest unsupported with
-  reasons (Box/heap, interior mutability, int-to-ptr, slices, threads,
-  enums/control flow, transmute).
+  reasons (interior mutability, int-to-ptr, slices, threads, transmute).
 - Every test that loads agrees with Miri's verdict; there are no
   xfail-model divergences.
 
-Protectors are modeled (call-frame protector sets, fn-entry retags at
-inline seams, pop-guards in read/write/die). Statics are hoisted to
-uninitialized locals by the lowering (initializer bodies are not run —
-fine while every supported test writes a static before value-dependent
-use). Remaining model exclusions: interior mutability (UnsafeCell),
-deallocation, int-to-ptr exposure, enums, arrays/slices, threads,
-drop glue.
+Modeled beyond the core: protectors (call-frame protector sets,
+fn-entry retags at inline seams, pop-guards in read/write/die/dealloc),
+statics (hoisted to uninitialized locals; initializers not run), heap
+allocation and deallocation (`Box::new` / `std::alloc` shims →
+`alloc`/`dealloc` statements; deallocation requires a live writable tag,
+rejects protected items, and removes the borrow stacks), enums
+(discriminant word + merged payload cells; variant-guarded seam retags),
+struct decls (as tuples), and reference-load retags (`*box`-style loads
+of refs are retagged, per Miri). Remaining exclusions: interior
+mutability (UnsafeCell), int-to-ptr exposure, transmute, arrays/slices,
+threads, closures/fn ptrs, drop glue.

@@ -39,10 +39,24 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | ref : RefKind → Bool → Place Γ τ → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | uninit : RExpr Γ τ
 
-/-- A statement in context `Γ`. `pushProtectors`/`popProtectors` bracket
-    an inlined call's protector frame (Miri's fn-entry protectors). -/
+/-- Allocation length for `Stmt.alloc`: a static count or a runtime word
+    read from a place (e.g. a `Layout` size). The allocation covers
+    `n * blockSize τ` cells for a `PtrL τ` destination. -/
+inductive AllocLen (Γ : Ctx) : Type where
+| const : Nat → AllocLen Γ
+| fromPlace : Place Γ obseq.LayoutTy.NatL → AllocLen Γ
+
+/-- A statement in context `Γ`.
+    - `pushProtectors`/`popProtectors` bracket an inlined call's protector
+      frame (Miri's fn-entry protectors).
+    - `alloc`/`dealloc` model heap allocation (`Box::new`, `std::alloc`).
+    - `assignIf` runs the assignment only when the word at `discr` equals
+      `val` — used for variant-conditional seam retags of enum payloads. -/
 inductive Stmt (Γ : Ctx) : Type where
 | assign : Place Γ τ → RExpr Γ τ → Stmt Γ
+| assignIf : Place Γ obseq.LayoutTy.NatL → Word → Place Γ τ → RExpr Γ τ → Stmt Γ
+| alloc : Place Γ (obseq.LayoutTy.PtrL τ) → AllocLen Γ → Stmt Γ
+| dealloc : Place Γ (obseq.LayoutTy.PtrL τ) → Stmt Γ
 | pushProtectors : Stmt Γ
 | popProtectors : Stmt Γ
 | halt : Stmt Γ

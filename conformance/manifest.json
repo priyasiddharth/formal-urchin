@@ -447,13 +447,18 @@
     {
       "id": "fail/stacked_borrows/illegal_dealloc1",
       "source": "corpus/tests/fail/stacked_borrows/illegal_dealloc1.rs",
-      "prep": null,
+      "prep": "prep/illegal_dealloc1.rs",
       "artifact": "illegal_dealloc1.ullbc.json",
-      "status": "unsupported",
-      "reason": "deallocation",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 14
+      },
+      "miri_error": "deallocation .* tag does not exist in the borrow stack",
+      "rewrites": [
+        "ptr1.write(0) -> *ptr1 = 0"
+      ]
     },
     {
       "id": "fail/stacked_borrows/illegal_read3",
@@ -535,13 +540,18 @@
     {
       "id": "fail/stacked_borrows/load_invalid_mut",
       "source": "corpus/tests/fail/stacked_borrows/load_invalid_mut.rs",
-      "prep": null,
+      "prep": "prep/load_invalid_mut.rs",
       "artifact": "load_invalid_mut.ullbc.json",
-      "status": "unsupported",
-      "reason": "Box (heap allocation)",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 11
+      },
+      "miri_error": "retag .* tag does not exist",
+      "rewrites": [
+        "dropped error annotation"
+      ]
     },
     {
       "id": "fail/stacked_borrows/pointer_smuggling",
@@ -585,13 +595,19 @@
     {
       "id": "fail/stacked_borrows/return_invalid_mut_option",
       "source": "corpus/tests/fail/stacked_borrows/return_invalid_mut_option.rs",
-      "prep": null,
+      "prep": "prep/return_invalid_mut_option.rs",
       "artifact": "return_invalid_mut_option.ullbc.json",
-      "status": "unsupported",
-      "reason": "enums (Option)",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ub"
-      }
+      },
+      "miri_error": "retag .* tag does not exist",
+      "rewrites": [
+        "main's match -> let _ = foo(..)",
+        "dropped error annotation"
+      ],
+      "note": "verdict matches; our UB point is the call-site seam retag (line 15), miri flags the `ret` line (11)"
     },
     {
       "id": "fail/stacked_borrows/shared_rw_borrows_are_weak1",
@@ -739,13 +755,19 @@
     {
       "id": "fail/both_borrows/box_exclusive_violation1",
       "source": "corpus/tests/fail/both_borrows/box_exclusive_violation1.rs",
-      "prep": null,
+      "prep": "prep/box_exclusive_violation1.rs",
       "artifact": "box_exclusive_violation1.ullbc.json",
-      "status": "unsupported",
-      "reason": "Box (heap allocation)",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 25
+      },
+      "miri_error": "write access .* tag does not exist",
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "note": "Box modeled as an implicit mutable raw (no Unique box retag)"
     },
     {
       "id": "fail/both_borrows/box_noalias_violation",
@@ -838,13 +860,18 @@
     {
       "id": "fail/both_borrows/illegal_write1",
       "source": "corpus/tests/fail/both_borrows/illegal_write1.rs",
-      "prep": null,
+      "prep": "prep/illegal_write1.rs",
       "artifact": "illegal_write1.ullbc.json",
-      "status": "unsupported",
-      "reason": "Box (heap allocation)",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 12
+      },
+      "miri_error": "write access .* tag only grants SharedReadOnly permission",
+      "rewrites": [
+        "dropped revisions/annotations"
+      ]
     },
     {
       "id": "fail/both_borrows/illegal_write_despite_exposed1",
@@ -871,13 +898,18 @@
     {
       "id": "fail/both_borrows/load_invalid_shr",
       "source": "corpus/tests/fail/both_borrows/load_invalid_shr.rs",
-      "prep": null,
+      "prep": "prep/load_invalid_shr.rs",
       "artifact": "load_invalid_shr.ullbc.json",
-      "status": "unsupported",
-      "reason": "Box (heap allocation)",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 12
+      },
+      "miri_error": "retag .* tag does not exist",
+      "rewrites": [
+        "dropped revisions/annotations"
+      ]
     },
     {
       "id": "fail/both_borrows/mixed_cell_deallocate",
@@ -954,13 +986,19 @@
     {
       "id": "fail/both_borrows/pass_invalid_shr_option",
       "source": "corpus/tests/fail/both_borrows/pass_invalid_shr_option.rs",
-      "prep": null,
+      "prep": "prep/pass_invalid_shr_option.rs",
       "artifact": "pass_invalid_shr_option.ullbc.json",
-      "status": "unsupported",
-      "reason": "enums (Option)",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 13
+      },
+      "miri_error": "retag .* tag does not exist",
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "note": "seam retag of the enum payload is guarded on the discriminant"
     },
     {
       "id": "fail/both_borrows/retag_data_race_write",
@@ -976,13 +1014,19 @@
     {
       "id": "fail/both_borrows/return_invalid_shr_option",
       "source": "corpus/tests/fail/both_borrows/return_invalid_shr_option.rs",
-      "prep": null,
+      "prep": "prep/return_invalid_shr_option.rs",
       "artifact": "return_invalid_shr_option.ullbc.json",
-      "status": "unsupported",
-      "reason": "enums (Option)",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ub"
-      }
+      },
+      "miri_error": "retag .* tag does not exist",
+      "rewrites": [
+        "main's match -> let _ = foo(..)",
+        "dropped revisions/annotations"
+      ],
+      "note": "verdict matches; our UB point is the call-site seam retag (line 15), miri flags the `ret` line (10)"
     },
     {
       "id": "pass/both_borrows/basic_aliasing_model::read_does_not_invalidate1",

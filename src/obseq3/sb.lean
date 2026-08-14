@@ -258,6 +258,30 @@ def sb_pop_frame (ap : AccessPerms) : Except String AccessPerms :=
   | [] => .error "sb-pop-frame: no active protector frame"
   | _ :: rest => .ok { ap with protFrames := rest }
 
+/-- Deallocate a range through `tag`: at each cell the tag must exist and
+    grant write access, no item anywhere in the stack may be protected,
+    and the whole stack is then removed (later accesses at these cells
+    fail with "no borrow stack"). -/
+def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
+    Except String AccessPerms :=
+  foldCells
+    (fun ap a =>
+      match ap.StackMap.find? a with
+      | none => .error s!"sb-dealloc: no borrow stack at address {a}"
+      | some stack =>
+        match splitStack stack tag with
+        | none => .error s!"deallocation through tag {tag}: that tag does not exist in the borrow stack at {a}"
+        | some (_, item, _) =>
+          if !item.grantsWrite then
+            .error s!"sb-dealloc: tag {tag} (a read-only item) does not grant deallocation at {a}"
+          else
+            match firstProtected ap stack with
+            | some p =>
+                .error s!"deallocating while item for tag {p.tag} is strongly protected"
+            | none =>
+                .ok { ap with StackMap := ap.StackMap.filter (fun (x, _) => x != a) })
+    ap addr len
+
 /-- Kill a reference over a range: pop the item with `tag` if it is on top
     of each cell's stack (and is not the root `Own`). -/
 def sb_die (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :

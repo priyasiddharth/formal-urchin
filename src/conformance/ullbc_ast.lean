@@ -11,6 +11,16 @@ Charon's JSON hash-conses types: the first occurrence of a type is
 `{"HashConsedValue": [id, value]}` and later occurrences are
 `{"Deduplicated": id}`. We pre-walk the document to build the id table,
 then resolve during parsing.
+
+ADT handling (everything is monomorphized):
+- tuples → `UTy.tup`;
+- struct decls → `UTy.tup` of their field types;
+- enum decls → `UTy.enum` (lowered to a discriminant word + payload cells);
+- `Box` decls are opaque — the pointee type is inferred from use sites
+  (deref projections / `Box::new` calls) in a prescan, and the type maps
+  to a mutable raw pointer (Miri's "implicit raw" reading of Box);
+- `Layout` maps to a plain word carrying the size (its constructor is
+  shimmed by the lowering).
 -/
 
 namespace conformance
@@ -19,12 +29,14 @@ open Lean (Json)
 
 /-- Untyped types. `ref`/`raw` both erase to a pointer layout, but the
     distinction drives inline-seam retag synthesis (refs are retagged at
-    function boundaries, raws are not). -/
+    function boundaries, raws are not). `enum` lowers to a discriminant
+    word followed by payload cells. -/
 inductive UTy
 | nat
 | ref (mutbl : Bool) (inner : UTy)
 | raw (mutbl : Bool) (inner : UTy)
 | tup (tys : List UTy)
+| enum (variants : List (List UTy))
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
 
@@ -40,10 +52,14 @@ inductive URoot
 | global (gid : Nat)
 deriving Repr, BEq, Inhabited
 
-/-- A place: root + projections, outermost-first application order. -/
+/-- A place: root + projections, outermost-first application order.
+    `ty` is the type of the whole place as recorded by Charon; it is
+    trustworthy on parser-produced places and advisory on places the
+    lowering synthesizes (which never consult it). -/
 structure UPlace where
   root : URoot
   projs : List UProj
+  ty : UTy := .unsupported "synthetic place"
 deriving Repr, BEq, Inhabited
 
 inductive UOperand
@@ -63,12 +79,13 @@ inductive URefKind
 deriving Repr, BEq, Inhabited
 
 /-- `ref`'s `prot` marks a protected (inline-seam) retag; the parser
-    always produces `false`, the lowering sets it. `uninit` is emitted
-    only by the lowering (hoisted statics). -/
+    always produces `false`, the lowering sets it. `aggregate`'s
+    `variant?` is `some v` for enum-variant aggregates (tuples: `none`).
+    `uninit` is emitted only by the lowering (hoisted statics). -/
 inductive URvalue
 | use (op : UOperand)
 | ref (kind : URefKind) (prot : Bool) (p : UPlace)
-| aggregate (ops : List UOperand)
+| aggregate (variant? : Option Nat) (ops : List UOperand)
 | uninit
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
@@ -101,7 +118,8 @@ deriving Repr, BEq, Inhabited
 
 structure UFun where
   defId : Nat
-  name : String
+  name : String            -- last path ident
+  path : List String       -- all path idents (impl elements dropped)
   argCount : Nat
   locals : List UTy
   blocks : List UBlock
@@ -145,9 +163,38 @@ def sumKey (j : Json) : Option (String × Json) :=
   | .str s => some (s, Json.null)
   | _ => none
 
-/-! ## Hash-consed type table -/
+/-- All `Ident` components of an item_meta name. -/
+def nameIdents (nameJ : Json) : List String :=
+  (asArr nameJ).filterMap fun e =>
+    match getK e "Ident" with
+    | some identJ =>
+        match asArr identJ with
+        | Json.str s :: _ => some s
+        | _ => none
+    | none => none
+
+def itemName (j : Json) : List String :=
+  ((getK j "item_meta" >>= (getK · "name")).map nameIdents).getD []
+
+/-! ## Parse context: hash-cons table, type decls, box-pointee map -/
 
 abbrev TyTable := List (Nat × Json)
+
+inductive DeclKind
+| struct (fields : List Json)      -- field type Jsons
+| enum (variants : List (List Json))
+| opaque
+deriving Inhabited
+
+structure DeclInfo where
+  path : List String
+  kind : DeclKind
+deriving Inhabited
+
+structure ParseCtx where
+  tbl : TyTable
+  decls : List (Nat × DeclInfo)
+  boxPointee : List (Nat × Json)   -- Box decl id ↦ pointee type Json
 
 partial def collectTable (j : Json) (acc : TyTable) : TyTable :=
   match j with
@@ -166,21 +213,74 @@ partial def collectTable (j : Json) (acc : TyTable) : TyTable :=
   | .arr a => a.foldl (fun acc v => collectTable v acc) acc
   | _ => acc
 
+def resolveTyJson (tbl : TyTable) (j : Json) : Json :=
+  match getK j "Deduplicated" >>= asNat with
+  | some i => (tbl.lookup i).getD j
+  | none =>
+      match getK j "HashConsedValue" with
+      | some hv =>
+          match asArr hv with
+          | [_, v] => v
+          | _ => j
+      | none => j
+
+/-- The Adt decl id of a type Json, if it is a plain Adt reference. -/
+def adtDeclId (tbl : TyTable) (j : Json) : Option Nat :=
+  match sumKey (resolveTyJson tbl j) with
+  | some ("Adt", adt) =>
+      match getK adt "id" with
+      | some idJ => getK idJ "Adt" >>= asNat
+      | none => none
+  | _ => none
+
+def parseDecls (j : Json) : List (Nat × DeclInfo) :=
+  match getK j "translated" >>= (getK · "type_decls") with
+  | none => []
+  | some declsJ =>
+      (asArr declsJ).filterMap fun td => do
+        let did ← getK td "def_id" >>= asNat
+        let path := itemName td
+        let kind :=
+          match getK td "kind" >>= sumKey with
+          | some ("Struct", fieldsJ) =>
+              DeclKind.struct ((asArr fieldsJ).filterMap (getK · "ty"))
+          | some ("Enum", variantsJ) =>
+              DeclKind.enum ((asArr variantsJ).map fun v =>
+                ((getK v "fields").map asArr).getD [] |>.filterMap (getK · "ty"))
+          | _ => DeclKind.opaque
+        pure (did, { path, kind })
+
+/-- Prescan: infer Box pointee types from deref projections
+    (`{kind: {Projection: [boxPlace, "Deref"]}, ty: pointee}`). -/
+partial def collectBoxPointees (tbl : TyTable) (decls : List (Nat × DeclInfo))
+    (j : Json) (acc : List (Nat × Json)) : List (Nat × Json) :=
+  let acc :=
+    match getK j "kind" >>= sumKey with
+    | some ("Projection", payload) =>
+        match asArr payload, getK j "ty" with
+        | [inner, proj], some outerTy =>
+            if (sumKey proj).map (·.1 == "Deref") |>.getD false then
+              match getK inner "ty" >>= (adtDeclId tbl ·) with
+              | some did =>
+                  match decls.lookup did with
+                  | some info =>
+                      if info.path.getLast? == some "Box" && (acc.lookup did).isNone
+                      then (did, outerTy) :: acc else acc
+                  | none => acc
+              | none => acc
+            else acc
+        | _, _ => acc
+    | _ => acc
+  match j with
+  | .obj m => m.foldl (fun acc _ v => collectBoxPointees tbl decls v acc) acc
+  | .arr a => a.foldl (fun acc v => collectBoxPointees tbl decls v acc) acc
+  | _ => acc
+
 /-! ## Type parsing -/
 
-partial def parseTy (tbl : TyTable) (j : Json) : UTy :=
-  match getK j "Deduplicated" with
-  | some idJ =>
-      match asNat idJ >>= (tbl.lookup ·) with
-      | some v => parseTy tbl v
-      | none => .unsupported "dangling Deduplicated type id"
-  | none =>
-  match getK j "HashConsedValue" with
-  | some hv =>
-      match asArr hv with
-      | [_, v] => parseTy tbl v
-      | _ => .unsupported "malformed HashConsedValue"
-  | none =>
+partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
+  if fuel == 0 then .unsupported "type recursion depth exceeded" else
+  let j := resolveTyJson ctx.tbl j
   match sumKey j with
   | some ("Literal", lit) =>
       match sumKey lit with
@@ -191,57 +291,82 @@ partial def parseTy (tbl : TyTable) (j : Json) : UTy :=
           else .unsupported s!"literal type {lit.compress}"
   | some ("Ref", args) =>
       match asArr args with
-      | [_region, inner, mutbl] => .ref (mutbl == Json.str "Mut") (parseTy tbl inner)
+      | [_region, inner, mutbl] => .ref (mutbl == Json.str "Mut") (parseTy ctx (fuel - 1) inner)
       | _ => .unsupported "malformed Ref type"
   | some ("RawPtr", args) =>
       match asArr args with
-      | [inner, mutbl] => .raw (mutbl == Json.str "Mut") (parseTy tbl inner)
+      | [inner, mutbl] => .raw (mutbl == Json.str "Mut") (parseTy ctx (fuel - 1) inner)
       | _ => .unsupported "malformed RawPtr type"
   | some ("Adt", adt) =>
       match getK adt "id" with
       | some (Json.str "Tuple") =>
           let tys := (getK adt "generics" >>= (getK · "types")).map asArr |>.getD []
-          .tup (tys.map (parseTy tbl))
-      | _ => .unsupported s!"adt type {(getK adt "id").getD Json.null |>.compress}"
+          .tup (tys.map (parseTy ctx (fuel - 1)))
+      | some idJ =>
+          match getK idJ "Adt" >>= asNat with
+          | some did =>
+              match ctx.decls.lookup did with
+              | none => .unsupported s!"unknown adt decl {did}"
+              | some info =>
+                  let last := info.path.getLast?.getD "?"
+                  if last == "Box" then
+                    match ctx.boxPointee.lookup did with
+                    | some pointee => .raw true (parseTy ctx (fuel - 1) pointee)
+                    | none => .unsupported "Box with uninferred pointee"
+                  else if last == "Layout" then
+                    .nat  -- Layout carries only its size (constructor is shimmed)
+                  else
+                    match info.kind with
+                    | .struct fields => .tup (fields.map (parseTy ctx (fuel - 1)))
+                    | .enum variants =>
+                        .enum (variants.map (·.map (parseTy ctx (fuel - 1))))
+                    | .opaque => .unsupported s!"opaque adt {String.intercalate "::" info.path}"
+          | none =>
+              match getK idJ "Builtin" >>= asStr with
+              | some "Box" => .unsupported "builtin Box without decl"
+              | some b => .unsupported s!"builtin adt {b}"
+              | none => .unsupported s!"adt id {idJ.compress}"
+      | none => .unsupported "adt without id"
   | some (k, _) => .unsupported s!"type constructor {k}"
   | none => .unsupported s!"type {j.compress}"
 
 /-! ## Place / operand / rvalue parsing -/
 
-partial def parsePlace (j : Json) : Except String UPlace := do
+partial def parsePlace (ctx : ParseCtx) (j : Json) : Except String UPlace := do
+  let ty := match getK j "ty" with
+    | some tyJ => parseTy ctx 16 tyJ
+    | none => .unsupported "place without type"
   match getK j "kind" with
   | none => .error s!"place without kind: {j.compress}"
   | some kind =>
     match sumKey kind with
     | some ("Local", n) =>
         match asNat n with
-        | some i => return { root := .local i, projs := [] }
+        | some i => return { root := .local i, projs := [], ty }
         | none => .error "non-numeric local index"
     | some ("Global", g) =>
         match getK g "id" >>= asNat with
-        | some gid => return { root := .global gid, projs := [] }
+        | some gid => return { root := .global gid, projs := [], ty }
         | none => .error "global place without id"
     | some ("Projection", args) =>
         match asArr args with
         | [sub, proj] => do
-            let base ← parsePlace sub
+            let base ← parsePlace ctx sub
             let p ←
               match sumKey proj with
               | some ("Deref", _) => pure UProj.deref
               | some ("Field", fargs) =>
-                  -- Field payload ends with the field index
                   match (asArr fargs).reverse.findSome? asNat with
                   | some i => pure (UProj.field i)
                   | none => .error s!"field projection without index: {proj.compress}"
               | some (k, _) => .error s!"unsupported projection {k}"
               | none => .error s!"malformed projection {proj.compress}"
-            return { base with projs := base.projs ++ [p] }
+            return { base with projs := base.projs ++ [p], ty }
         | _ => .error "malformed Projection"
     | some (k, _) => .error s!"unsupported place kind {k}"
     | none => .error s!"malformed place kind"
 
 def parseScalarValue (j : Json) : Option Nat :=
-  -- {"Scalar": {"Signed": ["I32", "15"]}} / {"Unsigned": ["U8", "3"]}
   match sumKey j with
   | some (_, payload) =>
       match (asArr payload).reverse.head? with
@@ -275,14 +400,14 @@ def parseConst (j : Json) : UOperand :=
     | some (k, _) => .unsupported s!"constant kind {k}"
     | none => .unsupported "malformed constant"
 
-def parseOperand (j : Json) : UOperand :=
+def parseOperand (ctx : ParseCtx) (j : Json) : UOperand :=
   match sumKey j with
   | some ("Copy", p) =>
-      match parsePlace p with
+      match parsePlace ctx p with
       | .ok pl => .copy pl
       | .error e => .unsupported e
   | some ("Move", p) =>
-      match parsePlace p with
+      match parsePlace ctx p with
       | .ok pl => .move pl
       | .error e => .unsupported e
   | some ("Const", c) => parseConst c
@@ -299,18 +424,17 @@ def parseRefRvalueKind (kindJ : Json) (isRaw : Bool) : Except String URefKind :=
       | some (k, _) => .error s!"borrow kind {k}"
       | none => .error s!"borrow kind {kindJ.compress}"
 
-def parseRvalue (j : Json) : URvalue :=
+def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
   match sumKey j with
   | some ("Use", payload) =>
-      -- {"Use": [operand, "Yes"]} (charon 0.1.232) or {"Use": operand}
       match asArr payload with
-      | op :: _ => .use (parseOperand op)
-      | [] => .use (parseOperand payload)
+      | op :: _ => .use (parseOperand ctx op)
+      | [] => .use (parseOperand ctx payload)
   | some ("Ref", r) | some ("RawPtr", r) =>
       let isRaw := (sumKey j).map (·.1 == "RawPtr") |>.getD false
       match getK r "place", getK r "kind" with
       | some pJ, some kJ =>
-          match parsePlace pJ, parseRefRvalueKind kJ isRaw with
+          match parsePlace ctx pJ, parseRefRvalueKind kJ isRaw with
           | .ok pl, .ok kind => .ref kind false pl
           | .error e, _ => .unsupported e
           | _, .error e => .unsupported e
@@ -322,7 +446,7 @@ def parseRvalue (j : Json) : URvalue :=
           match sumKey opJ with
           | some ("Cast", castJ) =>
               match sumKey castJ with
-              | some ("RawPtr", _) => .use (parseOperand operand)
+              | some ("RawPtr", _) => .use (parseOperand ctx operand)
               | some (k, _) => .unsupported s!"cast {k}"
               | none => .unsupported "malformed cast"
           | some (k, _) => .unsupported s!"unary op {k}"
@@ -334,10 +458,25 @@ def parseRvalue (j : Json) : URvalue :=
           match sumKey kindJ with
           | some ("Adt", adtPayload) =>
               match asArr adtPayload with
-              | adtId :: _ =>
+              | adtId :: rest =>
                   if (getK adtId "id") == some (Json.str "Tuple") then
-                    .aggregate (ops.toList.map parseOperand)
-                  else .unsupported "non-tuple aggregate"
+                    .aggregate none (ops.toList.map (parseOperand ctx))
+                  else
+                    -- enum/struct aggregate: variant index (if any) is the
+                    -- next payload element
+                    let variant? := rest.head? >>= asNat
+                    match getK adtId "id" >>= (fun idJ => getK idJ "Adt") >>= asNat with
+                    | some did =>
+                        match ctx.decls.lookup did with
+                        | some info =>
+                            match info.kind with
+                            | .enum _ =>
+                                .aggregate (some (variant?.getD 0)) (ops.toList.map (parseOperand ctx))
+                            | .struct _ =>
+                                .aggregate none (ops.toList.map (parseOperand ctx))
+                            | .opaque => .unsupported "aggregate of opaque adt"
+                        | none => .unsupported "aggregate of unknown adt"
+                    | none => .unsupported "non-tuple aggregate"
               | _ => .unsupported "malformed aggregate kind"
           | _ => .unsupported "non-adt aggregate"
       | _ => .unsupported "malformed aggregate"
@@ -349,7 +488,7 @@ def parseRvalue (j : Json) : URvalue :=
 def spanLine (j : Json) : Nat :=
   ((getK j "span" >>= (getK · "data") >>= (getK · "beg") >>= (getK · "line")) >>= asNat).getD 0
 
-def parseStmt (j : Json) : UStmt :=
+def parseStmt (ctx : ParseCtx) (j : Json) : UStmt :=
   let line := spanLine j
   let kind :=
     match getK j "kind" with
@@ -359,8 +498,8 @@ def parseStmt (j : Json) : UStmt :=
       | some ("Assign", payload) =>
           match asArr payload with
           | [dstJ, rvJ] =>
-              match parsePlace dstJ with
-              | .ok dst => .assign dst (parseRvalue rvJ)
+              match parsePlace ctx dstJ with
+              | .ok dst => .assign dst (parseRvalue ctx rvJ)
               | .error e => .unsupported e
           | _ => .unsupported "malformed Assign"
       | some ("StorageLive", _) | some ("StorageDead", _)
@@ -370,7 +509,7 @@ def parseStmt (j : Json) : UStmt :=
       | none => .unsupported "malformed statement kind"
   { kind, line }
 
-def parseTerm (j : Json) : UTerm :=
+def parseTerm (ctx : ParseCtx) (j : Json) : UTerm :=
   match getK j "kind" with
   | none => .unsupported "terminator without kind"
   | some k =>
@@ -385,14 +524,20 @@ def parseTerm (j : Json) : UTerm :=
             match asNat payload with
             | some t => .goto t
             | none => .unsupported "malformed Goto"
+    | some ("Drop", payload) =>
+        -- drops are no-ops for SB verdicts (heap frees go through the
+        -- dealloc shim; leaks are not checked)
+        match getK payload "target" >>= asNat with
+        | some t => .goto t
+        | none => .unsupported "Drop without target"
     | some ("Call", payload) =>
         let callJ := (getK payload "call").getD Json.null
         let target? := getK payload "target" >>= asNat
         let funIdx? :=
           (getK callJ "func" >>= (getK · "Regular") >>= (getK · "kind")
             >>= (getK · "Fun") >>= (getK · "Regular")) >>= asNat
-        let args := ((getK callJ "args").map asArr).getD [] |>.map parseOperand
-        let dest? := (getK callJ "dest").map parsePlace
+        let args := ((getK callJ "args").map asArr).getD [] |>.map (parseOperand ctx)
+        let dest? := (getK callJ "dest").map (parsePlace ctx)
         match funIdx?, dest?, target? with
         | some fi, some (.ok dst), some t => .call fi args dst t
         | none, _, _ => .unsupported "call to non-static function"
@@ -402,62 +547,42 @@ def parseTerm (j : Json) : UTerm :=
     | some (k, _) => .unsupported s!"terminator {k}"
     | none => .unsupported "malformed terminator kind"
 
-def parseBlock (j : Json) : UBlock :=
-  let stmts := ((getK j "statements").map asArr).getD [] |>.map parseStmt
+def parseBlock (ctx : ParseCtx) (j : Json) : UBlock :=
+  let stmts := ((getK j "statements").map asArr).getD [] |>.map (parseStmt ctx)
   let termJ := (getK j "terminator").getD Json.null
-  { stmts, term := parseTerm termJ, termLine := spanLine termJ }
+  { stmts, term := parseTerm ctx termJ, termLine := spanLine termJ }
 
-def parseFun (tbl : TyTable) (j : Json) : UFun :=
+def parseFun (ctx : ParseCtx) (j : Json) : UFun :=
   let defId := ((getK j "def_id") >>= asNat).getD 0
-  let name :=
-    match (getK j "item_meta" >>= (getK · "name")) with
-    | some nameJ =>
-        match (asArr nameJ).reverse.head? with
-        | some elem =>
-            match getK elem "Ident" with
-            | some identJ =>
-                match asArr identJ with
-                | Json.str s :: _ => s
-                | _ => "?"
-            | none => "?"
-        | none => "?"
-    | none => "?"
+  let path := itemName j
+  let name := path.getLast?.getD "?"
   match getK j "body" >>= (getK · "Unstructured") with
-  | none => { defId, name, argCount := 0, locals := [], blocks := [], hasBody := false }
+  | none => { defId, name, path, argCount := 0, locals := [], blocks := [], hasBody := false }
   | some bodyJ =>
       let localsJ := getK bodyJ "locals"
       let argCount := (localsJ >>= (getK · "arg_count") >>= asNat).getD 0
       let locals :=
         ((localsJ >>= (getK · "locals")).map asArr).getD []
-          |>.map (fun l => parseTy tbl ((getK l "ty").getD Json.null))
-      let blocks := ((getK bodyJ "body").map asArr).getD [] |>.map parseBlock
-      { defId, name, argCount, locals, blocks, hasBody := true }
+          |>.map (fun l => parseTy ctx 16 ((getK l "ty").getD Json.null))
+      let blocks := ((getK bodyJ "body").map asArr).getD [] |>.map (parseBlock ctx)
+      { defId, name, path, argCount, locals, blocks, hasBody := true }
 
-def parseGlobal (tbl : TyTable) (j : Json) : UGlobal :=
+def parseGlobal (ctx : ParseCtx) (j : Json) : UGlobal :=
   let gid := ((getK j "def_id") >>= asNat).getD 0
-  let name :=
-    match (getK j "item_meta" >>= (getK · "name")) with
-    | some nameJ =>
-        match (asArr nameJ).reverse.head? with
-        | some elem =>
-            match getK elem "Ident" with
-            | some identJ =>
-                match asArr identJ with
-                | Json.str s :: _ => s
-                | _ => "?"
-            | none => "?"
-        | none => "?"
-    | none => "?"
-  { gid, name, ty := parseTy tbl ((getK j "ty").getD Json.null) }
+  let name := (itemName j).getLast?.getD "?"
+  { gid, name, ty := parseTy ctx 16 ((getK j "ty").getD Json.null) }
 
 def parseCrate (root : Json) : Except String UCrate := do
   let tbl := collectTable root []
+  let decls := parseDecls root
+  let boxPointee := collectBoxPointees tbl decls root []
+  let ctx : ParseCtx := { tbl, decls, boxPointee }
   let globals :=
     match getK root "translated" >>= (getK · "global_decls") with
-    | some gJ => (asArr gJ).map (parseGlobal tbl)
+    | some gJ => (asArr gJ).map (parseGlobal ctx)
     | none => []
   match getK root "translated" >>= (getK · "fun_decls") with
   | none => .error "no translated.fun_decls in JSON"
-  | some funsJ => return { funs := (asArr funsJ).map (parseFun tbl), globals }
+  | some funsJ => return { funs := (asArr funsJ).map (parseFun ctx), globals }
 
 end conformance

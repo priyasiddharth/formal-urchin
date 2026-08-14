@@ -4,6 +4,35 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-14 — Enums (Option) and Heap Allocation/Deallocation (Box, std::alloc)
+
+Third same-day increment. Suite: **pass 42 | fail 0 | xfail 0 | xpass 0** — fail tests
+**33/75** verdict-conformant (29 line-accurate), 9 pass scenarios, 67 unsupported with
+reasons. (Corrected progression: 21 → 25 → 33; earlier entries overstated by 2.)
+
+**Semantics (obseq3):** `Stmt.alloc`/`Stmt.dealloc` (heap; `sb_dealloc` requires a live
+writable tag at every cell, rejects any protected item in the stack, and removes the
+borrow stacks — freed cells then fail with "no borrow stack"); `Stmt.assignIf` (an
+assignment guarded on a runtime discriminant word — the variant-conditional retag
+primitive); `AllocLen` (static or place-read allocation sizes).
+
+**Loader:** type_decls parsing — monomorphized struct decls map to tuples, enum decls to
+a discriminant word + prefix-merged payload cells, `Box` (opaque) to a mutable raw with
+the pointee inferred from deref-projection use sites, `Layout` to its size word.
+Enum-variant aggregates desugar to discriminant + payload writes. Seam copies of
+enum-typed values retag payload refs under `assignIf` guards. Reference-typed values
+loaded through a deref are retagged (Miri's load retag — what load_invalid_mut/shr test).
+Name-based shims for `Box::new`, `std::alloc::{alloc,dealloc}`,
+`Layout::from_size_align_unchecked`; `Drop` terminators lower to no-op gotos.
+
+Newly conformant: illegal_dealloc1 (Miri's exact line and "deallocation … tag does not
+exist" phrasing), illegal_write1, load_invalid_mut/shr, box_exclusive_violation1,
+pass_invalid_shr_option (fails through the guarded enum retag at Miri's line),
+return_invalid_{mut,shr}_option (verdict-only: call-site seam vs miri's `ret` line).
+Box divergence noted: modeled as an implicit mutable raw, no Unique box retag.
+
+---
+
 ## 2026-08-14 — Protectors and Statics Hoisting (zero conformance divergences)
 
 Same-day follow-up to the conformance-suite entry below. Protectors landed as call-frame
@@ -16,7 +45,7 @@ place roots rewritten to `uninit`-materialized locals; initializers not run). Ne
 
 Result: both protector xfails became line-accurate passes (Miri's exact lines and phrasing),
 both statics tests promoted. Suite: **pass 34 | fail 0 | xfail 0 | xpass 0** — fail tests
-27/75 verdict-conformant (23 line-accurate), and every test that loads agrees with Miri's
+25/75 verdict-conformant [corrected from 27/75; see notes correction 2026-08-14], and every test that loads agrees with Miri's
 verdict. Remaining exclusions: interior mutability, deallocation, int-to-ptr, enums,
 slices, threads, drop glue.
 
@@ -57,7 +86,7 @@ base addresses), and no executable tests on the SB-enforcing semantics at all. F
 
 ### Score (miri @ 34d6a795)
 
-- **fail tests: 23/75 verdict-conformant** (line-accurate on 19), 2 xfail-model
+- **fail tests: 21/75 verdict-conformant** [corrected from 23/75] (line-accurate on 19), 2 xfail-model
   (protector tests: our model silently pops protected items), 50 unsupported with
   per-test reasons.
 - **pass scenarios: 9 clean** (incl. two_raw, mut_raw_mut, partially_invalidate_mut,

@@ -12,11 +12,25 @@ namespace conformance
 
 open obseq3
 
-def toLayout : UTy → Except String LayoutTy
+/-- Merge enum variants' field layouts into one payload: every variant's
+    fields must be a prefix of the longest variant's (Option-style). -/
+def mergeVariantLayouts (variants : List (List LayoutTy)) :
+    Except String (List LayoutTy) :=
+  variants.foldlM
+    (fun acc fields =>
+      if acc.isPrefixOf fields then .ok fields
+      else if fields.isPrefixOf acc then .ok acc
+      else .error "unsupported: incompatible enum variant layouts")
+    []
+
+partial def toLayout : UTy → Except String LayoutTy
   | .nat => .ok .NatL
   | .ref _ inner => do return .PtrL (← toLayout inner)
   | .raw _ inner => do return .PtrL (← toLayout inner)
   | .tup tys => do return .TupL (← tys.mapM toLayout)
+  | .enum variants => do
+      let vls ← variants.mapM (·.mapM toLayout)
+      return .TupL (.NatL :: (← mergeVariantLayouts vls))
   | .unsupported d => .error s!"unsupported: type {d}"
 
 def toRefKind : URefKind → obseq3.RefKind
@@ -61,8 +75,18 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
       let ⟨τ, pl⟩ ← elabPlace Γ p
       return ⟨.PtrL τ, .ref (toRefKind kind) prot pl⟩
   | .uninit => .error "uninit is elaborated against the destination type"
-  | .aggregate _ => .error "aggregate not desugared by lowering"
+  | .aggregate _ _ => .error "aggregate not desugared by lowering"
   | .unsupported d => .error s!"unsupported: {d}"
+
+/-- Elaborate a place that must have layout `NatL` (discriminants,
+    allocation sizes). -/
+def elabNatPlace (Γ : Ctx) (p : UPlace) (what : String) :
+    Except String (Place Γ .NatL) := do
+  let ⟨τ, pl⟩ ← elabPlace Γ p
+  if h : τ = obseq.LayoutTy.NatL then
+    return h ▸ pl
+  else
+    .error s!"{what} is not a word-typed place"
 
 def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
   | .pushProt _ => return .pushProtectors
@@ -77,6 +101,31 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           return .assign pd (h ▸ er)
         else
           .error s!"type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
+  | .assignIf discr val dst rv line => do
+      let discrP ← elabNatPlace Γ discr "assignIf discriminant"
+      let ⟨τd, pd⟩ ← elabPlace Γ dst
+      let ⟨τr, er⟩ ← elabRvalue Γ rv
+      if h : τr = τd then
+        return .assignIf discrP val pd (h ▸ er)
+      else
+        .error s!"assignIf type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
+  | .alloc dst szOp _line => do
+      let ⟨τd, pd⟩ ← elabPlace Γ dst
+      match τd, pd with
+      | .PtrL _, pd => do
+          let len ← match szOp with
+            | none => pure (AllocLen.const 1)
+            | some (.const v) => pure (AllocLen.const v)
+            | some (.copy p) | some (.move p) =>
+                return .alloc pd (AllocLen.fromPlace (← elabNatPlace Γ p "allocation size"))
+            | some _ => .error "unsupported allocation size operand"
+          return .alloc pd len
+      | _, _ => .error "alloc destination is not pointer-typed"
+  | .dealloc ptr _line => do
+      let ⟨τp, pp⟩ ← elabPlace Γ ptr
+      match τp, pp with
+      | .PtrL _, pp => return .dealloc pp
+      | _, _ => .error "dealloc argument is not pointer-typed"
 
 /-- A loaded, runnable conformance program. `lines` is parallel to `prog`
     (source line per statement, for locating UB verdicts). -/

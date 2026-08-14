@@ -6,8 +6,9 @@ Phase C item is protectors ... composes with the seam-retag machinery")
 is verified — implemented exactly as sketched and both protector xfails
 flipped to line-accurate passes. Suite now:
 pass 34 | fail 0 | xfail 0 | xpass 0 | unsupported 75. Fail tests
-27/75 verdict-conformant (23 line-accurate); every test that loads
-agrees with Miri's verdict.
+[SUPERSEDED → 2026-08-14-count-correction] 25/75 verdict-conformant
+(originally misstated as 27/75); every test that loads agrees with
+Miri's verdict.
 
 [FACT] Protector design (src/obseq3/sb.lean): `AccessPerms.protFrames :
 List (List Tag)` — a stack of tag sets, one frame per inlined call;

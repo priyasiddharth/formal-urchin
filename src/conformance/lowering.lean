@@ -22,15 +22,24 @@ which the harness reports as the test's unsupported-reason.
 namespace conformance
 
 /-- A lowered program: one global local space, straight-line statements.
-    `pushProt`/`popProt` bracket an inlined call's protector frame. -/
+    `pushProt`/`popProt` bracket an inlined call's protector frame;
+    `assignIf` is a variant-guarded assignment (enum seam retags);
+    `alloc`/`dealloc` come from the heap shims (`sz = none` means one
+    pointee: `Box::new`). -/
 inductive LStmt
 | assign (dst : UPlace) (rv : URvalue) (line : Nat)
+| assignIf (discr : UPlace) (val : Nat) (dst : UPlace) (rv : URvalue) (line : Nat)
+| alloc (dst : UPlace) (sz : Option UOperand) (line : Nat)
+| dealloc (ptr : UPlace) (line : Nat)
 | pushProt (line : Nat)
 | popProt (line : Nat)
 deriving Repr, BEq, Inhabited
 
 def LStmt.line : LStmt → Nat
   | .assign _ _ l => l
+  | .assignIf _ _ _ _ l => l
+  | .alloc _ _ l => l
+  | .dealloc _ l => l
   | .pushProt l => l
   | .popProt l => l
 
@@ -56,7 +65,7 @@ def rebaseOperand (off : Nat) : UOperand → UOperand
 def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .use op => .use (rebaseOperand off op)
   | .ref kind prot p => .ref kind prot (rebasePlace off p)
-  | .aggregate ops => .aggregate (ops.map (rebaseOperand off))
+  | .aggregate v ops => .aggregate v (ops.map (rebaseOperand off))
   | .uninit => .uninit
   | .unsupported d => .unsupported d
 
@@ -68,64 +77,96 @@ def checkOperand (line : Nat) : UOperand → Except String Unit
   | .unsupported d => .error s!"unsupported: {d} (line {line})"
   | _ => .ok ()
 
-/-- Append one lowered assignment, desugaring aggregates and rejecting
-    unsupported payloads. Places/rvalues must already be rebased. -/
+def fld (p : UPlace) (i : Nat) : UPlace :=
+  { p with projs := p.projs ++ [.field i] }
+
+def pushOut (st : LowerSt) (s : LStmt) : LowerSt :=
+  { st with out := s :: st.out }
+
+/-- Does this type contain a reference (transitively through tuples and
+    enum payloads)? Raw pointers don't count — not retagged at seams. -/
+partial def containsRef : UTy → Bool
+  | .ref _ _ => true
+  | .tup tys => tys.any containsRef
+  | .enum variants => variants.any (·.any containsRef)
+  | _ => false
+
+/-- Retag/copy `src` into `dst` at a retag point (inline seam or a
+    reference-typed load through a deref): every reference — including
+    refs inside tuples and enum payloads — is retagged; enum payload
+    accesses are guarded on the discriminant (`assignIf`). Non-ref
+    components are plain copies. -/
+partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace)
+    (ty : UTy) (src : UPlace) : Except String LowerSt := do
+  match ty with
+  | .ref mutbl _ =>
+      return pushOut st (.assign dst
+        (.ref (if mutbl then .mut else .shared) prot (pointee src)) line)
+  | .tup tys => do
+      let mut st := st
+      for h : i in [0:tys.length] do
+        st ← emitSeamCopy st line prot (fld dst i) tys[i] (fld src i)
+      return st
+  | .enum variants => do
+      -- discriminant is payload slot 0; variant v's field i lives at 1+i
+      let mut st := pushOut st (.assign (fld dst 0) (.use (.copy (fld src 0))) line)
+      for h : v in [0:variants.length] do
+        let fields := variants[v]
+        for h2 : i in [0:fields.length] do
+          let dstF := fld dst (1 + i)
+          let srcF := fld src (1 + i)
+          match fields[i] with
+          | .ref mutbl _ =>
+              st := pushOut st (.assignIf (fld src 0) v dstF
+                (.ref (if mutbl then .mut else .shared) prot (pointee srcF)) line)
+          | fty =>
+              if containsRef fty then
+                throw s!"unsupported: nested references in enum payload (line {line})"
+              else
+                st := pushOut st (.assignIf (fld src 0) v dstF (.use (.copy srcF)) line)
+      return st
+  | _ => return pushOut st (.assign dst (.use (.copy src)) line)
+
+/-- Append one lowered assignment, desugaring aggregates, applying the
+    reference-load retag rule, and rejecting unsupported payloads.
+    Places/rvalues must already be rebased. -/
 def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue) :
     Except String LowerSt := do
   match rv with
   | .unsupported d => .error s!"unsupported: {d} (line {line})"
   | .use .constUnit =>
       return st  -- unit value: no memory access
+  | .use (.copy p) | .use (.move p) =>
+      -- Miri retags reference-typed values loaded through a pointer
+      -- indirection (see load_invalid_mut/shr)
+      if p.projs.contains .deref && containsRef p.ty then
+        emitSeamCopy st line false dst p.ty p
+      else
+        return pushOut st (.assign dst rv line)
   | .use op => do
       checkOperand line op
-      return { st with out := .assign dst rv line :: st.out }
+      return pushOut st (.assign dst rv line)
   | .ref _ _ _ | .uninit =>
-      return { st with out := .assign dst rv line :: st.out }
-  | .aggregate [] =>
+      return pushOut st (.assign dst rv line)
+  | .aggregate none [] =>
       return st  -- unit value: no memory access
-  | .aggregate ops => do
+  | .aggregate none ops => do
       let mut st := st
       for h : i in [0:ops.length] do
-        let op := ops[i]
-        checkOperand line op
-        let fdst := { dst with projs := dst.projs ++ [.field i] }
-        st := { st with out := .assign fdst (.use op) line :: st.out }
+        checkOperand line ops[i]
+        st := pushOut st (.assign (fld dst i) (.use ops[i]) line)
       return st
-
-/-- Retag kind for a reference-typed seam binding. -/
-def seamRefKind : UTy → Option URefKind
-  | .ref true _ => some .mut
-  | .ref false _ => some .shared
-  | _ => none
+  | .aggregate (some v) ops => do
+      -- enum variant: write the discriminant, then payload fields at 1+i
+      let mut st := pushOut st (.assign (fld dst 0) (.use (.const v)) line)
+      for h : i in [0:ops.length] do
+        checkOperand line ops[i]
+        st := pushOut st (.assign (fld dst (1 + i)) (.use ops[i]) line)
+      return st
 
 def isUnitTy : UTy → Bool
   | .tup [] => true
   | _ => false
-
-/-- Does this type contain a reference (transitively through tuples)?
-    Raw pointers don't count — they are not retagged at seams. -/
-partial def containsRef : UTy → Bool
-  | .ref _ _ => true
-  | .tup tys => tys.any containsRef
-  | _ => false
-
-/-- Copy `src` into `dst` at an inline seam, retagging every reference
-    (including refs inside tuples, mirroring Miri's field retagging).
-    Non-ref components are plain copies. `prot` marks the retags as
-    protected (fn-entry retags: true for arguments, false for returns). -/
-partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace)
-    (ty : UTy) (src : UPlace) : Except String LowerSt := do
-  match ty with
-  | .ref mutbl _ =>
-      emitAssign st line dst (.ref (if mutbl then .mut else .shared) prot (pointee src))
-  | .tup tys => do
-      let mut st := st
-      for h : i in [0:tys.length] do
-        let fdst := { dst with projs := dst.projs ++ [.field i] }
-        let fsrc := { src with projs := src.projs ++ [.field i] }
-        st ← emitSeamCopy st line prot fdst tys[i] fsrc
-      return st
-  | _ => emitAssign st line dst (.use (.copy src))
 
 /-- Bind one value into a fresh local at an inline seam, retagging if the
     type contains references. -/
@@ -137,6 +178,41 @@ def emitSeamBind (st : LowerSt) (line : Nat) (prot : Bool) (dstLocal : UPlace)
     | _ => .error s!"unsupported: reference-typed argument is not a place (line {line})"
   else
     emitAssign st line dstLocal (.use op)
+
+/-- Heap shims: bodyless std allocator entry points lowered to dedicated
+    statements instead of inlining.
+    - `Box::new(v)` → alloc one pointee + store `v` through the box;
+    - `std::alloc::alloc(layout)` → alloc `layout` cells (Layout is
+      modeled as its size word, see `from_size_align_unchecked`);
+    - `std::alloc::dealloc(ptr, _)` → dealloc (size from the allocation);
+    - `Layout::from_size_align_unchecked(sz, _align)` → the size word. -/
+def shimCall (crate : UCrate) (funIdx : Nat) :
+    Option (LowerSt → List UOperand → UPlace → Nat → Except String LowerSt) := do
+  let f ← crate.funs.find? (·.defId == funIdx)
+  if f.path == ["alloc", "boxed", "new"] then
+    some fun st args dest line => do
+      match args with
+      | [valOp] => do
+          let st := pushOut st (.alloc dest none line)
+          emitAssign st line (pointee dest) (.use valOp)
+      | _ => .error s!"unsupported: Box::new arity (line {line})"
+  else if f.path == ["alloc", "alloc", "alloc"] then
+    some fun st args dest line => do
+      match args with
+      | [layoutOp] => return pushOut st (.alloc dest (some layoutOp) line)
+      | _ => .error s!"unsupported: alloc arity (line {line})"
+  else if f.path == ["alloc", "alloc", "dealloc"] then
+    some fun st args _dest line => do
+      match args with
+      | .copy p :: _ | .move p :: _ => return pushOut st (.dealloc p line)
+      | _ => .error s!"unsupported: dealloc argument is not a place (line {line})"
+  else if f.path == ["core", "alloc", "layout", "from_size_align_unchecked"] then
+    some fun st args dest line => do
+      match args with
+      | szOp :: _ => emitAssign st line dest (.use szOp)
+      | _ => .error s!"unsupported: from_size_align_unchecked arity (line {line})"
+  else
+    none
 
 mutual
 
@@ -167,7 +243,10 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
     | .call funIdx args dest target => do
         let args := args.map (rebaseOperand offset)
         let dest := rebasePlace offset dest
-        let st' ← inlineCall crate depth st funIdx args dest blk.termLine
+        let st' ←
+          match shimCall crate funIdx with
+          | some shim => shim st args dest blk.termLine
+          | none => inlineCall crate depth st funIdx args dest blk.termLine
         walkBlock crate depth st' f offset target (bb :: visited)
 
 /-- Inline a call: extend the local space with the callee's locals, bind
@@ -230,12 +309,22 @@ def resolveGlobalsOp (gmap : List (Nat × Nat)) : UOperand → Except String UOp
 def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URvalue
   | .use op => do return .use (← resolveGlobalsOp gmap op)
   | .ref kind prot p => do return .ref kind prot (← resolveGlobalRoot gmap p)
-  | .aggregate ops => do return .aggregate (← ops.mapM (resolveGlobalsOp gmap))
+  | .aggregate v ops => do return .aggregate v (← ops.mapM (resolveGlobalsOp gmap))
   | rv => .ok rv
 
 def resolveGlobalsStmt (gmap : List (Nat × Nat)) : LStmt → Except String LStmt
   | .assign dst rv line => do
       return .assign (← resolveGlobalRoot gmap dst) (← resolveGlobalsRv gmap rv) line
+  | .assignIf discr v dst rv line => do
+      return .assignIf (← resolveGlobalRoot gmap discr) v
+        (← resolveGlobalRoot gmap dst) (← resolveGlobalsRv gmap rv) line
+  | .alloc dst sz line => do
+      let sz ← match sz with
+        | some op => pure (some (← resolveGlobalsOp gmap op))
+        | none => pure none
+      return .alloc (← resolveGlobalRoot gmap dst) sz line
+  | .dealloc p line => do
+      return .dealloc (← resolveGlobalRoot gmap p) line
   | s => .ok s
 
 /-- Lower a crate's `main` into a flat program.
