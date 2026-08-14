@@ -65,7 +65,8 @@ Charon-based conformance suite.
   scratch dir will be deleted.
 - Existing mirlite tests (src/interp/test_mirlight.lean et al.) must be
   acknowledged/reused as the harness pattern.
-**Status:** complete — everything landed in this session:
+**Status:** complete — everything landed in this session (committed as
+`445cbf4`):
 src/obseq3/ (per-cell stacks, writable raws with Miri's
 insert-above-granting SRW placement, TwoPhase, Except errors, 10 unit
 tests), src/conformance/ (ULLBC JSON loader, inlining/seam-retag

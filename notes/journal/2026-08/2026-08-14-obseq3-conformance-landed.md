@@ -1,7 +1,8 @@
 # obseq3 + conformance suite landed
 
 [OBS 2026-08-14] The full pipeline from the morning's plan
-(plans/sb_conformance_obseq3.md) landed in one session. Score against
+(plans/sb_conformance_obseq3.md) landed in one session, committed as
+`445cbf4` (on top of 52ec1e0). Score against
 miri @ 34d6a795: fail tests 23/75 verdict-conformant (19 line-accurate),
 2 xfail-model (protectors), 50 unsupported with reasons; pass scenarios
 9 clean. Suite: pass 30 | fail 0 | xfail 2 | xpass 0 | unsupported 77.
