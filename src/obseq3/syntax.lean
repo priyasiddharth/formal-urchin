@@ -1,0 +1,46 @@
+import obseq3.context
+
+namespace obseq3
+
+/-- A path through layout type `src` that reaches a sub-layout of type `dst`.
+    Represented as a sequence of tuple field projections. -/
+inductive PathTo : LayoutTy → LayoutTy → Type where
+| nil : PathTo τ τ
+| field {tys : List LayoutTy} (idx : Fin tys.length) :
+    PathTo (tys.get idx) τ → PathTo (obseq.LayoutTy.TupL tys) τ
+
+namespace PathTo
+
+def indices : PathTo src dst → List Nat
+  | .nil => []
+  | .field idx tail => idx.1 :: indices tail
+
+def offset : PathTo src dst → Nat
+  | .nil => 0
+  | .field (tys := tys) idx tail =>
+      layoutSizeList (tys.take idx.1) + offset tail
+
+end PathTo
+
+/-- A place of layout type `τ` in context `Γ` (as in obseq2: local, field
+    projection, or deref-as-place-projection). -/
+inductive Place (Γ : Ctx) : LayoutTy → Type where
+| local : Local Γ τ → Place Γ τ
+| proj  : Place Γ σ → PathTo σ τ → Place Γ τ
+| deref : Place Γ (obseq.LayoutTy.PtrL τ) → Place Γ τ
+
+/-- A right-hand-side expression of layout type `τ` in context `Γ`. -/
+inductive RExpr (Γ : Ctx) : LayoutTy → Type where
+| constInit : Word → RExpr Γ obseq.LayoutTy.NatL
+| copy : Place Γ τ → RExpr Γ τ
+| ref : RefKind → Place Γ τ → RExpr Γ (obseq.LayoutTy.PtrL τ)
+
+/-- A statement in context `Γ`. -/
+inductive Stmt (Γ : Ctx) : Type where
+| assign : Place Γ τ → RExpr Γ τ → Stmt Γ
+| halt : Stmt Γ
+
+/-- A sequential program: a list of statements in context `Γ`. -/
+abbrev Prog (Γ : Ctx) := List (Stmt Γ)
+
+end obseq3

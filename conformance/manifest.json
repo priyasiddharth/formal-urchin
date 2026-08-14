@@ -1,0 +1,1381 @@
+{
+  "miri_commit": "34d6a7954425f3d97d6a7ff19bdf0f7a51560754",
+  "charon_release": "nightly-2026.08.14",
+  "tests": [
+    {
+      "id": "fail/stacked_borrows/illegal_read1",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_read1.rs",
+      "prep": "prep/illegal_read1.rs",
+      "artifact": "illegal_read1.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 10
+      },
+      "miri_error": "read access .* tag does not exist in the borrow stack",
+      "rewrites": [
+        "dropped rustfmt attr and error annotation"
+      ]
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_write2",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_write2.rs",
+      "prep": "prep/illegal_write2.rs",
+      "artifact": "illegal_write2.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 11
+      },
+      "miri_error": "write access .* tag does not exist in the borrow stack",
+      "rewrites": [
+        "drop(&mut *target) -> let _reborrow = &mut *target;"
+      ]
+    },
+    {
+      "id": "fail/both_borrows/outdated_local",
+      "source": "corpus/tests/fail/both_borrows/outdated_local.rs",
+      "prep": "prep/outdated_local.rs",
+      "artifact": "outdated_local.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 12
+      },
+      "miri_error": "read access .* tag does not exist in the borrow stack",
+      "rewrites": [
+        "assert_eq! -> plain reads"
+      ]
+    },
+    {
+      "id": "fail/both_borrows/pass_invalid_shr",
+      "source": "corpus/tests/fail/both_borrows/pass_invalid_shr.rs",
+      "prep": "prep/pass_invalid_shr.rs",
+      "artifact": "pass_invalid_shr.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 14
+      },
+      "miri_error": "retag .* tag does not exist in the borrow stack",
+      "rewrites": [
+        "dropped revisions and error annotations"
+      ]
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::mut_raw_then_mut_shr",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": "prep/basic_aliasing_model__mut_raw_then_mut_shr.rs",
+      "artifact": "basic_aliasing_model__mut_raw_then_mut_shr.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted into own main; assert_eq! -> plain reads"
+      ]
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::mut_shr_then_mut_raw",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": "prep/basic_aliasing_model__mut_shr_then_mut_raw.rs",
+      "artifact": "basic_aliasing_model__mut_shr_then_mut_raw.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted into own main; assert_eq! -> plain read"
+      ]
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_read2",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_read2.rs",
+      "prep": "prep/illegal_read2.rs",
+      "artifact": "illegal_read2.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 10
+      },
+      "miri_error": "read access .* tag does not exist",
+      "rewrites": [
+        "dropped rustfmt attr and error annotation"
+      ]
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_read4",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_read4.rs",
+      "prep": "prep/illegal_read4.rs",
+      "artifact": "illegal_read4.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 11
+      },
+      "miri_error": "read access .* tag does not exist",
+      "rewrites": [
+        "dropped error annotation"
+      ]
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_read6",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_read6.rs",
+      "prep": "prep/illegal_read6.rs",
+      "artifact": "illegal_read6.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 11
+      },
+      "miri_error": "read access .* tag does not exist",
+      "rewrites": [
+        "dropped error annotation"
+      ]
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_write3",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_write3.rs",
+      "prep": "prep/illegal_write3.rs",
+      "artifact": "illegal_write3.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 10
+      },
+      "miri_error": "write access .* only grants SharedReadOnly permission",
+      "rewrites": [
+        "dropped error annotation"
+      ]
+    },
+    {
+      "id": "fail/stacked_borrows/raw_tracking",
+      "source": "corpus/tests/fail/stacked_borrows/raw_tracking.rs",
+      "prep": "prep/raw_tracking.rs",
+      "artifact": "raw_tracking.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 9
+      },
+      "miri_error": "write access .* tag does not exist",
+      "rewrites": [
+        "dropped error annotation"
+      ]
+    },
+    {
+      "id": "fail/stacked_borrows/disable_mut_does_not_merge_srw",
+      "source": "corpus/tests/fail/stacked_borrows/disable_mut_does_not_merge_srw.rs",
+      "prep": "prep/disable_mut_does_not_merge_srw.rs",
+      "artifact": "disable_mut_does_not_merge_srw.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 15
+      },
+      "miri_error": "that tag does not exist in the borrow stack",
+      "rewrites": [
+        "dropped comments/error annotation"
+      ]
+    },
+    {
+      "id": "fail/stacked_borrows/pass_invalid_mut",
+      "source": "corpus/tests/fail/stacked_borrows/pass_invalid_mut.rs",
+      "prep": "prep/pass_invalid_mut.rs",
+      "artifact": "pass_invalid_mut.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 12
+      },
+      "miri_error": "retag .* tag does not exist",
+      "rewrites": [
+        "dropped error annotation"
+      ]
+    },
+    {
+      "id": "fail/stacked_borrows/return_invalid_mut",
+      "source": "corpus/tests/fail/stacked_borrows/return_invalid_mut.rs",
+      "prep": "prep/return_invalid_mut.rs",
+      "artifact": "return_invalid_mut.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 9
+      },
+      "miri_error": "retag .* tag does not exist",
+      "rewrites": [
+        "dropped error annotation"
+      ]
+    },
+    {
+      "id": "fail/both_borrows/alias_through_mutation",
+      "source": "corpus/tests/fail/both_borrows/alias_through_mutation.rs",
+      "prep": "prep/alias_through_mutation.rs",
+      "artifact": "alias_through_mutation.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 17
+      },
+      "miri_error": "read access .* tag does not exist",
+      "rewrites": [
+        "dropped revisions and error annotations"
+      ]
+    },
+    {
+      "id": "fail/both_borrows/illegal_write5",
+      "source": "corpus/tests/fail/both_borrows/illegal_write5.rs",
+      "prep": "prep/illegal_write5.rs",
+      "artifact": "illegal_write5.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 11
+      },
+      "miri_error": "read access .* tag does not exist",
+      "rewrites": [
+        "dropped revisions and error annotations"
+      ]
+    },
+    {
+      "id": "fail/both_borrows/pass_invalid_shr_tuple",
+      "source": "corpus/tests/fail/both_borrows/pass_invalid_shr_tuple.rs",
+      "prep": "prep/pass_invalid_shr_tuple.rs",
+      "artifact": "pass_invalid_shr_tuple.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 14
+      },
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "miri_error": "retag .* tag does not exist"
+    },
+    {
+      "id": "fail/both_borrows/return_invalid_shr",
+      "source": "corpus/tests/fail/both_borrows/return_invalid_shr.rs",
+      "prep": "prep/return_invalid_shr.rs",
+      "artifact": "return_invalid_shr.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 10
+      },
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "miri_error": "retag .* tag does not exist"
+    },
+    {
+      "id": "fail/both_borrows/return_invalid_shr_tuple",
+      "source": "corpus/tests/fail/both_borrows/return_invalid_shr_tuple.rs",
+      "prep": "prep/return_invalid_shr_tuple.rs",
+      "artifact": "return_invalid_shr_tuple.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub"
+      },
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "miri_error": "retag .* tag does not exist",
+      "note": "verdict matches; our UB point is the call-site seam retag (line 14), miri flags the `ret` line (10) \u2014 tuple returns get no rustc reborrow, so the retag happens at our synthesized seam"
+    },
+    {
+      "id": "fail/stacked_borrows/return_invalid_mut_tuple",
+      "source": "corpus/tests/fail/stacked_borrows/return_invalid_mut_tuple.rs",
+      "prep": "prep/return_invalid_mut_tuple.rs",
+      "artifact": "return_invalid_mut_tuple.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub"
+      },
+      "rewrites": [
+        "dropped error annotation"
+      ],
+      "miri_error": "retag .* tag does not exist",
+      "note": "verdict matches; our UB point is the call-site seam retag (line 13), miri flags the `ret` line (9) \u2014 tuple returns get no rustc reborrow, so the retag happens at our synthesized seam"
+    },
+    {
+      "id": "fail/both_borrows/shr_frozen_violation1",
+      "source": "corpus/tests/fail/both_borrows/shr_frozen_violation1.rs",
+      "prep": "prep/shr_frozen_violation1.rs",
+      "artifact": "shr_frozen_violation1.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 20
+      },
+      "rewrites": [
+        "println! -> let _ =",
+        "dropped revisions/annotations"
+      ],
+      "miri_error": "write access .* only grants SharedReadOnly permission"
+    },
+    {
+      "id": "fail/both_borrows/shr_frozen_violation2",
+      "source": "corpus/tests/fail/both_borrows/shr_frozen_violation2.rs",
+      "prep": "prep/shr_frozen_violation2.rs",
+      "artifact": "shr_frozen_violation2.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 13
+      },
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "miri_error": "read access .* tag does not exist"
+    },
+    {
+      "id": "fail/both_borrows/illegal_write6",
+      "source": "corpus/tests/fail/both_borrows/illegal_write6.rs",
+      "prep": "prep/illegal_write6.rs",
+      "artifact": "illegal_write6.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 17
+      },
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "miri_error": "not granting access .* strongly protected",
+      "note": "verdict and line match miri, but via a different mechanism: the inline-seam &mut retag pops the raw, so the write fails as tag-not-found; miri keeps the raw and fails the same write via protector violation (message differs)"
+    },
+    {
+      "id": "fail/stacked_borrows/invalidate_against_protector1",
+      "source": "corpus/tests/fail/stacked_borrows/invalidate_against_protector1.rs",
+      "prep": "prep/invalidate_against_protector1.rs",
+      "artifact": "invalidate_against_protector1.ullbc.json",
+      "status": "xfail-model",
+      "reason": "protectors: read pops the protected &mut without error",
+      "expected": {
+        "verdict": "ub"
+      },
+      "rewrites": [
+        "dropped error annotation"
+      ],
+      "miri_error": "protect"
+    },
+    {
+      "id": "fail/both_borrows/invalidate_against_protector2",
+      "source": "corpus/tests/fail/both_borrows/invalidate_against_protector2.rs",
+      "prep": "prep/invalidate_against_protector2.rs",
+      "artifact": "invalidate_against_protector2.ullbc.json",
+      "status": "xfail-model",
+      "reason": "protectors: write pops the protected &shr without error",
+      "expected": {
+        "verdict": "ub"
+      },
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "miri_error": "protect"
+    },
+    {
+      "id": "fail/stacked_borrows/drop_in_place_retag",
+      "source": "corpus/tests/fail/stacked_borrows/drop_in_place_retag.rs",
+      "prep": null,
+      "artifact": "drop_in_place_retag.ullbc.json",
+      "status": "unsupported",
+      "reason": "protectors + drop glue",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/exposed_only_ro",
+      "source": "corpus/tests/fail/stacked_borrows/exposed_only_ro.rs",
+      "prep": null,
+      "artifact": "exposed_only_ro.ullbc.json",
+      "status": "unsupported",
+      "reason": "int-to-ptr exposed provenance",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/fnentry_invalidation",
+      "source": "corpus/tests/fail/stacked_borrows/fnentry_invalidation.rs",
+      "prep": null,
+      "artifact": "fnentry_invalidation.ullbc.json",
+      "status": "unsupported",
+      "reason": "protectors/fn-entry retag + control flow",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/fnentry_invalidation2",
+      "source": "corpus/tests/fail/stacked_borrows/fnentry_invalidation2.rs",
+      "prep": null,
+      "artifact": "fnentry_invalidation2.ullbc.json",
+      "status": "unsupported",
+      "reason": "protectors/fn-entry retag + slices",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_dealloc1",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_dealloc1.rs",
+      "prep": null,
+      "artifact": "illegal_dealloc1.ullbc.json",
+      "status": "unsupported",
+      "reason": "deallocation",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_read3",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_read3.rs",
+      "prep": null,
+      "artifact": "illegal_read3.ullbc.json",
+      "status": "unsupported",
+      "reason": "transmute + statics",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_read5",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_read5.rs",
+      "prep": null,
+      "artifact": "illegal_read5.ullbc.json",
+      "status": "unsupported",
+      "reason": "Rc + interior mutability",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_read7",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_read7.rs",
+      "prep": null,
+      "artifact": "illegal_read7.ullbc.json",
+      "status": "unsupported",
+      "reason": "interior mutability",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_read8",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_read8.rs",
+      "prep": null,
+      "artifact": "illegal_read8.ullbc.json",
+      "status": "unsupported",
+      "reason": "transmute",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/illegal_write4",
+      "source": "corpus/tests/fail/stacked_borrows/illegal_write4.rs",
+      "prep": null,
+      "artifact": "illegal_write4.ullbc.json",
+      "status": "unsupported",
+      "reason": "transmute",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/interior_mut1",
+      "source": "corpus/tests/fail/stacked_borrows/interior_mut1.rs",
+      "prep": null,
+      "artifact": "interior_mut1.ullbc.json",
+      "status": "unsupported",
+      "reason": "interior mutability (UnsafeCell)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/interior_mut2",
+      "source": "corpus/tests/fail/stacked_borrows/interior_mut2.rs",
+      "prep": null,
+      "artifact": "interior_mut2.ullbc.json",
+      "status": "unsupported",
+      "reason": "interior mutability (UnsafeCell)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/load_invalid_mut",
+      "source": "corpus/tests/fail/stacked_borrows/load_invalid_mut.rs",
+      "prep": null,
+      "artifact": "load_invalid_mut.ullbc.json",
+      "status": "unsupported",
+      "reason": "Box (heap allocation)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/pointer_smuggling",
+      "source": "corpus/tests/fail/stacked_borrows/pointer_smuggling.rs",
+      "prep": null,
+      "artifact": "pointer_smuggling.ullbc.json",
+      "status": "unsupported",
+      "reason": "statics (static mut channel)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/retag_data_race_protected_read",
+      "source": "corpus/tests/fail/stacked_borrows/retag_data_race_protected_read.rs",
+      "prep": null,
+      "artifact": "retag_data_race_protected_read.ullbc.json",
+      "status": "unsupported",
+      "reason": "threads",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/retag_data_race_read",
+      "source": "corpus/tests/fail/stacked_borrows/retag_data_race_read.rs",
+      "prep": null,
+      "artifact": "retag_data_race_read.ullbc.json",
+      "status": "unsupported",
+      "reason": "threads",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/return_invalid_mut_option",
+      "source": "corpus/tests/fail/stacked_borrows/return_invalid_mut_option.rs",
+      "prep": null,
+      "artifact": "return_invalid_mut_option.ullbc.json",
+      "status": "unsupported",
+      "reason": "enums (Option)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/shared_rw_borrows_are_weak1",
+      "source": "corpus/tests/fail/stacked_borrows/shared_rw_borrows_are_weak1.rs",
+      "prep": null,
+      "artifact": "shared_rw_borrows_are_weak1.ullbc.json",
+      "status": "unsupported",
+      "reason": "interior mutability (Cell)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/shared_rw_borrows_are_weak2",
+      "source": "corpus/tests/fail/stacked_borrows/shared_rw_borrows_are_weak2.rs",
+      "prep": null,
+      "artifact": "shared_rw_borrows_are_weak2.ullbc.json",
+      "status": "unsupported",
+      "reason": "interior mutability (RefCell)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/static_memory_modification",
+      "source": "corpus/tests/fail/stacked_borrows/static_memory_modification.rs",
+      "prep": null,
+      "artifact": "static_memory_modification.ullbc.json",
+      "status": "unsupported",
+      "reason": "statics + transmute",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/track_caller",
+      "source": "corpus/tests/fail/stacked_borrows/track_caller.rs",
+      "prep": null,
+      "artifact": "track_caller.ullbc.json",
+      "status": "unsupported",
+      "reason": "#[track_caller] + closures",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/transmute-is-no-escape",
+      "source": "corpus/tests/fail/stacked_borrows/transmute-is-no-escape.rs",
+      "prep": null,
+      "artifact": "transmute-is-no-escape.ullbc.json",
+      "status": "unsupported",
+      "reason": "transmute + arrays",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/unescaped_local",
+      "source": "corpus/tests/fail/stacked_borrows/unescaped_local.rs",
+      "prep": null,
+      "artifact": "unescaped_local.ullbc.json",
+      "status": "unsupported",
+      "reason": "int-to-ptr exposed provenance",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/unescaped_static",
+      "source": "corpus/tests/fail/stacked_borrows/unescaped_static.rs",
+      "prep": null,
+      "artifact": "unescaped_static.ullbc.json",
+      "status": "unsupported",
+      "reason": "statics",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/stacked_borrows/zst_slice",
+      "source": "corpus/tests/fail/stacked_borrows/zst_slice.rs",
+      "prep": null,
+      "artifact": "zst_slice.ullbc.json",
+      "status": "unsupported",
+      "reason": "slices",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/aliasing_mut1",
+      "source": "corpus/tests/fail/both_borrows/aliasing_mut1.rs",
+      "prep": null,
+      "artifact": "aliasing_mut1.ullbc.json",
+      "status": "unsupported",
+      "reason": "transmute (fn-ptr laundering)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/aliasing_mut2",
+      "source": "corpus/tests/fail/both_borrows/aliasing_mut2.rs",
+      "prep": null,
+      "artifact": "aliasing_mut2.ullbc.json",
+      "status": "unsupported",
+      "reason": "transmute (fn-ptr laundering)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/aliasing_mut3",
+      "source": "corpus/tests/fail/both_borrows/aliasing_mut3.rs",
+      "prep": null,
+      "artifact": "aliasing_mut3.ullbc.json",
+      "status": "unsupported",
+      "reason": "transmute (fn-ptr laundering)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/aliasing_mut4",
+      "source": "corpus/tests/fail/both_borrows/aliasing_mut4.rs",
+      "prep": null,
+      "artifact": "aliasing_mut4.ullbc.json",
+      "status": "unsupported",
+      "reason": "transmute + interior mutability",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/box-custom-alloc-aliasing",
+      "source": "corpus/tests/fail/both_borrows/box-custom-alloc-aliasing.rs",
+      "prep": null,
+      "artifact": "box-custom-alloc-aliasing.ullbc.json",
+      "status": "unsupported",
+      "reason": "Box + custom allocator + trait objects",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/box_exclusive_violation1",
+      "source": "corpus/tests/fail/both_borrows/box_exclusive_violation1.rs",
+      "prep": null,
+      "artifact": "box_exclusive_violation1.ullbc.json",
+      "status": "unsupported",
+      "reason": "Box (heap allocation)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/box_noalias_violation",
+      "source": "corpus/tests/fail/both_borrows/box_noalias_violation.rs",
+      "prep": null,
+      "artifact": "box_noalias_violation.ullbc.json",
+      "status": "unsupported",
+      "reason": "Box + protectors",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/buggy_as_mut_slice",
+      "source": "corpus/tests/fail/both_borrows/buggy_as_mut_slice.rs",
+      "prep": null,
+      "artifact": "buggy_as_mut_slice.ullbc.json",
+      "status": "unsupported",
+      "reason": "slices/Vec",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/buggy_split_at_mut",
+      "source": "corpus/tests/fail/both_borrows/buggy_split_at_mut.rs",
+      "prep": null,
+      "artifact": "buggy_split_at_mut.ullbc.json",
+      "status": "unsupported",
+      "reason": "slices + control flow",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/deallocate_against_protector1",
+      "source": "corpus/tests/fail/both_borrows/deallocate_against_protector1.rs",
+      "prep": null,
+      "artifact": "deallocate_against_protector1.ullbc.json",
+      "status": "unsupported",
+      "reason": "protectors + deallocation",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/deallocate_against_protector2",
+      "source": "corpus/tests/fail/both_borrows/deallocate_against_protector2.rs",
+      "prep": null,
+      "artifact": "deallocate_against_protector2.ullbc.json",
+      "status": "unsupported",
+      "reason": "protectors + deallocation",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/drop_in_place_protector",
+      "source": "corpus/tests/fail/both_borrows/drop_in_place_protector.rs",
+      "prep": null,
+      "artifact": "drop_in_place_protector.ullbc.json",
+      "status": "unsupported",
+      "reason": "protectors + drop glue",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/illegal_read_despite_exposed1",
+      "source": "corpus/tests/fail/both_borrows/illegal_read_despite_exposed1.rs",
+      "prep": null,
+      "artifact": "illegal_read_despite_exposed1.ullbc.json",
+      "status": "unsupported",
+      "reason": "int-to-ptr exposed provenance",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/illegal_read_despite_exposed2",
+      "source": "corpus/tests/fail/both_borrows/illegal_read_despite_exposed2.rs",
+      "prep": null,
+      "artifact": "illegal_read_despite_exposed2.ullbc.json",
+      "status": "unsupported",
+      "reason": "int-to-ptr exposed provenance",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/illegal_write1",
+      "source": "corpus/tests/fail/both_borrows/illegal_write1.rs",
+      "prep": null,
+      "artifact": "illegal_write1.ullbc.json",
+      "status": "unsupported",
+      "reason": "Box (heap allocation)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/illegal_write_despite_exposed1",
+      "source": "corpus/tests/fail/both_borrows/illegal_write_despite_exposed1.rs",
+      "prep": null,
+      "artifact": "illegal_write_despite_exposed1.ullbc.json",
+      "status": "unsupported",
+      "reason": "int-to-ptr exposed provenance",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/invalidate_against_protector3",
+      "source": "corpus/tests/fail/both_borrows/invalidate_against_protector3.rs",
+      "prep": null,
+      "artifact": "invalidate_against_protector3.ullbc.json",
+      "status": "unsupported",
+      "reason": "protectors + alloc",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/load_invalid_shr",
+      "source": "corpus/tests/fail/both_borrows/load_invalid_shr.rs",
+      "prep": null,
+      "artifact": "load_invalid_shr.ullbc.json",
+      "status": "unsupported",
+      "reason": "Box (heap allocation)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/mixed_cell_deallocate",
+      "source": "corpus/tests/fail/both_borrows/mixed_cell_deallocate.rs",
+      "prep": null,
+      "artifact": "mixed_cell_deallocate.ullbc.json",
+      "status": "unsupported",
+      "reason": "interior mutability + deallocation",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/mixed_mutability_static",
+      "source": "corpus/tests/fail/both_borrows/mixed_mutability_static.rs",
+      "prep": null,
+      "artifact": "mixed_mutability_static.ullbc.json",
+      "status": "unsupported",
+      "reason": "statics + interior mutability",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/mut_exclusive_violation1",
+      "source": "corpus/tests/fail/both_borrows/mut_exclusive_violation1.rs",
+      "prep": null,
+      "artifact": "mut_exclusive_violation1.ullbc.json",
+      "status": "unsupported",
+      "reason": "statics (static mut leak channel)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/mut_exclusive_violation2",
+      "source": "corpus/tests/fail/both_borrows/mut_exclusive_violation2.rs",
+      "prep": null,
+      "artifact": "mut_exclusive_violation2.ullbc.json",
+      "status": "unsupported",
+      "reason": "std NonNull (non-tuple ADT)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/newtype_pair_retagging",
+      "source": "corpus/tests/fail/both_borrows/newtype_pair_retagging.rs",
+      "prep": null,
+      "artifact": "newtype_pair_retagging.ullbc.json",
+      "status": "unsupported",
+      "reason": "protectors + Box + closures",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/newtype_retagging",
+      "source": "corpus/tests/fail/both_borrows/newtype_retagging.rs",
+      "prep": null,
+      "artifact": "newtype_retagging.ullbc.json",
+      "status": "unsupported",
+      "reason": "protectors + Box + closures",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/pass_invalid_shr_option",
+      "source": "corpus/tests/fail/both_borrows/pass_invalid_shr_option.rs",
+      "prep": null,
+      "artifact": "pass_invalid_shr_option.ullbc.json",
+      "status": "unsupported",
+      "reason": "enums (Option)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/retag_data_race_write",
+      "source": "corpus/tests/fail/both_borrows/retag_data_race_write.rs",
+      "prep": null,
+      "artifact": "retag_data_race_write.ullbc.json",
+      "status": "unsupported",
+      "reason": "threads",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "fail/both_borrows/return_invalid_shr_option",
+      "source": "corpus/tests/fail/both_borrows/return_invalid_shr_option.rs",
+      "prep": null,
+      "artifact": "return_invalid_shr_option.ullbc.json",
+      "status": "unsupported",
+      "reason": "enums (Option)",
+      "expected": {
+        "verdict": "ub"
+      }
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::read_does_not_invalidate1",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": "prep/basic_aliasing_model__read_does_not_invalidate1.rs",
+      "artifact": "basic_aliasing_model__read_does_not_invalidate1.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "assert -> read",
+        "explicit temp binding"
+      ]
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::read_does_not_invalidate2",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": "prep/basic_aliasing_model__read_does_not_invalidate2.rs",
+      "artifact": "basic_aliasing_model__read_does_not_invalidate2.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "assert -> read",
+        "explicit temp binding"
+      ]
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::mut_raw_mut",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": "prep/basic_aliasing_model__mut_raw_mut.rs",
+      "artifact": "basic_aliasing_model__mut_raw_mut.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "assert -> reads"
+      ]
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::partially_invalidate_mut",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": "prep/basic_aliasing_model__partially_invalidate_mut.rs",
+      "artifact": "basic_aliasing_model__partially_invalidate_mut.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "+= -> read;write",
+        "assert dropped"
+      ]
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::two_raw",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": "prep/basic_aliasing_model__two_raw.rs",
+      "artifact": "basic_aliasing_model__two_raw.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "+= -> read;write"
+      ]
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::mut_derefer",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": "prep/basic_aliasing_model__mut_derefer.rs",
+      "artifact": "basic_aliasing_model__mut_derefer.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "+= -> read;write"
+      ]
+    },
+    {
+      "id": "pass/stacked_borrows/stacked-borrows::mut_raw_mut2",
+      "source": "corpus/tests/pass/stacked_borrows/stacked-borrows.rs",
+      "prep": "prep/stacked-borrows__mut_raw_mut2.rs",
+      "artifact": "stacked-borrows__mut_raw_mut2.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted"
+      ]
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::drop_after_sharing",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "String (heap/std)",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::shr_and_raw",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "transmute",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::disjoint_mutable_subborrows",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "String/Vec + named ADT",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::raw_ref_to_part",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "Box + named ADT",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::array_casts",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "arrays + ptr arithmetic",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::mut_below_shr",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "transmute",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::wide_raw_ptr_in_tuple",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "Box + dyn/vtables",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::not_unpin_not_protected",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "Box + closures + fn ptrs",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::write_does_not_invalidate_all_aliases",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "statics + ptr casts",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::box_into_raw_allows_interior_mutable_alias",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "Box + Cell",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::cell_inside_struct",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "Cell + named ADT",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/basic_aliasing_model::zst",
+      "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "alloc/dealloc + int-to-ptr",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/stacked_borrows/stacked-borrows::two_phase_aliasing_violation",
+      "source": "corpus/tests/pass/stacked_borrows/stacked-borrows.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "method receiver + named ADT + arithmetic",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/2phase",
+      "source": "corpus/tests/pass/both_borrows/2phase.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "two-phase activation patterns + Vec",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/interior_mutability",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "Cell/RefCell/UnsafeCell",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/int-to-ptr",
+      "source": "corpus/tests/pass/both_borrows/int-to-ptr.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "int-to-ptr",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/issue-miri-2389",
+      "source": "corpus/tests/pass/both_borrows/issue-miri-2389.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "int-to-ptr exposed provenance",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/maybe_dangling",
+      "source": "corpus/tests/pass/both_borrows/maybe_dangling.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "MaybeUninit / dangling refs",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/smallvec",
+      "source": "corpus/tests/pass/both_borrows/smallvec.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "smallvec-style unions/arrays",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/unsafe_pinned",
+      "source": "corpus/tests/pass/both_borrows/unsafe_pinned.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "UnsafePinned/interior mutability",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/c_variadics",
+      "source": "corpus/tests/pass/both_borrows/c_variadics.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "C variadics",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/stacked_borrows/coroutine-self-referential",
+      "source": "corpus/tests/pass/stacked_borrows/coroutine-self-referential.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "coroutines",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/stacked_borrows/stack-printing",
+      "source": "corpus/tests/pass/stacked_borrows/stack-printing.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "miri-specific stack printing",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/stacked_borrows/unknown-bottom-gc",
+      "source": "corpus/tests/pass/stacked_borrows/unknown-bottom-gc.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "int-to-ptr + GC internals",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    },
+    {
+      "id": "pass/stacked_borrows/zst-field-retagging-terminates",
+      "source": "corpus/tests/pass/stacked_borrows/zst-field-retagging-terminates.rs",
+      "prep": null,
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "closures + recursion-depth checks",
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": []
+    }
+  ]
+}

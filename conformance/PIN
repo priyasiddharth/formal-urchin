@@ -1,0 +1,5 @@
+miri_commit: 34d6a7954425f3d97d6a7ff19bdf0f7a51560754
+miri_date: 2026-08-13
+miri_remote: https://github.com/rust-lang/miri.git (fetched in /home/siddharth/rustc/rust/src/tools/miri)
+charon_release: nightly-2026.08.14 (charon 0.1.232, linux-x86_64 prebuilt, in conformance/tools/)
+charon_toolchain: nightly-2026-06-01 (rustup, components rustc-dev llvm-tools-preview rust-src miri)

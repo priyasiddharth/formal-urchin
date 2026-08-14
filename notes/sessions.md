@@ -42,3 +42,41 @@ tactic); this log.
 **Critical corrections:** step-4 hold is workflow-only (user switched
 projects), not technical.
 **Status:** complete.
+
+## 2026-08-14
+**Session:** `yes-the-miri-happy-breeze` (terminal, run from
+~/seahorn/sb_tests — temporary dir, to be deleted)
+**Theme:** SB conformance audit — can obseq2 interpret Miri's stacked
+borrows pass/fail tests? Audited the gap, planned obseq3 + a
+Charon-based conformance suite.
+**Key outputs:**
+- plans/sb_conformance_obseq3.md (approved plan: obseq3 with per-cell
+  stacks + writable raws; Charon ULLBC JSON → Lean loader/elaborator;
+  manifest-driven harness against pinned modern Miri corpus)
+- durable/v1-v2-sb-model-divergences-from-miri-sb.md
+- durable/mir-to-lean-ingestion-landscape.md (incl. Charon-emits-no-
+  Retag finding)
+- journal/2026-08/2026-08-14-sb-conformance-audit.md (corpus survey,
+  coverage estimate ~30-33/75 fail + ~12-14 pass scenarios)
+**Critical corrections (user):**
+- SB fixes land as a NEW versioned codebase src/obseq3/ (v1→v2
+  precedent), not forked files inside obseq2.
+- All suite data lives in formal-urchin (conformance/); the sb_tests
+  scratch dir will be deleted.
+- Existing mirlite tests (src/interp/test_mirlight.lean et al.) must be
+  acknowledged/reused as the harness pattern.
+**Status:** complete — everything landed in this session:
+src/obseq3/ (per-cell stacks, writable raws with Miri's
+insert-above-granting SRW placement, TwoPhase, Except errors, 10 unit
+tests), src/conformance/ (ULLBC JSON loader, inlining/seam-retag
+lowering, elaborator, manifest harness), conformance/ (pinned corpus,
+30 preps, artifacts, 109-entry manifest). Score vs miri @ 34d6a795:
+fail 23/75 verdict-conformant (19 line-accurate) + 2 xfail (protectors)
++ 50 unsupported(reason); pass scenarios 9 clean. Suite green:
+pass 30 | fail 0 | xfail 2 | xpass 0. Dev-log entry 2026-08-14; see
+journal/2026-08/2026-08-14-obseq3-conformance-landed.md for the
+raw-retag-placement finding (the day's key semantics insight).
+**Next-session pickup:** Phase C candidates — protectors first
+(converts 2 xfails + ~10 unsupported; composes with seam retags),
+statics hoisting cheapest (~4 tests). Reconstruct obseq3 preservation
+proofs on demand.

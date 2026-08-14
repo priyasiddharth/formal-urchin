@@ -4,6 +4,56 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-14 — obseq3: Miri SB Conformance Suite (per-cell stacks, writable raws, Charon ingestion)
+
+### Context
+
+Goal: be able to call the SB semantics "conformant" by scoring it against Miri's test corpus
+(fail tests must be flagged UB, pass tests must run clean). Audit found two v1/v2 divergences
+from real SB that dominated feasibility (raws never writable; borrow stacks only at allocation
+base addresses), and no executable tests on the SB-enforcing semantics at all. Full plan:
+`plans/sb_conformance_obseq3.md`.
+
+### What landed
+
+- **`src/obseq3/`** — new versioned codebase (v1/v2 untouched, all proofs still green):
+  per-cell borrow stacks (`sb_own` roots every cell; all ops range-based), mutability-carrying
+  raw items (`RawPtr mutbl`: raw-mut ≈ SharedReadWrite — writable, survives reads; raw-const
+  behaves like a shared item), `TwoPhase` reserved borrows, `Except String` errors with cell
+  offsets, and a length-parameterized `PermissionModel`. Semantics forked from obseq2's mirlite
+  with range-based access sites + implicit root allocation through projections.
+  10 unit tests in `src/obseq3/tests.lean` (assert pattern + `expectErr`).
+- **Faithful raw-retag placement**: raw-mut retags perform *no* parent access and insert the new
+  item *directly above the granting item* (Miri's SharedReadWrite placement). This is what makes
+  sibling raws coexist (`two_raw`) while `raw_tracking` still catches the invalidation — the
+  earlier write-access-and-push-on-top draft was strictly stronger than Miri.
+- **`src/conformance/`** — Charon ULLBC JSON → untyped AST → lowering (call inlining,
+  linearization, storage/FakeRead dropping, tuple-aggregate desugaring, seam retags incl.
+  composite tuple-field retags) → elaborator into the intrinsically-typed obseq3 syntax
+  (`DecidableEq LayoutTy` + transport; no per-program proofs) → manifest-driven harness
+  (`lake exe sb_conformance`). Charon emits no Retag statements — retags are synthesized at
+  `Ref`/`RawPtr` rvalues (= the eager model) plus inline-seam retags.
+- **`conformance/`** — pinned corpus (miri @ 34d6a795, 2026-08-13; charon nightly-2026.08.14),
+  30 curated prep files, committed ULLBC artifacts, manifest with per-test
+  status/reason/verdict/line.
+
+### Score (miri @ 34d6a795)
+
+- **fail tests: 23/75 verdict-conformant** (line-accurate on 19), 2 xfail-model
+  (protector tests: our model silently pops protected items), 50 unsupported with
+  per-test reasons.
+- **pass scenarios: 9 clean** (incl. two_raw, mut_raw_mut, partially_invalidate_mut,
+  disable-SRW-merge behaviors), rest unsupported with reasons.
+- Suite: `pass 30 | fail 0 | xfail 2 | xpass 0 | unsupported 77 | total 109`; missed UB is
+  always a hard failure; Miri message *text* is never matched (structural verdict + line only).
+
+### Exclusions (documented per-test in conformance/manifest.json)
+
+Protectors, interior mutability (UnsafeCell/Cell), deallocation/Box, int-to-ptr exposure,
+transmute, enums/control flow, arrays/slices, threads, statics. These are Phase C in the plan.
+
+---
+
 ## 2026-06-17 — Closing the `const_write` Sorry: Reconstruct-not-Port and the Identity-on-Domain Rename Invariant
 
 ### Context
