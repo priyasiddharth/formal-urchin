@@ -33,9 +33,16 @@ inductive UProj
 | field (idx : Nat)
 deriving Repr, BEq, Inhabited
 
-/-- A place: root local + projections, outermost-first application order. -/
+/-- Place roots: a local, or a global (static) — the latter is rewritten
+    to a hoisted local by the lowering pass. -/
+inductive URoot
+| local (n : Nat)
+| global (gid : Nat)
+deriving Repr, BEq, Inhabited
+
+/-- A place: root + projections, outermost-first application order. -/
 structure UPlace where
-  root : Nat
+  root : URoot
   projs : List UProj
 deriving Repr, BEq, Inhabited
 
@@ -55,10 +62,14 @@ inductive URefKind
 | rawConst
 deriving Repr, BEq, Inhabited
 
+/-- `ref`'s `prot` marks a protected (inline-seam) retag; the parser
+    always produces `false`, the lowering sets it. `uninit` is emitted
+    only by the lowering (hoisted statics). -/
 inductive URvalue
 | use (op : UOperand)
-| ref (kind : URefKind) (p : UPlace)
+| ref (kind : URefKind) (prot : Bool) (p : UPlace)
 | aggregate (ops : List UOperand)
+| uninit
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
 
@@ -97,8 +108,15 @@ structure UFun where
   hasBody : Bool
 deriving Repr, Inhabited
 
+structure UGlobal where
+  gid : Nat
+  name : String
+  ty : UTy
+deriving Repr, Inhabited
+
 structure UCrate where
   funs : List UFun
+  globals : List UGlobal
 deriving Repr, Inhabited
 
 /-! ## JSON helpers -/
@@ -197,8 +215,12 @@ partial def parsePlace (j : Json) : Except String UPlace := do
     match sumKey kind with
     | some ("Local", n) =>
         match asNat n with
-        | some i => return { root := i, projs := [] }
+        | some i => return { root := .local i, projs := [] }
         | none => .error "non-numeric local index"
+    | some ("Global", g) =>
+        match getK g "id" >>= asNat with
+        | some gid => return { root := .global gid, projs := [] }
+        | none => .error "global place without id"
     | some ("Projection", args) =>
         match asArr args with
         | [sub, proj] => do
@@ -289,7 +311,7 @@ def parseRvalue (j : Json) : URvalue :=
       match getK r "place", getK r "kind" with
       | some pJ, some kJ =>
           match parsePlace pJ, parseRefRvalueKind kJ isRaw with
-          | .ok pl, .ok kind => .ref kind pl
+          | .ok pl, .ok kind => .ref kind false pl
           | .error e, _ => .unsupported e
           | _, .error e => .unsupported e
       | _, _ => .unsupported "malformed Ref/RawPtr rvalue"
@@ -411,10 +433,31 @@ def parseFun (tbl : TyTable) (j : Json) : UFun :=
       let blocks := ((getK bodyJ "body").map asArr).getD [] |>.map parseBlock
       { defId, name, argCount, locals, blocks, hasBody := true }
 
+def parseGlobal (tbl : TyTable) (j : Json) : UGlobal :=
+  let gid := ((getK j "def_id") >>= asNat).getD 0
+  let name :=
+    match (getK j "item_meta" >>= (getK · "name")) with
+    | some nameJ =>
+        match (asArr nameJ).reverse.head? with
+        | some elem =>
+            match getK elem "Ident" with
+            | some identJ =>
+                match asArr identJ with
+                | Json.str s :: _ => s
+                | _ => "?"
+            | none => "?"
+        | none => "?"
+    | none => "?"
+  { gid, name, ty := parseTy tbl ((getK j "ty").getD Json.null) }
+
 def parseCrate (root : Json) : Except String UCrate := do
   let tbl := collectTable root []
+  let globals :=
+    match getK root "translated" >>= (getK · "global_decls") with
+    | some gJ => (asArr gJ).map (parseGlobal tbl)
+    | none => []
   match getK root "translated" >>= (getK · "fun_decls") with
   | none => .error "no translated.fun_decls in JSON"
-  | some funsJ => return { funs := (asArr funsJ).map (parseFun tbl) }
+  | some funsJ => return { funs := (asArr funsJ).map (parseFun tbl), globals }
 
 end conformance

@@ -373,10 +373,11 @@
       "source": "corpus/tests/fail/stacked_borrows/invalidate_against_protector1.rs",
       "prep": "prep/invalidate_against_protector1.rs",
       "artifact": "invalidate_against_protector1.ullbc.json",
-      "status": "xfail-model",
-      "reason": "protectors: read pops the protected &mut without error",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
+        "verdict": "ub",
+        "line": 8
       },
       "rewrites": [
         "dropped error annotation"
@@ -388,10 +389,11 @@
       "source": "corpus/tests/fail/both_borrows/invalidate_against_protector2.rs",
       "prep": "prep/invalidate_against_protector2.rs",
       "artifact": "invalidate_against_protector2.ullbc.json",
-      "status": "xfail-model",
-      "reason": "protectors: write pops the protected &shr without error",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
+        "verdict": "ub",
+        "line": 9
       },
       "rewrites": [
         "dropped revisions/annotations"
@@ -544,13 +546,19 @@
     {
       "id": "fail/stacked_borrows/pointer_smuggling",
       "source": "corpus/tests/fail/stacked_borrows/pointer_smuggling.rs",
-      "prep": null,
+      "prep": "prep/pointer_smuggling.rs",
       "artifact": "pointer_smuggling.ullbc.json",
-      "status": "unsupported",
-      "reason": "statics (static mut channel)",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 14
+      },
+      "rewrites": [
+        "dropped error annotation"
+      ],
+      "miri_error": "read access .* tag does not exist in the borrow stack",
+      "note": "static hoisted to an uninitialized local (initializer not run)"
     },
     {
       "id": "fail/stacked_borrows/retag_data_race_protected_read",
@@ -896,13 +904,19 @@
     {
       "id": "fail/both_borrows/mut_exclusive_violation1",
       "source": "corpus/tests/fail/both_borrows/mut_exclusive_violation1.rs",
-      "prep": null,
+      "prep": "prep/mut_exclusive_violation1.rs",
       "artifact": "mut_exclusive_violation1.ullbc.json",
-      "status": "unsupported",
-      "reason": "statics (static mut leak channel)",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 25
+      },
+      "rewrites": [
+        "dropped revisions and error annotations"
+      ],
+      "miri_error": "write access .* tag does not exist in the borrow stack",
+      "note": "static hoisted to an uninitialized local (initializer not run)"
     },
     {
       "id": "fail/both_borrows/mut_exclusive_violation2",

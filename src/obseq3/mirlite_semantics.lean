@@ -223,11 +223,15 @@ def evalRExpr
                 values_len := readWordSeq_length state'.mem resolved.addr (blockSize τ)
                 state := state'
               }
-  | .ref (τ := σ) kind src =>
+  | .uninit =>
+      .ok { values := List.replicate (blockSize τ) MemValue.undef
+            values_len := List.length_replicate
+            state := state }
+  | .ref (τ := σ) kind prot src =>
       match resolvePlace? state src with
       | none => .err "reference source place not allocated"
       | some resolved =>
-          match M.ref state.perms resolved.addr (blockSize σ) resolved.tag kind with
+          match M.ref state.perms resolved.addr (blockSize σ) resolved.tag kind prot with
           | .ok (perms', freshTag) =>
               .ok {
                 values := [MemValue.ptrVal resolved.allocBase
@@ -244,6 +248,12 @@ def stepStmt
   (state : State M Γ) :
   Stmt Γ → Result M Γ
   | .halt => .ok state
+  | .pushProtectors =>
+      .ok { state with perms := M.pushFrame state.perms, pc := state.pc + 1 }
+  | .popProtectors =>
+      match M.popFrame state.perms with
+      | .ok perms' => .ok { state with perms := perms', pc := state.pc + 1 }
+      | .error e => .err s!"popProtectors failed: {e}"
   | .assign dst rhs =>
       match preparePlaceAssign M state dst with
       | .err msg => .err msg

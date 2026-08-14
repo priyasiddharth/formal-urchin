@@ -26,10 +26,12 @@ def toRefKind : URefKind → obseq3.RefKind
   | .rawMut => .Raw true
   | .rawConst => .Raw false
 
-def elabRoot (Γ : Ctx) (n : Nat) : Except String ((τ : LayoutTy) × Place Γ τ) :=
-  if h : n < Γ.length then
-    .ok ⟨Γ.get ⟨n, h⟩, .local ⟨⟨n, h⟩, rfl⟩⟩
-  else .error s!"local _{n} out of range"
+def elabRoot (Γ : Ctx) : URoot → Except String ((τ : LayoutTy) × Place Γ τ)
+  | .local n =>
+      if h : n < Γ.length then
+        .ok ⟨Γ.get ⟨n, h⟩, .local ⟨⟨n, h⟩, rfl⟩⟩
+      else .error s!"local _{n} out of range"
+  | .global gid => .error s!"global {gid} not hoisted by lowering"
 
 def elabPlaceAux (Γ : Ctx) :
     (τ : LayoutTy) → Place Γ τ → List UProj →
@@ -55,19 +57,26 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
       let ⟨τ, pl⟩ ← elabPlace Γ p
       return ⟨τ, .copy pl⟩
   | .use (.unsupported d) => .error s!"unsupported: {d}"
-  | .ref kind p => do
+  | .ref kind prot p => do
       let ⟨τ, pl⟩ ← elabPlace Γ p
-      return ⟨.PtrL τ, .ref (toRefKind kind) pl⟩
+      return ⟨.PtrL τ, .ref (toRefKind kind) prot pl⟩
+  | .uninit => .error "uninit is elaborated against the destination type"
   | .aggregate _ => .error "aggregate not desugared by lowering"
   | .unsupported d => .error s!"unsupported: {d}"
 
-def elabStmt (Γ : Ctx) (s : LStmt) : Except String (Stmt Γ) := do
-  let ⟨τd, pd⟩ ← elabPlace Γ s.dst
-  let ⟨τr, er⟩ ← elabRvalue Γ s.rv
-  if h : τr = τd then
-    return .assign pd (h ▸ er)
-  else
-    .error s!"type mismatch at line {s.line}: dst {reprStr τd} vs rhs {reprStr τr}"
+def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
+  | .pushProt _ => return .pushProtectors
+  | .popProt _ => return .popProtectors
+  | .assign dst rv line => do
+      let ⟨τd, pd⟩ ← elabPlace Γ dst
+      match rv with
+      | .uninit => return .assign pd .uninit
+      | _ =>
+        let ⟨τr, er⟩ ← elabRvalue Γ rv
+        if h : τr = τd then
+          return .assign pd (h ▸ er)
+        else
+          .error s!"type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
 
 /-- A loaded, runnable conformance program. `lines` is parallel to `prog`
     (source line per statement, for locating UB verdicts). -/

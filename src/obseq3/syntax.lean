@@ -29,15 +29,22 @@ inductive Place (Γ : Ctx) : LayoutTy → Type where
 | proj  : Place Γ σ → PathTo σ τ → Place Γ τ
 | deref : Place Γ (obseq.LayoutTy.PtrL τ) → Place Γ τ
 
-/-- A right-hand-side expression of layout type `τ` in context `Γ`. -/
+/-- A right-hand-side expression of layout type `τ` in context `Γ`.
+    `ref`'s `Bool` marks a *protected* (function-entry) retag; `uninit`
+    fills the destination with undef (used to materialize hoisted statics
+    and other uninitialized allocations). -/
 inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | constInit : Word → RExpr Γ obseq.LayoutTy.NatL
 | copy : Place Γ τ → RExpr Γ τ
-| ref : RefKind → Place Γ τ → RExpr Γ (obseq.LayoutTy.PtrL τ)
+| ref : RefKind → Bool → Place Γ τ → RExpr Γ (obseq.LayoutTy.PtrL τ)
+| uninit : RExpr Γ τ
 
-/-- A statement in context `Γ`. -/
+/-- A statement in context `Γ`. `pushProtectors`/`popProtectors` bracket
+    an inlined call's protector frame (Miri's fn-entry protectors). -/
 inductive Stmt (Γ : Ctx) : Type where
 | assign : Place Γ τ → RExpr Γ τ → Stmt Γ
+| pushProtectors : Stmt Γ
+| popProtectors : Stmt Γ
 | halt : Stmt Γ
 
 /-- A sequential program: a list of statements in context `Γ`. -/

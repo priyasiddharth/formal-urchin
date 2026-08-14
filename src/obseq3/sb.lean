@@ -91,12 +91,25 @@ def SB.find? (sb : SB) (addr : Word) : Option BorrowStack :=
 def SB.set (sb : SB) (addr : Word) (stack : BorrowStack) : SB :=
   (addr, stack) :: sb.filter (fun (a, _) => a != addr)
 
+/-- `protFrames` models Miri's call-frame protectors: a stack of tag sets,
+    one frame per active (inlined) call. A tag in any active frame is
+    *protected*: any access that would pop or disable its items is UB.
+    Frames are pushed/popped by the `pushProtectors`/`popProtectors`
+    pseudo-statements the loader emits at inline seams. -/
 structure AccessPerms where
   StackMap : SB
   NextTag : Tag
+  protFrames : List (List Tag) := []
 deriving Inhabited, Repr, BEq
 
 def AccessPerms.init : AccessPerms := { StackMap := [], NextTag := 0 }
+
+def AccessPerms.isProtected (ap : AccessPerms) (tag : Tag) : Bool :=
+  ap.protFrames.any (·.contains tag)
+
+/-- First protected item in a list of items about to be popped/disabled. -/
+def firstProtected (ap : AccessPerms) (items : List Item) : Option Item :=
+  items.find? (fun k => ap.isProtected k.tag)
 
 def freshTag (ap : AccessPerms) : Tag × AccessPerms :=
   (ap.NextTag, { ap with NextTag := ap.NextTag + 1 })
@@ -114,7 +127,8 @@ def splitStack : BorrowStack → Tag → Option (BorrowStack × Item × BorrowSt
 /-! ## Single-cell primitives -/
 
 /-- Read access at one cell through `tag`: the granting item may be any
-    kind; items above it that are `poppedByRead` (Unique) are removed. -/
+    kind; items above it that are `poppedByRead` (Unique) are removed —
+    unless one of them is protected, which is UB. -/
 def readCell (ap : AccessPerms) (addr : Word) (tag : Tag) : Except String AccessPerms :=
   match ap.StackMap.find? addr with
   | none => .error s!"sb-read: no borrow stack at address {addr}"
@@ -122,20 +136,30 @@ def readCell (ap : AccessPerms) (addr : Word) (tag : Tag) : Except String Access
     match splitStack stack tag with
     | none => .error s!"sb-read: tag {tag} does not exist in the borrow stack at {addr}"
     | some (above, item, below) =>
-      let above' := above.filter (fun k => !k.poppedByRead)
-      .ok { ap with StackMap := ap.StackMap.set addr (above' ++ item :: below) }
+      let popped := above.filter (·.poppedByRead)
+      match firstProtected ap popped with
+      | some p =>
+          .error s!"sb-read: not granting read access to tag {tag} at {addr} because that would remove item for tag {p.tag} which is strongly protected"
+      | none =>
+        let above' := above.filter (fun k => !k.poppedByRead)
+        .ok { ap with StackMap := ap.StackMap.set addr (above' ++ item :: below) }
 
 /-- Write access at one cell through `tag`: the granting item must grant
-    writes; everything above it is popped. -/
+    writes; everything above it is popped — unless one of the popped
+    items is protected, which is UB. -/
 def writeCell (ap : AccessPerms) (addr : Word) (tag : Tag) : Except String AccessPerms :=
   match ap.StackMap.find? addr with
   | none => .error s!"sb-write: no borrow stack at address {addr}"
   | some stack =>
     match splitStack stack tag with
     | none => .error s!"sb-write: tag {tag} does not exist in the borrow stack at {addr}"
-    | some (_above, item, below) =>
+    | some (above, item, below) =>
       if item.grantsWrite then
-        .ok { ap with StackMap := ap.StackMap.set addr (item :: below) }
+        match firstProtected ap above with
+        | some p =>
+            .error s!"sb-write: not granting write access to tag {tag} at {addr} because that would remove item for tag {p.tag} which is strongly protected"
+        | none =>
+            .ok { ap with StackMap := ap.StackMap.set addr (item :: below) }
       else
         .error s!"sb-write: tag {tag} (a read-only item) does not grant write access at {addr}"
 
@@ -202,9 +226,11 @@ def sb_write (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
     - `Raw true`: **no access**, insert the SharedReadWrite-like item
       directly above the granting item (sibling raws coexist);
     - `TwoPhase`: read access via the parent, insert above the granting
-      item (reserved borrow behaves like SharedReadWrite until activation). -/
-def sb_ref (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) (kind : RefKind) :
-    Except String (AccessPerms × Tag) := do
+      item (reserved borrow behaves like SharedReadWrite until activation).
+    With `prot := true` (function-entry retags at inline seams), the fresh
+    tag is registered in the innermost protector frame. -/
+def sb_ref (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) (kind : RefKind)
+    (prot : Bool := false) : Except String (AccessPerms × Tag) := do
   let (newTag, ap) := freshTag ap
   let newItem := kind.toItem newTag
   let cellOp : AccessPerms → Word → Except String AccessPerms :=
@@ -214,7 +240,23 @@ def sb_ref (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) (kind : RefK
     | .Raw true => fun ap a => insertAboveCell ap a tag newItem
     | .TwoPhase => fun ap a => do insertAboveCell (← readCell ap a tag) a tag newItem
   let ap ← foldCells cellOp ap addr len
-  return (ap, newTag)
+  if prot then
+    match ap.protFrames with
+    | [] => .error "sb-ref: protected retag outside any protector frame"
+    | frame :: rest => return ({ ap with protFrames := (newTag :: frame) :: rest }, newTag)
+  else
+    return (ap, newTag)
+
+/-- Enter a call: push an empty protector frame. -/
+def sb_push_frame (ap : AccessPerms) : AccessPerms :=
+  { ap with protFrames := [] :: ap.protFrames }
+
+/-- Leave a call: drop the innermost protector frame, ending the
+    protection of every tag registered in it. -/
+def sb_pop_frame (ap : AccessPerms) : Except String AccessPerms :=
+  match ap.protFrames with
+  | [] => .error "sb-pop-frame: no active protector frame"
+  | _ :: rest => .ok { ap with protFrames := rest }
 
 /-- Kill a reference over a range: pop the item with `tag` if it is on top
     of each cell's stack (and is not the root `Own`). -/
@@ -229,7 +271,10 @@ def sb_die (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
           if item.tag == tag then
             match item with
             | .Own _ => .error s!"sb-die: tag {tag} is the allocation root"
-            | _ => .ok { ap with StackMap := ap.StackMap.set a below }
+            | _ =>
+                if ap.isProtected item.tag then
+                  .error s!"sb-die: tag {tag} is strongly protected"
+                else .ok { ap with StackMap := ap.StackMap.set a below }
           else .error s!"sb-die: top of stack is {item.tag}, expected {tag}")
     ap addr len
 

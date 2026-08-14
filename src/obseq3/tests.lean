@@ -94,6 +94,33 @@ def t5_shared_popped_by_write : IO Unit := do
   let ap ← expectOkE (sb_write ap 300 1 root) "t5 root write"
   expectErrE (sb_read ap 300 1 s) "t5 shared popped by write" "does not exist"
 
+/-- Protectors: popping a protected item via a parent access is UB;
+    after the frame is popped, the same access is fine. -/
+def t11_protected_item_blocks_pop : IO Unit := do
+  let ap := AccessPerms.init
+  let (ap, root) ← expectOkE (sb_own ap 400 1) "t11 own"
+  let ap := sb_push_frame ap
+  let (ap, _m) ← expectOkE (sb_ref ap 400 1 root .Mut true) "t11 protected ref mut"
+  expectErrE (sb_read ap 400 1 root) "t11 read popping protected" "strongly protected"
+  expectErrE (sb_write ap 400 1 root) "t11 write popping protected" "strongly protected"
+  let ap ← expectOkE (sb_pop_frame ap) "t11 pop frame"
+  let _ ← expectOkE (sb_read ap 400 1 root) "t11 read after frame pop"
+  pure ()
+
+/-- Protected shared items are popped only by writes — and that is UB
+    while the frame is active. -/
+def t12_protected_shared_blocks_write : IO Unit := do
+  let ap := AccessPerms.init
+  let (ap, root) ← expectOkE (sb_own ap 500 1) "t12 own"
+  let ap := sb_push_frame ap
+  let (ap, s) ← expectOkE (sb_ref ap 500 1 root .Shared true) "t12 protected ref shared"
+  let ap ← expectOkE (sb_read ap 500 1 root) "t12 root read keeps protected shared"
+  let ap ← expectOkE (sb_read ap 500 1 s) "t12 protected shared readable"
+  expectErrE (sb_write ap 500 1 root) "t12 write popping protected shared" "strongly protected"
+  let ap ← expectOkE (sb_pop_frame ap) "t12 pop frame"
+  let _ ← expectOkE (sb_write ap 500 1 root) "t12 write after frame pop"
+  pure ()
+
 /-! ## Program-level tests (mirlite semantics) -/
 
 abbrev M := PermissionModel.stackedBorrows
@@ -116,7 +143,7 @@ def tA : Place ΓA natL := .local ⟨⟨2, by decide⟩, rfl⟩
 def t6_deref_write_then_owner_read : IO Unit := do
   let prog : Prog ΓA := [
     .assign xA (.constInit 7),
-    .assign pA (.ref .Mut xA),
+    .assign pA (.ref .Mut false xA),
     .assign (.deref pA) (.constInit 8),
     .assign tA (.copy xA),          -- read via owner pops the &mut
     .assign (.deref pA) (.constInit 9)  -- UB
@@ -126,7 +153,7 @@ def t6_deref_write_then_owner_read : IO Unit := do
 def t7_deref_write_ok : IO Unit := do
   let prog : Prog ΓA := [
     .assign xA (.constInit 7),
-    .assign pA (.ref .Mut xA),
+    .assign pA (.ref .Mut false xA),
     .assign (.deref pA) (.constInit 8),
     .assign (.deref pA) (.constInit 9)
   ]
@@ -150,7 +177,7 @@ def t8_field_borrow_at_offset : IO Unit := do
   let prog : Prog ΓB := [
     .assign fld0B (.constInit 1),
     .assign fld1B (.constInit 2),
-    .assign pB (.ref .Mut fld1B),
+    .assign pB (.ref .Mut false fld1B),
     .assign (.deref pB) (.constInit 5),
     .assign tB (.copy (.deref pB))
   ]
@@ -163,7 +190,7 @@ def t9_field_borrow_invalidated_by_direct_write : IO Unit := do
   let prog : Prog ΓB := [
     .assign fld0B (.constInit 1),
     .assign fld1B (.constInit 2),
-    .assign pB (.ref .Mut fld1B),
+    .assign pB (.ref .Mut false fld1B),
     .assign fld1B (.constInit 9),   -- direct write via owner pops the borrow
     .assign tB (.copy (.deref pB))  -- UB
   ]
@@ -182,8 +209,8 @@ def t10_disjoint_field_borrows : IO Unit := do
   let prog : Prog ΓC := [
     .assign fld0C (.constInit 1),
     .assign fld1C (.constInit 2),
-    .assign p0C (.ref .Mut fld0C),
-    .assign p1C (.ref .Mut fld1C),
+    .assign p0C (.ref .Mut false fld0C),
+    .assign p1C (.ref .Mut false fld1C),
     .assign (.deref p0C) (.constInit 10),
     .assign (.deref p1C) (.constInit 20)
   ]
@@ -201,6 +228,8 @@ def runAll : IO Unit := do
   t8_field_borrow_at_offset
   t9_field_borrow_invalidated_by_direct_write
   t10_disjoint_field_borrows
-  IO.println "obseq3 tests passed (10/10)"
+  t11_protected_item_blocks_pop
+  t12_protected_shared_blocks_write
+  IO.println "obseq3 tests passed (12/12)"
 
 end obseq3.Tests

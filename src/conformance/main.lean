@@ -56,7 +56,11 @@ def dumpTest (charonDir : String) (m : Manifest) (id : String) : IO UInt32 := do
                     IO.println s!"  _{i}: {reprStr ty}"
                   IO.println s!"statements ({lp.stmts.length}):"
                   for s in lp.stmts do
-                    IO.println s!"  [line {s.line}] {reprStr s.dst} := {reprStr s.rv}"
+                    match s with
+                    | .assign dst rv line =>
+                        IO.println s!"  [line {line}] {reprStr dst} := {reprStr rv}"
+                    | .pushProt line => IO.println s!"  [line {line}] pushProtectors"
+                    | .popProt line => IO.println s!"  [line {line}] popProtectors"
                   match elabProg lp with
                   | .error err => IO.println s!"elaboration: {err}"; return 1
                   | .ok loaded => do

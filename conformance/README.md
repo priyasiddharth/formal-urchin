@@ -37,12 +37,18 @@ unsupported-marked test now loads — update the manifest).
 
 ## Current score (miri @ PIN)
 
-- fail tests: 23/75 verdict-conformant (line-accurate where curated),
-  2 xfail-model (protectors), 50 unsupported with per-test reasons.
+- fail tests: 27/75 verdict-conformant (line-accurate on 23), 0 xfail,
+  48 unsupported with per-test reasons.
 - pass scenarios: 9 supported and clean; the rest unsupported with
   reasons (Box/heap, interior mutability, int-to-ptr, slices, threads,
-  enums/control flow, statics, transmute).
+  enums/control flow, transmute).
+- Every test that loads agrees with Miri's verdict; there are no
+  xfail-model divergences.
 
-Known model exclusions (Phase C of the plan): protectors, interior
-mutability (UnsafeCell), deallocation, int-to-ptr exposure, enums,
-arrays/slices, threads, statics.
+Protectors are modeled (call-frame protector sets, fn-entry retags at
+inline seams, pop-guards in read/write/die). Statics are hoisted to
+uninitialized locals by the lowering (initializer bodies are not run —
+fine while every supported test writes a static before value-dependent
+use). Remaining model exclusions: interior mutability (UnsafeCell),
+deallocation, int-to-ptr exposure, enums, arrays/slices, threads,
+drop glue.

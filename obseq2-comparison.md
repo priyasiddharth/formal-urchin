@@ -4,6 +4,24 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-14 — Protectors and Statics Hoisting (zero conformance divergences)
+
+Same-day follow-up to the conformance-suite entry below. Protectors landed as call-frame
+protector sets in obseq3 (`AccessPerms.protFrames`; `pushProtectors`/`popProtectors`
+pseudo-statements bracketing inlined calls; seam retags of reference-typed arguments —
+including tuple fields — register their fresh tags as protected; read/write/die error when a
+pop would remove a protected item). Statics hoisting landed loader-only (ULLBC `Global`
+place roots rewritten to `uninit`-materialized locals; initializers not run). New
+`RExpr.uninit`; 12 obseq3 unit tests.
+
+Result: both protector xfails became line-accurate passes (Miri's exact lines and phrasing),
+both statics tests promoted. Suite: **pass 34 | fail 0 | xfail 0 | xpass 0** — fail tests
+27/75 verdict-conformant (23 line-accurate), and every test that loads agrees with Miri's
+verdict. Remaining exclusions: interior mutability, deallocation, int-to-ptr, enums,
+slices, threads, drop glue.
+
+---
+
 ## 2026-08-14 — obseq3: Miri SB Conformance Suite (per-cell stacks, writable raws, Charon ingestion)
 
 ### Context

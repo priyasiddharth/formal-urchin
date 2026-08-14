@@ -11,8 +11,10 @@ structure PermissionModel where
   own : State → Word → Nat → Except String (State × Tag)
   read : State → Word → Nat → Tag → Except String State
   useMut : State → Word → Nat → Tag → Except String State
-  ref : State → Word → Nat → Tag → RefKind → Except String (State × Tag)
+  ref : State → Word → Nat → Tag → RefKind → Bool → Except String (State × Tag)
   die : State → Word → Nat → Tag → Except String State
+  pushFrame : State → State
+  popFrame : State → Except String State
 
 namespace PermissionModel
 
@@ -22,8 +24,10 @@ def stackedBorrows : PermissionModel where
   own := sb_own
   read := sb_read
   useMut := sb_write
-  ref := sb_ref
+  ref := fun s addr len tag kind prot => sb_ref s addr len tag kind prot
   die := sb_die
+  pushFrame := sb_push_frame
+  popFrame := sb_pop_frame
 
 end PermissionModel
 
