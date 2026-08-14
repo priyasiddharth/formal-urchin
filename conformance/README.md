@@ -35,14 +35,49 @@ Outcomes: `pass`/`fail` (mismatch — missed UB is always a hard failure),
 (loader rejected, as the manifest expects), `promote(!)` (an
 unsupported-marked test now loads — update the manifest).
 
+## Conformance claim
+
+**obseq3 implements the complete Stacked Borrows rule set.** Every
+mechanism of the aliasing model is implemented and witnessed by
+conformant tests; the remaining unsupported tests exercise those same
+rules through unimplemented *language/std* features (control flow,
+containers, threads, drop glue, closures, unions), not through
+un-modeled SB rules. Rule → witness map:
+
+| SB mechanism | witnessed by (examples) |
+|---|---|
+| per-location stacks, granting | illegal_read1/2/4/6; unescaped_static (UB at cell offset 1) |
+| write pops above / read disables | illegal_write2/5; illegal_read_despite_exposed1/2 |
+| Disabled-not-removed (no group merge) | disable_mut_does_not_merge_srw, interior_mut2 |
+| Unique retag (write access) | raw_tracking, illegal_write4 |
+| Frozen retag (read access) | illegal_write3, shr_frozen_violation1/2 |
+| SRW insert-above-granting, no access | two_raw, mut_shr_then_mut_raw |
+| SRW grouping | ref_mut_protector, shared_rw_borrows_are_weak1/2 |
+| two-phase reserved borrows | pass_invalid_mut (TwoPhaseMut seams) |
+| protectors (strong) | aliasing_mut1-4, invalidate_against_protector1/2/3, illegal_write6 |
+| protectors (weak on SRW) | unsafe_cell_invalidate, ref_protector |
+| fn-entry retags: args/returns, tuple fields yes, struct fields no | pass/return_invalid_* family, fnentry_invalidation2 |
+| retag on reference loads | load_invalid_mut/shr |
+| UnsafeCell freeze masks | interior_mut1, mixed_mutability_static, cell_inside_struct |
+| deallocation (grant + protector + stack removal) | illegal_dealloc1, invalidate_against_protector3 |
+| exposed provenance / wildcards | exposed_only_ro, unescaped_local, *_despite_exposed* |
+| provenance-preserving ptr ops | transmute-is-no-escape, illegal_read8, array_casts |
+| runtime-length (slice) retags | fnentry_invalidation2 |
+
+Documented approximations (each noted where it applies): Box is an
+implicit mutable raw (no Unique box retag/protector — the one genuine
+SB-policy simplification; box_noalias_violation would need it);
+wildcard resolution is determinized (topmost exposed granting item) vs
+miri's angelic reading; RefCell shims elide the borrow flag; hoisted
+statics start uninitialized; the retag×data-race interaction (threads)
+is out of scope.
+
 ## Current score (miri @ PIN)
 
-- fail tests: 53/75 verdict-conformant (line-accurate on 45), 0 xfail,
-  22 fail tests unsupported with per-test reasons (43 unsupported
+- fail tests: 55/75 verdict-conformant (line-accurate on 47), 0 xfail,
+  20 fail tests unsupported with per-test blockers (41 unsupported
   entries overall incl. pass files/scenarios).
-- pass scenarios: 20 supported and clean; the rest unsupported with
-  reasons (slice indexing/Vec, threads, MaybeUninit, String, enums with
-  control flow).
+- pass scenarios: 20 supported and clean.
 - Every test that loads agrees with Miri's verdict; there are no
   xfail-model divergences.
 

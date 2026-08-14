@@ -942,13 +942,19 @@
     {
       "id": "fail/both_borrows/illegal_read_despite_exposed2",
       "source": "corpus/tests/fail/both_borrows/illegal_read_despite_exposed2.rs",
-      "prep": null,
+      "prep": "prep/illegal_read_despite_exposed2.rs",
       "artifact": "illegal_read_despite_exposed2.ullbc.json",
-      "status": "unsupported",
-      "reason": "int-to-ptr exposed provenance",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 14
+      },
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "miri_error": "write access .* tag does not exist in the borrow stack",
+      "note": "the wildcard read disables the Unique in place (Disabled state)"
     },
     {
       "id": "fail/both_borrows/illegal_write1",
@@ -985,13 +991,18 @@
     {
       "id": "fail/both_borrows/invalidate_against_protector3",
       "source": "corpus/tests/fail/both_borrows/invalidate_against_protector3.rs",
-      "prep": null,
+      "prep": "prep/invalidate_against_protector3.rs",
       "artifact": "invalidate_against_protector3.ullbc.json",
-      "status": "unsupported",
-      "reason": "protectors + alloc",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 9
+      },
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "miri_error": "protect"
     },
     {
       "id": "fail/both_borrows/load_invalid_shr",

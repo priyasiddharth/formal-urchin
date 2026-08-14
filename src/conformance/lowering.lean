@@ -326,6 +326,16 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
       match args with
       | .copy p :: _ | .move p :: _ => return pushOut st (.dealloc p line)
       | _ => .error s!"unsupported: dealloc argument is not a place (line {line})"
+  else if f.path == ["core", "alloc", "layout", "for_value"] then
+    -- Layout::for_value(&T): the size word, statically from the pointee
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          let sz := match p.ty with
+            | .ref _ i | .raw _ i => uSize i
+            | _ => 1
+          emitAssign st line dest (.use (.const sz))
+      | _ => .error s!"unsupported: for_value argument is not a place (line {line})"
   else if f.path == ["core", "alloc", "layout", "from_size_align_unchecked"] then
     some fun st args dest line => do
       match args with

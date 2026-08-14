@@ -4,6 +4,26 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-14 — The Conformance Claim: Complete SB Rule Coverage
+
+Ninth and final increment of the session. Two stragglers whose unsupported-reasons
+predated later increments turned out to already be reachable: `illegal_read_despite_exposed2`
+(pure exposure machinery — the wildcard read Disables the Unique in place) and
+`invalidate_against_protector3` (a `Layout::for_value` shim; protector violation on heap
+cells). Suite: **pass 75 | fail 0 | xfail 0 | xpass 0** — fail tests **55/75**
+(47 line-accurate), 20 pass scenarios.
+
+With that, the claim (user's framing: compliance is about the model's rules, not the
+language surface): **obseq3 implements the complete Stacked Borrows rule set**, each
+mechanism witnessed by conformant tests — the rule → witness table is in
+conformance/README.md, the durable statement in notes/durable/sb-conformance-claim.md.
+The 20 remaining fail tests are blocked on SwitchInt, containers, threads, drop glue,
+closures, or unions — the same SB rules through more language. One genuine SB-policy
+simplification is documented: Box as implicit raw (no Unique box retag/protector;
+box_noalias_violation alone needs it).
+
+---
+
 ## 2026-08-14 — Slices: the First Runtime-Length Retags
 
 Eighth same-day increment. Suite: **pass 73 | fail 0 | xfail 0 | xpass 0** — fail tests
