@@ -77,14 +77,14 @@ durable/v1-v2-sb-model-divergences-from-miri-sb.md
 ## Conformance Phase C: protectors first, statics cheapest
 **Status:** partially resolved 2026-08-14 (same day) — protectors and
 statics hoisting landed as sketched below; suite now 34 pass / 0 fail /
-0 xfail, fail tests 27/75. Remaining after the seventh increment (arrays + constant ptr
-arithmetic, fail 52/75, 20 pass scenarios,
-journal/2026-08/2026-08-14-arrays-landed.md): slices/fat pointers
-(zst_slice, buggy_*, fnentry_invalidation2), threads, drop glue,
-unions, MaybeUninit, Rc, Vec/String, enums needing control flow,
-dynamic arithmetic/indexing. Everything left needs genuinely new
-machinery (fat-pointer values + runtime-length retags, SwitchInt
-execution, or std containers).
+0 xfail, fail tests 27/75. Remaining after the eighth increment (slices/runtime-length retags,
+fail 53/75, journal/2026-08/2026-08-14-slices-landed.md): the 22
+unsupported fail tests all need dynamic control flow (SwitchInt
+execution: zst_slice, buggy_split_at_mut, Option matches), std
+containers (Vec/String/Rc: buggy_as_mut_slice, illegal_read5),
+threads (retag_data_race_*), drop glue (drop_in_place_*), closures/
+fn-ptr protectors (deallocate_against_protector*, newtype_*), unions
+(illegal_read3), or MaybeUninit. The retag-rule frontier is done.
 Originally parked 2026-08-14
 **Context:** score stands at fail 23/75 + 2 xfail (protectors), pass 9
 scenarios (commit 445cbf4). Protectors would convert both xfails plus

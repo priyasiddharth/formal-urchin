@@ -37,12 +37,12 @@ unsupported-marked test now loads — update the manifest).
 
 ## Current score (miri @ PIN)
 
-- fail tests: 52/75 verdict-conformant (line-accurate on 44), 0 xfail,
-  23 fail tests unsupported with per-test reasons (44 unsupported
+- fail tests: 53/75 verdict-conformant (line-accurate on 45), 0 xfail,
+  22 fail tests unsupported with per-test reasons (43 unsupported
   entries overall incl. pass files/scenarios).
 - pass scenarios: 20 supported and clean; the rest unsupported with
-  reasons (slices/fat pointers, threads, MaybeUninit, Vec/String, enums
-  with control flow).
+  reasons (slice indexing/Vec, threads, MaybeUninit, String, enums with
+  control flow).
 - Every test that loads agrees with Miri's verdict; there are no
   xfail-model divergences.
 
@@ -86,7 +86,14 @@ Fixed-size arrays are supported (homogeneous tuples; constant indices
 resolved through tracked const locals, with bounds-check asserts
 const-folded; `[v; N]` repeats desugared; `ptr.add/offset/
 wrapping_offset` with constant deltas via `RExpr.ptrOffset`, scaled by
-the pointee size, provenance-preserving). Remaining exclusions: slices
-(fat pointers, runtime lengths), threads, general closures, drop glue,
-unions, MaybeUninit, Rc, Vec/String, enums needing control flow,
-dynamic arithmetic/indexing.
+the pointee size, provenance-preserving). Slice references are supported as one-cell fat values whose length is
+the rest of their allocation: reborrows of slice data are runtime-length
+retags (`RExpr.refSlice` retags `size − offset` cells via the fat
+value's tag), unsize coercions are value copies, and
+`as_ptr`/`as_mut_ptr` shims reproduce the receiver's fn-entry retag
+before the raw data retag (the invalidation fnentry_invalidation2
+tests). Named-struct fields are NOT retagged at seams (miri's behavior,
+also per that test) — tuples are. Remaining exclusions: slice
+indexing/subslicing (runtime bounds), Vec/String, threads, general
+closures, drop glue, unions, MaybeUninit, Rc, enums needing control
+flow, dynamic arithmetic.

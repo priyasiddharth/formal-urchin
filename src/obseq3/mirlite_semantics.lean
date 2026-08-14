@@ -273,6 +273,25 @@ def evalRExpr
                           values_len := rfl
                           state := { state with perms := perms' } }
               | _ => .err "pointer offset of a non-pointer value"
+  | .refSlice kind prot src =>
+      -- retag of slice data: the fat value's length is the rest of its
+      -- allocation (size - offset); a fresh tag over that runtime range
+      match resolvePlace? state src with
+      | none => .err "slice place not allocated"
+      | some resolved =>
+          match M.read state.perms resolved.addr 1 resolved.tag with
+          | .error e => .err s!"read access failed: {e}"
+          | .ok perms' =>
+              match state.mem.find? resolved.addr with
+              | some (.ptrVal base offset size tag) =>
+                  let len := size - offset
+                  match M.ref perms' (base + offset) len tag kind prot [] with
+                  | .error e => .err s!"retag failed: {e}"
+                  | .ok (perms'', newTag) =>
+                      .ok { values := [MemValue.ptrVal base offset size newTag]
+                            values_len := rfl
+                            state := { state with perms := perms'' } }
+              | _ => .err "slice value is not a pointer"
   | .exposeAddr src =>
       -- ptr-to-int cast: expose the tag, yield the concrete address
       match resolvePlace? state src with

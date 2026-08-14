@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-14 — Slices: the First Runtime-Length Retags
+
+Eighth same-day increment. Suite: **pass 73 | fail 0 | xfail 0 | xpass 0** — fail tests
+**53/75** (45 line-accurate), 20 pass scenarios, 43 unsupported.
+
+Slice references are one-cell fat values (the ordinary `ptrVal`) whose length is the rest
+of their allocation; reborrows of slice data are `RExpr.refSlice` — the model's first
+retag whose length is read at runtime (`size − offset` cells via the fat value's tag).
+Unsize coercions are value copies; `as_ptr`/`as_mut_ptr` shims reproduce the receiver's
+fn-entry retag before the raw data retag. Two fidelity facts pinned by
+`fnentry_invalidation2` (now conformant at miri's exact line): named-struct fields are
+NOT fn-entry-retagged (new `structT`/`tup` distinction — tuples ARE retagged, per
+pass_invalid_shr_tuple), and call-replacing shims must carry the callee's entry retag
+(the first draft missed the UB precisely because it didn't). The remaining 22 unsupported
+fail tests all need dynamic control flow, std containers, threads, drop glue, unions, or
+MaybeUninit — the retag-rule frontier is complete.
+
+---
+
 ## 2026-08-14 — Arrays and Constant Pointer Arithmetic
 
 Seventh same-day increment. Suite: **pass 72 | fail 0 | xfail 0 | xpass 0** — fail tests

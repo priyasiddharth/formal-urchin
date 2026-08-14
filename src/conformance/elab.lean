@@ -28,7 +28,10 @@ partial def toLayout : UTy → Except String LayoutTy
   | .ref _ inner => do return .PtrL (← toLayout inner)
   | .raw _ inner => do return .PtrL (← toLayout inner)
   | .tup tys => do return .TupL (← tys.mapM toLayout)
+  | .structT tys => do return .TupL (← tys.mapM toLayout)
   | .cell inner => toLayout inner   -- interior-mutable wrapper is layout-transparent
+  | .slice _ _ elem => do return .PtrL (← toLayout elem)  -- one-cell fat value
+  | .sliceData _ => .error "unsupported: unsized slice value position"
   | .enum variants => do
       let vls ← variants.mapM (·.mapM toLayout)
       return .TupL (.NatL :: (← mergeVariantLayouts vls))
@@ -85,6 +88,7 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
   | .fromExposed _ => .error "fromExposed is elaborated against the destination type"
   | .ptrOffset _ _ => .error "ptrOffset is elaborated against the destination type"
   | .binOp _ _ _ => .error "arithmetic not const-folded by lowering"
+  | .refSlice _ _ _ => .error "refSlice is elaborated against the destination type"
   | .fnRef _ => .error "fn reference not consumed by lowering"
   | .uninit => .error "uninit is elaborated against the destination type"
   | .aggregate _ _ => .error "aggregate not desugared by lowering"
@@ -117,6 +121,12 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           match τp, pp, τd, pd with
           | .PtrL _, pp, .PtrL _, pd => return .assign pd (.ptrOffset pp delta)
           | _, _, _, _ => .error s!"pointer offset on a non-pointer place (line {line})"
+      | .refSlice kind prot p =>
+          let ⟨τp, pp⟩ ← elabPlace Γ p
+          match τp, pp, τd, pd with
+          | .PtrL _, pp, .PtrL _, pd =>
+              return .assign pd (.refSlice (toRefKind kind) prot pp)
+          | _, _, _, _ => .error s!"slice retag on a non-pointer place (line {line})"
       | _ =>
         let ⟨τr, er⟩ ← elabRvalue Γ rv
         if h : τr = τd then

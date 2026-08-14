@@ -76,6 +76,7 @@ def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .exposeAddr p => .exposeAddr (rebasePlace off p)
   | .fromExposed p => .fromExposed (rebasePlace off p)
   | .ptrOffset p d => .ptrOffset (rebasePlace off p) d
+  | .refSlice kind prot p => .refSlice kind prot (rebasePlace off p)
   | .binOp op a b => .binOp op (rebaseOperand off a) (rebaseOperand off b)
   | .fnRef fid => .fnRef fid
   | .uninit => .uninit
@@ -143,6 +144,7 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
   | .exposeAddr p => do return .exposeAddr (← resolveIdxPlace st line p)
   | .fromExposed p => do return .fromExposed (← resolveIdxPlace st line p)
   | .ptrOffset p d => do return .ptrOffset (← resolveIdxPlace st line p) d
+  | .refSlice kind prot p => do return .refSlice kind prot (← resolveIdxPlace st line p)
   | rv => pure rv
 
 /-- Does this type contain a reference (transitively through tuples and
@@ -151,7 +153,10 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
     not descend into interior-mutable regions. -/
 partial def containsRef : UTy → Bool
   | .ref _ _ => true
+  | .slice false _ _ => true   -- reference-to-slice: seam-retagged (runtime length)
   | .tup tys => tys.any containsRef
+  | .structT _ => false  -- miri does NOT fn-entry-retag named-struct fields
+                         -- (fnentry_invalidation2's point); tuples ARE retagged
   | .enum variants => variants.any (·.any containsRef)
   | .cell _ => false
   | _ => false
@@ -169,6 +174,10 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
       return pushOut st (.assign dst
         (.ref (if mutbl then .mut else .shared) prot
           { pointee src with ty := inner }) line)
+  | .slice false mutbl _ =>
+      -- reference-to-slice: runtime-length retag via the fat value
+      return pushOut st (.assign dst
+        (.refSlice (if mutbl then .mut else .shared) prot src) line)
   | .tup tys => do
       let mut st := st
       for h : i in [0:tys.length] do
@@ -217,7 +226,7 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
   | .use (.constNeg _) =>
       -- negative constants clamp to 0 in value positions (SB-irrelevant)
       return pushOut st (.assign dst (.use (.const 0)) line)
-  | .ptrOffset _ _ =>
+  | .ptrOffset _ _ | .refSlice _ _ _ =>
       return pushOut st (.assign dst rv line)
   | .binOp op a b =>
       -- arithmetic exists only in statically-foldable positions (array
@@ -491,6 +500,24 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
             | _ => throw s!"unsupported: runtime pointer offset (line {line})"
           return pushOut st (.assign dest (.ptrOffset p delta) line)
       | _ => .error s!"unsupported: pointer offset arguments (line {line})"
+  else if f.path == ["core", "slice", "as_ptr"] ||
+          f.path == ["core", "slice", "as_mut_ptr"] then
+    -- slice data pointer. The shim replaces the whole call, so it must
+    -- reproduce the fn-entry retag of the &[T]/&mut [T] receiver (that
+    -- retag's write access is the invalidation fnentry_invalidation2
+    -- tests), then the raw retag of the data the body performs.
+    some fun st args dest line => do
+      let mutbl := f.path == ["core", "slice", "as_mut_ptr"]
+      match args with
+      | [.copy p] | [.move p] =>
+          let tmpIdx := st.locals.length
+          let st := { st with locals := st.locals ++ [p.ty] }
+          let tmp : UPlace := { root := .local tmpIdx, projs := [], ty := p.ty }
+          let st := pushOut st (.assign tmp
+            (.refSlice (if mutbl then .mut else .shared) false p) line)
+          return pushOut st (.assign dest
+            (.refSlice (if mutbl then .rawMut else .rawConst) false tmp) line)
+      | _ => .error s!"unsupported: as_ptr argument is not a place (line {line})"
   else if f.path == ["core", "mem", "drop"] then
     -- mem::drop: consumes the value; drop glue for modeled types is
     -- either nothing or elided flag maintenance (RefCell guards)
@@ -635,6 +662,7 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
   | .exposeAddr p => do return .exposeAddr (← resolveGlobalRoot gmap p)
   | .fromExposed p => do return .fromExposed (← resolveGlobalRoot gmap p)
   | .ptrOffset p d => do return .ptrOffset (← resolveGlobalRoot gmap p) d
+  | .refSlice kind prot p => do return .refSlice kind prot (← resolveGlobalRoot gmap p)
   | rv => .ok rv
 
 def resolveGlobalsStmt (gmap : List (Nat × Nat)) : LStmt → Except String LStmt

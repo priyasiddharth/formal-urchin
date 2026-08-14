@@ -441,13 +441,19 @@
     {
       "id": "fail/stacked_borrows/fnentry_invalidation2",
       "source": "corpus/tests/fail/stacked_borrows/fnentry_invalidation2.rs",
-      "prep": null,
+      "prep": "prep/fnentry_invalidation2.rs",
       "artifact": "fnentry_invalidation2.ullbc.json",
-      "status": "unsupported",
-      "reason": "protectors/fn-entry retag + slices",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 15
+      },
+      "rewrites": [
+        "dropped error annotation"
+      ],
+      "miri_error": "read access .* tag does not exist in the borrow stack",
+      "note": "the invalidation is the as_mut_ptr shim's fn-entry retag of its &mut [T] receiver"
     },
     {
       "id": "fail/stacked_borrows/illegal_dealloc1",

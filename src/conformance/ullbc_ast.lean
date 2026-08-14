@@ -36,16 +36,20 @@ inductive UTy
 | ref (mutbl : Bool) (inner : UTy)
 | raw (mutbl : Bool) (inner : UTy)
 | tup (tys : List UTy)
+| structT (tys : List UTy)   -- named struct: fields are NOT retagged at seams
 | enum (variants : List (List UTy))
 | cell (inner : UTy)     -- UnsafeCell/Cell/Atomic*: interior-mutable region
+| slice (isRaw mutbl : Bool) (elem : UTy)  -- pointer-to-slice: one-cell fat value
+| sliceData (elem : UTy)                   -- the unsized [T] itself (place types only)
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
 
 /-- Cell count of a type (mirrors `blockSize ∘ toLayout`). -/
 partial def uSize : UTy → Nat
-  | .nat | .ref _ _ | .raw _ _ => 1
+  | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ => 1
+  | .sliceData _ => 0
   | .cell inner => uSize inner
-  | .tup tys => (tys.map uSize).foldl (· + ·) 0
+  | .tup tys | .structT tys => (tys.map uSize).foldl (· + ·) 0
   | .enum variants =>
       1 + (variants.map (fun fs => (fs.map uSize).foldl (· + ·) 0)).foldl Nat.max 0
   | .unsupported _ => 1
@@ -53,9 +57,10 @@ partial def uSize : UTy → Nat
 /-- UnsafeCell freeze mask: true for cells inside an interior-mutable
     region. Shared/raw-const retags give masked cells SharedReadWrite. -/
 partial def freezeMask : UTy → List Bool
-  | .nat | .ref _ _ | .raw _ _ => [false]
+  | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ => [false]
+  | .sliceData _ => []
   | .cell inner => List.replicate (uSize inner) true
-  | .tup tys => tys.flatMap freezeMask
+  | .tup tys | .structT tys => tys.flatMap freezeMask
   | .enum e => List.replicate (uSize (.enum e)) false
   | .unsupported _ => []
 
@@ -120,6 +125,7 @@ inductive URvalue
 | exposeAddr (p : UPlace)
 | fromExposed (p : UPlace)
 | ptrOffset (p : UPlace) (delta : Int)
+| refSlice (kind : URefKind) (prot : Bool) (p : UPlace)  -- retag of slice data, runtime length
 | binOp (op : String) (a b : UOperand)
 | fnRef (funId : Nat)
 | uninit
@@ -424,12 +430,20 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
           else .unsupported s!"literal type {lit.compress}"
   | some ("Ref", args) =>
       match asArr args with
-      | [_region, inner, mutbl] => .ref (mutbl == Json.str "Mut") (parseTy ctx (fuel - 1) inner)
+      | [_region, inner, mutbl] =>
+          match parseTy ctx (fuel - 1) inner with
+          | .sliceData elem => .slice false (mutbl == Json.str "Mut") elem
+          | t => .ref (mutbl == Json.str "Mut") t
       | _ => .unsupported "malformed Ref type"
   | some ("RawPtr", args) =>
       match asArr args with
-      | [inner, mutbl] => .raw (mutbl == Json.str "Mut") (parseTy ctx (fuel - 1) inner)
+      | [inner, mutbl] =>
+          match parseTy ctx (fuel - 1) inner with
+          | .sliceData elem => .slice true (mutbl == Json.str "Mut") elem
+          | t => .raw (mutbl == Json.str "Mut") t
       | _ => .unsupported "malformed RawPtr type"
+  | some ("Slice", elemJ) =>
+      .sliceData (parseTy ctx (fuel - 1) elemJ)
   | some ("Adt", adt) =>
       match getK adt "id" with
       | some (Json.str "Tuple") =>
@@ -467,7 +481,7 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     .cell .nat  -- Atomic* = UnsafeCell around one word
                   else
                     match info.kind with
-                    | .struct fields => .tup (fields.map (parseTy ctx (fuel - 1)))
+                    | .struct fields => .structT (fields.map (parseTy ctx (fuel - 1)))
                     | .enum variants =>
                         .enum (variants.map (·.map (parseTy ctx (fuel - 1))))
                     | .opaque => .unsupported s!"opaque adt {String.intercalate "::" info.path}"
@@ -610,7 +624,16 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
       match getK r "place", getK r "kind" with
       | some pJ, some kJ =>
           match parsePlace ctx pJ, parseRefRvalueKind kJ isRaw with
-          | .ok pl, .ok kind => .ref kind false pl
+          | .ok pl, .ok kind =>
+              match pl.ty with
+              | .sliceData _ =>
+                  -- a (re)borrow of slice data: runtime-length retag via
+                  -- the place holding the fat pointer (strip the deref)
+                  match pl.projs.getLast? with
+                  | some .deref =>
+                      .refSlice kind false { pl with projs := pl.projs.dropLast }
+                  | _ => .unsupported "slice borrow of a non-deref place"
+              | _ => .ref kind false pl
           | .error e, _ => .unsupported e
           | _, .error e => .unsupported e
       | _, _ => .unsupported "malformed Ref/RawPtr rvalue"
@@ -640,6 +663,10 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
                       | false, false, op => .use op           -- int-to-int
                       | _, _, _ => .unsupported "ptr/int cast of a non-place"
                   | _ => .unsupported "malformed RawPtr cast"
+              | some ("Unsize", _) =>
+                  -- array-to-slice coercion: our slice values are the
+                  -- same one-cell pointer (length = rest of allocation)
+                  .use (parseOperand ctx operand)
               | some ("FnPtr", _) =>
                   -- fn item reified to a fn pointer: track the target
                   match sumKey operand with
