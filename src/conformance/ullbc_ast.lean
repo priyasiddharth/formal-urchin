@@ -337,6 +337,26 @@ partial def collectCellPointees (tbl : TyTable) (paths : List (Nat × List Strin
             match did?, argTy? with
             | some did, some t => if (acc.lookup did).isNone then (did, t) :: acc else acc
             | _, _ => acc
+        | some ["core", "cell", "deref"] | some ["core", "cell", "deref_mut"] =>
+            -- Ref/RefMut deref: arg is &Guard, dest is &T ⇒ Guard ↦ T
+            let argTy? := (((getK callJ "args").map asArr).getD []).head? >>= operandTyJson
+            let did? := argTy?.bind fun t =>
+              match sumKey (resolveTyJson tbl t) with
+              | some ("Ref", args) =>
+                  match asArr args with
+                  | [_, inner, _] => adtDeclId tbl inner
+                  | _ => none
+              | _ => none
+            let retTy? := (getK callJ "dest" >>= (getK · "ty")).bind fun t =>
+              match sumKey (resolveTyJson tbl t) with
+              | some ("Ref", args) =>
+                  match asArr args with
+                  | [_, inner, _] => some inner
+                  | _ => none
+              | _ => none
+            match did?, retTy? with
+            | some did, some t => if (acc.lookup did).isNone then (did, t) :: acc else acc
+            | _, _ => acc
         | some ["core", "cell", "get"] =>
             let argTy? := (((getK callJ "args").map asArr).getD []).head? >>= operandTyJson
             let did? := argTy?.bind fun t =>
@@ -402,10 +422,21 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     | none => .unsupported "Box with uninferred pointee"
                   else if last == "Layout" then
                     .nat  -- Layout carries only its size (constructor is shimmed)
-                  else if last == "UnsafeCell" || last == "Cell" then
+                  else if last == "UnsafeCell" || last == "Cell" || last == "RefCell" then
+                    -- RefCell is flag-elided: modeled as its value region
+                    -- (the borrow-flag discipline is orthogonal to SB)
                     match ctx.cellPointee.lookup did with
                     | some inner => .cell (parseTy ctx (fuel - 1) inner)
                     | none => .cell .nat  -- fallback: one interior-mutable word
+                  else if info.path == ["core", "cell", "Ref"] ||
+                          info.path == ["core", "cell", "RefMut"] then
+                    -- RefCell guards: a raw-layout pointer to the value region
+                    -- (raw, not ref: guards are NOT protected/retagged at
+                    -- seams — see the ref_protector pass test)
+                    let mutbl := info.path.getLast? == some "RefMut"
+                    match ctx.cellPointee.lookup did with
+                    | some inner => .raw mutbl (parseTy ctx (fuel - 1) inner)
+                    | none => .raw mutbl .nat
                   else if last.startsWith "Atomic" then
                     .cell .nat  -- Atomic* = UnsafeCell around one word
                   else
@@ -708,7 +739,9 @@ def parseCrate (root : Json) : Except String UCrate := do
   let ctx : ParseCtx := { tbl, decls, boxPointee, cellPointee }
   let globals :=
     match getK root "translated" >>= (getK · "global_decls") with
-    | some gJ => (asArr gJ).map (parseGlobal ctx)
+    | some gJ =>
+        -- stripped decls appear as literal nulls in the list
+        ((asArr gJ).filter (fun g => (getK g "def_id").isSome)).map (parseGlobal ctx)
     | none => []
   match getK root "translated" >>= (getK · "fun_decls") with
   | none => .error "no translated.fun_decls in JSON"

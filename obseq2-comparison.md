@@ -4,6 +4,29 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-14 — RefCell Shims, SharedReadWrite Grouping, and the Disabled State
+
+Sixth same-day increment. Suite: **pass 69 | fail 0 | xfail 0 | xpass 0** — fail tests
+**50/75** (42 line-accurate), 19 pass scenarios, 47 unsupported.
+
+RefCell is supported by *flag-eliding* shims (the borrow-flag discipline is a dynamic
+borrow checker orthogonal to SB): `borrow`/`borrow_mut` = masked/unique reborrows of the
+value region; `Ref`/`RefMut` guards = raw-layout values, deliberately unprotected at seams
+(the `ref_protector` tests assert miri adds no protector for struct-wrapped refs); guard
+`deref`/`deref_mut` = typed loads whose load-retag is the reborrow; `replace` and
+`mem::drop` shimmed. Valid for conflict-free executions — all the corpus exercises.
+
+Landing this forced the last core-model divergence closed, in two coupled fixes:
+**SharedReadWrite grouping** (a write through an SRW item pops only above its contiguous
+SRW run — `ref_mut_protector` needs the autoref sibling to survive) and **the Disabled
+state** (reads disable Uniques in place rather than removing them; grouping without
+Disabled merged groups and broke `disable_mut_does_not_merge_srw` + `interior_mut2` —
+caught as missed-UB by the harness, exactly the failure mode miri's test comment warns
+about). Newly conformant: `shared_rw_borrows_are_weak2` plus six `interior_mutability`
+scenarios.
+
+---
+
 ## 2026-08-14 — Transmute and Exposed Provenance (int-to-ptr without angelic choice)
 
 Fifth same-day increment. Suite: **pass 62 | fail 0 | xfail 0 | xpass 0** — fail tests

@@ -333,6 +333,63 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
             (.ref .shared false { pointee p with ty := inner }) line)
           emitAssign st line (pointee tmp) (.use valOp)
       | _ => .error s!"unsupported: Cell::set arguments (line {line})"
+  else if f.path == ["core", "cell", "borrow"] then
+    -- RefCell::borrow (flag-elided): a masked shared reborrow of the
+    -- value region; the guard holds the resulting pointer
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          let inner := match p.ty with
+            | .ref _ i => i
+            | .raw _ i => i
+            | _ => .unsupported "borrow on non-pointer"
+          return pushOut st (.assign dest
+            (.ref .shared false { pointee p with ty := inner }) line)
+      | _ => .error s!"unsupported: borrow argument is not a place (line {line})"
+  else if f.path == ["core", "cell", "borrow_mut"] then
+    -- RefCell::borrow_mut (flag-elided): a unique reborrow of the value
+    -- region (the parent's SharedReadWrite cell items grant the write)
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          let inner := match p.ty with
+            | .ref _ i => i
+            | .raw _ i => i
+            | _ => .unsupported "borrow_mut on non-pointer"
+          return pushOut st (.assign dest
+            (.ref .mut false { pointee p with ty := inner }) line)
+      | _ => .error s!"unsupported: borrow_mut argument is not a place (line {line})"
+  else if f.path == ["core", "cell", "deref"] || f.path == ["core", "cell", "deref_mut"] then
+    -- Ref/RefMut deref: a typed load of the guard's pointer at the
+    -- destination's reference type — the load-retag rule then produces
+    -- the fresh (re)borrow, matching miri's deref reborrow
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          emitAssign st line dest (.use (.copy { pointee p with ty := dest.ty }))
+      | _ => .error s!"unsupported: guard deref argument is not a place (line {line})"
+  else if f.path == ["core", "cell", "replace"] then
+    -- Cell/RefCell::replace(&self, v) -> T (flag-elided): masked shared
+    -- reborrow, read the old value, write the new one
+    some fun st args dest line => do
+      match args with
+      | [.copy p, valOp] | [.move p, valOp] =>
+          let inner := match p.ty with
+            | .ref _ i => i
+            | .raw _ i => i
+            | _ => .unsupported "replace on non-pointer"
+          let tmpIdx := st.locals.length
+          let st := { st with locals := st.locals ++ [.raw true inner] }
+          let tmp : UPlace := { root := .local tmpIdx, projs := [] }
+          let st := pushOut st (.assign tmp
+            (.ref .shared false { pointee p with ty := inner }) line)
+          let st ← emitAssign st line dest (.use (.copy (pointee tmp)))
+          emitAssign st line (pointee tmp) (.use valOp)
+      | _ => .error s!"unsupported: replace arguments (line {line})"
+  else if f.path == ["core", "mem", "drop"] then
+    -- mem::drop: consumes the value; drop glue for modeled types is
+    -- either nothing or elided flag maintenance (RefCell guards)
+    some fun st _args _dest _line => return st
   else if f.path == ["core", "cell", "get_mut"] then
     -- Cell::get_mut(&mut self) -> &mut T: a unique reborrow of the cell
     some fun st args dest line => do

@@ -37,11 +37,12 @@ unsupported-marked test now loads — update the manifest).
 
 ## Current score (miri @ PIN)
 
-- fail tests: 49/75 verdict-conformant (line-accurate on 41), 0 xfail,
-  26 fail tests unsupported with per-test reasons (48 unsupported
+- fail tests: 50/75 verdict-conformant (line-accurate on 42), 0 xfail,
+  25 fail tests unsupported with per-test reasons (47 unsupported
   entries overall incl. pass files/scenarios).
-- pass scenarios: 13 supported and clean; the rest unsupported with
-  reasons (slices/arrays, threads, RefCell, MaybeUninit, Vec/String).
+- pass scenarios: 19 supported and clean; the rest unsupported with
+  reasons (slices/arrays, threads, MaybeUninit, Vec/String, enums with
+  control flow).
 - Every test that loads agrees with Miri's verdict; there are no
   xfail-model divergences.
 
@@ -69,6 +70,17 @@ address, int-to-ptr resolves the address through the allocation table
 into a wildcard pointer whose accesses re-derive authority from the
 topmost exposed granting item (a determinization of miri's angelic
 wildcard; matches `-Zmiri-permissive-provenance`). Remaining
-exclusions: arrays/slices, threads, general closures, drop glue,
-unions, RefCell (runtime borrow flags need control flow), MaybeUninit,
-Rc, Vec/String.
+RefCell is supported via flag-elided shims: `borrow`/`borrow_mut` are
+masked/unique reborrows of the value region, `Ref`/`RefMut` guards are
+raw-layout values (unprotected at seams — the ref_protector tests'
+point), guard `deref`/`deref_mut` are typed loads (the load-retag rule
+produces the reborrow), `replace` reads+writes through a masked
+reborrow, `mem::drop` is a no-op. Valid for executions without borrow
+conflicts — exactly what the corpus exercises; a test relying on a
+borrow-flag panic would stay unsupported. The model now also implements
+SharedReadWrite *grouping* (writes through an SRW item pop only above
+its contiguous SRW run) and Miri's *Disabled* state (reads disable
+Uniques in place instead of removing them, so SRW groups never merge —
+disable_mut_does_not_merge_srw and interior_mut2 check both sides).
+Remaining exclusions: arrays/slices, threads, general closures, drop
+glue, unions, MaybeUninit, Rc, Vec/String, enums needing control flow.

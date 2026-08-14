@@ -658,13 +658,18 @@
     {
       "id": "fail/stacked_borrows/shared_rw_borrows_are_weak2",
       "source": "corpus/tests/fail/stacked_borrows/shared_rw_borrows_are_weak2.rs",
-      "prep": null,
+      "prep": "prep/shared_rw_borrows_are_weak2.rs",
       "artifact": "shared_rw_borrows_are_weak2.ullbc.json",
-      "status": "unsupported",
-      "reason": "interior mutability (RefCell)",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 14
+      },
+      "rewrites": [
+        "dropped normalize directive and error annotation"
+      ],
+      "miri_error": "read access .* tag does not exist in the borrow stack"
     },
     {
       "id": "fail/stacked_borrows/static_memory_modification",
@@ -1541,6 +1546,101 @@
         "+= -> read;write"
       ],
       "note": "exercises weak protection: popping the protected &UnsafeCell (SharedReadWrite) argument is allowed"
+    },
+    {
+      "id": "pass/both_borrows/interior_mutability::aliasing_mut_and_shr",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__aliasing_mut_and_shr.rs",
+      "artifact": "interior_mutability__aliasing_mut_and_shr.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "+= -> read;write",
+        "assert -> read"
+      ],
+      "note": "RefCell shims are flag-elided"
+    },
+    {
+      "id": "pass/both_borrows/interior_mutability::aliasing_frz_and_shr",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__aliasing_frz_and_shr.rs",
+      "artifact": "interior_mutability__aliasing_frz_and_shr.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "assert -> read"
+      ],
+      "note": "RefCell shims are flag-elided"
+    },
+    {
+      "id": "pass/both_borrows/interior_mutability::refcell_basic",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__refcell_basic.rs",
+      "artifact": "interior_mutability__refcell_basic.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted"
+      ],
+      "note": "RefCell shims are flag-elided; no borrow conflict executes"
+    },
+    {
+      "id": "pass/both_borrows/interior_mutability::ref_protector",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__ref_protector.rs",
+      "artifact": "interior_mutability__ref_protector.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted"
+      ],
+      "note": "guards are raw-layout values: unprotected at seams, per the test's own point"
+    },
+    {
+      "id": "pass/both_borrows/interior_mutability::ref_mut_protector",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__ref_mut_protector.rs",
+      "artifact": "interior_mutability__ref_mut_protector.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted"
+      ],
+      "note": "exercises SRW grouping: borrow_mut's write access stays within the SRW group"
+    },
+    {
+      "id": "pass/both_borrows/interior_mutability::box_derefer",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__box_derefer.rs",
+      "artifact": "interior_mutability__box_derefer.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "+= -> read;write",
+        "try_borrow().unwrap_err() -> &**b probe"
+      ],
+      "note": "the flag probe becomes a shared reborrow (Result/unwrap_err need enums+control flow)"
     }
   ]
 }

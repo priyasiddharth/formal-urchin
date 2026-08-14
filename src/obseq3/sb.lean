@@ -17,9 +17,10 @@ conformance suite (see plans/sb_conformance_obseq3.md). Differences from v1:
 - Results are `Except String` so error messages (with cell offsets) reach
   the conformance harness.
 
-Known divergence from Miri (documented, tests affected are xfail-model):
-no SharedReadWrite *grouping* — sibling `RawPtr true` items invalidate each
-other the way Unique items do.
+SharedReadWrite items are grouped: writes through an SRW item pop only
+items above its contiguous SRW run (see `writeCell`), and SRW placement
+is insert-above-granting (see `insertAboveCell`) — together these
+reproduce Miri's SRW-group behavior.
 
 Executable only; preservation lemmas are reconstructed on demand later.
 -/
@@ -40,12 +41,16 @@ inductive RefKind
 | TwoPhase
 deriving Inhabited, Repr, BEq, DecidableEq
 
-/-- Borrow-stack items. -/
+/-- Borrow-stack items. `Disabled` is a Unique that was invalidated by a
+    read: it grants nothing but KEEPS ITS PLACE in the stack — removing
+    it would merge the SharedReadWrite groups on either side (miri's
+    disable_mut_does_not_merge_srw tests exactly this). -/
 inductive Item
 | Own (tag : Tag)
 | MutRef (tag : Tag)
 | Ref (tag : Tag)
 | RawPtr (mutbl : Bool) (tag : Tag)
+| Disabled (tag : Tag)
 deriving Inhabited, Repr, BEq
 
 namespace Item
@@ -55,6 +60,7 @@ def tag : Item → Tag
 | MutRef t => t
 | Ref t => t
 | RawPtr _ t => t
+| Disabled t => t
 
 /-- Items popped by a read access performed through an item below them.
     Miri: Unique items get disabled on foreign reads; shared and
@@ -122,7 +128,9 @@ def sb_expose (ap : AccessPerms) (tag : Tag) : AccessPerms :=
 def resolveWildcard (ap : AccessPerms) (stack : BorrowStack) (needWrite : Bool) :
     Option Tag :=
   (stack.find? (fun k =>
-    ap.exposed.contains k.tag && (!needWrite || k.grantsWrite))).map (·.tag)
+    match k with
+    | .Disabled _ => false
+    | _ => ap.exposed.contains k.tag && (!needWrite || k.grantsWrite))).map (·.tag)
 
 def AccessPerms.isProtected (ap : AccessPerms) (tag : Tag) : Bool :=
   ap.protFrames.any (·.contains tag)
@@ -169,12 +177,18 @@ def readCell (ap : AccessPerms) (addr : Word) (tag : Tag) : Except String Access
     match splitStack stack tag with
     | none => .error s!"sb-read: tag {tag} does not exist in the borrow stack at {addr}"
     | some (above, item, below) =>
-      let popped := above.filter (·.poppedByRead)
-      match firstProtected ap popped with
+      match item with
+      | .Disabled _ =>
+          .error s!"sb-read: tag {tag} does not exist in the borrow stack at {addr} (disabled)"
+      | _ =>
+      let hit := above.filter (·.poppedByRead)
+      match firstProtected ap hit with
       | some p =>
           .error s!"sb-read: not granting read access to tag {tag} at {addr} because that would remove item for tag {p.tag} which is strongly protected"
       | none =>
-        let above' := above.filter (fun k => !k.poppedByRead)
+        -- DISABLE invalidated Uniques (do not remove): removal would
+        -- merge adjacent SharedReadWrite groups
+        let above' := above.map (fun k => if k.poppedByRead then .Disabled k.tag else k)
         .ok { ap with StackMap := ap.StackMap.set addr (above' ++ item :: below) }
 
 /-- Write access at one cell through `tag`: the granting item must grant
@@ -194,12 +208,28 @@ def writeCell (ap : AccessPerms) (addr : Word) (tag : Tag) : Except String Acces
     match splitStack stack tag with
     | none => .error s!"sb-write: tag {tag} does not exist in the borrow stack at {addr}"
     | some (above, item, below) =>
+      match item with
+      | .Disabled _ =>
+          .error s!"sb-write: tag {tag} does not exist in the borrow stack at {addr} (disabled)"
+      | _ =>
       if item.grantsWrite then
-        match firstProtected ap above with
+        -- SharedReadWrite grouping: a write through an SRW item stays
+        -- within its contiguous SRW run — only items above the whole
+        -- group are popped (miri's disable_mut_does_not_merge_srw is
+        -- the negative test: SRWs separated by a Unique are distinct
+        -- groups and still invalidate each other)
+        let isSrw : Item → Bool := fun k =>
+          match k with | .RawPtr true _ => true | _ => false
+        let (srwRun, rest) :=
+          if isSrw item then
+            let grp := above.reverse.takeWhile isSrw
+            (grp.reverse, above.take (above.length - grp.length))
+          else ([], above)
+        match firstProtected ap rest with
         | some p =>
             .error s!"sb-write: not granting write access to tag {tag} at {addr} because that would remove item for tag {p.tag} which is strongly protected"
         | none =>
-            .ok { ap with StackMap := ap.StackMap.set addr (item :: below) }
+            .ok { ap with StackMap := ap.StackMap.set addr (srwRun ++ item :: below) }
       else
         .error s!"sb-write: tag {tag} (a read-only item) does not grant write access at {addr}"
 
@@ -234,6 +264,8 @@ def insertAboveCell (ap : AccessPerms) (addr : Word) (tag : Tag) (item : Item) :
     | .ok tag =>
     match splitStack stack tag with
     | none => .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {addr}"
+    | some (_, .Disabled _, _) =>
+        .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {addr} (disabled)"
     | some (above, granting, below) =>
         .ok { ap with StackMap := ap.StackMap.set addr (above ++ item :: granting :: below) }
 
