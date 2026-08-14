@@ -51,6 +51,7 @@ deriving Repr, Inhabited
 structure LowerSt where
   locals : List UTy
   out : List LStmt   -- reversed
+  fnPtrs : List (Nat × Nat) := []   -- rebased local ↦ fun defId (reified fn ptrs)
 
 def rebasePlace (off : Nat) (p : UPlace) : UPlace :=
   match p.root with
@@ -66,6 +67,9 @@ def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .use op => .use (rebaseOperand off op)
   | .ref kind prot p => .ref kind prot (rebasePlace off p)
   | .aggregate v ops => .aggregate v (ops.map (rebaseOperand off))
+  | .exposeAddr p => .exposeAddr (rebasePlace off p)
+  | .fromExposed p => .fromExposed (rebasePlace off p)
+  | .fnRef fid => .fnRef fid
   | .uninit => .uninit
   | .unsupported d => .unsupported d
 
@@ -148,12 +152,27 @@ def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue) :
       if p.projs.contains .deref && containsRef p.ty then
         emitSeamCopy st line false dst p.ty p
       else
+        -- propagate static fn-pointer tracking through plain copies
+        let st :=
+          match p, dst with
+          | { root := .local s, projs := [], .. }, { root := .local d, projs := [], .. } =>
+              match st.fnPtrs.lookup s with
+              | some fid => { st with fnPtrs := (d, fid) :: st.fnPtrs }
+              | none => st
+          | _, _ => st
         return pushOut st (.assign dst rv line)
   | .use op => do
       checkOperand line op
       return pushOut st (.assign dst rv line)
-  | .ref _ _ _ | .uninit =>
+  | .ref _ _ _ | .uninit | .exposeAddr _ | .fromExposed _ =>
       return pushOut st (.assign dst rv line)
+  | .fnRef fid =>
+      -- reified fn pointer: track statically, store a placeholder word
+      match dst with
+      | { root := .local n, projs := [], .. } =>
+          return { pushOut st (.assign dst (.use (.const 0)) line)
+                   with fnPtrs := (n, fid) :: st.fnPtrs }
+      | _ => .error s!"unsupported: fn pointer stored into a projection (line {line})"
   | .aggregate none [] =>
       return st  -- unit value: no memory access
   | .aggregate none ops => do
@@ -237,7 +256,9 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
           return pushOut st (.assign dest
             (.ref .shared false { pointee p with ty := inner }) line)
       | _ => .error s!"unsupported: cell get argument is not a place (line {line})"
-  else if f.path == ["core", "ptr", "read"] then
+  else if f.path == ["core", "ptr", "read"] ||
+          f.path == ["core", "ptr", "const_ptr", "read"] ||
+          f.path == ["core", "ptr", "mut_ptr", "read"] then
     -- ptr::read(p): a plain read of *p (with the reference-load retag
     -- rule applied by emitAssign when the value contains refs)
     some fun st args dest line => do
@@ -249,6 +270,81 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
             | _ => .unsupported "ptr::read on non-pointer"
           emitAssign st line dest (.use (.copy { pointee p with ty := inner }))
       | _ => .error s!"unsupported: ptr::read argument is not a place (line {line})"
+  else if f.path == ["core", "intrinsics", "transmute"] then
+    -- transmute by value: fn ptrs are tracked statically; a transmute to a
+    -- reference type is a real retag (miri retags such lets); a transmute
+    -- to a raw type is a tag-preserving reinterpret (ptrCast at elab)
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          match p, st.fnPtrs.lookup (match p.root with | .local n => n | _ => 0) with
+          | { root := .local _, projs := [], .. }, some fid =>
+              match dest with
+              | { root := .local d, projs := [], .. } =>
+                  return { pushOut st (.assign dest (.use (.const 0)) line)
+                           with fnPtrs := (d, fid) :: st.fnPtrs }
+              | _ => .error s!"unsupported: fn transmute into projection (line {line})"
+          | _, _ =>
+            match dest.ty with
+            | .ref mutbl inner =>
+                return pushOut st (.assign dest
+                  (.ref (if mutbl then .mut else .shared) false
+                    { pointee p with ty := inner }) line)
+            | .raw _ _ =>
+                return pushOut st (.assign dest (.use (.copy p)) line)
+            | _ => .error s!"unsupported: transmute to non-pointer type (line {line})"
+      | _ => .error s!"unsupported: transmute argument is not a place (line {line})"
+  else if f.path == ["core", "mem", "transmute_copy"] then
+    -- transmute_copy(&src) -> D: read *src at type D (load retags apply
+    -- when D contains references; raw destinations keep the tag)
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          emitAssign st line dest (.use (.copy { pointee p with ty := dest.ty }))
+      | _ => .error s!"unsupported: transmute_copy argument is not a place (line {line})"
+  else if f.path == ["core", "ptr", "const_ptr", "expose_provenance"] ||
+          f.path == ["core", "ptr", "mut_ptr", "expose_provenance"] then
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          return pushOut st (.assign dest (.exposeAddr p) line)
+      | _ => .error s!"unsupported: expose_provenance argument is not a place (line {line})"
+  else if f.path == ["core", "ptr", "with_exposed_provenance_mut"] ||
+          f.path == ["core", "ptr", "with_exposed_provenance"] then
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          return pushOut st (.assign dest (.fromExposed p) line)
+      | _ => .error s!"unsupported: with_exposed_provenance argument is not a place (line {line})"
+  else if f.path == ["core", "cell", "set"] then
+    -- Cell::set(&self, v): a masked shared reborrow of the cell region,
+    -- then a write through it
+    some fun st args _dest line => do
+      match args with
+      | [.copy p, valOp] | [.move p, valOp] =>
+          let inner := match p.ty with
+            | .ref _ i => i
+            | .raw _ i => i
+            | _ => .unsupported "cell set on non-pointer"
+          let tmpIdx := st.locals.length
+          let st := { st with locals := st.locals ++ [.raw true inner] }
+          let tmp : UPlace := { root := .local tmpIdx, projs := [] }
+          let st := pushOut st (.assign tmp
+            (.ref .shared false { pointee p with ty := inner }) line)
+          emitAssign st line (pointee tmp) (.use valOp)
+      | _ => .error s!"unsupported: Cell::set arguments (line {line})"
+  else if f.path == ["core", "cell", "get_mut"] then
+    -- Cell::get_mut(&mut self) -> &mut T: a unique reborrow of the cell
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          let inner := match p.ty with
+            | .ref _ i => i
+            | .raw _ i => i
+            | _ => .unsupported "cell get_mut on non-pointer"
+          return pushOut st (.assign dest
+            (.ref .mut false { pointee p with ty := inner }) line)
+      | _ => .error s!"unsupported: Cell::get_mut argument is not a place (line {line})"
   else
     none
 
@@ -286,6 +382,22 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
           | some shim => shim st args dest blk.termLine
           | none => inlineCall crate depth st funIdx args dest blk.termLine
         walkBlock crate depth st' f offset target (bb :: visited)
+    | .callDyn fp args dest target => do
+        -- indirect call: resolve the statically-tracked fn pointer
+        let fp := rebasePlace offset fp
+        let args := args.map (rebaseOperand offset)
+        let dest := rebasePlace offset dest
+        match fp with
+        | { root := .local n, projs := [], .. } =>
+            match st.fnPtrs.lookup n with
+            | some funIdx => do
+                let st' ←
+                  match shimCall crate funIdx with
+                  | some shim => shim st args dest blk.termLine
+                  | none => inlineCall crate depth st funIdx args dest blk.termLine
+                walkBlock crate depth st' f offset target (bb :: visited)
+            | none => .error s!"unsupported: indirect call with unknown target (line {blk.termLine})"
+        | _ => .error s!"unsupported: indirect call through a projection (line {blk.termLine})"
 
 /-- Inline a call: extend the local space with the callee's locals, bind
     arguments (with seam retags), walk the body, bind the return value. -/
@@ -348,6 +460,8 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
   | .use op => do return .use (← resolveGlobalsOp gmap op)
   | .ref kind prot p => do return .ref kind prot (← resolveGlobalRoot gmap p)
   | .aggregate v ops => do return .aggregate v (← ops.mapM (resolveGlobalsOp gmap))
+  | .exposeAddr p => do return .exposeAddr (← resolveGlobalRoot gmap p)
+  | .fromExposed p => do return .fromExposed (← resolveGlobalRoot gmap p)
   | rv => .ok rv
 
 def resolveGlobalsStmt (gmap : List (Nat × Nat)) : LStmt → Except String LStmt

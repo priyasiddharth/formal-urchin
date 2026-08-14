@@ -91,18 +91,38 @@ def SB.find? (sb : SB) (addr : Word) : Option BorrowStack :=
 def SB.set (sb : SB) (addr : Word) (stack : BorrowStack) : SB :=
   (addr, stack) :: sb.filter (fun (a, _) => a != addr)
 
+/-- The reserved wildcard tag: pointers produced by int-to-ptr casts.
+    Accesses through it resolve to the topmost *exposed* granting item.
+    `freshTag` starts at 1 so real tags never collide with it. -/
+def wildcardTag : Tag := 0
+
 /-- `protFrames` models Miri's call-frame protectors: a stack of tag sets,
     one frame per active (inlined) call. A tag in any active frame is
-    *protected*: any access that would pop or disable its items is UB.
-    Frames are pushed/popped by the `pushProtectors`/`popProtectors`
-    pseudo-statements the loader emits at inline seams. -/
+    *protected*: any access that would pop or disable its items is UB
+    (weakly for SharedReadWrite items). Frames are pushed/popped by the
+    `pushProtectors`/`popProtectors` pseudo-statements the loader emits
+    at inline seams. `exposed` is the set of tags leaked by ptr-to-int
+    casts — the candidates for wildcard accesses. -/
 structure AccessPerms where
   StackMap : SB
   NextTag : Tag
   protFrames : List (List Tag) := []
+  exposed : List Tag := []
 deriving Inhabited, Repr, BEq
 
-def AccessPerms.init : AccessPerms := { StackMap := [], NextTag := 0 }
+def AccessPerms.init : AccessPerms := { StackMap := [], NextTag := 1 }
+
+/-- Expose a tag (ptr-to-int cast). Exposing the wildcard is a no-op. -/
+def sb_expose (ap : AccessPerms) (tag : Tag) : AccessPerms :=
+  if tag == wildcardTag then ap
+  else { ap with exposed := tag :: ap.exposed }
+
+/-- Resolve a wildcard access at one cell: the topmost exposed item that
+    grants the access (Miri's optimistic wildcard resolution). -/
+def resolveWildcard (ap : AccessPerms) (stack : BorrowStack) (needWrite : Bool) :
+    Option Tag :=
+  (stack.find? (fun k =>
+    ap.exposed.contains k.tag && (!needWrite || k.grantsWrite))).map (·.tag)
 
 def AccessPerms.isProtected (ap : AccessPerms) (tag : Tag) : Bool :=
   ap.protFrames.any (·.contains tag)
@@ -139,6 +159,13 @@ def readCell (ap : AccessPerms) (addr : Word) (tag : Tag) : Except String Access
   match ap.StackMap.find? addr with
   | none => .error s!"sb-read: no borrow stack at address {addr}"
   | some stack =>
+    match (if tag == wildcardTag
+           then (resolveWildcard ap stack false).elim
+                  (Except.error s!"read access using <wildcard>: no exposed tags have suitable permission in the borrow stack at {addr}")
+                  Except.ok
+           else .ok tag) with
+    | .error e => .error e
+    | .ok tag =>
     match splitStack stack tag with
     | none => .error s!"sb-read: tag {tag} does not exist in the borrow stack at {addr}"
     | some (above, item, below) =>
@@ -157,6 +184,13 @@ def writeCell (ap : AccessPerms) (addr : Word) (tag : Tag) : Except String Acces
   match ap.StackMap.find? addr with
   | none => .error s!"sb-write: no borrow stack at address {addr}"
   | some stack =>
+    match (if tag == wildcardTag
+           then (resolveWildcard ap stack true).elim
+                  (Except.error s!"write access using <wildcard>: no exposed tags have suitable permission in the borrow stack at {addr}")
+                  Except.ok
+           else .ok tag) with
+    | .error e => .error e
+    | .ok tag =>
     match splitStack stack tag with
     | none => .error s!"sb-write: tag {tag} does not exist in the borrow stack at {addr}"
     | some (above, item, below) =>
@@ -191,6 +225,13 @@ def insertAboveCell (ap : AccessPerms) (addr : Word) (tag : Tag) (item : Item) :
   match ap.StackMap.find? addr with
   | none => .error s!"sb-insert: no borrow stack at address {addr}"
   | some stack =>
+    match (if tag == wildcardTag
+           then (resolveWildcard ap stack false).elim
+                  (Except.error s!"retag using <wildcard>: no exposed tags have suitable permission in the borrow stack at {addr}")
+                  Except.ok
+           else .ok tag) with
+    | .error e => .error e
+    | .ok tag =>
     match splitStack stack tag with
     | none => .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {addr}"
     | some (above, granting, below) =>

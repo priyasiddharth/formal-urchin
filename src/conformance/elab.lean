@@ -75,6 +75,13 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
   | .ref kind prot p => do
       let ⟨τ, pl⟩ ← elabPlace Γ p
       return ⟨.PtrL τ, .ref (toRefKind kind) prot (freezeMask p.ty) pl⟩
+  | .exposeAddr p => do
+      let ⟨τ, pl⟩ ← elabPlace Γ p
+      match τ, pl with
+      | .PtrL _, pl => return ⟨.NatL, .exposeAddr pl⟩
+      | _, _ => .error "ptr-to-int cast of a non-pointer place"
+  | .fromExposed _ => .error "fromExposed is elaborated against the destination type"
+  | .fnRef _ => .error "fn reference not consumed by lowering"
   | .uninit => .error "uninit is elaborated against the destination type"
   | .aggregate _ _ => .error "aggregate not desugared by lowering"
   | .unsupported d => .error s!"unsupported: {d}"
@@ -96,6 +103,11 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
       let ⟨τd, pd⟩ ← elabPlace Γ dst
       match rv with
       | .uninit => return .assign pd .uninit
+      | .fromExposed p =>
+          let np ← elabNatPlace Γ p "int-to-ptr cast source"
+          match τd, pd with
+          | .PtrL _, pd => return .assign pd (.fromExposed np)
+          | _, _ => .error s!"int-to-ptr cast into a non-pointer place (line {line})"
       | _ =>
         let ⟨τr, er⟩ ← elabRvalue Γ rv
         if h : τr = τd then

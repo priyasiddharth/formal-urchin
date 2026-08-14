@@ -1,0 +1,23 @@
+// derived from miri tests/fail/both_borrows/aliasing_mut4.rs @ 34d6a7954
+// (stack revision)
+// expected: UB at the inlined fn-entry seam retag (&mut Cell is still
+// exclusive: its retag pops the protected shared arg)
+// rewrites: dropped revisions and error annotations
+
+use std::cell::Cell;
+use std::mem;
+
+fn safe(x: &i32, y: &mut Cell<i32>) {
+    y.set(1);
+    let _load = *x;
+}
+
+fn main() {
+    let mut x = 0;
+    let xref = &mut x;
+    let xraw: *mut i32 = unsafe { mem::transmute_copy(&xref) };
+    let xshr = &*xref;
+    let safe_raw: fn(x: *const i32, y: *mut Cell<i32>) =
+        unsafe { mem::transmute::<fn(&i32, &mut Cell<i32>), _>(safe) };
+    safe_raw(xshr, xraw as *mut _);
+}

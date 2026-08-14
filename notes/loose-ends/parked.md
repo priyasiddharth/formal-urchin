@@ -77,10 +77,12 @@ durable/v1-v2-sb-model-divergences-from-miri-sb.md
 ## Conformance Phase C: protectors first, statics cheapest
 **Status:** partially resolved 2026-08-14 (same day) — protectors and
 statics hoisting landed as sketched below; suite now 34 pass / 0 fail /
-0 xfail, fail tests 27/75. Remaining after the fourth increment (UnsafeCell landed same day,
-fail 36/75, journal/2026-08/2026-08-14-unsafecell-landed.md):
-int-to-ptr/transmute (~10) and slices/arrays are the largest remaining
-buckets; then threads, closures/fn-ptrs, RefCell (needs control flow).
+0 xfail, fail tests 27/75. Remaining after the fifth increment (transmute + exposed provenance,
+fail 49/75, journal/2026-08/2026-08-14-transmute-exposure-landed.md):
+slices/arrays is the largest remaining bucket; then threads, drop glue,
+unions, RefCell/control flow, MaybeUninit, Rc, Vec/String. The easy
+tail is thin now — most remaining tests need genuinely new machinery
+(arrays/indexing, SwitchInt execution, or std containers).
 Originally parked 2026-08-14
 **Context:** score stands at fail 23/75 + 2 xfail (protectors), pass 9
 scenarios (commit 445cbf4). Protectors would convert both xfails plus

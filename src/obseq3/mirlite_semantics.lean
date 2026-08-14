@@ -43,11 +43,19 @@ abbrev MemMap := List (Word × MemValue)
 structure Mem where
   mMap : MemMap
   addrStart : Word
+  allocs : List (Word × Nat) := []   -- (base, size), for int-to-ptr resolution
 deriving Repr
 
 namespace Mem
 
 def empty : Mem := { mMap := [], addrStart := 0 }
+
+/-- Resolve a concrete integer address to its allocation, for int-to-ptr
+    casts. Unknown addresses yield a degenerate (dangling) allocation. -/
+def resolveAddr (m : Mem) (n : Word) : Word × Word × Nat :=
+  match m.allocs.find? (fun (b, s) => decide (b ≤ n) && decide (n < b + s)) with
+  | some (b, s) => (b, n - b, s)
+  | none => (n, 0, 0)
 
 def find? (m : Mem) (addr : Word) : Option MemValue :=
   List.lookup addr m.mMap
@@ -77,7 +85,7 @@ def writeWordSeq (m : Mem) (addr : Word) : List MemValue → Mem
 
 def allocate (m : Mem) (sz : Nat) : Word × Mem :=
   let base := m.addrStart
-  (base, { m with addrStart := base + sz })
+  (base, { m with addrStart := base + sz, allocs := (base, sz) :: m.allocs })
 
 /-- Remove the cells of a deallocated range. The bump allocator never
     reuses addresses, so dangling pointers into the range keep failing. -/
@@ -246,6 +254,35 @@ def evalRExpr
                 values_len := readWordSeq_length state'.mem resolved.addr 1
                 state := state'
               }
+  | .exposeAddr src =>
+      -- ptr-to-int cast: expose the tag, yield the concrete address
+      match resolvePlace? state src with
+      | none => .err "cast source place not allocated"
+      | some resolved =>
+          match M.read state.perms resolved.addr 1 resolved.tag with
+          | .error e => .err s!"read access failed: {e}"
+          | .ok perms' =>
+              match state.mem.find? resolved.addr with
+              | some (.ptrVal base offset _ tag) =>
+                  .ok { values := [MemValue.word (base + offset)]
+                        values_len := rfl
+                        state := { state with perms := M.expose perms' tag } }
+              | _ => .err "ptr-to-int cast of a non-pointer value"
+  | .fromExposed src =>
+      -- int-to-ptr cast: a wildcard pointer into the containing allocation
+      match resolvePlace? state src with
+      | none => .err "cast source place not allocated"
+      | some resolved =>
+          match M.read state.perms resolved.addr 1 resolved.tag with
+          | .error e => .err s!"read access failed: {e}"
+          | .ok perms' =>
+              match state.mem.find? resolved.addr with
+              | some (.word n) =>
+                  let (base, off, size) := state.mem.resolveAddr n
+                  .ok { values := [MemValue.ptrVal base off size wildcardTag]
+                        values_len := rfl
+                        state := { state with perms := perms' } }
+              | _ => .err "int-to-ptr cast of a non-integer value"
   | .ref (τ := σ) kind prot mask src =>
       match resolvePlace? state src with
       | none => .err "reference source place not allocated"

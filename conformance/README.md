@@ -37,10 +37,11 @@ unsupported-marked test now loads — update the manifest).
 
 ## Current score (miri @ PIN)
 
-- fail tests: 36/75 verdict-conformant (line-accurate on 32), 0 xfail,
-  39 unsupported with per-test reasons.
-- pass scenarios: 11 supported and clean; the rest unsupported with
-  reasons (int-to-ptr, slices, threads, transmute, RefCell/MaybeUninit).
+- fail tests: 49/75 verdict-conformant (line-accurate on 41), 0 xfail,
+  26 fail tests unsupported with per-test reasons (48 unsupported
+  entries overall incl. pass files/scenarios).
+- pass scenarios: 13 supported and clean; the rest unsupported with
+  reasons (slices/arrays, threads, RefCell, MaybeUninit, Vec/String).
 - Every test that loads agrees with Miri's verdict; there are no
   xfail-model divergences.
 
@@ -59,6 +60,15 @@ items (popping/deallocating them is allowed), `UnsafeCell`/`Cell`/
 `Atomic*` map to cell-marked layouts with pointees inferred from
 constructor/accessor call sites, and `UnsafeCell::{new,get}`, `Cell::new`
 and `ptr::read` are shimmed. Pointer type-punning casts are
-tag-preserving reinterprets (`RExpr.ptrCast`). Remaining exclusions:
-int-to-ptr exposure, transmute, arrays/slices, threads, closures/fn
-ptrs, drop glue, RefCell (runtime borrow flags need control flow).
+tag-preserving reinterprets (`RExpr.ptrCast`). Transmute is shimmed
+(to-raw = reinterpret, to-ref = a real retag, `transmute_copy` = a typed
+load); reified fn pointers are tracked statically and indirect calls
+resolve to their targets (the `aliasing_mut*` family). Int-to-ptr uses
+exposed provenance: ptr-to-int exposes the tag and yields the concrete
+address, int-to-ptr resolves the address through the allocation table
+into a wildcard pointer whose accesses re-derive authority from the
+topmost exposed granting item (a determinization of miri's angelic
+wildcard; matches `-Zmiri-permissive-provenance`). Remaining
+exclusions: arrays/slices, threads, general closures, drop glue,
+unions, RefCell (runtime borrow flags need control flow), MaybeUninit,
+Rc, Vec/String.

@@ -14,6 +14,7 @@ structure PermissionModel where
   ref : State → Word → Nat → Tag → RefKind → Bool → List Bool → Except String (State × Tag)
   die : State → Word → Nat → Tag → Except String State
   dealloc : State → Word → Nat → Tag → Except String State
+  expose : State → Tag → State
   pushFrame : State → State
   popFrame : State → Except String State
 
@@ -28,6 +29,7 @@ def stackedBorrows : PermissionModel where
   ref := fun s addr len tag kind prot mask => sb_ref s addr len tag kind prot mask
   die := sb_die
   dealloc := sb_dealloc
+  expose := sb_expose
   pushFrame := sb_push_frame
   popFrame := sb_pop_frame
 

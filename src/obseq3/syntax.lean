@@ -39,6 +39,8 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | copy : Place Γ τ → RExpr Γ τ
 | ref : RefKind → Bool → List Bool → Place Γ τ → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | ptrCast : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ (obseq.LayoutTy.PtrL τ)
+| exposeAddr : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ obseq.LayoutTy.NatL
+| fromExposed : Place Γ obseq.LayoutTy.NatL → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | uninit : RExpr Γ τ
 
 /-- Allocation length for `Stmt.alloc`: a static count or a runtime word

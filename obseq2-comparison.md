@@ -4,6 +4,32 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-14 — Transmute and Exposed Provenance (int-to-ptr without angelic choice)
+
+Fifth same-day increment. Suite: **pass 62 | fail 0 | xfail 0 | xpass 0** — fail tests
+**49/75** verdict-conformant (41 line-accurate), 13 pass scenarios, 48 unsupported.
+
+The only memory-model addition is `Mem.allocs`, an allocation table making
+address→(base, offset, size) a *function* — concrete Nat addresses under the deterministic
+bump allocator mean int-to-ptr resolution needs no angelic choice (miri does the same
+range lookup). Provenance semantics lives entirely in the SB state: an `exposed` tag set,
+a reserved `wildcardTag` (so `ptrVal` and the access signatures are unchanged), and
+per-access wildcard resolution to the topmost exposed granting item — a determinization of
+miri's angelic wildcard, matching `-Zmiri-permissive-provenance` on all covered tests.
+The ptr→int→ptr round trip deliberately destroys tag provenance: integers are bare words;
+authority is re-derived at each access.
+
+Transmute is shimmed by destination type (to-raw = tag-preserving `ptrCast`; to-ref = a
+real retag — `illegal_write4` shows miri retags transmute-to-&mut results;
+`transmute_copy` = a typed load). Reified fn pointers (`Cast FnPtr` + `Const FnDef`) are
+tracked statically and `Dynamic` calls resolve to their targets, so the `aliasing_mut*`
+family fails through genuine protected-seam collisions. Newly conformant: 13 fail tests
+(aliasing_mut1-4, illegal_read8, illegal_write4, interior_mut2,
+shared_rw_borrows_are_weak1, static_memory_modification, unescaped_local, exposed_only_ro,
+illegal_read/write_despite_exposed1) + 2 pass scenarios (shr_and_raw, mut_below_shr).
+
+---
+
 ## 2026-08-14 — Interior Mutability (UnsafeCell freeze masks, weak SRW protection)
 
 Fourth same-day increment. Suite: **pass 47 | fail 0 | xfail 0 | xpass 0** — fail tests

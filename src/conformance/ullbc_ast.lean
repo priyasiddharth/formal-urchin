@@ -100,11 +100,16 @@ deriving Repr, BEq, Inhabited
 /-- `ref`'s `prot` marks a protected (inline-seam) retag; the parser
     always produces `false`, the lowering sets it. `aggregate`'s
     `variant?` is `some v` for enum-variant aggregates (tuples: `none`).
-    `uninit` is emitted only by the lowering (hoisted statics). -/
+    `uninit` is emitted only by the lowering (hoisted statics).
+    `exposeAddr`/`fromExposed` are ptr↔int casts (exposed provenance);
+    `fnRef` is a reified function pointer (tracked statically). -/
 inductive URvalue
 | use (op : UOperand)
 | ref (kind : URefKind) (prot : Bool) (p : UPlace)
 | aggregate (variant? : Option Nat) (ops : List UOperand)
+| exposeAddr (p : UPlace)
+| fromExposed (p : UPlace)
+| fnRef (funId : Nat)
 | uninit
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
@@ -122,6 +127,7 @@ deriving Repr, BEq, Inhabited
 
 inductive UTerm
 | call (funIdx : Nat) (args : List UOperand) (dest : UPlace) (target : Nat)
+| callDyn (func : UPlace) (args : List UOperand) (dest : UPlace) (target : Nat)
 | goto (target : Nat)
 | ret
 | unwindResume
@@ -414,6 +420,8 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
               | some b => .unsupported s!"builtin adt {b}"
               | none => .unsupported s!"adt id {idJ.compress}"
       | none => .unsupported "adt without id"
+  | some ("FnPtr", _) | some ("FnDef", _) =>
+      .nat  -- fn values are one-word placeholders, tracked statically
   | some (k, _) => .unsupported s!"type constructor {k}"
   | none => .unsupported s!"type {j.compress}"
 
@@ -527,13 +535,40 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
           | _, .error e => .unsupported e
       | _, _ => .unsupported "malformed Ref/RawPtr rvalue"
   | some ("UnaryOp", payload) =>
-      -- ptr-to-ptr casts (`p as *mut T`) are tag-preserving: lower as a copy
       match asArr payload with
       | [opJ, operand] =>
           match sumKey opJ with
           | some ("Cast", castJ) =>
               match sumKey castJ with
-              | some ("RawPtr", _) => .use (parseOperand ctx operand)
+              | some ("RawPtr", tys) =>
+                  -- charon uses one cast kind for ptr↔ptr AND ptr↔int:
+                  -- disambiguate by the source/target types
+                  let isPtr : UTy → Bool := fun t =>
+                    match t with
+                    | .ref _ _ | .raw _ _ => true
+                    | _ => false
+                  match asArr tys with
+                  | [srcJ, dstJ] =>
+                      let srcT := parseTy ctx 16 srcJ
+                      let dstT := parseTy ctx 16 dstJ
+                      match isPtr srcT, isPtr dstT, parseOperand ctx operand with
+                      | true, true, op => .use op            -- tag-preserving
+                      | true, false, .copy p => .exposeAddr p -- ptr as usize
+                      | true, false, .move p => .exposeAddr p
+                      | false, true, .copy p => .fromExposed p -- usize as ptr
+                      | false, true, .move p => .fromExposed p
+                      | false, false, op => .use op           -- int-to-int
+                      | _, _, _ => .unsupported "ptr/int cast of a non-place"
+                  | _ => .unsupported "malformed RawPtr cast"
+              | some ("FnPtr", _) =>
+                  -- fn item reified to a fn pointer: track the target
+                  match sumKey operand with
+                  | some ("Const", c) =>
+                      match (getK c "kind" >>= (getK · "FnDef") >>= (getK · "kind")
+                              >>= (getK · "Fun") >>= (getK · "Regular")) >>= asNat with
+                      | some fid => .fnRef fid
+                      | none => .unsupported "reify of unknown fn"
+                  | _ => .unsupported "reify of non-const fn"
               | some (k, _) => .unsupported s!"cast {k}"
               | none => .unsupported "malformed cast"
           | some (k, _) => .unsupported s!"unary op {k}"
@@ -625,12 +660,18 @@ def parseTerm (ctx : ParseCtx) (j : Json) : UTerm :=
             >>= (getK · "Fun") >>= (getK · "Regular")) >>= asNat
         let args := ((getK callJ "args").map asArr).getD [] |>.map (parseOperand ctx)
         let dest? := (getK callJ "dest").map (parsePlace ctx)
-        match funIdx?, dest?, target? with
-        | some fi, some (.ok dst), some t => .call fi args dst t
-        | none, _, _ => .unsupported "call to non-static function"
-        | _, _, none => .unsupported "call without return target"
-        | _, some (.error e), _ => .unsupported s!"call dest: {e}"
-        | _, none, _ => .unsupported "call without dest"
+        let dynFunc? :=
+          (getK callJ "func" >>= (getK · "Dynamic")).bind fun opJ =>
+            match sumKey opJ with
+            | some ("Move", p) | some ("Copy", p) => (parsePlace ctx p).toOption
+            | _ => none
+        match funIdx?, dynFunc?, dest?, target? with
+        | some fi, _, some (.ok dst), some t => .call fi args dst t
+        | none, some fp, some (.ok dst), some t => .callDyn fp args dst t
+        | none, none, _, _ => .unsupported "call to non-static function"
+        | _, _, _, none => .unsupported "call without return target"
+        | _, _, some (.error e), _ => .unsupported s!"call dest: {e}"
+        | _, _, none, _ => .unsupported "call without dest"
     | some (k, _) => .unsupported s!"terminator {k}"
     | none => .unsupported "malformed terminator kind"
 
