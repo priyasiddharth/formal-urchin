@@ -53,3 +53,43 @@ needed).
 (`sb_die` after `useMut`) is the known deferred obligation.
 **Effort estimate:** step 5 ~1-2 days; step 6 ~1 day
 **References:** journal/2026-07/2026-07-01-vscode-session-state-const-write.md
+
+## obseq3 proof reconstruction / obseq2↔obseq3 reconciliation
+**Status:** parked 2026-08-14
+**Context:** `src/obseq3/` (per-cell SB stacks, writable raws with
+insert-above-granting placement, TwoPhase, length-parameterized
+PermissionModel) is executable-only — zero preservation lemmas. obseq2's
+proofs still target the old single-address model, so the proved semantics
+and the conformance-tested semantics have diverged. Per
+durable/dont-port-v1-proofs-reconstruct-in-v2.md, reconstruct on the new
+model rather than port. `SBValid`-style structural invariants
+(addr-unique, tag-unique per stack) are the natural starting layer;
+`insertAboveCell` needs its own preservation story (it splices mid-stack).
+**Why parked:** conformance suite prioritized; proofs not needed for
+verdict scoring.
+**To resume:** state `sb_read/sb_write/sb_ref/sb_own` preservation of a
+per-cell SBValid; then decide whether obseq2's compiler-correctness work
+migrates to obseq3 or obseq3 stays a conformance-only fork.
+**Effort estimate:** invariant layer ~1 day; migration decision separate
+**References:** plans/sb_conformance_obseq3.md,
+durable/v1-v2-sb-model-divergences-from-miri-sb.md
+
+## Conformance Phase C: protectors first, statics cheapest
+**Status:** parked 2026-08-14
+**Context:** score stands at fail 23/75 + 2 xfail (protectors), pass 9
+scenarios (commit 445cbf4). Protectors would convert both xfails plus
+~10 unsupported tests and compose with the existing inline-seam retag
+machinery: protector flag on seam-retagged items, cleared at the inline
+return, "would pop protected" ⇒ UB in read/write. Statics hoisting (a
+lowering pass: hoist static/static mut to pc-0-initialized locals)
+unlocks ~4 tests (pointer_smuggling, mut_exclusive_violation1,
+unescaped_static, static_memory_modification) with no interpreter
+change. Then: enums/Option (~3), dealloc (~7), UnsafeCell (~6).
+**Why parked:** core conformance claim reached; each extension grows
+interpreter surface, which the user wants minimal.
+**To resume:** protectors = Item gains `protected : Bool` + seam-retag
+emits protected items + a pop-guard in sb.lean + an unprotect pseudo-op
+at inline returns; statics = lowering.lean pass only.
+**Effort estimate:** protectors ~1 day; statics ~2 h
+**References:** conformance/README.md, plans/sb_conformance_obseq3.md,
+journal/2026-08/2026-08-14-obseq3-conformance-landed.md
