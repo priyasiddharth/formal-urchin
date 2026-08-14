@@ -702,13 +702,18 @@
     {
       "id": "fail/stacked_borrows/transmute-is-no-escape",
       "source": "corpus/tests/fail/stacked_borrows/transmute-is-no-escape.rs",
-      "prep": null,
+      "prep": "prep/transmute-is-no-escape.rs",
       "artifact": "transmute-is-no-escape.ullbc.json",
-      "status": "unsupported",
-      "reason": "transmute + arrays",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 12
+      },
+      "rewrites": [
+        "dropped error annotation"
+      ],
+      "miri_error": "write access .* tag does not exist in the borrow stack"
     },
     {
       "id": "fail/stacked_borrows/unescaped_local",
@@ -729,13 +734,19 @@
     {
       "id": "fail/stacked_borrows/unescaped_static",
       "source": "corpus/tests/fail/stacked_borrows/unescaped_static.rs",
-      "prep": null,
+      "prep": "prep/unescaped_static.rs",
       "artifact": "unescaped_static.ullbc.json",
-      "status": "unsupported",
-      "reason": "statics",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 10
+      },
+      "rewrites": [
+        "dropped error annotation"
+      ],
+      "miri_error": "read access .* tag does not exist in the borrow stack",
+      "note": "the element-0 tag is absent at cell 1 (per-cell stacks)"
     },
     {
       "id": "fail/stacked_borrows/zst_slice",
@@ -1276,14 +1287,17 @@
     {
       "id": "pass/both_borrows/basic_aliasing_model::array_casts",
       "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
-      "prep": null,
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "arrays + ptr arithmetic",
+      "prep": "prep/basic_aliasing_model__array_casts.rs",
+      "artifact": "basic_aliasing_model__array_casts.ullbc.json",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ok"
       },
-      "rewrites": []
+      "rewrites": [
+        "scenario extracted",
+        "assert_eq! -> plain read"
+      ]
     },
     {
       "id": "pass/both_borrows/basic_aliasing_model::mut_below_shr",

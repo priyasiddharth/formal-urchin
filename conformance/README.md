@@ -37,12 +37,12 @@ unsupported-marked test now loads — update the manifest).
 
 ## Current score (miri @ PIN)
 
-- fail tests: 50/75 verdict-conformant (line-accurate on 42), 0 xfail,
-  25 fail tests unsupported with per-test reasons (47 unsupported
+- fail tests: 52/75 verdict-conformant (line-accurate on 44), 0 xfail,
+  23 fail tests unsupported with per-test reasons (44 unsupported
   entries overall incl. pass files/scenarios).
-- pass scenarios: 19 supported and clean; the rest unsupported with
-  reasons (slices/arrays, threads, MaybeUninit, Vec/String, enums with
-  control flow).
+- pass scenarios: 20 supported and clean; the rest unsupported with
+  reasons (slices/fat pointers, threads, MaybeUninit, Vec/String, enums
+  with control flow).
 - Every test that loads agrees with Miri's verdict; there are no
   xfail-model divergences.
 
@@ -82,5 +82,11 @@ SharedReadWrite *grouping* (writes through an SRW item pop only above
 its contiguous SRW run) and Miri's *Disabled* state (reads disable
 Uniques in place instead of removing them, so SRW groups never merge —
 disable_mut_does_not_merge_srw and interior_mut2 check both sides).
-Remaining exclusions: arrays/slices, threads, general closures, drop
-glue, unions, MaybeUninit, Rc, Vec/String, enums needing control flow.
+Fixed-size arrays are supported (homogeneous tuples; constant indices
+resolved through tracked const locals, with bounds-check asserts
+const-folded; `[v; N]` repeats desugared; `ptr.add/offset/
+wrapping_offset` with constant deltas via `RExpr.ptrOffset`, scaled by
+the pointee size, provenance-preserving). Remaining exclusions: slices
+(fat pointers, runtime lengths), threads, general closures, drop glue,
+unions, MaybeUninit, Rc, Vec/String, enums needing control flow,
+dynamic arithmetic/indexing.

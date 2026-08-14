@@ -59,9 +59,18 @@ partial def freezeMask : UTy → List Bool
   | .enum e => List.replicate (uSize (.enum e)) false
   | .unsupported _ => []
 
+/-- Array index resolution: constant, or a local whose (constant) value
+    the lowering tracks; anything else is unsupported. -/
+inductive UIdx
+| const (n : Nat)
+| fromLocal (n : Nat)
+| unsupported (desc : String)
+deriving Repr, BEq, Inhabited
+
 inductive UProj
 | deref
 | field (idx : Nat)
+| index (i : UIdx)
 deriving Repr, BEq, Inhabited
 
 /-- Place roots: a local, or a global (static) — the latter is rewritten
@@ -85,6 +94,7 @@ inductive UOperand
 | copy (p : UPlace)
 | move (p : UPlace)
 | const (v : Nat)
+| constNeg (n : Nat)   -- negative scalar constant, magnitude n
 | constUnit
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
@@ -109,6 +119,8 @@ inductive URvalue
 | aggregate (variant? : Option Nat) (ops : List UOperand)
 | exposeAddr (p : UPlace)
 | fromExposed (p : UPlace)
+| ptrOffset (p : UPlace) (delta : Int)
+| binOp (op : String) (a b : UOperand)
 | fnRef (funId : Nat)
 | uninit
 | unsupported (desc : String)
@@ -128,6 +140,7 @@ deriving Repr, BEq, Inhabited
 inductive UTerm
 | call (funIdx : Nat) (args : List UOperand) (dest : UPlace) (target : Nat)
 | callDyn (func : UPlace) (args : List UOperand) (dest : UPlace) (target : Nat)
+| assert (cond : UOperand) (expected : Bool) (target : Nat)
 | goto (target : Nat)
 | ret
 | unwindResume
@@ -385,6 +398,19 @@ partial def collectCellPointees (tbl : TyTable) (paths : List (Nat × List Strin
 
 /-! ## Type parsing -/
 
+def parseScalarInt (j : Json) : Option Int :=
+  match sumKey j with
+  | some (_, payload) =>
+      match (asArr payload).reverse.head? with
+      | some (Json.str s) => s.toInt?
+      | some v => (asNat v).map Int.ofNat
+      | none => none
+  | none => none
+
+def parseScalarValue (j : Json) : Option Nat :=
+  (parseScalarInt j).map Int.toNat
+
+
 partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
   if fuel == 0 then .unsupported "type recursion depth exceeded" else
   let j := resolveTyJson ctx.tbl j
@@ -451,6 +477,20 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
               | some b => .unsupported s!"builtin adt {b}"
               | none => .unsupported s!"adt id {idJ.compress}"
       | none => .unsupported "adt without id"
+  | some ("Array", args) =>
+      -- [T; N] is a homogeneous tuple of N elements
+      match asArr args with
+      | [elemJ, lenJ] =>
+          match getK lenJ "kind" >>= sumKey with
+          | some ("Literal", lit) =>
+              match sumKey lit with
+              | some ("Scalar", sc) =>
+                  match parseScalarValue sc with
+                  | some n => .tup (List.replicate n (parseTy ctx (fuel - 1) elemJ))
+                  | none => .unsupported "array length not a scalar"
+              | _ => .unsupported "array length not a literal"
+          | _ => .unsupported "array length not a const"
+      | _ => .unsupported "malformed Array type"
   | some ("FnPtr", _) | some ("FnDef", _) =>
       .nat  -- fn values are one-word placeholders, tracked statically
   | some (k, _) => .unsupported s!"type constructor {k}"
@@ -485,24 +525,33 @@ partial def parsePlace (ctx : ParseCtx) (j : Json) : Except String UPlace := do
                   match (asArr fargs).reverse.findSome? asNat with
                   | some i => pure (UProj.field i)
                   | none => .error s!"field projection without index: {proj.compress}"
+              | some ("Index", payload) =>
+                  if (getK payload "from_end") == some (Json.bool true) then
+                    pure (UProj.index (.unsupported "from-end index"))
+                  else
+                    match getK payload "offset" >>= sumKey with
+                    | some ("Const", c) =>
+                        match (getK c "kind" >>= sumKey).bind
+                              (fun kv => match kv with
+                                | ("Literal", lit) =>
+                                    (sumKey lit).bind (fun lv => match lv with
+                                      | ("Scalar", sc) => parseScalarValue sc
+                                      | _ => none)
+                                | _ => none) with
+                        | some n => pure (UProj.index (.const n))
+                        | none => pure (UProj.index (.unsupported "non-nat index const"))
+                    | some ("Copy", pj) | some ("Move", pj) =>
+                        match (parsePlace ctx pj).toOption with
+                        | some { root := .local n, projs := [], .. } =>
+                            pure (UProj.index (.fromLocal n))
+                        | _ => pure (UProj.index (.unsupported "projected index operand"))
+                    | _ => pure (UProj.index (.unsupported "malformed index operand"))
               | some (k, _) => .error s!"unsupported projection {k}"
               | none => .error s!"malformed projection {proj.compress}"
             return { base with projs := base.projs ++ [p], ty }
         | _ => .error "malformed Projection"
     | some (k, _) => .error s!"unsupported place kind {k}"
     | none => .error s!"malformed place kind"
-
-def parseScalarValue (j : Json) : Option Nat :=
-  match sumKey j with
-  | some (_, payload) =>
-      match (asArr payload).reverse.head? with
-      | some (Json.str s) =>
-          match s.toInt? with
-          | some i => some i.toNat   -- negatives clamp to 0: values are SB-irrelevant
-          | none => none
-      | some v => asNat v
-      | none => none
-  | none => none
 
 def parseConst (j : Json) : UOperand :=
   match getK j "kind" with
@@ -512,8 +561,8 @@ def parseConst (j : Json) : UOperand :=
     | some ("Literal", lit) =>
         match sumKey lit with
         | some ("Scalar", sc) =>
-            match parseScalarValue sc with
-            | some v => .const v
+            match parseScalarInt sc with
+            | some v => if v < 0 then .constNeg v.natAbs else .const v.toNat
             | none => .unsupported s!"scalar constant {sc.compress}"
         | some ("Bool", b) => .const (if b == Json.bool true then 1 else 0)
         | _ => .unsupported s!"literal constant {lit.compress}"
@@ -605,10 +654,33 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
           | some (k, _) => .unsupported s!"unary op {k}"
           | none => .unsupported "malformed unary op"
       | _ => .unsupported "malformed UnaryOp"
+  | some ("BinaryOp", payload) =>
+      match asArr payload with
+      | [opJ, aJ, bJ] =>
+          match asStr opJ with
+          | some op => .binOp op (parseOperand ctx aJ) (parseOperand ctx bJ)
+          | none => .unsupported "malformed binary op"
+      | _ => .unsupported "malformed BinaryOp"
+  | some ("Repeat", payload) =>
+      -- [v; N] desugars to a homogeneous aggregate
+      match asArr payload with
+      | [opJ, _elemTy, lenJ] =>
+          match (getK lenJ "kind" >>= sumKey).bind
+                (fun kv => match kv with
+                  | ("Literal", lit) =>
+                      (sumKey lit).bind (fun lv => match lv with
+                        | ("Scalar", sc) => parseScalarValue sc
+                        | _ => none)
+                  | _ => none) with
+          | some n => .aggregate none (List.replicate n (parseOperand ctx opJ))
+          | none => .unsupported "repeat length not a constant"
+      | _ => .unsupported "malformed Repeat"
   | some ("Aggregate", payload) =>
       match asArr payload with
       | [kindJ, Json.arr ops] =>
           match sumKey kindJ with
+          | some ("Array", _) =>
+              .aggregate none (ops.toList.map (parseOperand ctx))
           | some ("Adt", adtPayload) =>
               match asArr adtPayload with
               | adtId :: rest =>
@@ -677,6 +749,12 @@ def parseTerm (ctx : ParseCtx) (j : Json) : UTerm :=
             match asNat payload with
             | some t => .goto t
             | none => .unsupported "malformed Goto"
+    | some ("Assert", payload) =>
+        let condOp? := (getK payload "assert" >>= (getK · "cond")).map (parseOperand ctx)
+        let expected := ((getK payload "assert" >>= (getK · "expected")) == some (Json.bool true))
+        match condOp?, getK payload "target" >>= asNat with
+        | some cond, some t => .assert cond expected t
+        | _, _ => .unsupported "malformed Assert"
     | some ("Drop", payload) =>
         -- drops are no-ops for SB verdicts (heap frees go through the
         -- dealloc shim; leaks are not checked)

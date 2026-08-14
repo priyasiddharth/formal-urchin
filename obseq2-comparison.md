@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-14 — Arrays and Constant Pointer Arithmetic
+
+Seventh same-day increment. Suite: **pass 72 | fail 0 | xfail 0 | xpass 0** — fail tests
+**52/75** (44 line-accurate), 20 pass scenarios, 44 unsupported.
+
+Fixed-size arrays are homogeneous tuples; charon's operand-carrying `Index` projections
+resolve to static fields through tracked constant locals; `Repeat` rvalues and array
+aggregates desugar per element; built-MIR bounds checks (`BinaryOp(Lt)` + `Assert`) are
+const-folded away at lowering (dynamic arithmetic stays unsupported — arithmetic exists
+only in statically-foldable positions). `ptr.add/offset/wrapping_offset` shim to
+`RExpr.ptrOffset`: a constant delta scaled by pointee size, provenance-preserving, with
+signed constants now parsed. Newly conformant: `unescaped_static` (UB at cell offset 1 —
+the per-cell stacks in their purest form), `transmute-is-no-escape`
+(`wrapping_offset(-1)` lands on a cell where the transmuted tag never existed), and the
+`array_casts` pass scenario. Slices proper (fat pointers, runtime lengths) remain the
+honest boundary.
+
+---
+
 ## 2026-08-14 — RefCell Shims, SharedReadWrite Grouping, and the Disabled State
 
 Sixth same-day increment. Suite: **pass 69 | fail 0 | xfail 0 | xpass 0** — fail tests

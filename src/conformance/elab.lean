@@ -60,6 +60,7 @@ def elabPlaceAux (Γ : Ctx) :
         elabPlaceAux Γ (tys.get ⟨i, h⟩) (.proj pl (.field ⟨i, h⟩ .nil)) rest
       else .error s!"field index {i} out of range"
   | _, _, .field _ :: _ => .error "field projection on non-tuple place"
+  | _, _, .index _ :: _ => .error "array index not resolved by lowering"
 
 def elabPlace (Γ : Ctx) (p : UPlace) : Except String ((τ : LayoutTy) × Place Γ τ) := do
   let ⟨τ, pl⟩ ← elabRoot Γ p.root
@@ -80,7 +81,10 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
       match τ, pl with
       | .PtrL _, pl => return ⟨.NatL, .exposeAddr pl⟩
       | _, _ => .error "ptr-to-int cast of a non-pointer place"
+  | .use (.constNeg _) => .error "negative constant not clamped by lowering"
   | .fromExposed _ => .error "fromExposed is elaborated against the destination type"
+  | .ptrOffset _ _ => .error "ptrOffset is elaborated against the destination type"
+  | .binOp _ _ _ => .error "arithmetic not const-folded by lowering"
   | .fnRef _ => .error "fn reference not consumed by lowering"
   | .uninit => .error "uninit is elaborated against the destination type"
   | .aggregate _ _ => .error "aggregate not desugared by lowering"
@@ -108,6 +112,11 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           match τd, pd with
           | .PtrL _, pd => return .assign pd (.fromExposed np)
           | _, _ => .error s!"int-to-ptr cast into a non-pointer place (line {line})"
+      | .ptrOffset p delta =>
+          let ⟨τp, pp⟩ ← elabPlace Γ p
+          match τp, pp, τd, pd with
+          | .PtrL _, pp, .PtrL _, pd => return .assign pd (.ptrOffset pp delta)
+          | _, _, _, _ => .error s!"pointer offset on a non-pointer place (line {line})"
       | _ =>
         let ⟨τr, er⟩ ← elabRvalue Γ rv
         if h : τr = τd then

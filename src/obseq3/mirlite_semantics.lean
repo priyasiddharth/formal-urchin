@@ -254,6 +254,25 @@ def evalRExpr
                 values_len := readWordSeq_length state'.mem resolved.addr 1
                 state := state'
               }
+  | .ptrOffset (σ := σ) src delta =>
+      -- pointer arithmetic: move the offset by delta pointees; the tag
+      -- (provenance) is preserved
+      match resolvePlace? state src with
+      | none => .err "offset source place not allocated"
+      | some resolved =>
+          match M.read state.perms resolved.addr 1 resolved.tag with
+          | .error e => .err s!"read access failed: {e}"
+          | .ok perms' =>
+              match state.mem.find? resolved.addr with
+              | some (.ptrVal base offset size tag) =>
+                  let newOff : Int := (offset : Int) + delta * (blockSize σ : Int)
+                  if newOff < 0 then
+                    .err "pointer offset before the allocation base"
+                  else
+                    .ok { values := [MemValue.ptrVal base newOff.toNat size tag]
+                          values_len := rfl
+                          state := { state with perms := perms' } }
+              | _ => .err "pointer offset of a non-pointer value"
   | .exposeAddr src =>
       -- ptr-to-int cast: expose the tag, yield the concrete address
       match resolvePlace? state src with

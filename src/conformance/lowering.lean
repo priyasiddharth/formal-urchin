@@ -52,11 +52,17 @@ structure LowerSt where
   locals : List UTy
   out : List LStmt   -- reversed
   fnPtrs : List (Nat × Nat) := []   -- rebased local ↦ fun defId (reified fn ptrs)
+  constVals : List (Nat × Nat) := []  -- rebased local ↦ known constant word (index resolution)
+
+def rebaseProj (off : Nat) : UProj → UProj
+  | .index (.fromLocal n) => .index (.fromLocal (n + off))
+  | pr => pr
 
 def rebasePlace (off : Nat) (p : UPlace) : UPlace :=
+  let projs := p.projs.map (rebaseProj off)
   match p.root with
-  | .local n => { p with root := .local (n + off) }
-  | .global _ => p
+  | .local n => { p with root := .local (n + off), projs }
+  | .global _ => { p with projs }
 
 def rebaseOperand (off : Nat) : UOperand → UOperand
   | .copy p => .copy (rebasePlace off p)
@@ -69,6 +75,8 @@ def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .aggregate v ops => .aggregate v (ops.map (rebaseOperand off))
   | .exposeAddr p => .exposeAddr (rebasePlace off p)
   | .fromExposed p => .fromExposed (rebasePlace off p)
+  | .ptrOffset p d => .ptrOffset (rebasePlace off p) d
+  | .binOp op a b => .binOp op (rebaseOperand off a) (rebaseOperand off b)
   | .fnRef fid => .fnRef fid
   | .uninit => .uninit
   | .unsupported d => .unsupported d
@@ -86,6 +94,56 @@ def fld (p : UPlace) (i : Nat) : UPlace :=
 
 def pushOut (st : LowerSt) (s : LStmt) : LowerSt :=
   { st with out := s :: st.out }
+
+/-- Resolve array-index projections to static field indices using the
+    tracked constant values of index locals. -/
+def resolveIdxPlace (st : LowerSt) (line : Nat) (p : UPlace) : Except String UPlace := do
+  let projs ← p.projs.mapM fun pr =>
+    match pr with
+    | .index (.const n) => pure (UProj.field n)
+    | .index (.fromLocal l) =>
+        match st.constVals.lookup l with
+        | some n => pure (UProj.field n)
+        | none => throw s!"unsupported: runtime array index (line {line})"
+    | .index (.unsupported d) => throw s!"unsupported: array index: {d} (line {line})"
+    | pr => pure pr
+  return { p with projs }
+
+def resolveIdxOperand (st : LowerSt) (line : Nat) : UOperand → Except String UOperand
+  | .copy p => do return .copy (← resolveIdxPlace st line p)
+  | .move p => do return .move (← resolveIdxPlace st line p)
+  | op => pure op
+
+/-- Statically-known integer value of an operand (consts, or const-tracked
+    plain locals). -/
+def constOf (st : LowerSt) : UOperand → Option Int
+  | .const n => some (Int.ofNat n)
+  | .constNeg n => some (-(Int.ofNat n))
+  | .copy { root := .local l, projs := [], .. } => (st.constVals.lookup l).map Int.ofNat
+  | .move { root := .local l, projs := [], .. } => (st.constVals.lookup l).map Int.ofNat
+  | _ => none
+
+def foldBinOp (op : String) (a b : Int) : Option Int :=
+  match op with
+  | "Add" | "AddChecked" | "WrappingAdd" => some (a + b)
+  | "Sub" | "SubChecked" | "WrappingSub" => some (a - b)
+  | "Mul" | "MulChecked" | "WrappingMul" => some (a * b)
+  | "Lt" => some (if a < b then 1 else 0)
+  | "Le" => some (if a ≤ b then 1 else 0)
+  | "Gt" => some (if a > b then 1 else 0)
+  | "Ge" => some (if a ≥ b then 1 else 0)
+  | "Eq" => some (if a == b then 1 else 0)
+  | "Ne" => some (if a != b then 1 else 0)
+  | _ => none
+
+def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URvalue
+  | .use op => do return .use (← resolveIdxOperand st line op)
+  | .ref kind prot p => do return .ref kind prot (← resolveIdxPlace st line p)
+  | .aggregate v ops => do return .aggregate v (← ops.mapM (resolveIdxOperand st line))
+  | .exposeAddr p => do return .exposeAddr (← resolveIdxPlace st line p)
+  | .fromExposed p => do return .fromExposed (← resolveIdxPlace st line p)
+  | .ptrOffset p d => do return .ptrOffset (← resolveIdxPlace st line p) d
+  | rv => pure rv
 
 /-- Does this type contain a reference (transitively through tuples and
     enum payloads)? Raw pointers don't count — not retagged at seams.
@@ -140,12 +198,40 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
 /-- Append one lowered assignment, desugaring aggregates, applying the
     reference-load retag rule, and rejecting unsupported payloads.
     Places/rvalues must already be rebased. -/
-def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue) :
+partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue) :
     Except String LowerSt := do
+  let dst ← resolveIdxPlace st line dst
+  let rv ← resolveIdxRvalue st line rv
+  -- track constant-valued plain locals (array-index resolution)
+  let st :=
+    match dst, rv with
+    | { root := .local d, projs := [], .. }, .use (.const n) =>
+        { st with constVals := (d, n) :: st.constVals }
+    | { root := .local d, projs := [], .. }, _ =>
+        { st with constVals := st.constVals.filter (·.1 != d) }
+    | _, _ => st
   match rv with
   | .unsupported d => .error s!"unsupported: {d} (line {line})"
   | .use .constUnit =>
       return st  -- unit value: no memory access
+  | .use (.constNeg _) =>
+      -- negative constants clamp to 0 in value positions (SB-irrelevant)
+      return pushOut st (.assign dst (.use (.const 0)) line)
+  | .ptrOffset _ _ =>
+      return pushOut st (.assign dst rv line)
+  | .binOp op a b =>
+      -- arithmetic exists only in statically-foldable positions (array
+      -- bounds checks and the like); dynamic arithmetic is unsupported
+      match constOf st a, constOf st b with
+      | some x, some y =>
+          match foldBinOp op x y with
+          | some v =>
+              if v < 0 then
+                .error s!"unsupported: negative arithmetic result (line {line})"
+              else
+                emitAssign st line dst (.use (.const v.toNat))
+          | none => .error s!"unsupported: binary op {op} (line {line})"
+      | _, _ => .error s!"unsupported: non-constant arithmetic (line {line})"
   | .use (.copy p) | .use (.move p) =>
       -- Miri retags reference-typed values loaded through a pointer
       -- indirection (see load_invalid_mut/shr)
@@ -386,6 +472,25 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
           let st ← emitAssign st line dest (.use (.copy (pointee tmp)))
           emitAssign st line (pointee tmp) (.use valOp)
       | _ => .error s!"unsupported: replace arguments (line {line})"
+  else if (f.path == ["core", "ptr", "mut_ptr", "add"] ||
+           f.path == ["core", "ptr", "const_ptr", "add"] ||
+           f.path == ["core", "ptr", "mut_ptr", "offset"] ||
+           f.path == ["core", "ptr", "const_ptr", "offset"] ||
+           f.path == ["core", "ptr", "mut_ptr", "wrapping_add"] ||
+           f.path == ["core", "ptr", "const_ptr", "wrapping_add"] ||
+           f.path == ["core", "ptr", "mut_ptr", "wrapping_offset"] ||
+           f.path == ["core", "ptr", "const_ptr", "wrapping_offset"]) then
+    -- pointer arithmetic with a constant delta (scaled by the pointee
+    -- size at elaboration); provenance/tag is preserved
+    some fun st args dest line => do
+      match args with
+      | [.copy p, d] | [.move p, d] =>
+          let delta ← match d with
+            | .const n => pure (Int.ofNat n)
+            | .constNeg n => pure (-(Int.ofNat n))
+            | _ => throw s!"unsupported: runtime pointer offset (line {line})"
+          return pushOut st (.assign dest (.ptrOffset p delta) line)
+      | _ => .error s!"unsupported: pointer offset arguments (line {line})"
   else if f.path == ["core", "mem", "drop"] then
     -- mem::drop: consumes the value; drop glue for modeled types is
     -- either nothing or elided flag maintenance (RefCell guards)
@@ -428,6 +533,16 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
     match blk.term with
     | .ret => return st
     | .goto t => walkBlock crate depth st f offset t (bb :: visited)
+    | .assert cond expected t =>
+        -- asserts must be statically satisfied (bounds checks on
+        -- constant indices); a failing or dynamic assert is unsupported
+        match constOf st (rebaseOperand offset cond) with
+        | some v =>
+            if (v != 0) == expected then
+              walkBlock crate depth st f offset t (bb :: visited)
+            else
+              .error s!"unsupported: statically failing assert (line {blk.termLine})"
+        | none => .error s!"unsupported: dynamic assert condition (line {blk.termLine})"
     | .unwindResume => .error s!"unsupported: reached unwind path in {f.name}"
     | .abort => .error s!"unsupported: reached abort in {f.name}"
     | .unsupported d => .error s!"unsupported: {d} (line {blk.termLine})"
@@ -519,6 +634,7 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
   | .aggregate v ops => do return .aggregate v (← ops.mapM (resolveGlobalsOp gmap))
   | .exposeAddr p => do return .exposeAddr (← resolveGlobalRoot gmap p)
   | .fromExposed p => do return .fromExposed (← resolveGlobalRoot gmap p)
+  | .ptrOffset p d => do return .ptrOffset (← resolveGlobalRoot gmap p) d
   | rv => .ok rv
 
 def resolveGlobalsStmt (gmap : List (Nat × Nat)) : LStmt → Except String LStmt
