@@ -232,11 +232,25 @@ def evalRExpr
       .ok { values := List.replicate (blockSize τ) MemValue.undef
             values_len := List.length_replicate
             state := state }
-  | .ref (τ := σ) kind prot src =>
+  | .ptrCast src =>
+      -- pointer type-punning cast: a tag-preserving one-cell copy
+      match resolvePlace? state src with
+      | none => .err "cast source place not allocated"
+      | some resolved =>
+          match M.read state.perms resolved.addr 1 resolved.tag with
+          | .error e => .err s!"read access failed: {e}"
+          | .ok perms' =>
+              let state' := { state with perms := perms' }
+              .ok {
+                values := readWordSeq state'.mem resolved.addr 1
+                values_len := readWordSeq_length state'.mem resolved.addr 1
+                state := state'
+              }
+  | .ref (τ := σ) kind prot mask src =>
       match resolvePlace? state src with
       | none => .err "reference source place not allocated"
       | some resolved =>
-          match M.ref state.perms resolved.addr (blockSize σ) resolved.tag kind prot with
+          match M.ref state.perms resolved.addr (blockSize σ) resolved.tag kind prot mask with
           | .ok (perms', freshTag) =>
               .ok {
                 values := [MemValue.ptrVal resolved.allocBase

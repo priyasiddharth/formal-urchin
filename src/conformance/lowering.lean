@@ -84,11 +84,14 @@ def pushOut (st : LowerSt) (s : LStmt) : LowerSt :=
   { st with out := s :: st.out }
 
 /-- Does this type contain a reference (transitively through tuples and
-    enum payloads)? Raw pointers don't count — not retagged at seams. -/
+    enum payloads)? Raw pointers don't count — not retagged at seams.
+    UnsafeCell contents don't count either: Miri's retag visitor does
+    not descend into interior-mutable regions. -/
 partial def containsRef : UTy → Bool
   | .ref _ _ => true
   | .tup tys => tys.any containsRef
   | .enum variants => variants.any (·.any containsRef)
+  | .cell _ => false
   | _ => false
 
 /-- Retag/copy `src` into `dst` at a retag point (inline seam or a
@@ -99,9 +102,11 @@ partial def containsRef : UTy → Bool
 partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace)
     (ty : UTy) (src : UPlace) : Except String LowerSt := do
   match ty with
-  | .ref mutbl _ =>
+  | .ref mutbl inner =>
+      -- pointee ty drives the UnsafeCell freeze mask at elaboration
       return pushOut st (.assign dst
-        (.ref (if mutbl then .mut else .shared) prot (pointee src)) line)
+        (.ref (if mutbl then .mut else .shared) prot
+          { pointee src with ty := inner }) line)
   | .tup tys => do
       let mut st := st
       for h : i in [0:tys.length] do
@@ -116,9 +121,10 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
           let dstF := fld dst (1 + i)
           let srcF := fld src (1 + i)
           match fields[i] with
-          | .ref mutbl _ =>
+          | .ref mutbl finner =>
               st := pushOut st (.assignIf (fld src 0) v dstF
-                (.ref (if mutbl then .mut else .shared) prot (pointee srcF)) line)
+                (.ref (if mutbl then .mut else .shared) prot
+                  { pointee srcF with ty := finner }) line)
           | fty =>
               if containsRef fty then
                 throw s!"unsupported: nested references in enum payload (line {line})"
@@ -211,6 +217,38 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
       match args with
       | szOp :: _ => emitAssign st line dest (.use szOp)
       | _ => .error s!"unsupported: from_size_align_unchecked arity (line {line})"
+  else if f.path == ["core", "cell", "new"] then
+    -- UnsafeCell/Cell are layout-transparent: the constructor is identity
+    some fun st args dest line => do
+      match dest.ty, args with
+      | .cell _, [valOp] => emitAssign st line dest (.use valOp)
+      | _, [_] => .error s!"unsupported: non-Cell core::cell constructor (line {line})"
+      | _, _ => .error s!"unsupported: cell constructor arity (line {line})"
+  else if f.path == ["core", "cell", "get"] then
+    -- UnsafeCell::get(&self) -> *mut T: a raw reborrow of the cell region;
+    -- the pointee type carries the freeze mask (all-cell → SharedReadWrite)
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          let inner := match p.ty with
+            | .ref _ i => i
+            | .raw _ i => i
+            | _ => .unsupported "cell get on non-pointer"
+          return pushOut st (.assign dest
+            (.ref .shared false { pointee p with ty := inner }) line)
+      | _ => .error s!"unsupported: cell get argument is not a place (line {line})"
+  else if f.path == ["core", "ptr", "read"] then
+    -- ptr::read(p): a plain read of *p (with the reference-load retag
+    -- rule applied by emitAssign when the value contains refs)
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          let inner := match p.ty with
+            | .ref _ i => i
+            | .raw _ i => i
+            | _ => .unsupported "ptr::read on non-pointer"
+          emitAssign st line dest (.use (.copy { pointee p with ty := inner }))
+      | _ => .error s!"unsupported: ptr::read argument is not a place (line {line})"
   else
     none
 

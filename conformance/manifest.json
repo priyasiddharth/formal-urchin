@@ -485,13 +485,18 @@
     {
       "id": "fail/stacked_borrows/illegal_read7",
       "source": "corpus/tests/fail/stacked_borrows/illegal_read7.rs",
-      "prep": null,
+      "prep": "prep/illegal_read7.rs",
       "artifact": "illegal_read7.ullbc.json",
-      "status": "unsupported",
-      "reason": "interior mutability",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 17
+      },
+      "rewrites": [
+        "*x.get_mut() -> &mut *x (same failing retag)"
+      ],
+      "miri_error": "retag .* tag does not exist in the borrow stack"
     },
     {
       "id": "fail/stacked_borrows/illegal_read8",
@@ -518,13 +523,18 @@
     {
       "id": "fail/stacked_borrows/interior_mut1",
       "source": "corpus/tests/fail/stacked_borrows/interior_mut1.rs",
-      "prep": null,
+      "prep": "prep/interior_mut1.rs",
       "artifact": "interior_mut1.ullbc.json",
-      "status": "unsupported",
-      "reason": "interior mutability (UnsafeCell)",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 13
+      },
+      "rewrites": [
+        "dropped error annotation"
+      ],
+      "miri_error": "retag .* tag does not exist in the borrow stack"
     },
     {
       "id": "fail/stacked_borrows/interior_mut2",
@@ -925,13 +935,19 @@
     {
       "id": "fail/both_borrows/mixed_mutability_static",
       "source": "corpus/tests/fail/both_borrows/mixed_mutability_static.rs",
-      "prep": null,
+      "prep": "prep/mixed_mutability_static.rs",
       "artifact": "mixed_mutability_static.ullbc.json",
-      "status": "unsupported",
-      "reason": "statics + interior mutability",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 16
+      },
+      "rewrites": [
+        "cast_mut().write((1, AtomicI32::new(0))) -> *(ptr as *mut _ as *mut i32) = 1"
+      ],
+      "miri_error": "that tag only grants SharedReadOnly permission",
+      "note": "write shrunk to the frozen first field (same verdict/line); static hoisted uninitialized"
     },
     {
       "id": "fail/both_borrows/mut_exclusive_violation1",
@@ -1258,14 +1274,17 @@
     {
       "id": "pass/both_borrows/basic_aliasing_model::cell_inside_struct",
       "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
-      "prep": null,
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "Cell + named ADT",
+      "prep": "prep/basic_aliasing_model__cell_inside_struct.rs",
+      "artifact": "basic_aliasing_model__cell_inside_struct.ullbc.json",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ok"
       },
-      "rewrites": []
+      "rewrites": [
+        "scenario extracted",
+        "field2.set(10) -> write through &field2 cast (allow attr added)"
+      ]
     },
     {
       "id": "pass/both_borrows/basic_aliasing_model::zst",
@@ -1434,6 +1453,23 @@
         "verdict": "ok"
       },
       "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/interior_mutability::unsafe_cell_invalidate",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__unsafe_cell_invalidate.rs",
+      "artifact": "interior_mutability__unsafe_cell_invalidate.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "transmute(raw2) -> &*(raw2 as *const UnsafeCell<i32>)",
+        "+= -> read;write"
+      ],
+      "note": "exercises weak protection: popping the protected &UnsafeCell (SharedReadWrite) argument is allowed"
     }
   ]
 }

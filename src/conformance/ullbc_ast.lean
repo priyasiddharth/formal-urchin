@@ -37,8 +37,27 @@ inductive UTy
 | raw (mutbl : Bool) (inner : UTy)
 | tup (tys : List UTy)
 | enum (variants : List (List UTy))
+| cell (inner : UTy)     -- UnsafeCell/Cell/Atomic*: interior-mutable region
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
+
+/-- Cell count of a type (mirrors `blockSize ∘ toLayout`). -/
+partial def uSize : UTy → Nat
+  | .nat | .ref _ _ | .raw _ _ => 1
+  | .cell inner => uSize inner
+  | .tup tys => (tys.map uSize).foldl (· + ·) 0
+  | .enum variants =>
+      1 + (variants.map (fun fs => (fs.map uSize).foldl (· + ·) 0)).foldl Nat.max 0
+  | .unsupported _ => 1
+
+/-- UnsafeCell freeze mask: true for cells inside an interior-mutable
+    region. Shared/raw-const retags give masked cells SharedReadWrite. -/
+partial def freezeMask : UTy → List Bool
+  | .nat | .ref _ _ | .raw _ _ => [false]
+  | .cell inner => List.replicate (uSize inner) true
+  | .tup tys => tys.flatMap freezeMask
+  | .enum e => List.replicate (uSize (.enum e)) false
+  | .unsupported _ => []
 
 inductive UProj
 | deref
@@ -194,7 +213,8 @@ deriving Inhabited
 structure ParseCtx where
   tbl : TyTable
   decls : List (Nat × DeclInfo)
-  boxPointee : List (Nat × Json)   -- Box decl id ↦ pointee type Json
+  boxPointee : List (Nat × Json)    -- Box decl id ↦ pointee type Json
+  cellPointee : List (Nat × Json)   -- UnsafeCell/Cell decl id ↦ inner type Json
 
 partial def collectTable (j : Json) (acc : TyTable) : TyTable :=
   match j with
@@ -276,6 +296,67 @@ partial def collectBoxPointees (tbl : TyTable) (decls : List (Nat × DeclInfo))
   | .arr a => a.foldl (fun acc v => collectBoxPointees tbl decls v acc) acc
   | _ => acc
 
+/-- Light pass: def_id ↦ path idents for every fun decl. -/
+def funPaths (root : Json) : List (Nat × List String) :=
+  match getK root "translated" >>= (getK · "fun_decls") with
+  | none => []
+  | some funsJ =>
+      (asArr funsJ).filterMap fun f => do
+        let did ← getK f "def_id" >>= asNat
+        pure (did, itemName f)
+
+/-- The type Json of an operand (place ty or const ty). -/
+def operandTyJson (op : Json) : Option Json :=
+  match sumKey op with
+  | some ("Copy", p) | some ("Move", p) => getK p "ty"
+  | some ("Const", c) => getK c "ty"
+  | _ => none
+
+/-- Prescan: infer UnsafeCell/Cell inner types from calls to their
+    (bodyless) constructors and accessors:
+    `new(v) -> CellTy` gives CellTy ↦ ty(v);
+    `get(&CellTy) -> *mut T` gives CellTy ↦ T. -/
+partial def collectCellPointees (tbl : TyTable) (paths : List (Nat × List String))
+    (j : Json) (acc : List (Nat × Json)) : List (Nat × Json) :=
+  let acc :=
+    match getK j "Call" >>= (getK · "call") with
+    | some callJ =>
+        let funIdx? :=
+          (getK callJ "func" >>= (getK · "Regular") >>= (getK · "kind")
+            >>= (getK · "Fun") >>= (getK · "Regular")) >>= asNat
+        match funIdx? >>= (paths.lookup ·) with
+        | some ["core", "cell", "new"] =>
+            let did? := (getK callJ "dest" >>= (getK · "ty")) >>= (adtDeclId tbl ·)
+            let argTy? := (((getK callJ "args").map asArr).getD []).head? >>= operandTyJson
+            match did?, argTy? with
+            | some did, some t => if (acc.lookup did).isNone then (did, t) :: acc else acc
+            | _, _ => acc
+        | some ["core", "cell", "get"] =>
+            let argTy? := (((getK callJ "args").map asArr).getD []).head? >>= operandTyJson
+            let did? := argTy?.bind fun t =>
+              match sumKey (resolveTyJson tbl t) with
+              | some ("Ref", args) =>
+                  match asArr args with
+                  | [_, inner, _] => adtDeclId tbl inner
+                  | _ => none
+              | _ => none
+            let retTy? := (getK callJ "dest" >>= (getK · "ty")).bind fun t =>
+              match sumKey (resolveTyJson tbl t) with
+              | some ("RawPtr", args) =>
+                  match asArr args with
+                  | [inner, _] => some inner
+                  | _ => none
+              | _ => none
+            match did?, retTy? with
+            | some did, some t => if (acc.lookup did).isNone then (did, t) :: acc else acc
+            | _, _ => acc
+        | _ => acc
+    | none => acc
+  match j with
+  | .obj m => m.foldl (fun acc _ v => collectCellPointees tbl paths v acc) acc
+  | .arr a => a.foldl (fun acc v => collectCellPointees tbl paths v acc) acc
+  | _ => acc
+
 /-! ## Type parsing -/
 
 partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
@@ -315,6 +396,12 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     | none => .unsupported "Box with uninferred pointee"
                   else if last == "Layout" then
                     .nat  -- Layout carries only its size (constructor is shimmed)
+                  else if last == "UnsafeCell" || last == "Cell" then
+                    match ctx.cellPointee.lookup did with
+                    | some inner => .cell (parseTy ctx (fuel - 1) inner)
+                    | none => .cell .nat  -- fallback: one interior-mutable word
+                  else if last.startsWith "Atomic" then
+                    .cell .nat  -- Atomic* = UnsafeCell around one word
                   else
                     match info.kind with
                     | .struct fields => .tup (fields.map (parseTy ctx (fuel - 1)))
@@ -576,7 +663,8 @@ def parseCrate (root : Json) : Except String UCrate := do
   let tbl := collectTable root []
   let decls := parseDecls root
   let boxPointee := collectBoxPointees tbl decls root []
-  let ctx : ParseCtx := { tbl, decls, boxPointee }
+  let cellPointee := collectCellPointees tbl (funPaths root) root []
+  let ctx : ParseCtx := { tbl, decls, boxPointee, cellPointee }
   let globals :=
     match getK root "translated" >>= (getK · "global_decls") with
     | some gJ => (asArr gJ).map (parseGlobal ctx)

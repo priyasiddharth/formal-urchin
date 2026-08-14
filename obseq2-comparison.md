@@ -4,6 +4,27 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-14 — Interior Mutability (UnsafeCell freeze masks, weak SRW protection)
+
+Fourth same-day increment. Suite: **pass 47 | fail 0 | xfail 0 | xpass 0** — fail tests
+**36/75** verdict-conformant (32 line-accurate), 11 pass scenarios, 63 unsupported.
+
+Shared and raw-const retags now carry a type-derived per-cell **freeze mask**: cells inside
+`UnsafeCell` get a SharedReadWrite item inserted above the granting item with no access;
+the rest freeze. The mask is computed loader-side (`freezeMask` over `UTy`, which gained a
+`cell` constructor) and carried on `RExpr.ref` — `obseq.LayoutTy` stays untouched.
+Protection became **weak on SharedReadWrite** (popping/deallocating protected SRW is
+allowed — verified by the `unsafe_cell_invalidate` pass scenario — while protected
+Unique/frozen pops remain UB). `UnsafeCell`/`Cell` are opaque in charon output with
+bodyless `new`/`get`: pointees are inferred from call sites, `new` is shimmed as identity,
+`get` as a masked shared reborrow, `ptr::read` as a deref read; `Atomic*` maps to a
+one-word cell. Pointer type-punning casts became tag-preserving reinterprets
+(`RExpr.ptrCast`). Newly conformant: interior_mut1, illegal_read7,
+mixed_mutability_static (all at miri's lines), plus cell_inside_struct and
+unsafe_cell_invalidate on the pass side.
+
+---
+
 ## 2026-08-14 — Enums (Option) and Heap Allocation/Deallocation (Box, std::alloc)
 
 Third same-day increment. Suite: **pass 42 | fail 0 | xfail 0 | xpass 0** — fail tests

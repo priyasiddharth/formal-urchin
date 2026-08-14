@@ -30,13 +30,15 @@ inductive Place (Γ : Ctx) : LayoutTy → Type where
 | deref : Place Γ (obseq.LayoutTy.PtrL τ) → Place Γ τ
 
 /-- A right-hand-side expression of layout type `τ` in context `Γ`.
-    `ref`'s `Bool` marks a *protected* (function-entry) retag; `uninit`
-    fills the destination with undef (used to materialize hoisted statics
-    and other uninitialized allocations). -/
+    `ref`'s `Bool` marks a *protected* (function-entry) retag and its
+    `List Bool` is the UnsafeCell freeze mask (true = interior-mutable
+    cell); `uninit` fills the destination with undef (used to
+    materialize hoisted statics and other uninitialized allocations). -/
 inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | constInit : Word → RExpr Γ obseq.LayoutTy.NatL
 | copy : Place Γ τ → RExpr Γ τ
-| ref : RefKind → Bool → Place Γ τ → RExpr Γ (obseq.LayoutTy.PtrL τ)
+| ref : RefKind → Bool → List Bool → Place Γ τ → RExpr Γ (obseq.LayoutTy.PtrL τ)
+| ptrCast : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | uninit : RExpr Γ τ
 
 /-- Allocation length for `Stmt.alloc`: a static count or a runtime word

@@ -121,6 +121,25 @@ def t12_protected_shared_blocks_write : IO Unit := do
   let _ ← expectOkE (sb_write ap 500 1 root) "t12 write after frame pop"
   pure ()
 
+/-- UnsafeCell freeze mask: a shared retag with a masked (interior-
+    mutable) cell yields a writable SRW item there that survives parent
+    reads, while unmasked cells stay frozen; and popping a protected SRW
+    is allowed (weak protection). -/
+def t13_freeze_mask_and_weak_protection : IO Unit := do
+  let ap := AccessPerms.init
+  let (ap, root) ← expectOkE (sb_own ap 600 2) "t13 own 2 cells"
+  -- shared retag over both cells: cell 0 frozen, cell 1 interior-mutable
+  let (ap, s) ← expectOkE (sb_ref ap 600 2 root .Shared false [false, true]) "t13 masked shared"
+  let ap ← expectOkE (sb_read ap 600 2 s) "t13 read whole range via shared"
+  expectErrE (sb_write ap 600 1 s) "t13 write frozen cell" "does not grant write"
+  let ap ← expectOkE (sb_write ap 601 1 s) "t13 write cell part (SRW)"
+  -- weak protection: a protected masked (SRW) item may be popped
+  let ap := sb_push_frame ap
+  let (ap, _c) ← expectOkE (sb_ref ap 601 1 root .Shared true [true]) "t13 protected cell retag"
+  let ap ← expectOkE (sb_write ap 601 1 root) "t13 root write pops protected SRW (weak)"
+  let _ ← expectOkE (sb_pop_frame ap) "t13 pop frame"
+  pure ()
+
 /-! ## Program-level tests (mirlite semantics) -/
 
 abbrev M := PermissionModel.stackedBorrows
@@ -143,7 +162,7 @@ def tA : Place ΓA natL := .local ⟨⟨2, by decide⟩, rfl⟩
 def t6_deref_write_then_owner_read : IO Unit := do
   let prog : Prog ΓA := [
     .assign xA (.constInit 7),
-    .assign pA (.ref .Mut false xA),
+    .assign pA (.ref .Mut false [] xA),
     .assign (.deref pA) (.constInit 8),
     .assign tA (.copy xA),          -- read via owner pops the &mut
     .assign (.deref pA) (.constInit 9)  -- UB
@@ -153,7 +172,7 @@ def t6_deref_write_then_owner_read : IO Unit := do
 def t7_deref_write_ok : IO Unit := do
   let prog : Prog ΓA := [
     .assign xA (.constInit 7),
-    .assign pA (.ref .Mut false xA),
+    .assign pA (.ref .Mut false [] xA),
     .assign (.deref pA) (.constInit 8),
     .assign (.deref pA) (.constInit 9)
   ]
@@ -177,7 +196,7 @@ def t8_field_borrow_at_offset : IO Unit := do
   let prog : Prog ΓB := [
     .assign fld0B (.constInit 1),
     .assign fld1B (.constInit 2),
-    .assign pB (.ref .Mut false fld1B),
+    .assign pB (.ref .Mut false [] fld1B),
     .assign (.deref pB) (.constInit 5),
     .assign tB (.copy (.deref pB))
   ]
@@ -190,7 +209,7 @@ def t9_field_borrow_invalidated_by_direct_write : IO Unit := do
   let prog : Prog ΓB := [
     .assign fld0B (.constInit 1),
     .assign fld1B (.constInit 2),
-    .assign pB (.ref .Mut false fld1B),
+    .assign pB (.ref .Mut false [] fld1B),
     .assign fld1B (.constInit 9),   -- direct write via owner pops the borrow
     .assign tB (.copy (.deref pB))  -- UB
   ]
@@ -209,8 +228,8 @@ def t10_disjoint_field_borrows : IO Unit := do
   let prog : Prog ΓC := [
     .assign fld0C (.constInit 1),
     .assign fld1C (.constInit 2),
-    .assign p0C (.ref .Mut false fld0C),
-    .assign p1C (.ref .Mut false fld1C),
+    .assign p0C (.ref .Mut false [] fld0C),
+    .assign p1C (.ref .Mut false [] fld1C),
     .assign (.deref p0C) (.constInit 10),
     .assign (.deref p1C) (.constInit 20)
   ]
@@ -230,6 +249,7 @@ def runAll : IO Unit := do
   t10_disjoint_field_borrows
   t11_protected_item_blocks_pop
   t12_protected_shared_blocks_write
-  IO.println "obseq3 tests passed (12/12)"
+  t13_freeze_mask_and_weak_protection
+  IO.println "obseq3 tests passed (13/13)"
 
 end obseq3.Tests

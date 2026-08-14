@@ -28,6 +28,7 @@ partial def toLayout : UTy → Except String LayoutTy
   | .ref _ inner => do return .PtrL (← toLayout inner)
   | .raw _ inner => do return .PtrL (← toLayout inner)
   | .tup tys => do return .TupL (← tys.mapM toLayout)
+  | .cell inner => toLayout inner   -- interior-mutable wrapper is layout-transparent
   | .enum variants => do
       let vls ← variants.mapM (·.mapM toLayout)
       return .TupL (.NatL :: (← mergeVariantLayouts vls))
@@ -73,7 +74,7 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
   | .use (.unsupported d) => .error s!"unsupported: {d}"
   | .ref kind prot p => do
       let ⟨τ, pl⟩ ← elabPlace Γ p
-      return ⟨.PtrL τ, .ref (toRefKind kind) prot pl⟩
+      return ⟨.PtrL τ, .ref (toRefKind kind) prot (freezeMask p.ty) pl⟩
   | .uninit => .error "uninit is elaborated against the destination type"
   | .aggregate _ _ => .error "aggregate not desugared by lowering"
   | .unsupported d => .error s!"unsupported: {d}"
@@ -100,7 +101,12 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
         if h : τr = τd then
           return .assign pd (h ▸ er)
         else
-          .error s!"type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
+          -- pointer casts that change the pointee type are tag-preserving
+          -- reinterprets (`p as *mut U`)
+          match τd, pd, τr, er with
+          | .PtrL _, pd, .PtrL _, .copy pl => return .assign pd (.ptrCast pl)
+          | _, _, _, _ =>
+            .error s!"type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
   | .assignIf discr val dst rv line => do
       let discrP ← elabNatPlace Γ discr "assignIf discriminant"
       let ⟨τd, pd⟩ ← elabPlace Γ dst

@@ -37,10 +37,10 @@ unsupported-marked test now loads — update the manifest).
 
 ## Current score (miri @ PIN)
 
-- fail tests: 33/75 verdict-conformant (line-accurate on 29), 0 xfail,
-  40 unsupported with per-test reasons.
-- pass scenarios: 9 supported and clean; the rest unsupported with
-  reasons (interior mutability, int-to-ptr, slices, threads, transmute).
+- fail tests: 36/75 verdict-conformant (line-accurate on 32), 0 xfail,
+  39 unsupported with per-test reasons.
+- pass scenarios: 11 supported and clean; the rest unsupported with
+  reasons (int-to-ptr, slices, threads, transmute, RefCell/MaybeUninit).
 - Every test that loads agrees with Miri's verdict; there are no
   xfail-model divergences.
 
@@ -51,7 +51,14 @@ allocation and deallocation (`Box::new` / `std::alloc` shims →
 `alloc`/`dealloc` statements; deallocation requires a live writable tag,
 rejects protected items, and removes the borrow stacks), enums
 (discriminant word + merged payload cells; variant-guarded seam retags),
-struct decls (as tuples), and reference-load retags (`*box`-style loads
-of refs are retagged, per Miri). Remaining exclusions: interior
-mutability (UnsafeCell), int-to-ptr exposure, transmute, arrays/slices,
-threads, closures/fn ptrs, drop glue.
+struct decls (as tuples), reference-load retags (`*box`-style loads of
+refs are retagged, per Miri), and interior mutability: shared/raw-const
+retags carry a type-derived UnsafeCell freeze mask (masked cells get
+SharedReadWrite with no access), protection is weak on SharedReadWrite
+items (popping/deallocating them is allowed), `UnsafeCell`/`Cell`/
+`Atomic*` map to cell-marked layouts with pointees inferred from
+constructor/accessor call sites, and `UnsafeCell::{new,get}`, `Cell::new`
+and `ptr::read` are shimmed. Pointer type-punning casts are
+tag-preserving reinterprets (`RExpr.ptrCast`). Remaining exclusions:
+int-to-ptr exposure, transmute, arrays/slices, threads, closures/fn
+ptrs, drop glue, RefCell (runtime borrow flags need control flow).

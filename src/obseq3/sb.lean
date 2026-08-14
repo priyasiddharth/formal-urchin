@@ -107,9 +107,15 @@ def AccessPerms.init : AccessPerms := { StackMap := [], NextTag := 0 }
 def AccessPerms.isProtected (ap : AccessPerms) (tag : Tag) : Bool :=
   ap.protFrames.any (·.contains tag)
 
-/-- First protected item in a list of items about to be popped/disabled. -/
+/-- First item whose protection blocks a pop. Protection is *weak* on
+    SharedReadWrite items (`RawPtr true`): Miri allows popping and even
+    deallocating protected interior-mutable/raw items — only Unique and
+    frozen protected items make a pop UB. -/
 def firstProtected (ap : AccessPerms) (items : List Item) : Option Item :=
-  items.find? (fun k => ap.isProtected k.tag)
+  items.find? (fun k =>
+    match k with
+    | .RawPtr true _ => false
+    | _ => ap.isProtected k.tag)
 
 def freshTag (ap : AccessPerms) : Tag × AccessPerms :=
   (ap.NextTag, { ap with NextTag := ap.NextTag + 1 })
@@ -227,19 +233,35 @@ def sb_write (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
       directly above the granting item (sibling raws coexist);
     - `TwoPhase`: read access via the parent, insert above the granting
       item (reserved borrow behaves like SharedReadWrite until activation).
+    `mask` marks the cells inside `UnsafeCell` ranges (type-directed, from
+    the pointee type): for `Shared` and `Raw false` retags, masked cells
+    get a SharedReadWrite item inserted above the granting item with NO
+    access (interior mutability), instead of the frozen item + read.
     With `prot := true` (function-entry retags at inline seams), the fresh
     tag is registered in the innermost protector frame. -/
 def sb_ref (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) (kind : RefKind)
-    (prot : Bool := false) : Except String (AccessPerms × Tag) := do
+    (prot : Bool := false) (mask : List Bool := []) :
+    Except String (AccessPerms × Tag) := do
   let (newTag, ap) := freshTag ap
   let newItem := kind.toItem newTag
-  let cellOp : AccessPerms → Word → Except String AccessPerms :=
+  let cellOp : AccessPerms → Word → Nat → Except String AccessPerms :=
     match kind with
-    | .Mut => fun ap a => do pushCell (← writeCell ap a tag) a newItem
-    | .Shared | .Raw false => fun ap a => do pushCell (← readCell ap a tag) a newItem
-    | .Raw true => fun ap a => insertAboveCell ap a tag newItem
-    | .TwoPhase => fun ap a => do insertAboveCell (← readCell ap a tag) a tag newItem
-  let ap ← foldCells cellOp ap addr len
+    | .Mut => fun ap a _ => do pushCell (← writeCell ap a tag) a newItem
+    | .Shared | .Raw false => fun ap a i =>
+        if mask.getD i false then
+          insertAboveCell ap a tag (.RawPtr true newTag)
+        else do
+          pushCell (← readCell ap a tag) a newItem
+    | .Raw true => fun ap a _ => insertAboveCell ap a tag newItem
+    | .TwoPhase => fun ap a _ => do insertAboveCell (← readCell ap a tag) a tag newItem
+  let rec go (ap : AccessPerms) (i : Nat) : Except String AccessPerms :=
+    if i < len then
+      match cellOp ap (addr + i) i with
+      | .error e => .error s!"{e} (cell offset {i})"
+      | .ok ap' => go ap' (i + 1)
+    else .ok ap
+    termination_by len - i
+  let ap ← go ap 0
   if prot then
     match ap.protFrames with
     | [] => .error "sb-ref: protected retag outside any protector frame"
