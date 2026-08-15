@@ -6,12 +6,12 @@ mirlite-v3 → OSEA-IR-v3 compiler: the Checked family of
 `src/obseq2/compile.lean`, ported to the v3 syntax/target.
 
 Differences from v2:
-- compiled subset: everything except `refSlice` (rejected with
-  `CompilerError.unsupported`) — `constInit`/`copy`/`ref`/`uninit`/
-  `exposeAddr`/`fromExposed`/`ptrCast` (a Memcpy at PTy)/`ptrOffset`
-  (delta pre-scaled to cells)/`halt`, `pushProtectors`/`popProtectors`,
-  `alloc`/`dealloc`, `assignIf` (via `SkipIf`, the target's only —
-  forward-only — branch);
+- the compiler is TOTAL on obseq3's statement/rvalue surface: `constInit`/
+  `copy`/`ref`/`uninit`/`exposeAddr`/`fromExposed`/`ptrCast` (a Memcpy at
+  PTy)/`ptrOffset` (delta pre-scaled to cells)/`refSlice` (runtime-length
+  `BorrowRest`)/`halt`, `pushProtectors`/`popProtectors`, `alloc`/`dealloc`,
+  `assignIf` (via `SkipIf`, the target's only — forward-only — branch);
+  `CompilerError.unsupported` is retained for future source constructs;
 - one `Rhs.Borrow` (kind, prot, mask, len) replaces the three v2 borrow
   forms; internal place-lowering borrows use `prot := false, mask := []`,
   while an `RExpr.ref`'s own prot/mask are carried into the final borrow;
@@ -493,6 +493,11 @@ inductive RExprToEvidence {Γ : Ctx}
       (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
       RExprToEvidence dstPtr (.ptrOffset (τ := τ) src delta)
+  | refSlice
+      {σ τ : LayoutTy} (kind : RefKind) (prot : Bool)
+      (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
+      (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
+      RExprToEvidence dstPtr (.refSlice (τ := τ) kind prot src)
 
 def compileRExprToChecked
   (dstPtr : Register)
@@ -576,7 +581,18 @@ def compileRExprToChecked
         result := (),
         evidence := RExprToEvidence.ptrOffset src delta srcRes srcOut.evidence
       }
-  | .refSlice _ _ _ => CheckedCompilerM.throw (.unsupported "rvalue refSlice")
+  | .refSlice kind prot src => do
+      let srcOut ← placeToRegChecked RefKind.Shared src
+      let srcRes := srcOut.result
+      let tmpReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Assgn tmpReg (Rhs.BorrowRest kind prot srcRes.reg)]
+          ++ cleanupInstrs srcRes.cleanup
+          ++ [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr]))
+      pure {
+        result := (),
+        evidence := RExprToEvidence.refSlice kind prot src srcRes srcOut.evidence
+      }
 
 /-- Evidence-free twin of `compileStmtChecked`'s two assign cases (kept in
     sync with them), for use as the guarded block of `assignIf`. -/

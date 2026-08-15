@@ -107,6 +107,7 @@ inductive Rhs
 | ExposeAddr (srcPtr : Register)
 | FromExposed (srcPtr : Register)
 | PtrOffset (srcPtr : Register) (deltaCells : Int)
+| BorrowRest (kind : RefKind) (prot : Bool) (srcPtr : Register)
 deriving Repr, Inhabited, BEq
 
 inductive Instr
@@ -227,6 +228,29 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
                RhsResult.Ok [Val.Ptr pBase newOff.toNat pSize pTag] obseq.TyVal.PTy s2
            | _ => RhsResult.Err "pointer offset of a non-pointer value"
      | _ => RhsResult.Err "PtrOffset expects Ptr"
+
+  | Rhs.BorrowRest kind prot srcPtr =>
+     -- slice retag: read the fat pointer cell, then a fresh tag over the
+     -- RUNTIME rest of its allocation (size - offset) — mirlite's
+     -- `.refSlice`; the mask is always empty for slice data
+     match state.reg.lookup srcPtr with
+     | some (_, [Val.Ptr base offset size tag]) =>
+       let addr := base + offset
+       if addr < base || addr >= base + size then RhsResult.Err "OOB"
+       else
+         match M.read state.perms addr 1 tag with
+         | .error msg => RhsResult.Err msg
+         | .ok perms2 =>
+           match state.mem.find? addr with
+           | some (Val.Ptr pBase pOff pSize pTag) =>
+             let len := pSize - pOff
+             match M.ref perms2 (pBase + pOff) len pTag kind prot [] with
+             | .ok (perms3, newTag) =>
+               let s2 := { state with perms := perms3 }
+               RhsResult.Ok [Val.Ptr pBase pOff pSize newTag] obseq.TyVal.PTy s2
+             | .error msg => RhsResult.Err msg
+           | _ => RhsResult.Err "slice value is not a pointer"
+     | _ => RhsResult.Err "BorrowRest expects Ptr"
 
   | Rhs.AllocN ty n =>
      let units := n * typeSize ty

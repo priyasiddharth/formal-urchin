@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — OSEA-v3 refSlice: Full-Suite Differential (76/76, 0 mismatches)
+
+Eighteenth increment, closing the coverage arc. `Rhs.BorrowRest (kind, prot, srcPtr)` —
+the runtime-length slice retag (`len := size − offset` from the stored fat value, mask
+always []) — was the last uncompiled construct. Differential: **matched 76 | mismatch 0 |
+skipped 0**: every passing conformance test compiles to OSEA-IR and agrees with mirlite,
+UB attributed to the same source statement throughout. The compiler is now total on
+obseq3's statement/rvalue surface (g5 re-purposed as a totality witness). Eight
+increments, each with zero mismatches on first run — evidence that the compilation
+discipline (mirror mirlite's event order; reads live inside instructions; Die only for
+compiler-minted tags) was right. Unit tests 36/36 (g13 golden; d22 slice write; d23 the
+fnentry_invalidation2 popping mechanism).
+
+---
+
 ## 2026-08-15 — OSEA-v3 Pointer Ops: ptrCast for Free, PtrOffset Pre-Scaled (matched 75/76)
 
 Seventeenth increment. `ptrCast` compiled with NO new instruction — mirlite's semantics

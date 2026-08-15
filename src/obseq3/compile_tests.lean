@@ -106,12 +106,26 @@ def g4_field_offsets_and_die : IO Unit :=
      Instr.Halt]
     "g4 field offsets and die"
 
-/-- Non-core statements are rejected with `unsupported`, not miscompiled. -/
-def g5_unsupported_stmt : IO Unit := do
-  match compileProg (Γ := Γ2) [.assign p2 (.refSlice .Shared false p2), .halt] with
-  | .error (.unsupported _) => pure ()
-  | .error e => throw (IO.userError s!"g5: expected unsupported, got {reprStr e}")
-  | .ok _ => throw (IO.userError "g5: expected unsupported, got ok")
+/-- The compiler is total on the source surface: a program using every
+    statement/rvalue family compiles. (Replaces the retired
+    unsupported-witness test — no unsupported construct remains.) -/
+def g5_compiler_total : IO Unit := do
+  match compileProg (Γ := Γ2)
+      [.assign x2 (.constInit 1),
+       .pushProtectors,
+       .assign p2 (.ref .Mut true [] x2),
+       .popProtectors,
+       .assignIf x2 1 (.deref p2) (.constInit 2),
+       .assign p2 (.ptrCast p2),
+       .assign p2 (.refSlice (.Raw true) false p2),
+       .assign x2 (.exposeAddr p2),
+       .assign p2 (.fromExposed x2),
+       .assign p2 (.ptrOffset p2 0),
+       .assign x2 .uninit,
+       .dealloc p2,
+       .halt] with
+  | .ok _ => pure ()
+  | .error e => throw (IO.userError s!"g5: total compiler rejected: {reprStr e}")
 
 /-- Protector frames compile to `PushProt`/`PopProt` around the
     protected borrow. -/
@@ -536,12 +550,54 @@ def d21_offset_before_base : IO Unit :=
      .assign qE (.ptrOffset pE (-1))]
     (.ub 2) "d21 offset before base"
 
+/-- `refSlice` emits a runtime-length `BorrowRest` carrying kind/prot. -/
+def g13_ref_slice : IO Unit :=
+  expectCode ΓF
+    [.assign fld0F (.constInit 1),
+     .assign rF (.ref (.Raw true) false [] tupF),
+     .assign qF (.refSlice .Mut false rF),
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
+     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] 2 (Register.R 0) 0),
+     Instr.RStore pTy (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 4) (Rhs.BorrowRest .Mut false (Register.R 1)),
+     Instr.RStore pTy (Register.R 4) (Register.R 3),
+     Instr.Halt]
+    "g13 refSlice"
+
+/-- Positive: a Mut slice retag over the runtime rest-of-allocation
+    (2 cells), written through and read back via the owner. -/
+def d22_ref_slice_write : IO Unit :=
+  expectDiff ΓF
+    [.assign fld0F (.constInit 1),
+     .assign fld1F (.constInit 2),
+     .assign rF (.ref (.Raw true) false [] tupF),
+     .assign qF (.refSlice .Mut false rF),
+     .assign (.deref qF) (.constInit 9),
+     .assign tF (.copy fld0F)]
+    .ok "d22 refSlice write"
+
+/-- Negative: the slice retag's write access pops a shared ref sitting
+    above the raw; using it afterwards is UB at the same statement on
+    both machines (the fnentry_invalidation2 mechanism). -/
+def d23_ref_slice_pops : IO Unit :=
+  expectDiff ΓF
+    [.assign fld0F (.constInit 1),
+     .assign rF (.ref (.Raw true) false [] tupF),
+     .assign qF (.ref .Shared false [] fld0F),
+     .assign rF (.refSlice .Mut false rF),
+     .assign tF (.copy (.deref qF))]
+    (.ub 4) "d23 refSlice pops"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
   g3_deref_destination,
   g4_field_offsets_and_die,
-  g5_unsupported_stmt,
+  g5_compiler_total,
   g6_protector_frame,
   g7_uninit_undef_store,
   g8_heap_alloc,
@@ -549,6 +605,7 @@ def allTests : List (IO Unit) := [
   g10_expose_addr,
   g11_assign_if_skip,
   g12_ptr_offset_prescaled,
+  g13_ref_slice,
   d1_owner_read_pops_mut,
   d2_deref_roundtrip,
   d3_field_borrow,
@@ -569,7 +626,9 @@ def allTests : List (IO Unit) := [
   d18_assign_if_body_ub,
   d19_ptr_cast_roundtrip,
   d20_cast_then_offset_into_pair,
-  d21_offset_before_base]
+  d21_offset_before_base,
+  d22_ref_slice_write,
+  d23_ref_slice_pops]
 
 def runAll : IO Unit := do
   allTests.forM id

@@ -260,8 +260,11 @@ has a planned target instruction. Skip histogram with designs:
   compilation. matched 68 → 71. One latent asymmetry recorded
   (fresh-local-under-skipped-guard; unreachable from the corpus) in
   journal/2026-08/2026-08-15-osea-skipif.md.
-- `refSlice`: Borrow with runtime len — `Rhs.BorrowRest` reading len
-  from the pointee allocation size, as mirlite's refSlice does.
+- ~~`refSlice`~~ **DONE 2026-08-15**: `Rhs.BorrowRest (kind, prot, reg)`
+  — reads the fat pointer cell, retags the runtime rest-of-allocation
+  (size − offset), mask []. **SECTION CLOSED: matched 76 | mismatch 0 |
+  skipped 0 — the compiler is total on obseq3's surface and the full
+  passing suite runs differentially.**
 **Why parked:** proof-core-first scope (user decision 2026-08-14); each
 increment should land with its own differential numbers.
 **To resume:** pick pushProtectors first (31 tests); add instruction to

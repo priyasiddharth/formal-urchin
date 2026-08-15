@@ -99,3 +99,21 @@ skipped 51; suite unchanged pass 76 | fail 0.
 **Next-session pickup:** parked.md → "OSEA-v3 remaining increments"
 (pushProtectors first, ~31 tests), or CompilerInv port (conjuncts
 6/7/8/9 are the breaking ones per the obseq2 proof inventory).
+
+## 2026-08-15 (later)
+**Session:** `yes-the-miri-happy-breeze` (continued)
+**Theme:** OSEA-v3 coverage arc completed — seven follow-up increments
+(protectors, uninit, heap, exposed provenance, SkipIf, ptr ops,
+refSlice) ending at **matched 76 | mismatch 0 | skipped 0**: the
+compiler is total on obseq3's surface and the full passing suite runs
+differentially.
+**Key outputs:** oseair instruction set (PushProt/PopProt, AllocN/
+AllocDyn/Dealloc, ExposeAddr/FromExposed, PtrOffset, SkipIf,
+BorrowRest); 8 journal entries; dev-log increments 12–18; parked
+"OSEA-v3 remaining increments" section closed.
+**Critical corrections:** user: never hand-maintain test counts —
+runAll now derives from allTests (recorded in auto-memory conventions).
+**Status:** complete; next: compiler-correctness proof skeleton
+(user-chosen scope; obseq2 proof inventory in hand).
+**Next-session pickup candidates:** CompilerInv-v3 skeleton plan (see
+plans file / upcoming journal), SwitchInt (parked), obseq2 sorries.
