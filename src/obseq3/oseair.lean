@@ -54,6 +54,11 @@ def write (m : Mem) (addr : Word) (v : Val) : Mem :=
     machines allocate at identical addresses in identical order. -/
 def empty : Mem := { mMap := [], addrStart := 0 }
 
+/-- Remove the cells of a deallocated range (as `mirlite.Mem.removeRange`;
+    the bump allocator never reuses addresses). -/
+def removeRange (m : Mem) (base : Word) (sz : Nat) : Mem :=
+  { m with mMap := m.mMap.filter (fun (a, _) => decide (a < base) || decide (base + sz ≤ a)) }
+
 end Mem
 
 def readWordSeq (m : Mem) (addr : Word) (sz : Nat) : List Val :=
@@ -85,6 +90,8 @@ def bumpAllocator : AllocatorSpec where
 inductive Rhs
 | Load (ty : TyVal) (reg : Register)
 | Alloc (ty : TyVal)
+| AllocN (ty : TyVal) (n : Nat)
+| AllocDyn (ty : TyVal) (lenPtr : Register)
 | Borrow (kind : RefKind) (prot : Bool) (mask : List Bool) (len : Nat)
     (base : Register) (offset : Word)
 deriving Repr, Inhabited, BEq
@@ -95,6 +102,7 @@ inductive Instr
 | CStore (ty : TyVal) (val : List Val) (ptr : Register)
 | Memcpy (dst : Register) (src : Register) (ty : TyVal)
 | Die (reg : Register) (len : Nat)
+| Dealloc (ptr : Register)
 | PushProt
 | PopProt
 | Halt
@@ -144,6 +152,38 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
        let s2 := { state with mem := mem2, perms := perms2 }
        RhsResult.Ok [Val.Ptr base 0 size tag] obseq.TyVal.PTy s2
      | .error msg => RhsResult.Err msg
+
+  | Rhs.AllocN ty n =>
+     let units := n * typeSize ty
+     let (base, mem2) := A.alloc state.mem units
+     match M.own state.perms base units with
+     | .ok (perms2, tag) =>
+       let s2 := { state with mem := mem2, perms := perms2 }
+       RhsResult.Ok [Val.Ptr base 0 units tag] obseq.TyVal.PTy s2
+     | .error msg => RhsResult.Err msg
+
+  | Rhs.AllocDyn ty lenPtr =>
+     -- runtime length: a real SB read of the length cell, then allocate —
+     -- the same event order as mirlite's readAllocLen + heap own
+     match state.reg.lookup lenPtr with
+     | some (_, [Val.Ptr base offset size tag]) =>
+       let addr := base + offset
+       if addr < base || addr >= base + size then RhsResult.Err "OOB"
+       else
+         match M.read state.perms addr 1 tag with
+         | .error msg => RhsResult.Err msg
+         | .ok perms2 =>
+           match state.mem.find? addr with
+           | some (Val.Dat n) =>
+             let units := n * typeSize ty
+             let (heapBase, mem2) := A.alloc state.mem units
+             match M.own perms2 heapBase units with
+             | .ok (perms3, heapTag) =>
+               let s2 := { state with mem := mem2, perms := perms3 }
+               RhsResult.Ok [Val.Ptr heapBase 0 units heapTag] obseq.TyVal.PTy s2
+             | .error msg => RhsResult.Err msg
+           | _ => RhsResult.Err "allocation size is not a concrete word"
+     | _ => RhsResult.Err "AllocDyn expects Ptr"
 
   | Rhs.Borrow kind prot mask len baseReg offset =>
      match state.reg.lookup baseReg with
@@ -204,6 +244,18 @@ def stepWith (M : PermissionModel) (A : AllocatorSpec)
             Result.Ok { state with perms := perms2, pc := state.pc + 1 }
           | .error msg => Result.Err msg
        | _ => Result.Err "Die expects Ptr"
+    | Instr.Dealloc ptr =>
+       match state.reg.lookup ptr with
+       | some (_, [Val.Ptr base offset size tag]) =>
+          if offset != 0 then
+            Result.Err "deallocation of a pointer that is not the beginning of its allocation"
+          else
+            match M.dealloc state.perms base size tag with
+            | .ok perms2 =>
+              let mem2 := state.mem.removeRange base size
+              Result.Ok { state with perms := perms2, mem := mem2, pc := state.pc + 1 }
+            | .error msg => Result.Err msg
+       | _ => Result.Err "Dealloc expects Ptr"
     | Instr.PushProt =>
        Result.Ok { state with perms := M.pushFrame state.perms, pc := state.pc + 1 }
     | Instr.PopProt =>

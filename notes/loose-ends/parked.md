@@ -229,9 +229,13 @@ has a planned target instruction. Skip histogram with designs:
   `M.popFrame`; matched 25 → 53, mismatch still 0; remaining skips 23
   (alloc 6, uninit 6, exposeAddr 5, assignIf 3 — newly surfaced —
   ptrCast 2, ptrOffset 1).
-- `Stmt.alloc`/`dealloc` (6): `Rhs.AllocN (len-operand)` + `Instr.Dealloc`;
-  needs the allocs table + `removeRange` ported into `oseair.Mem` (v3
-  mirlite has them; oseair.Mem deliberately doesn't yet).
+- ~~`Stmt.alloc`/`dealloc`~~ **DONE 2026-08-15**: `Rhs.AllocN`/
+  `Rhs.AllocDyn` (in-instruction SB read of a runtime length) +
+  `Instr.Dealloc` on the loaded pointer; `removeRange` ported, allocs
+  table still deferred (dealloc uses the ptr value's size field, as
+  mirlite does — only fromExposed's resolveAddr needs the table).
+  matched 56 → 63; remaining: exposeAddr 5 · assignIf 3 · ptrCast 3 ·
+  ptrOffset 2.
 - ~~`RExpr.uninit`~~ **DONE 2026-08-15**: CStore of `Val.Undef` cells,
   no new instruction needed (CStore already stores arbitrary Vals).
   matched 53 → 56; histogram now alloc 7 · exposeAddr 5 · assignIf 3 ·

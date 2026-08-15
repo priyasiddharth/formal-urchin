@@ -6,9 +6,10 @@ mirlite-v3 → OSEA-IR-v3 compiler: the Checked family of
 `src/obseq2/compile.lean`, ported to the v3 syntax/target.
 
 Differences from v2:
-- proof-core subset plus protector frames: `constInit`/`copy`/`ref`/
-  `halt`/`pushProtectors`/`popProtectors` compile; every other
-  statement/rvalue form is rejected with `CompilerError.unsupported`;
+- compiled subset: `constInit`/`copy`/`ref`/`uninit`/`halt`,
+  `pushProtectors`/`popProtectors`, `alloc`/`dealloc`; the remaining
+  forms (`assignIf`, `ptrCast`, `ptrOffset`, `refSlice`, `exposeAddr`,
+  `fromExposed`) are rejected with `CompilerError.unsupported`;
 - one `Rhs.Borrow` (kind, prot, mask, len) replaces the three v2 borrow
   forms; internal place-lowering borrows use `prot := false, mask := []`,
   while an `RExpr.ref`'s own prot/mask are carried into the final borrow;
@@ -514,6 +515,24 @@ def compileRExprToChecked
   | .exposeAddr _ => CheckedCompilerM.throw (.unsupported "rvalue exposeAddr")
   | .fromExposed _ => CheckedCompilerM.throw (.unsupported "rvalue fromExposed")
 
+/-- Lower an `AllocLen` to a register holding the fresh heap pointer.
+    `const n` → `AllocN`; `fromPlace p` → lower `p` (Shared) and emit
+    `AllocDyn`, whose in-instruction length read mirrors mirlite's
+    `readAllocLen` SB read. -/
+def compileAllocLenChecked {Γ : Ctx} (elemTy : TyVal) :
+    AllocLen Γ → CheckedCompilerM Register
+  | .const n => do
+      let tmpReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift (emitM [Instr.Assgn tmpReg (Rhs.AllocN elemTy n)])
+      pure tmpReg
+  | .fromPlace p => do
+      let lenOut ← placeToRegChecked RefKind.Shared p
+      let tmpReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Assgn tmpReg (Rhs.AllocDyn elemTy lenOut.result.reg)]
+          ++ cleanupInstrs lenOut.result.cleanup))
+      pure tmpReg
+
 inductive StmtEvidence {Γ : Ctx} : Stmt Γ → Type where
   | halt :
       StmtEvidence .halt
@@ -533,6 +552,12 @@ inductive StmtEvidence {Γ : Ctx} : Stmt Γ → Type where
       StmtEvidence .pushProtectors
   | popProtectors :
       StmtEvidence .popProtectors
+  | alloc
+      {τ : LayoutTy} (dst : Place Γ (obseq.LayoutTy.PtrL τ)) (len : AllocLen Γ) :
+      StmtEvidence (.alloc dst len)
+  | dealloc
+      {τ : LayoutTy} (dst : Place Γ (obseq.LayoutTy.PtrL τ)) :
+      StmtEvidence (.dealloc dst)
 
 def compileStmtChecked {Γ : Ctx} :
     (stmt : Stmt Γ) → CheckedEvidenceM Unit (fun _ => StmtEvidence stmt)
@@ -563,9 +588,34 @@ def compileStmtChecked {Γ : Ctx} :
   | .popProtectors => do
       let _ ← CheckedCompilerM.lift (emitM [Instr.PopProt])
       pure { result := (), evidence := StmtEvidence.popProtectors }
+  | .alloc (τ := τ) (.local loc) len => do
+      -- dst root first (mirlite's preparePlaceAssign order), then the
+      -- length read + heap own, then the pointer store
+      let dstOut ← CheckedCompilerM.lift (ensureLocalRegE loc)
+      let allocReg ← compileAllocLenChecked (layoutToTyVal τ) len
+      let _ ← CheckedCompilerM.lift
+        (emitM [Instr.RStore obseq.TyVal.PTy allocReg dstOut.result.reg])
+      pure { result := (), evidence := StmtEvidence.alloc (.local loc) len }
+  | .alloc (τ := τ) dst len => do
+      let _ ← CheckedCompilerM.lift (ensurePlaceRoot dst)
+      let dstOut ← placeToRegChecked RefKind.Mut dst
+      let allocReg ← compileAllocLenChecked (layoutToTyVal τ) len
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.RStore obseq.TyVal.PTy allocReg dstOut.result.reg]
+          ++ cleanupInstrs dstOut.result.cleanup))
+      pure { result := (), evidence := StmtEvidence.alloc dst len }
+  | .dealloc dst => do
+      -- Load performs the pointer-cell read mirlite's dealloc does;
+      -- Dealloc checks offset 0 against the stored value and retires
+      -- the allocation
+      let pOut ← placeToRegChecked RefKind.Shared dst
+      let loadedReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy pOut.result.reg)]
+          ++ cleanupInstrs pOut.result.cleanup
+          ++ [Instr.Dealloc loadedReg]))
+      pure { result := (), evidence := StmtEvidence.dealloc dst }
   | .assignIf _ _ _ _ => CheckedCompilerM.throw (.unsupported "stmt assignIf")
-  | .alloc _ _ => CheckedCompilerM.throw (.unsupported "stmt alloc")
-  | .dealloc _ => CheckedCompilerM.throw (.unsupported "stmt dealloc")
 
 def compileStmtsChecked {Γ : Ctx} : Prog Γ → CheckedCompilerM Unit
   | [] => pure ()

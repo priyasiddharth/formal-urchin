@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — OSEA-v3 Heap Alloc/Dealloc (matched 63; 83% of suite differential)
+
+Fourteenth increment. `Rhs.AllocN`/`Rhs.AllocDyn` + `Instr.Dealloc`, with
+`Mem.removeRange` ported to oseair. Everything is event-order fidelity: dst-root Alloc
+before the length read (mirlite's `preparePlaceAssign` order — keeps bump allocators
+address-identical); `AllocDyn` performs mirlite's `readAllocLen` SB read *inside* the
+instruction; `Dealloc` takes the loaded pointer register (the `Load` is mirlite's
+pointer-cell read) and checks offset/size against the stored value — no allocs table
+needed until fromExposed. Differential: **matched 63 | mismatch 0 | skipped 13**
+(all 7 heap tests incl. dealloc-against-protector agree; remaining: exposeAddr 5 ·
+assignIf 3 · ptrCast 3 · ptrOffset 2). Unit tests 22/22 (g8/g9, d10 lifecycle,
+d11 use-after-free, d12 double free, d13 runtime length).
+
+---
+
 ## 2026-08-15 — OSEA-v3 uninit: CStore of Undef, No New Instruction
 
 Thirteenth increment. `RExpr.uninit` compiles to `CStore ty (replicate blockSize Undef)` —

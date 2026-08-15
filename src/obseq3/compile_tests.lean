@@ -141,6 +141,27 @@ def g7_uninit_undef_store : IO Unit :=
      Instr.Halt]
     "g7 uninit undef store"
 
+/-- Heap allocation: dst-root Alloc first (mirlite's prepare order), then
+    `AllocN`, then the pointer RStore. -/
+def g8_heap_alloc : IO Unit :=
+  expectCode Γ2 [.alloc p2 (.const 1), .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 1) (Rhs.AllocN natTy 1),
+     Instr.RStore pTy (Register.R 1) (Register.R 0),
+     Instr.Halt]
+    "g8 heap alloc"
+
+/-- Deallocation: Load of the pointer cell (mirlite's read), then Dealloc. -/
+def g9_dealloc : IO Unit :=
+  expectCode Γ2 [.alloc p2 (.const 1), .dealloc p2, .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 1) (Rhs.AllocN natTy 1),
+     Instr.RStore pTy (Register.R 1) (Register.R 0),
+     Instr.Assgn (Register.R 2) (Rhs.Load pTy (Register.R 0)),
+     Instr.Dealloc (Register.R 2),
+     Instr.Halt]
+    "g9 dealloc"
+
 /-! ## Differential execution -/
 
 inductive DiffOut
@@ -311,6 +332,43 @@ def d9_uninit_materialize : IO Unit := do
      .assign cpyD (.copy tupD)]
     .ok "d9b uninit tuple partial init copy"
 
+/-- Positive: Box-like lifecycle — alloc, write through the deref, read
+    back, dealloc. -/
+def d10_heap_lifecycle : IO Unit :=
+  expectDiff ΓA
+    [.alloc pA (.const 1),
+     .assign (.deref pA) (.constInit 5),
+     .assign tA (.copy (.deref pA)),
+     .dealloc pA]
+    .ok "d10 heap lifecycle"
+
+/-- Negative: use-after-free is UB at the same statement on both machines. -/
+def d11_use_after_free : IO Unit :=
+  expectDiff ΓA
+    [.alloc pA (.const 1),
+     .assign (.deref pA) (.constInit 5),
+     .dealloc pA,
+     .assign tA (.copy (.deref pA))]
+    (.ub 3) "d11 use after free"
+
+/-- Negative: double free is UB at the second dealloc. -/
+def d12_double_free : IO Unit :=
+  expectDiff ΓA
+    [.alloc pA (.const 1),
+     .dealloc pA,
+     .dealloc pA]
+    (.ub 2) "d12 double free"
+
+/-- Positive: runtime allocation length read from a place (`AllocDyn`'s
+    in-instruction SB read of the length cell). -/
+def d13_dynamic_alloc_len : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 3),
+     .alloc pA (.fromPlace xA),
+     .assign (.deref pA) (.constInit 7),
+     .dealloc pA]
+    .ok "d13 dynamic alloc len"
+
 def runAll : IO Unit := do
   g1_const_fresh_local
   g2_protected_masked_ref
@@ -319,6 +377,8 @@ def runAll : IO Unit := do
   g5_unsupported_stmt
   g6_protector_frame
   g7_uninit_undef_store
+  g8_heap_alloc
+  g9_dealloc
   d1_owner_read_pops_mut
   d2_deref_roundtrip
   d3_field_borrow
@@ -328,6 +388,10 @@ def runAll : IO Unit := do
   d7_protected_pop_is_ub
   d8_pop_after_frame_ok
   d9_uninit_materialize
-  IO.println "obseq3 compiler tests passed (16/16)"
+  d10_heap_lifecycle
+  d11_use_after_free
+  d12_double_free
+  d13_dynamic_alloc_len
+  IO.println "obseq3 compiler tests passed (22/22)"
 
 end obseq3.CompileTests
