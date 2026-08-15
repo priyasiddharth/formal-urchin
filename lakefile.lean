@@ -47,3 +47,7 @@ lean_exe sb_conformance where
 lean_exe interp_tests where
   srcDir := "src"
   root := `InterpTests
+
+lean_lib Obseq3Proof where
+  srcDir := "src"
+  roots := #[`obseq3.proof.common, `obseq3.proof.const_write, `obseq3.proof.copy, `obseq3.proof.ref, `obseq3.proof.compiler]

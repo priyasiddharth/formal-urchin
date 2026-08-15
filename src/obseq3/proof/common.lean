@@ -1,0 +1,1291 @@
+import obseq3.compile
+import obseq3.mirlite_semantics
+import obseq3.permission
+
+/-!
+Shared vocabulary and machinery for the mirlite-v3 → OSEA-IR-v3 compiler
+correctness proofs. Skeleton-first port of `src/obseq2/proof/common.lean`:
+the compiler-monad/prefix machinery and lowering-totality lemmas are ported
+with full proofs; the simulation bridges are STATED with documented sorries
+(see the audit in `obseq3/proof/compiler.lean`).
+
+Invariant-design changes vs obseq2 (see the 2026-08-15 journal entry):
+- obseq2's conjunct `s_osea.ap = s_mir.perms` (literal equality) is false as
+  soon as one internal borrow is minted: `die` pops the item but does not
+  roll back `NextTag`, and once the counters split every subsequent
+  corresponding borrow gets DIFFERENT tag values on the two machines. The
+  honest relation is `PermSim ρt`: item-wise ρt-renamed stack equality
+  (position- and constructor-preserving), renamed `exposed`/`protFrames`,
+  and `NextTag ≤`.
+- consequently ρt is monotone-injective (`TagRenameWF`), not identity;
+  ρa stays `IdentityOnDomain` (addresses are lockstep).
+- `Die` remains load-bearing: ρt absorbs tag-VALUE divergence, `Die`
+  collapses stack-STRUCTURE divergence (extra items with no source
+  counterpart) at each statement boundary. Without it the relation would
+  need junk-tolerance in every SB-op lemma.
+-/
+
+namespace obseq3.proof
+
+open obseq3
+open obseq3.compile
+open obseq3.oseair (Instr Register Rhs Val)
+
+/-- The permission model both sides of the simulation are instantiated at. -/
+abbrev MSB : PermissionModel := PermissionModel.stackedBorrows
+
+/-! ## §A Compiler-monad / prefix-state machinery (ported from obseq2) -/
+
+/-- Clear the code map of a compiler state, leaving allocation counters unchanged. -/
+def resetCode (cs : CompilerState) : CompilerState :=
+  { cs with code := fun _ => none }
+
+/-- Compile the first `stmtIdx` statements of `prog` starting from initial state `cs0`,
+    returning the accumulated compiler state when that prefix compiles successfully. -/
+def prefixCompileState
+  {Γ : Ctx}
+  (cs0 : CompilerState)
+  (prog : obseq3.Prog Γ)
+  (stmtIdx : Nat) : Except CompilerError CompilerState :=
+  match CheckedCompilerM.value (compileStmtsChecked (prog.take stmtIdx)) cs0 with
+  | .ok _ => .ok (CheckedCompilerM.run (compileStmtsChecked (prog.take stmtIdx)) cs0)
+  | .error err => .error err
+
+/-- Witness that `csPrefix` is the compiler state at the start of source statement `stmtIdx`. -/
+def csAt
+  {Γ : Ctx}
+  (cs0 : CompilerState)
+  (prog : obseq3.Prog Γ)
+  (stmtIdx : Nat)
+  (csPrefix : CompilerState) : Prop :=
+  prefixCompileState cs0 prog stmtIdx = Except.ok csPrefix
+
+/-- Witness that `label` is the target label corresponding to source statement `stmtIdx`. -/
+def targetLabelAt
+  {Γ : Ctx}
+  (cs0 : CompilerState)
+  (prog : obseq3.Prog Γ)
+  (stmtIdx : Nat)
+  (csPrefix : CompilerState)
+  (label : Nat) : Prop :=
+  csAt cs0 prog stmtIdx csPrefix ∧
+  label = csPrefix.nextLabel
+
+/-- Compile an entire program starting from `cs0`. -/
+def compileProgFrom
+  {Γ : Ctx}
+  (cs0 : CompilerState)
+  (prog : obseq3.Prog Γ) : Except CompilerError obseq3.oseair.Prog :=
+  compileProgFromChecked cs0 prog
+
+/-- Rvalues in the proof-core fragment. The v3 compiler is TOTAL, so this
+    predicate scopes the correctness THEOREMS (obseq2's proof scope), not
+    the compiler. -/
+def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
+  | .constInit _ => True
+  | .copy _ => True
+  | .ref _ _ _ _ => True
+  | _ => False
+
+/-- Statements in the proof-core fragment: `halt` and assignments with a
+    core rvalue. -/
+def CoreStmt {Γ : Ctx} : Stmt Γ → Prop
+  | .halt => True
+  | .assign _ rhs => CoreRhs rhs
+  | _ => False
+
+/-- Every statement of the program is in the proof-core fragment. -/
+def CoreProg {Γ : Ctx} (prog : obseq3.Prog Γ) : Prop :=
+  ∀ i stmt, prog.get? i = some stmt → CoreStmt stmt
+
+/-- One source step at the current pc, mirroring the inner match of
+    `mirlite.runN` (v3 has no standalone `step`). -/
+def srcStep {Γ : Ctx} (s : mirlite.State MSB Γ) (prog : obseq3.Prog Γ) :
+    mirlite.Result MSB Γ :=
+  match prog.get? s.pc with
+  | some .halt => .ok s
+  | none => .ok s
+  | some stmt => mirlite.stepStmt MSB s stmt
+
+theorem csAt_value_ok
+  {Γ : Ctx}
+  {cs0 : CompilerState}
+  {prog : obseq3.Prog Γ}
+  {stmtIdx : Nat}
+  {csPrefix : CompilerState}
+  (h_csAt : csAt cs0 prog stmtIdx csPrefix) :
+  CheckedCompilerM.value (compileStmtsChecked (prog.take stmtIdx)) cs0 = Except.ok () := by
+  unfold csAt prefixCompileState at h_csAt
+  cases h_val : CheckedCompilerM.value (compileStmtsChecked (prog.take stmtIdx)) cs0 with
+  | ok u =>
+    cases u
+    rfl
+  | error err =>
+    simp [h_val] at h_csAt
+
+theorem csAt_run_eq
+  {Γ : Ctx}
+  {cs0 : CompilerState}
+  {prog : obseq3.Prog Γ}
+  {stmtIdx : Nat}
+  {csPrefix : CompilerState}
+  (h_csAt : csAt cs0 prog stmtIdx csPrefix) :
+  CheckedCompilerM.run (compileStmtsChecked (prog.take stmtIdx)) cs0 = csPrefix := by
+  unfold csAt prefixCompileState at h_csAt
+  cases h_val : CheckedCompilerM.value (compileStmtsChecked (prog.take stmtIdx)) cs0 with
+  | ok u =>
+    cases u
+    simpa [h_val] using h_csAt
+  | error err =>
+    simp [h_val] at h_csAt
+
+theorem compileProgFrom_run_eq
+  {Γ : Ctx}
+  {cs0 : CompilerState}
+  {prog : obseq3.Prog Γ}
+  {compProg : obseq3.oseair.Prog}
+  (h_comp : compileProgFrom cs0 prog = Except.ok compProg) :
+  compProg = (CheckedCompilerM.run (compileStmtsChecked prog) cs0).code := by
+  unfold compileProgFrom compileProgFromChecked at h_comp
+  cases h_val : CheckedCompilerM.value (compileStmtsChecked prog) cs0 with
+  | ok u =>
+    cases u
+    simpa [h_val] using h_comp.symm
+  | error err =>
+    simp [h_val] at h_comp
+
+theorem take_succ_eq_take_append_get
+    {xs : List α} {n : Nat} {x : α}
+    (h_get : xs.get? n = some x) :
+    xs.take (n + 1) = xs.take n ++ [x] := by
+  induction xs generalizing n with
+  | nil =>
+      cases n <;> cases h_get
+  | cons y ys ih =>
+      cases n with
+      | zero =>
+          simp [List.get?] at h_get
+          cases h_get
+          simp
+      | succ n =>
+          simp [List.get?] at h_get ⊢
+          exact ih h_get
+
+theorem drop_eq_get_cons
+    {xs : List α} {n : Nat} {x : α}
+    (h_get : xs.get? n = some x) :
+    xs.drop n = x :: xs.drop (n + 1) := by
+  induction xs generalizing n with
+  | nil =>
+      cases n <;> cases h_get
+  | cons y ys ih =>
+      cases n with
+      | zero =>
+          simp at h_get
+          cases h_get
+          simp
+      | succ n =>
+          simp [List.get?, List.drop] at h_get ⊢
+          exact ih h_get
+
+theorem compileStmts_append
+    {Γ : Ctx}
+    (xs ys : obseq3.Prog Γ) (cs : CompilerState) :
+    CheckedCompilerM.value (compileStmtsChecked xs) cs = Except.ok () →
+    CheckedCompilerM.value (compileStmtsChecked (xs ++ ys)) cs =
+      CheckedCompilerM.value (compileStmtsChecked ys)
+        (CheckedCompilerM.run (compileStmtsChecked xs) cs) := by
+  induction xs generalizing cs with
+  | nil =>
+      intro _
+      simp [compileStmtsChecked]
+  | cons stmt rest ih =>
+      intro h_ok
+      cases h_stmt : CheckedCompilerM.value (compileStmtChecked stmt) cs with
+      | error err =>
+          simp [compileStmtsChecked, h_stmt] at h_ok
+      | ok stmtOut =>
+          have h_rest_ok :
+              CheckedCompilerM.value (compileStmtsChecked rest)
+                (CheckedCompilerM.run (compileStmtChecked stmt) cs) = Except.ok () := by
+            simpa [compileStmtsChecked, h_stmt] using h_ok
+          simpa [compileStmtsChecked, h_stmt] using
+            ih (cs := CheckedCompilerM.run (compileStmtChecked stmt) cs) h_rest_ok
+
+theorem compileStmts_append_run
+    {Γ : Ctx}
+    (xs ys : obseq3.Prog Γ) (cs : CompilerState) :
+    CheckedCompilerM.value (compileStmtsChecked xs) cs = Except.ok () →
+    CheckedCompilerM.run (compileStmtsChecked (xs ++ ys)) cs =
+      CheckedCompilerM.run (compileStmtsChecked ys)
+        (CheckedCompilerM.run (compileStmtsChecked xs) cs) := by
+  induction xs generalizing cs with
+  | nil =>
+      intro _
+      simp [compileStmtsChecked]
+  | cons stmt rest ih =>
+      intro h_ok
+      cases h_stmt : CheckedCompilerM.value (compileStmtChecked stmt) cs with
+      | error err =>
+          simp [compileStmtsChecked, h_stmt] at h_ok
+      | ok stmtOut =>
+          have h_rest_ok :
+              CheckedCompilerM.value (compileStmtsChecked rest)
+                (CheckedCompilerM.run (compileStmtChecked stmt) cs) = Except.ok () := by
+            simpa [compileStmtsChecked, h_stmt] using h_ok
+          simpa [compileStmtsChecked, h_stmt] using
+            ih (cs := CheckedCompilerM.run (compileStmtChecked stmt) cs) h_rest_ok
+
+theorem prefixCompileState_succ
+    {Γ : Ctx}
+    {cs0 : CompilerState}
+    {prog : obseq3.Prog Γ}
+    {stmtIdx : Nat}
+    {stmt : Stmt Γ}
+    {csPrefix : CompilerState}
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt)}
+    (h_prefix : csAt cs0 prog stmtIdx csPrefix)
+    (h_get : prog.get? stmtIdx = some stmt)
+    (h_stmt : CheckedCompilerM.value (compileStmtChecked stmt) csPrefix = Except.ok stmtOut) :
+    prefixCompileState cs0 prog (Nat.succ stmtIdx) =
+      Except.ok (CheckedCompilerM.run (compileStmtChecked stmt) csPrefix) := by
+  have h_prefix_ok := csAt_value_ok h_prefix
+  have h_prefix_run := csAt_run_eq h_prefix
+  rw [prefixCompileState, take_succ_eq_take_append_get h_get]
+  have h_val :
+      CheckedCompilerM.value (compileStmtsChecked (prog.take stmtIdx ++ [stmt])) cs0 = Except.ok () := by
+    have h_append := compileStmts_append (xs := prog.take stmtIdx) (ys := [stmt]) cs0 h_prefix_ok
+    simpa [compileStmtsChecked, h_stmt, h_prefix_run] using h_append
+  have h_run :
+      CheckedCompilerM.run (compileStmtsChecked (prog.take stmtIdx ++ [stmt])) cs0 =
+        CheckedCompilerM.run (compileStmtChecked stmt) csPrefix := by
+    have h_append := compileStmts_append_run (xs := prog.take stmtIdx) (ys := [stmt]) cs0 h_prefix_ok
+    simpa [compileStmtsChecked, h_stmt, h_prefix_run] using h_append
+  simp [h_val, h_run]
+
+theorem compileProgFrom_code_eq_compileStmt
+    {Γ : Ctx}
+    (cs0 : CompilerState) (prog : obseq3.Prog Γ)
+    (compProg : obseq3.oseair.Prog)
+    (h_comp : compileProgFrom cs0 prog = Except.ok compProg)
+    {stmtIdx : Nat} {stmt : Stmt Γ}
+    {csPrefix : CompilerState}
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt)}
+    (h_prefix : csAt cs0 prog stmtIdx csPrefix)
+    (h_get : prog.get? stmtIdx = some stmt)
+    (h_stmt : CheckedCompilerM.value (compileStmtChecked stmt) csPrefix = Except.ok stmtOut)
+    {q : Nat}
+    (h_lt : q < (CheckedCompilerM.run (compileStmtChecked stmt) csPrefix).nextLabel) :
+    compProg q =
+      (CheckedCompilerM.run (compileStmtChecked stmt) csPrefix).code q := by
+  let csStmt := CheckedCompilerM.run (compileStmtChecked stmt) csPrefix
+  have h_csStmt : csAt cs0 prog (Nat.succ stmtIdx) csStmt := by
+    simpa [csStmt] using prefixCompileState_succ h_prefix h_get h_stmt
+  have h_csStmt_ok := csAt_value_ok h_csStmt
+  have h_csStmt_run := csAt_run_eq h_csStmt
+  have h_prog_run :
+      CheckedCompilerM.run (compileStmtsChecked prog) cs0 =
+        CheckedCompilerM.run (compileStmtsChecked (prog.drop (Nat.succ stmtIdx))) csStmt := by
+    have h_append :=
+      compileStmts_append_run
+        (xs := prog.take (Nat.succ stmtIdx))
+        (ys := prog.drop (Nat.succ stmtIdx))
+        cs0 h_csStmt_ok
+    simpa [List.take_append_drop (Nat.succ stmtIdx) prog, h_csStmt_run, csStmt] using h_append
+  have h_comp_run := compileProgFrom_run_eq h_comp
+  calc
+    compProg q = (CheckedCompilerM.run (compileStmtsChecked prog) cs0).code q := by
+      simp [h_comp_run]
+    _ = (CheckedCompilerM.run (compileStmtsChecked (prog.drop (Nat.succ stmtIdx))) csStmt).code q := by
+      simp [h_prog_run]
+    _ = csStmt.code q := by
+      exact (CheckedCompilerM.incr (compileStmtsChecked (prog.drop (Nat.succ stmtIdx))) csStmt).code_eq q h_lt
+    _ = (CheckedCompilerM.run (compileStmtChecked stmt) csPrefix).code q := by
+      rfl
+
+/-! ## §B Register-bound / memory-effect statics (re-cased over the v3 sets) -/
+
+/-- A register whose numeric index is strictly less than `bound`. -/
+def RegisterBelow (bound : Nat) : Register → Prop
+  | .R idx => idx < bound
+
+/-- All registers mentioned in an `Rhs` have index strictly less than `bound`. -/
+def RhsRegsBelow (bound : Nat) : Rhs → Prop
+  | .Load _ reg => RegisterBelow bound reg
+  | .Alloc _ => True
+  | .AllocN _ _ => True
+  | .AllocDyn _ lenPtr => RegisterBelow bound lenPtr
+  | .Borrow _ _ _ _ base _ => RegisterBelow bound base
+  | .ExposeAddr src => RegisterBelow bound src
+  | .FromExposed src => RegisterBelow bound src
+  | .PtrOffset src _ => RegisterBelow bound src
+  | .BorrowRest _ _ src => RegisterBelow bound src
+
+/-- All registers mentioned in an `Instr` have index strictly less than `bound`. -/
+def InstrRegsBelow (bound : Nat) : Instr → Prop
+  | .Assgn reg rhs => RegisterBelow bound reg ∧ RhsRegsBelow bound rhs
+  | .RStore _ src ptr => RegisterBelow bound src ∧ RegisterBelow bound ptr
+  | .CStore _ _ ptr => RegisterBelow bound ptr
+  | .Memcpy dst src _ => RegisterBelow bound dst ∧ RegisterBelow bound src
+  | .Die reg _ => RegisterBelow bound reg
+  | .Dealloc ptr => RegisterBelow bound ptr
+  | .SkipIf discr _ _ => RegisterBelow bound discr
+  | .PushProt => True
+  | .PopProt => True
+  | .Halt => True
+
+/-- Every populated code slot satisfies `InstrRegsBelow bound`. -/
+def CodeRegsBelow (bound : Nat) (code : Nat → Option Instr) : Prop :=
+  ∀ pc instr, code pc = some instr → InstrRegsBelow bound instr
+
+/-- RHS forms that do not mutate target memory (the three allocators advance
+    the allocator-backed memory state and are excluded). -/
+def RhsPreservesMem : Rhs → Prop
+  | .Alloc _ => False
+  | .AllocN _ _ => False
+  | .AllocDyn _ _ => False
+  | _ => True
+
+/-- Instructions that neither mutate target memory nor branch, and advance
+    the PC by exactly one when they succeed. `SkipIf` is excluded because it
+    may advance by more than one; `Dealloc` removes memory; stores and
+    `Memcpy` write it; `Halt` does not advance. -/
+def InstrPreservesMem : Instr → Prop
+  | .Assgn _ rhs => RhsPreservesMem rhs
+  | .RStore _ _ _ => False
+  | .CStore _ _ _ => False
+  | .Memcpy _ _ _ => False
+  | .Die _ _ => True
+  | .Dealloc _ => False
+  | .SkipIf _ _ _ => False
+  | .PushProt => True
+  | .PopProt => True
+  | .Halt => False
+
+theorem evalRhsWith_preserves_mem
+    {A : oseair.AllocatorSpec} {s s1 : oseair.State MSB}
+    {rhs : Rhs} {vals : List Val} {ty : obseq.TyVal}
+    (h_rhs : RhsPreservesMem rhs)
+    (h_eval : oseair.evalRhsWith MSB A s rhs = oseair.RhsResult.Ok vals ty s1) :
+    s1.mem = s.mem := by
+  cases rhs <;> simp [RhsPreservesMem, oseair.evalRhsWith] at h_rhs h_eval
+  all_goals
+    repeat (split at h_eval <;> try contradiction)
+    cases h_eval
+    rfl
+
+theorem step_preserves_mem_and_pc
+    {s s' : oseair.State MSB} {prog : oseair.Prog} {instr : Instr}
+    (h_instr : prog s.pc = some instr)
+    (h_mem : InstrPreservesMem instr)
+    (h_step : oseair.step MSB s prog = oseair.Result.Ok s') :
+    s'.mem = s.mem ∧ s'.pc = s.pc + 1 := by
+  cases instr with
+  | Assgn reg rhs =>
+      simp [oseair.step, oseair.stepWith, h_instr, InstrPreservesMem] at h_step h_mem
+      split at h_step
+      · rename_i vals ty s1 h_eval
+        cases h_step
+        constructor
+        · change s1.mem = s.mem
+          exact evalRhsWith_preserves_mem h_mem h_eval
+        · rfl
+      · contradiction
+  | RStore ty src ptr =>
+      cases h_mem
+  | CStore ty vals ptr =>
+      cases h_mem
+  | Memcpy dst src ty =>
+      cases h_mem
+  | Die reg len =>
+      simp [oseair.step, oseair.stepWith, h_instr] at h_step
+      repeat (split at h_step <;> try contradiction)
+      cases h_step
+      constructor <;> rfl
+  | Dealloc ptr =>
+      cases h_mem
+  | SkipIf discr v skip =>
+      cases h_mem
+  | PushProt =>
+      simp [oseair.step, oseair.stepWith, h_instr] at h_step
+      cases h_step
+      constructor <;> rfl
+  | PopProt =>
+      simp [oseair.step, oseair.stepWith, h_instr] at h_step
+      repeat (split at h_step <;> try contradiction)
+      cases h_step
+      constructor <;> rfl
+  | Halt =>
+      cases h_mem
+
+theorem runN_preserves_mem
+    {n : Nat} {s s' : oseair.State MSB} {prog : oseair.Prog}
+    (h_run : oseair.runN MSB n s prog = oseair.Result.Ok s')
+    (h_mem : ∀ (k : Fin n) instr,
+      prog (s.pc + k.1) = some instr → InstrPreservesMem instr) :
+    s'.mem = s.mem := by
+  induction n generalizing s with
+  | zero =>
+      simp at h_run
+      cases h_run
+      rfl
+  | succ n ih =>
+      cases h_step : oseair.step MSB s prog with
+      | Err msg =>
+          simp [oseair.runN_succ, h_step] at h_run
+      | Ok s1 =>
+          have h_run_tail : oseair.runN MSB n s1 prog = oseair.Result.Ok s' := by
+            simpa [oseair.runN_succ, h_step] using h_run
+          cases h_prog : prog s.pc with
+          | none =>
+              simp [oseair.step, oseair.stepWith, h_prog] at h_step
+              cases h_step
+              apply ih h_run_tail
+              intro k instr h_prog'
+              exact h_mem ⟨k.1, Nat.lt_trans k.2 (Nat.lt_succ_self n)⟩ instr h_prog'
+          | some instr =>
+              have h_step_props := step_preserves_mem_and_pc h_prog
+                (h_mem ⟨0, Nat.succ_pos n⟩ instr (by simpa)) h_step
+              have h_tail_mem : s'.mem = s1.mem := by
+                apply ih h_run_tail
+                intro k instr' h_prog'
+                have hk : k.1 + 1 < n + 1 := Nat.succ_lt_succ k.2
+                exact h_mem ⟨k.1 + 1, hk⟩ instr' (by
+                  simpa [h_step_props.2, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm]
+                    using h_prog')
+              exact h_tail_mem.trans h_step_props.1
+
+/-! ## §C Invariant vocabulary -/
+
+/-- A well-formed compiler state: every emitted instruction only references
+    registers below `nextReg`. -/
+def CompilerStateWF (_Γ : Ctx) (cs : CompilerState) : Prop :=
+  CodeRegsBelow cs.nextReg cs.code
+
+/-- Register `reg` in `regMap` holds a pointer value with the given fields. -/
+def PtrRegisterEntry
+  (regMap : obseq3.oseair.RegMap)
+  (reg : Register)
+  (base offset size : Word)
+  (tag : Tag) : Prop :=
+  obseq3.oseair.RegMap.lookup regMap reg = some (obseq.TyVal.PTy, [Val.Ptr base offset size tag])
+
+abbrev AddrRenameMap := Word → Option Word
+abbrev TagRenameMap := Tag → Option Tag
+
+/-- Address rename maps grow monotonically. -/
+def AddrRenameIncr (ρa ρa' : AddrRenameMap) : Prop :=
+  ∀ addr addr', ρa addr = some addr' → ρa' addr = some addr'
+
+/-- Tag rename maps grow monotonically. -/
+def TagRenameIncr (ρt ρt' : TagRenameMap) : Prop :=
+  ∀ tag tag', ρt tag = some tag' → ρt' tag = some tag'
+
+namespace AddrRenameIncr
+
+theorem refl (ρa : AddrRenameMap) : AddrRenameIncr ρa ρa :=
+  fun _ _ h => h
+
+theorem trans {ρa ρa' ρa'' : AddrRenameMap}
+    (h₁ : AddrRenameIncr ρa ρa') (h₂ : AddrRenameIncr ρa' ρa'') :
+    AddrRenameIncr ρa ρa'' :=
+  fun addr addr' h => h₂ addr addr' (h₁ addr addr' h)
+
+end AddrRenameIncr
+
+namespace TagRenameIncr
+
+theorem refl (ρt : TagRenameMap) : TagRenameIncr ρt ρt :=
+  fun _ _ h => h
+
+theorem trans {ρt ρt' ρt'' : TagRenameMap}
+    (h₁ : TagRenameIncr ρt ρt') (h₂ : TagRenameIncr ρt' ρt'') :
+    TagRenameIncr ρt ρt'' :=
+  fun tag tag' h => h₂ tag tag' (h₁ tag tag' h)
+
+end TagRenameIncr
+
+/-- A rename map is the identity wherever it is defined. In v3 this is kept
+    ONLY for ρa: lockstep bump allocation shares the address namespace. -/
+def IdentityOnDomain {α : Type} (ρ : α → Option α) : Prop :=
+  ∀ a a', ρ a = some a' → a = a'
+
+theorem IdentityOnDomain.apply {α : Type} {ρ : α → Option α} {a a' : α}
+    (h_id : IdentityOnDomain ρ) (h : ρ a = some a') : a = a' :=
+  h_id a a' h
+
+/-- v3's ρt discipline (replacing obseq2's identity): injective, and fixing
+    the wildcard tag (int-to-ptr pointers carry `wildcardTag` on BOTH
+    machines, so `MemValSim` needs it mapped to itself). Monotonicity of the
+    tag ORDER (srcTag ≤ tgtTag) holds for the maps the simulation builds but
+    is not required by any stated obligation, so it is not carried. -/
+def TagRenameWF (ρt : TagRenameMap) : Prop :=
+  (∀ t1 t2 t', ρt t1 = some t' → ρt t2 = some t' → t1 = t2) ∧
+  ρt wildcardTag = some wildcardTag
+
+/-! ### PermSim — the corrected permission relation
+
+obseq2 asserted `s_osea.ap = s_mir.perms` verbatim. That is false as soon as
+one internal borrow is minted (NextTag diverges, and with it every later
+corresponding tag VALUE). The honest relation renames item-wise through ρt.
+Both machines perform identical op SEQUENCES on their stacks, so cell order
+and stack shapes agree exactly; only tag values differ. -/
+
+/-- Pointwise relation between two lists of equal length (a local stand-in
+    for Mathlib's `List.Forall₂`, which this project does not depend on). -/
+def ListRel (R : α → β → Prop) : List α → List β → Prop
+  | [], [] => True
+  | a :: as, b :: bs => R a b ∧ ListRel R as bs
+  | _, _ => False
+
+theorem ListRel.imp {α β} {R S : α → β → Prop}
+    (h : ∀ a b, R a b → S a b) :
+    ∀ {as : List α} {bs : List β}, ListRel R as bs → ListRel S as bs := by
+  intro as
+  induction as with
+  | nil =>
+      intro bs hr
+      cases bs with
+      | nil => trivial
+      | cons b bs => simp [ListRel] at hr
+  | cons a as ih =>
+      intro bs hr
+      cases bs with
+      | nil => simp [ListRel] at hr
+      | cons b bs =>
+          simp only [ListRel] at hr ⊢
+          exact ⟨h a b hr.1, ih hr.2⟩
+
+/-- Item-wise simulation: same constructor, tag mapped by ρt. Preserving the
+    constructor (incl. `Disabled`) keeps SRW-grouping structure identical. -/
+def ItemSim (ρt : TagRenameMap) : Item → Item → Prop
+  | .Own t, .Own t' => ρt t = some t'
+  | .MutRef t, .MutRef t' => ρt t = some t'
+  | .Ref t, .Ref t' => ρt t = some t'
+  | .RawPtr m t, .RawPtr m' t' => m' = m ∧ ρt t = some t'
+  | .Disabled t, .Disabled t' => ρt t = some t'
+  | _, _ => False
+
+theorem ItemSim.mono {ρt ρt' : TagRenameMap} (h_incr : TagRenameIncr ρt ρt')
+    (i i' : Item) (hi : ItemSim ρt i i') : ItemSim ρt' i i' := by
+  cases i <;> cases i' <;> simp [ItemSim] at hi ⊢ <;>
+    first
+      | exact h_incr _ _ hi
+      | exact ⟨hi.1, h_incr _ _ hi.2⟩
+
+/-- Position-preserving stack simulation. -/
+def StackSim (ρt : TagRenameMap) (src tgt : List Item) : Prop :=
+  ListRel (ItemSim ρt) src tgt
+
+/-- Per-cell entry simulation: same address, simulated stack. -/
+def CellSim (ρt : TagRenameMap) : (Word × List Item) → (Word × List Item) → Prop
+  | (a, s), (a', s') => a' = a ∧ StackSim ρt s s'
+
+/-- Tag-list simulation (protector frames, exposed set). -/
+def TagListSim (ρt : TagRenameMap) (src tgt : List Tag) : Prop :=
+  ListRel (fun t t' => ρt t = some t') src tgt
+
+/-- The v3 permission relation: ρt-renamed stacks (position- and
+    constructor-preserving), renamed protector frames and exposed set, and a
+    target counter at least the source's (the target mints extra tags for
+    its internal borrows; `Die` pops the items but not the counter). -/
+def PermSim (ρt : TagRenameMap) (src tgt : AccessPerms) : Prop :=
+  ListRel (CellSim ρt) src.StackMap tgt.StackMap ∧
+  ListRel (TagListSim ρt) src.protFrames tgt.protFrames ∧
+  TagListSim ρt src.exposed tgt.exposed ∧
+  src.NextTag ≤ tgt.NextTag
+
+/-- `PermSim` transports along rename growth (renames only appear
+    positively). -/
+theorem PermSim.rename_mono
+    {ρt ρt' : TagRenameMap} {src tgt : AccessPerms}
+    (h_incr : TagRenameIncr ρt ρt')
+    (h_sim : PermSim ρt src tgt) :
+    PermSim ρt' src tgt := by
+  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
+  refine ⟨?_, ?_, ?_, h_next⟩
+  · refine ListRel.imp ?_ h_stacks
+    intro c c' hc
+    obtain ⟨a, s⟩ := c
+    obtain ⟨a', s'⟩ := c'
+    obtain ⟨ha, hs⟩ := hc
+    exact ⟨ha, ListRel.imp (ItemSim.mono h_incr) hs⟩
+  · exact ListRel.imp (fun f f' hf =>
+      ListRel.imp (fun t t' ht => h_incr _ _ ht) hf) h_prot
+  · exact ListRel.imp (fun t t' ht => h_incr _ _ ht) h_exp
+
+/-- Every local reached while structurally traversing `p` already has a
+    compiler mapping in `placeRegMap`. -/
+def PlaceInputsMapped
+  {Γ : Ctx}
+  (cs : CompilerState) : {τ : LayoutTy} → Place Γ τ → Prop
+  | _, .local loc =>
+    ∃ reg layout, getPlaceInfo cs loc.idx.1 = some (reg, layout)
+  | _, .proj base _ =>
+    PlaceInputsMapped cs base
+  | _, .deref ptrPlace =>
+    PlaceInputsMapped cs ptrPlace
+
+/-- Simulation between source local bindings and target register values. -/
+def LocalBindingSim
+  {Γ : Ctx}
+  (ρa : AddrRenameMap)
+  (ρt : TagRenameMap)
+  (env : mirlite.Env Γ)
+  (s_osea : oseair.State MSB)
+  (cs : CompilerState) : Prop :=
+  ∀ {τ : LayoutTy} (loc : Local Γ τ) (binding : mirlite.Binding),
+    mirlite.Env.lookup env loc = some binding →
+    ∃ reg base tag,
+      getPlaceInfo cs loc.idx.1 = some (reg, τ) ∧
+      PtrRegisterEntry s_osea.reg reg base 0 (blockSize τ) tag ∧
+      ρa binding.addr = some base ∧
+      ρt binding.tag = some tag
+
+/-- Pointwise simulation between a source `MemValue` and a target `Val`. -/
+def MemValSim
+  (ρa : AddrRenameMap)
+  (ρt : TagRenameMap) : mirlite.MemValue → Val → Prop
+  | .undef,           .Undef             => True
+  | .word v,          .Dat v'            => v' = v
+  | .ptrVal b o s t,  .Ptr b' o' s' t'  =>
+      ρa b = some b' ∧ o' = o ∧ s' = s ∧ ρt t = some t'
+  | _, _                                 => False
+
+theorem MemValSim.rename_mono
+    {ρa ρa' : AddrRenameMap} {ρt ρt' : TagRenameMap}
+    {mv : mirlite.MemValue} {v : Val}
+    (h_addr : AddrRenameIncr ρa ρa')
+    (h_tag : TagRenameIncr ρt ρt')
+    (h_sim : MemValSim ρa ρt mv v) :
+    MemValSim ρa' ρt' mv v := by
+  cases mv <;> cases v <;> simp [MemValSim] at h_sim ⊢
+  · exact h_sim
+  · rcases h_sim with ⟨h_base, h_off, h_size, h_tag_old⟩
+    exact ⟨h_addr _ _ h_base, h_off, h_size, h_tag _ _ h_tag_old⟩
+
+/-- Forward memory simulation at renamed addresses. -/
+def SourceMemSim
+  (ρa : AddrRenameMap)
+  (ρt : TagRenameMap)
+  (mem_mir : mirlite.Mem)
+  (mem_osea : oseair.Mem) : Prop :=
+  ∀ addr value,
+    mirlite.Mem.find? mem_mir addr = some value →
+    ∃ addr' value',
+      ρa addr = some addr' ∧
+      oseair.Mem.find? mem_osea addr' = some value' ∧
+      MemValSim ρa ρt value value'
+
+/-- The main simulation invariant between a source mirlite state and a
+    target OSEA state, both at `stackedBorrows`.
+    vs obseq2: `TargetLocalsReady` (a `True` placeholder) and `WellFormed`
+    (never consumed) are dropped; the perms conjunct is `PermSim ρt` instead
+    of literal equality; ρt is `TagRenameWF` instead of identity. -/
+def CompilerInv
+  {Γ : Ctx}
+  (cs0 : CompilerState)
+  (prog : obseq3.Prog Γ)
+  (ρa : AddrRenameMap)
+  (ρt : TagRenameMap)
+  (s_mir : mirlite.State MSB Γ)
+  (s_osea : oseair.State MSB) : Prop :=
+  ∃ csPrefix,
+    targetLabelAt cs0 prog s_mir.pc csPrefix s_osea.pc ∧
+    CompilerStateWF Γ csPrefix ∧
+    LocalBindingSim ρa ρt s_mir.env s_osea csPrefix ∧
+    SourceMemSim ρa ρt s_mir.mem s_osea.mem ∧
+    PermSim ρt s_mir.perms s_osea.perms ∧
+    IdentityOnDomain ρa ∧
+    TagRenameWF ρt
+
+/-- Register `reg` holds a pointer to `resolved`, and the tag stored there
+    grants a mutable write of `len` cells in `perms`. The tag is NOT in
+    general `ρt resolved.tag` (proj: fresh internal borrow; deref: whatever
+    was stored in the pointer cell) — writability is captured by the
+    embedded `useMut` conjunct. -/
+def PlaceRegReady
+    (ρa : AddrRenameMap)
+    (perms : AccessPerms)
+    (regMap : oseair.RegMap)
+    (reg : Register)
+    (resolved : mirlite.PlaceRes)
+    (len : Nat) : Prop :=
+  ∃ (b' : Word) (t' : Tag),
+    ρa resolved.allocBase = some b' ∧
+    PtrRegisterEntry regMap reg b' (resolved.addr - resolved.allocBase) resolved.allocSize t' ∧
+    ∃ p2,
+      MSB.useMut perms
+        (b' + (resolved.addr - resolved.allocBase)) len t' = Except.ok p2
+
+/-! ## §D Place-lowering totality -/
+
+theorem placeToRegChecked_local_ok_of_getPlaceInfo
+    {Γ : Ctx} {τ layout : LayoutTy}
+    {kind : RefKind} {loc : Local Γ τ} {cs : CompilerState} {reg : Register}
+    (h_lookup : getPlaceInfo cs loc.idx.1 = some (reg, layout)) :
+    ∃ placeOut,
+      CheckedCompilerM.value (placeToRegChecked kind (.local loc)) cs = Except.ok placeOut := by
+  refine ⟨{
+    result := { reg := reg, cleanup := [] },
+    evidence := PlaceToRegEvidence.local loc cs reg layout h_lookup
+  }, ?_⟩
+  simp only [placeToRegChecked, CheckedCompilerM.value, CompilerM.value]
+  split
+  · rename_i reg' layout' h_branch
+    have h_eq : reg' = reg ∧ layout' = layout := by
+      simpa [h_branch] using h_lookup
+    rcases h_eq with ⟨rfl, rfl⟩
+    have h_same : h_branch = h_lookup := Subsingleton.elim _ _
+    cases h_same
+    rfl
+  · rename_i h_branch
+    simp [h_branch] at h_lookup
+
+theorem placeToRegChecked_proj_ok_of_baseOk
+    {Γ : Ctx} {σ τ : LayoutTy}
+    {kind : RefKind} {cs : CompilerState}
+    {base : Place Γ σ} {path : PathTo σ τ}
+    (baseOut : ResultWithEvidence PtrResult (PlaceToRegEvidence kind base))
+    (h_baseOut : CheckedCompilerM.value (placeToRegChecked kind base) cs = Except.ok baseOut) :
+    ∃ placeOut,
+      CheckedCompilerM.value (placeToRegChecked kind (.proj base path)) cs = Except.ok placeOut := by
+  by_cases h_offset : pathOffset path = 0
+  · let baseRes := baseOut.result
+    refine ⟨{
+      result := baseRes,
+      evidence := PlaceToRegEvidence.projZero base path baseRes baseOut.evidence h_offset
+    }, ?_⟩
+    simp [placeToRegChecked, h_baseOut, h_offset, baseRes]
+  · let tmpReg := CompilerM.value freshRegM (CheckedCompilerM.run (placeToRegChecked kind base) cs)
+    refine ⟨{
+      result := { reg := tmpReg, cleanup := baseOut.result.cleanup ++ [(tmpReg, blockSize τ)] },
+      evidence := PlaceToRegEvidence.projOffset base path baseOut.result tmpReg
+        baseOut.evidence h_offset
+    }, ?_⟩
+    simp [placeToRegChecked, h_baseOut, h_offset, tmpReg]
+
+theorem placeToRegChecked_deref_ok_of_ptrOk
+    {Γ : Ctx} {σ : LayoutTy}
+    {kind : RefKind} {cs : CompilerState}
+    {ptrPlace : Place Γ (obseq.LayoutTy.PtrL σ)}
+    (ptrOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared ptrPlace))
+    (h_ptrOut : CheckedCompilerM.value (placeToRegChecked RefKind.Shared ptrPlace) cs = Except.ok ptrOut) :
+    ∃ placeOut,
+      CheckedCompilerM.value (placeToRegChecked kind (.deref ptrPlace)) cs = Except.ok placeOut := by
+  let loadedReg := CompilerM.value freshRegM
+    (CheckedCompilerM.run (placeToRegChecked RefKind.Shared ptrPlace) cs)
+  refine ⟨{
+    result := { reg := loadedReg, cleanup := [] },
+    evidence := PlaceToRegEvidence.deref ptrPlace ptrOut.result loadedReg ptrOut.evidence
+  }, ?_⟩
+  simp [placeToRegChecked, h_ptrOut, loadedReg]
+
+theorem placeToRegChecked_ok_of_placeInputsMapped
+    {Γ : Ctx} {τ : LayoutTy}
+    {cs : CompilerState}
+    {kind : RefKind}
+    {p : Place Γ τ}
+    (h_mapped : PlaceInputsMapped cs p) :
+    ∃ placeOut,
+      CheckedCompilerM.value (placeToRegChecked kind p) cs = Except.ok placeOut := by
+  induction p generalizing kind with
+  | «local» loc =>
+      rcases h_mapped with ⟨reg, layout, h_lookup⟩
+      exact placeToRegChecked_local_ok_of_getPlaceInfo
+        (kind := kind) (loc := loc) (cs := cs) (reg := reg) (layout := layout) h_lookup
+  | proj base path ih =>
+      rcases ih (kind := kind) h_mapped with ⟨baseOut, h_baseOut⟩
+      exact placeToRegChecked_proj_ok_of_baseOk (kind := kind) (cs := cs)
+        (base := base) (path := path) baseOut h_baseOut
+  | deref ptrPlace ih =>
+      rcases ih (kind := RefKind.Shared) h_mapped with ⟨ptrOut, h_ptrOut⟩
+      exact placeToRegChecked_deref_ok_of_ptrOk (kind := kind) (cs := cs)
+        (ptrPlace := ptrPlace) ptrOut h_ptrOut
+
+theorem placeInputsMapped_of_localBindingSim_resolvePlace
+  {Γ : Ctx} {τ : LayoutTy}
+  {ρa : AddrRenameMap} {ρt : TagRenameMap}
+  {s_mir : mirlite.State MSB Γ}
+  {s_osea : oseair.State MSB}
+  {cs : CompilerState}
+  {p : Place Γ τ}
+  {resolved : mirlite.PlaceRes}
+  (h_lbs : LocalBindingSim ρa ρt s_mir.env s_osea cs)
+  (h_res : mirlite.resolvePlace? s_mir p = some resolved) :
+  PlaceInputsMapped cs p := by
+  induction p generalizing resolved with
+  | «local» loc =>
+      cases h_lookup : mirlite.Env.lookup s_mir.env loc with
+      | none =>
+          simp [mirlite.resolvePlace?, h_lookup] at h_res
+      | some binding =>
+          rcases h_lbs loc binding h_lookup with ⟨reg, base, tag, h_placeInfo, _, _, _⟩
+          exact ⟨reg, _, h_placeInfo⟩
+  | proj base path ih =>
+      cases h_base : mirlite.resolvePlace? s_mir base with
+      | none =>
+          simp [mirlite.resolvePlace?, h_base] at h_res
+      | some resolvedBase =>
+          exact ih h_base
+  | deref ptrPlace ih =>
+      cases h_ptr : mirlite.resolvePlace? s_mir ptrPlace with
+      | none =>
+          simp [mirlite.resolvePlace?, h_ptr] at h_res
+      | some resolvedPtr =>
+          exact ih h_ptr
+
+theorem placeToRegChecked_ok_of_resolvePlace
+    {Γ : Ctx} {τ : LayoutTy}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {cs : CompilerState}
+    {kind : RefKind}
+    {p : Place Γ τ}
+    {resolved : mirlite.PlaceRes}
+    (h_lbs : LocalBindingSim ρa ρt s_mir.env s_osea cs)
+    (h_res : mirlite.resolvePlace? s_mir p = some resolved) :
+    ∃ placeOut,
+      CheckedCompilerM.value (placeToRegChecked kind p) cs = Except.ok placeOut := by
+  exact placeToRegChecked_ok_of_placeInputsMapped
+    (cs := cs)
+    (kind := kind)
+    (p := p)
+    (placeInputsMapped_of_localBindingSim_resolvePlace h_lbs h_res)
+
+/-- When every local leaf of `p` is already mapped, `ensurePlaceRoot` is a
+    no-op on the compiler state (its `ensureLocalRegE` hits the `existing`
+    branch). Needed because the v3 assign-place case runs `ensurePlaceRoot`
+    before `placeToRegChecked`. -/
+theorem ensurePlaceRoot_run_eq_of_mapped
+    {Γ : Ctx} {τ : LayoutTy}
+    {cs : CompilerState}
+    {p : Place Γ τ}
+    (h_mapped : PlaceInputsMapped cs p) :
+    CompilerM.run (ensurePlaceRoot p) cs = cs := by
+  induction p with
+  | «local» loc =>
+      rcases h_mapped with ⟨reg, layout, h_lookup⟩
+      simp only [ensurePlaceRoot, CompilerM.run_bind]
+      have h_run : CompilerM.run (ensureLocalRegE loc) cs = cs := by
+        unfold CompilerM.run ensureLocalRegE
+        split
+        · rfl
+        · rename_i h_none
+          simp [h_none] at h_lookup
+      simp [h_run]
+  | proj base path ih =>
+      exact ih h_mapped
+  | deref ptrPlace ih =>
+      exact ih h_mapped
+
+/-! ## §E Fragment layout + emit-preserves-memory -/
+
+def FragmentInstalledAtLabel {α} (m : CompilerM α) (cs : CompilerState)
+    (baseLabel : Nat) (prog : oseair.Prog) : Prop :=
+  let n := (CompilerM.run m cs).nextLabel - cs.nextLabel
+  ∀ (i : Fin n), prog (baseLabel + i.1) = (CompilerM.run m cs).code (cs.nextLabel + i.1)
+
+def FragInstalled {α} (m : CompilerM α) (cs : CompilerState)
+    (s : oseair.State MSB) (prog : oseair.Prog) : Prop :=
+  let n := (CompilerM.run m cs).nextLabel - cs.nextLabel
+  ∀ (i : Fin n), prog (s.pc + i.1) = (CompilerM.run m cs).code (cs.nextLabel + i.1)
+
+def FragmentLength {α} (m : CompilerM α) (cs : CompilerState) : Nat :=
+  (CompilerM.run m cs).nextLabel - cs.nextLabel
+
+def FragmentEndLabel {α} (m : CompilerM α) (cs : CompilerState) : Nat :=
+  (CompilerM.run m cs).nextLabel
+
+theorem FragmentInstalledAtLabel.toFragInstalled
+    {α} {m : CompilerM α} {cs : CompilerState}
+    {baseLabel : Nat} {s : oseair.State MSB} {prog : oseair.Prog}
+    (h_label : s.pc = baseLabel)
+    (h_inst : FragmentInstalledAtLabel m cs baseLabel prog) :
+    FragInstalled m cs s prog := by
+  intro i
+  rw [h_label]
+  exact h_inst i
+
+/-- Every instruction emitted by a compiler computation preserves memory. -/
+def EmitsPreservesMem {α} (m : CompilerM α) : Prop :=
+  ∀ (cs : CompilerState) (label : Nat),
+    cs.nextLabel ≤ label →
+    label < (CompilerM.run m cs).nextLabel →
+    ∀ instr, (CompilerM.run m cs).code label = some instr → InstrPreservesMem instr
+
+theorem emitsPreservesMem_pure {α} (a : α) :
+    EmitsPreservesMem (pure a : CompilerM α) := by
+  intro cs label h_lo h_hi instr h_code
+  simp [CompilerM.run] at h_hi
+  exact False.elim ((Nat.not_lt_of_ge h_lo) h_hi)
+
+theorem emitsPreservesMem_bind {α β}
+    {m : CompilerM α} {f : α → CompilerM β}
+    (hm : EmitsPreservesMem m)
+    (hf : ∀ a, EmitsPreservesMem (f a)) :
+    EmitsPreservesMem (m >>= f) := by
+  intro cs label h_lo h_hi instr h_code
+  let a := CompilerM.value m cs
+  let cs1 := CompilerM.run m cs
+  by_cases h_in_m : label < cs1.nextLabel
+  · have h_code_m : cs1.code label = some instr := by
+      have h_eq :=
+        (CompilerM.incr (f a) cs1).code_eq label h_in_m
+      have h_code_final :
+          (CompilerM.run (f a) cs1).code label = some instr := by
+        simpa [a, cs1, CompilerM.run_bind] using h_code
+      rw [h_eq] at h_code_final
+      exact h_code_final
+    exact hm cs label h_lo h_in_m instr h_code_m
+  · have h_lo_f : cs1.nextLabel ≤ label := Nat.le_of_not_gt h_in_m
+    exact hf a cs1 label h_lo_f (by simpa [a, cs1, CompilerM.run_bind] using h_hi)
+      instr (by simpa [a, cs1, CompilerM.run_bind] using h_code)
+
+theorem checkedEmitsPreservesMem_pure {α} (a : α) :
+    EmitsPreservesMem ((pure a : CheckedCompilerM α).toCompilerM) := by
+  simpa using (emitsPreservesMem_pure (a := (Except.ok a : Except CompilerError α)))
+
+theorem checkedEmitsPreservesMem_bind {α β}
+    {m : CheckedCompilerM α} {f : α → CheckedCompilerM β}
+    (hm : EmitsPreservesMem m.toCompilerM)
+    (hf : ∀ a, EmitsPreservesMem (f a).toCompilerM) :
+    EmitsPreservesMem ((m >>= f).toCompilerM) := by
+  change EmitsPreservesMem
+    (do
+      match ← m.toCompilerM with
+      | Except.error err => pure (Except.error err)
+      | Except.ok a => (f a).toCompilerM)
+  apply emitsPreservesMem_bind hm
+  intro res
+  cases res with
+  | error err =>
+      exact emitsPreservesMem_pure (Except.error err)
+  | ok a =>
+      simpa using hf a
+
+theorem checkedEmitsPreservesMem_lift {α} {m : CompilerM α}
+    (hm : EmitsPreservesMem m) :
+    EmitsPreservesMem (CheckedCompilerM.lift m).toCompilerM := by
+  unfold CheckedCompilerM.lift
+  apply emitsPreservesMem_bind hm
+  intro a
+  exact emitsPreservesMem_pure (Except.ok a)
+
+theorem freshRegM_emits_preserves_mem :
+    EmitsPreservesMem freshRegM := by
+  intro cs label h_lo h_hi instr h_code
+  simp [freshRegM, freshReg, CompilerM.run] at h_hi
+  exact False.elim ((Nat.not_lt_of_ge h_lo) h_hi)
+
+theorem cleanupInstrs_mem_preserves
+    {regs : List (Register × Nat)} {instr : Instr}
+    (h_mem : instr ∈ cleanupInstrs regs) :
+    InstrPreservesMem instr := by
+  simp [cleanupInstrs] at h_mem
+  rcases h_mem with ⟨reg, len, _h_reg, h_eq⟩
+  cases h_eq
+  simp [InstrPreservesMem]
+
+theorem emitM_emits_preserves_mem
+    (instrs : List Instr)
+    (h_all : ∀ instr, instr ∈ instrs → InstrPreservesMem instr) :
+    EmitsPreservesMem (emitM instrs) := by
+  intro cs label h_lo h_hi instr h_code
+  have h_hi' : label < cs.nextLabel + instrs.length := by
+    simpa [CompilerM.run, emitM, emit] using h_hi
+  have h_range : cs.nextLabel ≤ label ∧ label < cs.nextLabel + instrs.length :=
+    ⟨h_lo, h_hi'⟩
+  have h_get : instrs.get? (label - cs.nextLabel) = some instr := by
+    simpa [CompilerM.run, emitM, emit, h_range] using h_code
+  rcases List.get?_eq_some_iff.mp h_get with ⟨h_idx, h_get_fin⟩
+  exact h_all instr (by
+    rw [← h_get_fin]
+    exact List.get_mem instrs ⟨label - cs.nextLabel, h_idx⟩)
+
+theorem emitM_single_borrow_preserves_mem
+    (kind : RefKind) (dst base : Register) (len : Nat) (offset : Word) :
+    EmitsPreservesMem
+      (emitM [Instr.Assgn dst (borrowRhs kind len base offset)]) := by
+  apply emitM_emits_preserves_mem
+  intro instr h_mem
+  simp [borrowRhs] at h_mem
+  subst instr
+  simp [InstrPreservesMem, RhsPreservesMem]
+
+theorem emitM_single_load_preserves_mem
+    (dst src : Register) :
+    EmitsPreservesMem
+      (emitM [Instr.Assgn dst (Rhs.Load obseq.TyVal.PTy src)]) := by
+  apply emitM_emits_preserves_mem
+  intro instr h_mem
+  simp at h_mem
+  subst instr
+  simp [InstrPreservesMem, RhsPreservesMem]
+
+theorem emitM_cleanup_preserves_mem
+    (regs : List (Register × Nat)) :
+    EmitsPreservesMem (emitM (cleanupInstrs regs)) := by
+  apply emitM_emits_preserves_mem
+  intro instr h_mem
+  exact cleanupInstrs_mem_preserves h_mem
+
+/-- AUDIT SORRY (§E, mechanical): everything `placeToRegChecked` emits
+    preserves target memory — borrows, loads, and cleanup `Die`s only.
+    obseq2 proved the erased (`placeToRegE`) instance by the same structural
+    induction; the v3 Checked variant needs the `checkedEmitsPreservesMem_*`
+    combinators to see through the equation-compiled `match`/`dite` of
+    `placeToRegChecked`, which `apply` does not unify up to. All the leaf
+    lemmas (`emitM_single_borrow/load_preserves_mem`,
+    `emitM_cleanup_preserves_mem`, `freshRegM_emits_preserves_mem`) are
+    proved above; only the induction glue is missing. -/
+theorem placeToRegChecked_emits_preserves_mem
+    {Γ : Ctx} {τ : LayoutTy}
+    (kind : RefKind) (p : Place Γ τ) :
+    EmitsPreservesMem (placeToRegChecked kind p).toCompilerM := by
+  sorry
+
+/-! ## §F Execution helpers -/
+
+/-- Fragment locator: an instruction populated in the per-statement code map
+    appears verbatim at the same slot in the whole compiled program. -/
+theorem compileStmt_emitted_in_compProg
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {compProg : obseq3.oseair.Prog}
+    (h_comp : compileProgFrom cs0 prog = Except.ok compProg)
+    {stmtIdx : Nat} {stmt : Stmt Γ} {csPrefix : CompilerState}
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt)}
+    (h_prefix : csAt cs0 prog stmtIdx csPrefix)
+    (h_get : prog.get? stmtIdx = some stmt)
+    (h_stmt : CheckedCompilerM.value (compileStmtChecked stmt) csPrefix = Except.ok stmtOut)
+    {q : Nat} {instr : Instr}
+    (h_lt : q < (CheckedCompilerM.run (compileStmtChecked stmt) csPrefix).nextLabel)
+    (h_code : (CheckedCompilerM.run (compileStmtChecked stmt) csPrefix).code q = some instr) :
+    compProg q = some instr := by
+  rw [compileProgFrom_code_eq_compileStmt cs0 prog compProg h_comp h_prefix h_get h_stmt h_lt]
+  exact h_code
+
+/-- A `CStore` whose value count matches the declared type size executes in
+    exactly one `runN` step via `writeThroughPtr`. -/
+theorem runN_CStore_step
+    (compProg : oseair.Prog) (s s' : oseair.State MSB)
+    (ty : obseq.TyVal) (vals : List Val) (ptr : Register)
+    (h_instr : compProg s.pc = some (Instr.CStore ty vals ptr))
+    (h_size : vals.length = obseq.typeSize ty)
+    (h_wtp : oseair.writeThroughPtr MSB s ptr vals "CStore Invalid Ptr" = oseair.Result.Ok s') :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok s' := by
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok s' := by
+    simp only [oseair.step, oseair.stepWith, h_instr]
+    split
+    · rename_i hc; simp [h_size] at hc
+    · exact h_wtp
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- A single `Die` step leaves the register file unchanged. -/
+theorem step_Die_preserves_reg
+    {s s' : oseair.State MSB} {prog : oseair.Prog} {r : Register} {len : Nat}
+    (h_instr : prog s.pc = some (Instr.Die r len))
+    (h_step : oseair.step MSB s prog = oseair.Result.Ok s') :
+    s'.reg = s.reg := by
+  simp only [oseair.step, oseair.stepWith, h_instr] at h_step
+  repeat (split at h_step <;> try contradiction)
+  injection h_step with h_eq
+  subst h_eq
+  rfl
+
+/-- If a run consisting solely of `Die` instructions completes, it preserves
+    memory and the register file and advances the pc by the number of dies.
+    Whether it completes (each `sb_die` succeeds) is the caller's obligation
+    — that is where the borrow facts live. -/
+theorem runN_allDie_preserves
+    (compProg : oseair.Prog) :
+    ∀ (instrs : List Instr),
+      (∀ instr ∈ instrs, ∃ r len, instr = Instr.Die r len) →
+      ∀ (s s' : oseair.State MSB),
+        (∀ (i : Fin instrs.length), compProg (s.pc + i.1) = some (instrs.get i)) →
+        oseair.runN MSB instrs.length s compProg = oseair.Result.Ok s' →
+        s'.mem = s.mem ∧ s'.reg = s.reg ∧ s'.pc = s.pc + instrs.length := by
+  intro instrs
+  induction instrs with
+  | nil =>
+      intro _ s s' _ h_run
+      simp only [List.length_nil, oseair.runN_zero, oseair.Result.Ok.injEq] at h_run
+      subst h_run
+      exact ⟨rfl, rfl, by simp⟩
+  | cons instr rest ih =>
+      intro h_die s s' h_instrs h_run
+      obtain ⟨r, len, rfl⟩ := h_die instr (List.mem_cons_self)
+      have h0 : compProg s.pc = some (Instr.Die r len) := by
+        have h := h_instrs ⟨0, by simp⟩
+        simpa using h
+      cases h_step : oseair.step MSB s compProg with
+      | Err msg =>
+          simp [List.length_cons, oseair.runN_succ, h_step] at h_run
+      | Ok s1 =>
+          have h_tail : oseair.runN MSB rest.length s1 compProg = oseair.Result.Ok s' := by
+            have h := h_run
+            simp only [List.length_cons, oseair.runN_succ, h_step] at h
+            exact h
+          have h_mp := step_preserves_mem_and_pc h0 (by simp [InstrPreservesMem]) h_step
+          have h_reg := step_Die_preserves_reg h0 h_step
+          have h_rest_die : ∀ instr ∈ rest, ∃ r len, instr = Instr.Die r len :=
+            fun i hi => h_die i (List.mem_cons_of_mem _ hi)
+          have h_rest_instrs : ∀ (i : Fin rest.length),
+              compProg (s1.pc + i.1) = some (rest.get i) := by
+            intro i
+            have h := h_instrs ⟨i.1 + 1, Nat.succ_lt_succ i.2⟩
+            simp only [List.get_cons_succ] at h
+            rw [h_mp.2, show s.pc + 1 + i.1 = s.pc + (i.1 + 1) from by omega]
+            exact h
+          obtain ⟨hm, hr, hp⟩ := ih h_rest_die s1 s' h_rest_instrs h_tail
+          refine ⟨hm.trans h_mp.1, hr.trans h_reg, ?_⟩
+          rw [hp, h_mp.2, List.length_cons]
+          omega
+
+/-- Running the `cleanupInstrs` from `s`, if it completes, leaves memory and
+    the register file unchanged and advances the pc by the cleanup length. -/
+theorem runN_cleanupInstrs
+    (compProg : oseair.Prog) (s s' : oseair.State MSB) (dies : List (Register × Nat))
+    (h_instrs : ∀ (i : Fin (cleanupInstrs dies).length),
+        compProg (s.pc + i.1) = some ((cleanupInstrs dies).get i))
+    (h_run : oseair.runN MSB (cleanupInstrs dies).length s compProg = oseair.Result.Ok s') :
+    s'.mem = s.mem ∧ s'.reg = s.reg ∧ s'.pc = s.pc + (cleanupInstrs dies).length := by
+  refine runN_allDie_preserves compProg (cleanupInstrs dies) ?_ s s' h_instrs h_run
+  intro instr h_in
+  simp only [cleanupInstrs, List.mem_map] at h_in
+  obtain ⟨⟨r, len⟩, _, rfl⟩ := h_in
+  exact ⟨r, len, rfl⟩
+
+/-! ## §G Memory framing + the SB bridges -/
+
+theorem lookup_filter_ne {α β : Type} [BEq α] [LawfulBEq α] {a addr : α} (hne : a ≠ addr) :
+    (l : List (α × β)) →
+    List.lookup a (l.filter (fun p => p.1 != addr)) = List.lookup a l
+  | [] => rfl
+  | (k, val) :: ps => by
+      have ih := lookup_filter_ne (β := β) hne ps
+      by_cases hk : k = addr
+      · subst hk
+        rw [List.filter_cons_of_neg (by simp)]
+        rw [ih, List.lookup_cons]
+        have hb : (a == k) = false := by simp [hne]
+        rw [hb]
+      · rw [List.filter_cons_of_pos (by simp [hk]), List.lookup_cons, List.lookup_cons, ih]
+
+theorem mirlite_find?_write_self (m : mirlite.Mem) (addr : Word)
+    (v : mirlite.MemValue) :
+    (m.write addr v).find? addr = some v := by
+  simp only [mirlite.Mem.write, mirlite.Mem.find?, List.lookup_cons,
+    beq_self_eq_true]
+
+theorem mirlite_find?_write_ne (m : mirlite.Mem) (a addr : Word)
+    (v : mirlite.MemValue) (hne : a ≠ addr) :
+    (m.write addr v).find? a = m.find? a := by
+  have hb : (a == addr) = false := by simp [hne]
+  simp only [mirlite.Mem.write, mirlite.Mem.find?, List.lookup_cons, hb]
+  exact lookup_filter_ne hne m.mMap
+
+theorem oseair_find?_write_self (m : oseair.Mem) (addr : Word) (v : Val) :
+    (m.write addr v).find? addr = some v := by
+  simp only [oseair.Mem.write, oseair.Mem.find?, List.lookup_cons, beq_self_eq_true]
+
+theorem oseair_find?_write_ne (m : oseair.Mem) (a addr : Word) (v : Val) (hne : a ≠ addr) :
+    (m.write addr v).find? a = m.find? a := by
+  have hb : (a == addr) = false := by simp [hne]
+  simp only [oseair.Mem.write, oseair.Mem.find?, List.lookup_cons, hb]
+  exact lookup_filter_ne hne m.mMap
+
+/-- runN is composable: running m steps then n more equals m+n steps. -/
+theorem oseair_runN_add
+    (m n : Nat) (s : oseair.State MSB) (prog : oseair.Prog) (s' : oseair.State MSB)
+    (h : oseair.runN MSB m s prog = oseair.Result.Ok s') :
+    oseair.runN MSB (m + n) s prog = oseair.runN MSB n s' prog := by
+  induction m generalizing s with
+  | zero =>
+      simp [oseair.runN] at h
+      simp [oseair.runN, h]
+  | succ m ih =>
+      simp only [Nat.succ_add, oseair.runN, oseair.runNWith_succ] at *
+      split at h
+      · exact ih _ h
+      · simp at h
+
+/-! ### The three bridge sorries (see the audit in `proof/compiler.lean`)
+
+These are the lemmas whose ABSENCE is where obseq2's three simulation
+sorries bottom out. They are stated here against the v3 range-based ops so
+the obligation graph is explicit. -/
+
+/-- BRIDGE 1 (keystone): the compiled place-write pattern
+    `Borrow(Mut) ; useMut via the fresh tag ; Die` has exactly the stack
+    effect of the source's bare `useMut` via the parent tag, up to the tag
+    counter. The `sb_ref` performs the parent write access and pushes a
+    Unique; the write through the fresh top item leaves the stacks unchanged;
+    `sb_die` pops it. obseq2 never wrote this lemma — its absence is the
+    core of the `const_write` sorry there. -/
+theorem sb_ref_use_die_cancels
+    {s s1 : AccessPerms} {addr : Word} {len : Nat} {tag t' : Tag}
+    (h_ref : sb_ref s addr len tag .Mut false [] = .ok (s1, t')) :
+    ∃ s2 s3 sAcc,
+      sb_write s1 addr len t' = .ok s2 ∧
+      sb_die s2 addr len t' = .ok s3 ∧
+      sb_write s addr len tag = .ok sAcc ∧
+      s3.StackMap = sAcc.StackMap ∧
+      s3.exposed = sAcc.exposed ∧
+      s3.protFrames = sAcc.protFrames ∧
+      sAcc.NextTag ≤ s3.NextTag := by
+  sorry
+
+/-- BRIDGE 2: range memory-write simulation. A source `writeResolvedPlace`
+    of `values` is matched by a target `writeThroughPtr` of `Forall₂`-related
+    `vals` through a `PlaceRegReady` register: the target write succeeds,
+    `SourceMemSim` is re-established cell-by-cell, and the register file is
+    unchanged (pc advances by one). The perms reconciliation is left to the
+    caller (bridge 1 + bridge 3). Obligations: bounds transport under
+    `IdentityOnDomain ρa`, the `useMut` from `PlaceRegReady`, and an
+    induction over `writeWordSeq` extending `SourceMemSim` at each written
+    cell (obseq2 proved exactly the single-cell instance). -/
+theorem writeThroughPtr_sim
+    {Γ : Ctx} {τ : LayoutTy}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_pre s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {resolved : mirlite.PlaceRes}
+    {dstReg : Register}
+    (values : List mirlite.MemValue) (vals : List Val)
+    (h_vl : values.length = blockSize τ)
+    (h_rel : ListRel (MemValSim ρa ρt) values vals)
+    (h_id_a : IdentityOnDomain ρa)
+    (h_ptr  : PlaceRegReady ρa s_osea.perms s_osea.reg dstReg resolved vals.length)
+    (h_sms  : SourceMemSim ρa ρt s_pre.mem s_osea.mem)
+    (h_le   : resolved.allocBase ≤ resolved.addr)
+    (h_dom  : ∀ k, k < values.length → ρa (resolved.addr + k) = some (resolved.addr + k))
+    (h_write : mirlite.writeResolvedPlace (τ := τ) MSB s_pre resolved values h_vl
+               = mirlite.Result.ok s_mir') :
+    ∃ s_osea',
+      oseair.writeThroughPtr MSB s_osea dstReg vals "CStore Invalid Ptr"
+        = oseair.Result.Ok s_osea' ∧
+      SourceMemSim ρa ρt s_mir'.mem s_osea'.mem ∧
+      s_osea'.reg = s_osea.reg ∧
+      s_osea'.pc = s_osea.pc + 1 := by
+  sorry
+
+/-- BRIDGE 3: SB operations respect `PermSim` — renamed-equal states with a
+    renamed acting tag produce renamed-equal results (and identical error
+    behavior). Stated for the write; `sb_read`, `sb_die`, and `sb_ref` need
+    the same transport (`sb_ref` additionally extends ρt with the fresh-tag
+    pair, preserving `TagRenameWF` because both machines mint strictly above
+    every previously mapped tag). This is the one genuinely new SB lemma
+    family vs obseq2 — the price of the honest (non-equality) relation. -/
+theorem sb_write_respects_PermSim
+    {ρt : TagRenameMap} {src tgt src' : AccessPerms}
+    {addr : Word} {len : Nat} {tagS tagT : Tag}
+    (h_sim : PermSim ρt src tgt)
+    (h_wf : TagRenameWF ρt)
+    (h_tag : ρt tagS = some tagT)
+    (h_src : sb_write src addr len tagS = .ok src') :
+    ∃ tgt', sb_write tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' := by
+  sorry
+
+end obseq3.proof

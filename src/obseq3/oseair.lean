@@ -398,10 +398,7 @@ def runNWith (M : PermissionModel) (A : AllocatorSpec) : Nat → State M → Pro
   | 0, state, _prog => Result.Ok state
   | n + 1, state, prog =>
       match stepWith M A state prog with
-      | Result.Ok state' =>
-          -- `Halt`/off-the-end leave pc unchanged; stop instead of idling
-          if state'.pc == state.pc then Result.Ok state'
-          else runNWith M A n state' prog
+      | Result.Ok state' => runNWith M A n state' prog
       | Result.Err msg => Result.Err msg
 
 def runN (M : PermissionModel) : Nat → State M → Prog → Result M :=
@@ -422,9 +419,7 @@ def runN (M : PermissionModel) : Nat → State M → Prog → Result M :=
   (prog : Prog) :
   runNWith M A (n + 1) state prog =
     match stepWith M A state prog with
-    | Result.Ok state' =>
-        if state'.pc == state.pc then Result.Ok state'
-        else runNWith M A n state' prog
+    | Result.Ok state' => runNWith M A n state' prog
     | Result.Err msg => Result.Err msg := rfl
 
 @[simp] theorem runN_zero
@@ -440,9 +435,7 @@ def runN (M : PermissionModel) : Nat → State M → Prog → Result M :=
   (prog : Prog) :
   runN M (n + 1) state prog =
     match step M state prog with
-    | Result.Ok state' =>
-        if state'.pc == state.pc then Result.Ok state'
-        else runN M n state' prog
+    | Result.Ok state' => runN M n state' prog
     | Result.Err msg => Result.Err msg := rfl
 
 end obseq3.oseair

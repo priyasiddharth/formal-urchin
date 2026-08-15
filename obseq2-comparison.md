@@ -4,6 +4,27 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — obseq3 Proof Skeleton: PermSim Corrects the Invariant (8 audited sorries)
+
+Nineteenth increment. `src/obseq3/proof/` (Obseq3Proof lib): both top-level theorems —
+`CompilerInv_step` and `compile_correct` for the CoreProg fragment — are FULLY PROVED,
+complete modulo 8 audited sorries (audit + closing order at the top of
+proof/compiler.lean). The headline is a correction to obseq2's invariant: its conjunct
+`s_osea.ap = s_mir.perms` is false beyond local-only places (internal borrows advance
+NextTag; die pops items, not the counter; after the split every corresponding tag VALUE
+differs). v3 replaces it with `PermSim ρt` — item-wise ρt-renamed stack equality
+(constructor-preserving, so SRW-group/Disabled structure is identical), renamed
+protFrames/exposed, NextTag ≤ — with ρt injective-fixing-wildcard rather than identity.
+~85% of common.lean is proved (prefix machinery, mem statics over the v3 instruction
+set, PermSim vocabulary + rename_mono, lowering totality + the new
+`ensurePlaceRoot_run_eq_of_mapped`, Die-run helpers, runN composition); the 8 sorries
+are the 3 simulation leaves, 3 bridges (keystone `sb_ref_use_die_cancels` — the lemma
+obseq2 never wrote; range `writeThroughPtr_sim`; `sb_write_respects_PermSim`), and 2
+mechanical stragglers. oseair.runN reverted to idle-fuel semantics (nothing used the
+early stop; it broke `runN_add`). Suite + differential unchanged: pass 76, matched 76/0/0.
+
+---
+
 ## 2026-08-15 — OSEA-v3 refSlice: Full-Suite Differential (76/76, 0 mismatches)
 
 Eighteenth increment, closing the coverage arc. `Rhs.BorrowRest (kind, prot, srcPtr)` —

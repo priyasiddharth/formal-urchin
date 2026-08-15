@@ -272,3 +272,24 @@ increment should land with its own differential numbers.
 **Effort estimate:** pushProtectors ~1h; alloc/dealloc ~2h; others ~30min each.
 **References:** journal/2026-08/2026-08-15-osea-v3-compiler-landed.md,
 obseq2-comparison.md 2026-08-15 entry, MASTER INVENTORY above.
+
+## obseq3 proof closure (8 audited sorries)
+**Status:** parked 2026-08-15
+**Context:** src/obseq3/proof/ skeleton landed; `CompilerInv_step` and
+`compile_correct` fully proved for the CoreProg fragment modulo 8 sorries
+enumerated in proof/compiler.lean's audit. The invariant is the corrected
+`PermSim ρt` (obseq2's literal perms equality is false beyond local-only
+places — see journal 2026-08-15-obseq3-proof-skeleton).
+**Why parked:** skeleton-first scope (user decision); each sorry is an
+independent increment.
+**To resume:** close in audit order 4→5→6→8→1→2→7→3, i.e. keystone
+`sb_ref_use_die_cancels` first (per-cell push/use/pop cancellation on
+BorrowStack — pure sb.lean reasoning, no simulation context), then the
+range `writeThroughPtr_sim`, then `sb_write_respects_PermSim` (ListRel
+transport over sb_write's per-cell fold), then the const_write leaf.
+**Effort estimate:** keystone ~half-day; bridges 2-3 ~half-day each;
+const_write leaf ~1 day (fragment execution plumbing); copy/ref ~1-2 days
+each (ref extends ρt).
+**References:** proof/compiler.lean (audit), journal/2026-08/
+2026-08-15-obseq3-proof-skeleton.md, obseq2 sorries superseded by this
+decomposition (obseq2/proof stays frozen).
