@@ -471,6 +471,8 @@ inductive RExprToEvidence {Γ : Ctx}
       (src : Place Γ σ) (srcRes : PtrResult)
       (srcEv : PlaceToBorrowRegEvidence kind src srcRes) :
       RExprToEvidence dstPtr (.ref kind prot mask src)
+  | uninit {τ : LayoutTy} :
+      RExprToEvidence dstPtr (.uninit (τ := τ))
 
 def compileRExprToChecked
   (dstPtr : Register)
@@ -500,12 +502,17 @@ def compileRExprToChecked
         result := (),
         evidence := RExprToEvidence.ref kind prot mask src srcRes srcOut.evidence
       }
+  | .uninit => do
+      -- mirlite fills the destination with `blockSize τ` undef cells via a
+      -- useMut write; CStore of Undef values is the same event stream
+      let _ ← CheckedCompilerM.lift
+        (emitM [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) dstPtr])
+      pure { result := (), evidence := RExprToEvidence.uninit }
   | .ptrCast _ => CheckedCompilerM.throw (.unsupported "rvalue ptrCast")
   | .ptrOffset _ _ => CheckedCompilerM.throw (.unsupported "rvalue ptrOffset")
   | .refSlice _ _ _ => CheckedCompilerM.throw (.unsupported "rvalue refSlice")
   | .exposeAddr _ => CheckedCompilerM.throw (.unsupported "rvalue exposeAddr")
   | .fromExposed _ => CheckedCompilerM.throw (.unsupported "rvalue fromExposed")
-  | .uninit => CheckedCompilerM.throw (.unsupported "rvalue uninit")
 
 inductive StmtEvidence {Γ : Ctx} : Stmt Γ → Type where
   | halt :

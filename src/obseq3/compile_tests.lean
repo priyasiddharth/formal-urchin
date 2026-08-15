@@ -108,7 +108,7 @@ def g4_field_offsets_and_die : IO Unit :=
 
 /-- Non-core statements are rejected with `unsupported`, not miscompiled. -/
 def g5_unsupported_stmt : IO Unit := do
-  match compileProg (Γ := Γ1) [.assign x1 .uninit, .halt] with
+  match compileProg (Γ := Γ2) [.assign x2 (.exposeAddr p2), .halt] with
   | .error (.unsupported _) => pure ()
   | .error e => throw (IO.userError s!"g5: expected unsupported, got {reprStr e}")
   | .ok _ => throw (IO.userError "g5: expected unsupported, got ok")
@@ -131,6 +131,15 @@ def g6_protector_frame : IO Unit :=
      Instr.PopProt,
      Instr.Halt]
     "g6 protector frame"
+
+/-- `uninit` (statics hoisting) compiles to a CStore of undef cells —
+    same useMut event as mirlite's undef fill, no new instruction. -/
+def g7_uninit_undef_store : IO Unit :=
+  expectCode Γ1 [.assign x1 .uninit, .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
+     Instr.CStore natTy [Val.Undef] (Register.R 0),
+     Instr.Halt]
+    "g7 uninit undef store"
 
 /-! ## Differential execution -/
 
@@ -287,6 +296,21 @@ def d8_pop_after_frame_ok : IO Unit :=
      .assign xA (.constInit 9)]
     .ok "d8 pop after frame ok"
 
+/-- Positive: the statics-hoisting shape — materialize uninit, overwrite,
+    read back; plus a whole-tuple uninit copied out with one field still
+    undef (undef cells flow through Memcpy without a verdict). -/
+def d9_uninit_materialize : IO Unit := do
+  expectDiff ΓA
+    [.assign xA .uninit,
+     .assign xA (.constInit 5),
+     .assign tA (.copy xA)]
+    .ok "d9a uninit materialize scalar"
+  expectDiff ΓD
+    [.assign tupD .uninit,
+     .assign fld0D (.constInit 1),
+     .assign cpyD (.copy tupD)]
+    .ok "d9b uninit tuple partial init copy"
+
 def runAll : IO Unit := do
   g1_const_fresh_local
   g2_protected_masked_ref
@@ -294,6 +318,7 @@ def runAll : IO Unit := do
   g4_field_offsets_and_die
   g5_unsupported_stmt
   g6_protector_frame
+  g7_uninit_undef_store
   d1_owner_read_pops_mut
   d2_deref_roundtrip
   d3_field_borrow
@@ -302,6 +327,7 @@ def runAll : IO Unit := do
   d6_tuple_copy
   d7_protected_pop_is_ub
   d8_pop_after_frame_ok
-  IO.println "obseq3 compiler tests passed (14/14)"
+  d9_uninit_materialize
+  IO.println "obseq3 compiler tests passed (16/16)"
 
 end obseq3.CompileTests

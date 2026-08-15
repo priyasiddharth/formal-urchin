@@ -232,8 +232,10 @@ has a planned target instruction. Skip histogram with designs:
 - `Stmt.alloc`/`dealloc` (6): `Rhs.AllocN (len-operand)` + `Instr.Dealloc`;
   needs the allocs table + `removeRange` ported into `oseair.Mem` (v3
   mirlite has them; oseair.Mem deliberately doesn't yet).
-- `RExpr.uninit` (6, statics hoisting): CStore of `Val.Undef` cells — a
-  `CStoreUndef ty` or letting CStore accept undef lists; trivial.
+- ~~`RExpr.uninit`~~ **DONE 2026-08-15**: CStore of `Val.Undef` cells,
+  no new instruction needed (CStore already stores arbitrary Vals).
+  matched 53 → 56; histogram now alloc 7 · exposeAddr 5 · assignIf 3 ·
+  ptrCast 3 · ptrOffset 2.
 - `exposeAddr`/`fromExposed` (5): `Instr.Expose (reg)` (M.expose + read),
   `Rhs.FromExposed` (needs `Mem.resolveAddr` port + wildcardTag ptr).
 - `ptrCast` (2): tag-preserving one-cell copy — a Load without... no: a

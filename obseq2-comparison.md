@@ -4,6 +4,18 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — OSEA-v3 uninit: CStore of Undef, No New Instruction
+
+Thirteenth increment. `RExpr.uninit` compiles to `CStore ty (replicate blockSize Undef)` —
+CStore already stores arbitrary `Val` lists through a useMut write, which is exactly
+mirlite's undef fill. Undef cells are verdict-inert on both machines (SB never inspects
+values), so partially-initialized aggregates copy identically through Memcpy.
+Differential: **matched 56 | mismatch 0 | skipped 20**; uninit was first-blocker in only
+3 of its 6 tests (histogram now alloc 7 · exposeAddr 5 · assignIf 3 · ptrCast 3 ·
+ptrOffset 2). Unit tests 16/16 (golden g7, differential d9 incl. partial-init tuple copy).
+
+---
+
 ## 2026-08-15 — OSEA-v3 Protector Frames (matched 25 → 53)
 
 Twelfth increment, ~20 lines: `Instr.PushProt`/`PopProt` in oseair calling
