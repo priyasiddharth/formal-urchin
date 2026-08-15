@@ -4,6 +4,27 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — Keystone Closed: Ref-Use-Die Cancellation via a setChain Normal Form
+
+Twentieth increment. `sb_ref_use_die_cancels` — the lemma obseq2's const_write sorry
+silently depended on and never stated — is now a theorem (proof/keystone.lean, no
+sorries; audit 8 → 7). Enablers: a behavior-preserving sb.lean refactor (content
+functions `writeCellContent`/`dieCellContent` factored out of the per-cell ops;
+`sb_ref`'s nested `let rec` promoted to a top-level `foldCellsIdx` — nested let-recs
+are unaddressable in proofs; suite re-verified identical) and a small fold theory:
+content-driven cell folds normalize to `setChain`s, and since `SB.set` is
+move-to-front, chains collapse only under the explicit normal form
+`entries.reverse ++ filtered original` (`setChain_normal`/`setChain_override`) —
+pointwise equality wouldn't feed `PermSim`'s raw-list comparison. The three target
+phases (ref-fold pushes `MutRef t' :: wⱼ`; write-through-top rewrites it unchanged —
+the fresh Unique's pop-set is empty; die pops back to `wⱼ`) collapse entry-for-entry
+onto the source's single write fold. Side conditions (fresh tag ≠ wildcard, not
+protected) are reachable-state invariants — the future WF conjunct. Notable pothole:
+`omega` cannot see through the `Word`/`Tag` Nat-abbrevs in 4.28. All suites unchanged
+(pass 76, differential 76/0/0, units 13+36).
+
+---
+
 ## 2026-08-15 — obseq3 Proof Skeleton: PermSim Corrects the Invariant (8 audited sorries)
 
 Nineteenth increment. `src/obseq3/proof/` (Obseq3Proof lib): both top-level theorems —

@@ -1217,25 +1217,9 @@ These are the lemmas whose ABSENCE is where obseq2's three simulation
 sorries bottom out. They are stated here against the v3 range-based ops so
 the obligation graph is explicit. -/
 
-/-- BRIDGE 1 (keystone): the compiled place-write pattern
-    `Borrow(Mut) ; useMut via the fresh tag ; Die` has exactly the stack
-    effect of the source's bare `useMut` via the parent tag, up to the tag
-    counter. The `sb_ref` performs the parent write access and pushes a
-    Unique; the write through the fresh top item leaves the stacks unchanged;
-    `sb_die` pops it. obseq2 never wrote this lemma — its absence is the
-    core of the `const_write` sorry there. -/
-theorem sb_ref_use_die_cancels
-    {s s1 : AccessPerms} {addr : Word} {len : Nat} {tag t' : Tag}
-    (h_ref : sb_ref s addr len tag .Mut false [] = .ok (s1, t')) :
-    ∃ s2 s3 sAcc,
-      sb_write s1 addr len t' = .ok s2 ∧
-      sb_die s2 addr len t' = .ok s3 ∧
-      sb_write s addr len tag = .ok sAcc ∧
-      s3.StackMap = sAcc.StackMap ∧
-      s3.exposed = sAcc.exposed ∧
-      s3.protFrames = sAcc.protFrames ∧
-      sAcc.NextTag ≤ s3.NextTag := by
-  sorry
+/- BRIDGE 1 (keystone) — `sb_ref_use_die_cancels` — is CLOSED in
+   `obseq3/proof/keystone.lean` (it needs only `obseq3.sb`, no simulation
+   vocabulary; kept separate so this file stays the invariant layer). -/
 
 /-- BRIDGE 2: range memory-write simulation. A source `writeResolvedPlace`
     of `values` is matched by a target `writeThroughPtr` of `Forall₂`-related

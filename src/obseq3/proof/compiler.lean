@@ -10,31 +10,34 @@ sorries below.
 
 ## SORRY AUDIT (the skeleton's obligation graph)
 
+CLOSED:
+- ✔ BRIDGE 1 `sb_ref_use_die_cancels` (proof/keystone.lean, 2026-08-15):
+  Borrow(Mut);use;Die ≡ the bare parent access up to NextTag, via the
+  `setChain` normal form for move-to-front assoc-list folds.
+
 Simulation leaves (obseq2's three, restated against v3):
 1. `const_write_resolved_simulation`  (const_write.lean) — fragment
-   execution + BRIDGE 1/2/3 + invariant reconstruction.
+   execution + bridges + invariant reconstruction.
 2. `CompilerInv_step_copy`            (copy.lean) — needs the Memcpy/range
    analog of BRIDGE 2 and the read transport of BRIDGE 3.
 3. `CompilerInv_step_ref`             (ref.lean) — the only ρt-growing case
    (fresh tags differ across machines under `PermSim`'s `NextTag ≤`).
 
 Bridge lemmas (stated in common.lean §G):
-4. `sb_ref_use_die_cancels`  — BRIDGE 1, the keystone obseq2 never wrote:
-   Borrow(Mut);use;Die ≡ the bare parent access, up to NextTag.
-5. `writeThroughPtr_sim`     — BRIDGE 2, range memory-write simulation.
-6. `sb_write_respects_PermSim` — BRIDGE 3, SB-op transport through the
+4. `writeThroughPtr_sim`     — BRIDGE 2, range memory-write simulation.
+5. `sb_write_respects_PermSim` — BRIDGE 3, SB-op transport through the
    ρt-renamed relation (family representative; read/die/ref analogs are
    consumed by leaves 2–3 and stated when closed).
 
 Mechanical stragglers (documented in place):
-7. `placeToRegChecked_emits_preserves_mem` (common.lean §E) — induction
+6. `placeToRegChecked_emits_preserves_mem` (common.lean §E) — induction
    glue over the Checked combinators; all leaf lemmas proved.
-8. one branch of `const_write_stmt_evidence` (const_write.lean) — the
+7. one branch of `const_write_stmt_evidence` (const_write.lean) — the
    NEW-in-v3 fresh-root prepare of a projected destination (aggregate
    desugar); needs "placeToRegChecked succeeds after ensurePlaceRoot
    allocated the root".
 
-Suggested closing order: 4 → 5 → 6 → 8 → 1 → 2 → 7 → 3.
+Suggested closing order: 4 → 5 → 7 → 1 → 2 → 6 → 3.
 -/
 
 namespace obseq3.proof
