@@ -108,7 +108,7 @@ def g4_field_offsets_and_die : IO Unit :=
 
 /-- Non-core statements are rejected with `unsupported`, not miscompiled. -/
 def g5_unsupported_stmt : IO Unit := do
-  match compileProg (Γ := Γ2) [.assign x2 (.exposeAddr p2), .halt] with
+  match compileProg (Γ := Γ2) [.assign p2 (.ptrCast p2), .halt] with
   | .error (.unsupported _) => pure ()
   | .error e => throw (IO.userError s!"g5: expected unsupported, got {reprStr e}")
   | .ok _ => throw (IO.userError "g5: expected unsupported, got ok")
@@ -162,7 +162,32 @@ def g9_dealloc : IO Unit :=
      Instr.Halt]
     "g9 dealloc"
 
+def ΓA' : Ctx := [natL, ptrNat, natL]
+def xA' : Place ΓA' natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pA' : Place ΓA' ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def tA' : Place ΓA' natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- `expose_provenance`: an `ExposeAddr` of the pointer cell followed by
+    an `RStore` of the numeric address. -/
+def g10_expose_addr : IO Unit :=
+  expectCode ΓA'
+    [.assign xA' (.constInit 1),
+     .assign pA' (.ref (.Raw true) false [] xA'),
+     .assign tA' (.exposeAddr pA'),
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
+     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] 1 (Register.R 0) 0),
+     Instr.RStore pTy (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc natTy),
+     Instr.Assgn (Register.R 4) (Rhs.ExposeAddr (Register.R 1)),
+     Instr.RStore natTy (Register.R 4) (Register.R 3),
+     Instr.Halt]
+    "g10 expose addr"
+
 /-! ## Differential execution -/
+
 
 inductive DiffOut
 | ok
@@ -369,6 +394,38 @@ def d13_dynamic_alloc_len : IO Unit :=
      .dealloc pA]
     .ok "d13 dynamic alloc len"
 
+def ΓE : Ctx := [natL, ptrNat, natL, ptrNat, natL]
+def xE : Place ΓE natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pE : Place ΓE ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def aE : Place ΓE natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def qE : Place ΓE ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+def tE : Place ΓE natL := .local ⟨⟨4, by decide⟩, rfl⟩
+
+/-- Positive: full exposed-provenance round trip — expose a raw's address,
+    reconstruct a wildcard pointer, write through it, read back. -/
+def d14_expose_roundtrip : IO Unit :=
+  expectDiff ΓE
+    [.assign xE (.constInit 1),
+     .assign pE (.ref (.Raw true) false [] xE),
+     .assign aE (.exposeAddr pE),
+     .assign qE (.fromExposed aE),
+     .assign (.deref qE) (.constInit 5),
+     .assign tE (.copy xE)]
+    .ok "d14 expose roundtrip"
+
+/-- Negative: the exposed raw is popped by an owner write before the
+    wildcard write; wildcard resolution finds no exposed granting item —
+    UB at the same statement on both machines. -/
+def d15_exposed_then_invalidated : IO Unit :=
+  expectDiff ΓE
+    [.assign xE (.constInit 1),
+     .assign pE (.ref (.Raw true) false [] xE),
+     .assign aE (.exposeAddr pE),
+     .assign xE (.constInit 2),
+     .assign qE (.fromExposed aE),
+     .assign (.deref qE) (.constInit 5)]
+    (.ub 5) "d15 exposed then invalidated"
+
 def runAll : IO Unit := do
   g1_const_fresh_local
   g2_protected_masked_ref
@@ -379,6 +436,7 @@ def runAll : IO Unit := do
   g7_uninit_undef_store
   g8_heap_alloc
   g9_dealloc
+  g10_expose_addr
   d1_owner_read_pops_mut
   d2_deref_roundtrip
   d3_field_borrow
@@ -392,6 +450,8 @@ def runAll : IO Unit := do
   d11_use_after_free
   d12_double_free
   d13_dynamic_alloc_len
-  IO.println "obseq3 compiler tests passed (22/22)"
+  d14_expose_roundtrip
+  d15_exposed_then_invalidated
+  IO.println "obseq3 compiler tests passed (25/25)"
 
 end obseq3.CompileTests

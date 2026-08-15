@@ -40,6 +40,7 @@ abbrev MemMap := List (Word × Val)
 structure Mem where
   mMap : MemMap
   addrStart : Word
+  allocs : List (Word × Nat) := []   -- (base, size), for int-to-ptr resolution
 deriving Repr, Inhabited
 
 namespace Mem
@@ -53,6 +54,14 @@ def write (m : Mem) (addr : Word) (v : Val) : Mem :=
 /-- Same base address as `mirlite.Mem.empty`, so source and target
     machines allocate at identical addresses in identical order. -/
 def empty : Mem := { mMap := [], addrStart := 0 }
+
+/-- Resolve a concrete integer address to its allocation, for int-to-ptr
+    casts (as `mirlite.Mem.resolveAddr`). Unknown addresses yield a
+    degenerate (dangling) allocation. -/
+def resolveAddr (m : Mem) (n : Word) : Word × Word × Nat :=
+  match m.allocs.find? (fun (b, s) => decide (b ≤ n) && decide (n < b + s)) with
+  | some (b, s) => (b, n - b, s)
+  | none => (n, 0, 0)
 
 /-- Remove the cells of a deallocated range (as `mirlite.Mem.removeRange`;
     the bump allocator never reuses addresses). -/
@@ -75,7 +84,8 @@ def writeWordSeq (m : Mem) (addr : Word) (vals : List Val) : Mem :=
   | v :: vs => writeWordSeq (m.write addr v) (addr + 1) vs
 
 def allocate (m : Mem) (sz : Nat) : Word × Mem :=
-  (m.addrStart, { m with addrStart := m.addrStart + sz })
+  (m.addrStart,
+   { m with addrStart := m.addrStart + sz, allocs := (m.addrStart, sz) :: m.allocs })
 
 structure AllocatorSpec where
   alloc : Mem → Nat → Word × Mem
@@ -94,6 +104,8 @@ inductive Rhs
 | AllocDyn (ty : TyVal) (lenPtr : Register)
 | Borrow (kind : RefKind) (prot : Bool) (mask : List Bool) (len : Nat)
     (base : Register) (offset : Word)
+| ExposeAddr (srcPtr : Register)
+| FromExposed (srcPtr : Register)
 deriving Repr, Inhabited, BEq
 
 inductive Instr
@@ -152,6 +164,44 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
        let s2 := { state with mem := mem2, perms := perms2 }
        RhsResult.Ok [Val.Ptr base 0 size tag] obseq.TyVal.PTy s2
      | .error msg => RhsResult.Err msg
+
+  | Rhs.ExposeAddr srcPtr =>
+     -- read the pointer cell (SB read via the place's tag), expose the
+     -- STORED pointer's tag, result is the numeric address — exactly
+     -- mirlite's `.exposeAddr`
+     match state.reg.lookup srcPtr with
+     | some (_, [Val.Ptr base offset size tag]) =>
+       let addr := base + offset
+       if addr < base || addr >= base + size then RhsResult.Err "OOB"
+       else
+         match M.read state.perms addr 1 tag with
+         | .error msg => RhsResult.Err msg
+         | .ok perms2 =>
+           match state.mem.find? addr with
+           | some (Val.Ptr pBase pOff _ pTag) =>
+             let s2 := { state with perms := M.expose perms2 pTag }
+             RhsResult.Ok [Val.Dat (pBase + pOff)] obseq.TyVal.NatTy s2
+           | _ => RhsResult.Err "ptr-to-int cast of a non-pointer value"
+     | _ => RhsResult.Err "ExposeAddr expects Ptr"
+
+  | Rhs.FromExposed srcPtr =>
+     -- read the integer cell, resolve it to its containing allocation,
+     -- result is a wildcard-tagged pointer — mirlite's `.fromExposed`
+     match state.reg.lookup srcPtr with
+     | some (_, [Val.Ptr base offset size tag]) =>
+       let addr := base + offset
+       if addr < base || addr >= base + size then RhsResult.Err "OOB"
+       else
+         match M.read state.perms addr 1 tag with
+         | .error msg => RhsResult.Err msg
+         | .ok perms2 =>
+           match state.mem.find? addr with
+           | some (Val.Dat n) =>
+             let (rBase, rOff, rSize) := state.mem.resolveAddr n
+             let s2 := { state with perms := perms2 }
+             RhsResult.Ok [Val.Ptr rBase rOff rSize wildcardTag] obseq.TyVal.PTy s2
+           | _ => RhsResult.Err "int-to-ptr cast of a non-integer value"
+     | _ => RhsResult.Err "FromExposed expects Ptr"
 
   | Rhs.AllocN ty n =>
      let units := n * typeSize ty

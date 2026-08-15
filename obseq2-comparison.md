@@ -4,6 +4,20 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — OSEA-v3 Exposed Provenance (matched 68; 89% differential)
+
+Fifteenth increment. `Rhs.ExposeAddr`/`Rhs.FromExposed` as a pair, with the allocs table
++ `resolveAddr` ported into `oseair.Mem`. The subtle split: ExposeAddr reads the pointer
+cell via the *place's* tag but exposes the *stored* pointer's tag; FromExposed yields a
+`wildcardTag` pointer whose resolution lives entirely in the permission model, so use
+sites need no new machine logic. `allocate` records every allocation (locals and heap,
+as mirlite's single allocate does) — that shared bookkeeping is what makes both machines
+resolve the same integer to the same allocation. Differential: **matched 68 |
+mismatch 0 | skipped 8** (remaining: assignIf 3 · ptrCast 3 · ptrOffset 2). Unit tests
+25/25 (g10; d14 round trip; d15 exposed-then-invalidated wildcard UB).
+
+---
+
 ## 2026-08-15 — OSEA-v3 Heap Alloc/Dealloc (matched 63; 83% of suite differential)
 
 Fourteenth increment. `Rhs.AllocN`/`Rhs.AllocDyn` + `Instr.Dealloc`, with

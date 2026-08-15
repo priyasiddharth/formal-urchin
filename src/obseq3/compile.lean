@@ -6,10 +6,10 @@ mirlite-v3 → OSEA-IR-v3 compiler: the Checked family of
 `src/obseq2/compile.lean`, ported to the v3 syntax/target.
 
 Differences from v2:
-- compiled subset: `constInit`/`copy`/`ref`/`uninit`/`halt`,
-  `pushProtectors`/`popProtectors`, `alloc`/`dealloc`; the remaining
-  forms (`assignIf`, `ptrCast`, `ptrOffset`, `refSlice`, `exposeAddr`,
-  `fromExposed`) are rejected with `CompilerError.unsupported`;
+- compiled subset: `constInit`/`copy`/`ref`/`uninit`/`exposeAddr`/
+  `fromExposed`/`halt`, `pushProtectors`/`popProtectors`,
+  `alloc`/`dealloc`; the remaining forms (`assignIf`, `ptrCast`,
+  `ptrOffset`, `refSlice`) are rejected with `CompilerError.unsupported`;
 - one `Rhs.Borrow` (kind, prot, mask, len) replaces the three v2 borrow
   forms; internal place-lowering borrows use `prot := false, mask := []`,
   while an `RExpr.ref`'s own prot/mask are carried into the final borrow;
@@ -474,6 +474,14 @@ inductive RExprToEvidence {Γ : Ctx}
       RExprToEvidence dstPtr (.ref kind prot mask src)
   | uninit {τ : LayoutTy} :
       RExprToEvidence dstPtr (.uninit (τ := τ))
+  | exposeAddr
+      {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
+      (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
+      RExprToEvidence dstPtr (.exposeAddr src)
+  | fromExposed
+      {τ : LayoutTy} (src : Place Γ obseq.LayoutTy.NatL) (srcRes : PtrResult)
+      (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
+      RExprToEvidence dstPtr (.fromExposed (τ := τ) src)
 
 def compileRExprToChecked
   (dstPtr : Register)
@@ -509,11 +517,33 @@ def compileRExprToChecked
       let _ ← CheckedCompilerM.lift
         (emitM [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) dstPtr])
       pure { result := (), evidence := RExprToEvidence.uninit }
+  | .exposeAddr src => do
+      let srcOut ← placeToRegChecked RefKind.Shared src
+      let srcRes := srcOut.result
+      let tmpReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Assgn tmpReg (Rhs.ExposeAddr srcRes.reg)]
+          ++ cleanupInstrs srcRes.cleanup
+          ++ [Instr.RStore obseq.TyVal.NatTy tmpReg dstPtr]))
+      pure {
+        result := (),
+        evidence := RExprToEvidence.exposeAddr src srcRes srcOut.evidence
+      }
+  | .fromExposed src => do
+      let srcOut ← placeToRegChecked RefKind.Shared src
+      let srcRes := srcOut.result
+      let tmpReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Assgn tmpReg (Rhs.FromExposed srcRes.reg)]
+          ++ cleanupInstrs srcRes.cleanup
+          ++ [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr]))
+      pure {
+        result := (),
+        evidence := RExprToEvidence.fromExposed src srcRes srcOut.evidence
+      }
   | .ptrCast _ => CheckedCompilerM.throw (.unsupported "rvalue ptrCast")
   | .ptrOffset _ _ => CheckedCompilerM.throw (.unsupported "rvalue ptrOffset")
   | .refSlice _ _ _ => CheckedCompilerM.throw (.unsupported "rvalue refSlice")
-  | .exposeAddr _ => CheckedCompilerM.throw (.unsupported "rvalue exposeAddr")
-  | .fromExposed _ => CheckedCompilerM.throw (.unsupported "rvalue fromExposed")
 
 /-- Lower an `AllocLen` to a register holding the fresh heap pointer.
     `const n` → `AllocN`; `fromPlace p` → lower `p` (Shared) and emit

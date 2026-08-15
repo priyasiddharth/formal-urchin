@@ -240,8 +240,11 @@ has a planned target instruction. Skip histogram with designs:
   no new instruction needed (CStore already stores arbitrary Vals).
   matched 53 → 56; histogram now alloc 7 · exposeAddr 5 · assignIf 3 ·
   ptrCast 3 · ptrOffset 2.
-- `exposeAddr`/`fromExposed` (5): `Instr.Expose (reg)` (M.expose + read),
-  `Rhs.FromExposed` (needs `Mem.resolveAddr` port + wildcardTag ptr).
+- ~~`exposeAddr`/`fromExposed`~~ **DONE 2026-08-15** (as a pair):
+  `Rhs.ExposeAddr` (place-tag read + stored-tag expose) /
+  `Rhs.FromExposed` (read + resolveAddr → wildcardTag ptr); allocs
+  table + resolveAddr ported to oseair.Mem. matched 63 → 68; remaining:
+  assignIf 3 · ptrCast 3 · ptrOffset 2.
 - `ptrCast` (2): tag-preserving one-cell copy — a Load without... no: a
   `Rhs.PtrCast (reg)` that re-types the register value, plus the M.read
   of the source cell to match mirlite's cast-as-read.
