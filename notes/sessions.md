@@ -81,3 +81,21 @@ raw-retag-placement finding (the day's key semantics insight).
 (converts 2 xfails + ~10 unsupported; composes with seam retags),
 statics hoisting cheapest (~4 tests). Reconstruct obseq3 preservation
 proofs on demand.
+
+## 2026-08-15
+**Session:** `yes-the-miri-happy-breeze` (continued)
+**Theme:** OSEA-IR v3 + mirlite→OSEA compiler (proof-core subset) +
+`--osea` differential oracle in the conformance harness.
+**Key outputs:** src/obseq3/oseair.lean (parameterized target machine,
+`Rhs.Borrow`/`Die len`), src/obseq3/compile.lean (Checked family,
+`ensurePlaceRoot`, `stmtLabelRanges`), src/obseq3/compile_tests.lean
+(5 golden + 6 differential), harness/main `--osea`; journal
+2026-08-15-osea-v3-compiler-landed; dev-log 2026-08-15 entry; parked
+"OSEA-v3 remaining increments".
+**Critical corrections:** none this leg (design deltas vs v2 — deref
+no-die, root auto-alloc — were caught at design time, not by failures).
+**Status:** complete; first differential run matched 25 | mismatch 0 |
+skipped 51; suite unchanged pass 76 | fail 0.
+**Next-session pickup:** parked.md → "OSEA-v3 remaining increments"
+(pushProtectors first, ~31 tests), or CompilerInv port (conjuncts
+6/7/8/9 are the breaking ones per the obseq2 proof inventory).

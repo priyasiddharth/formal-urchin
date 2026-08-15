@@ -1,12 +1,13 @@
 import conformance.harness
 import obseq3.tests
+import obseq3.compile_tests
 
 /-!
 `sb_conformance` executable.
 
 Usage:
   sb_conformance --manifest <path> --charon-dir <path> [--filter <substr>]
-                 [--record] [--dump <test-id>] [--unit]
+                 [--record] [--dump <test-id>] [--unit] [--osea]
 
 - default: run the manifest, print per-test outcomes and a summary;
   exit 1 on any FAIL/XPASS.
@@ -15,6 +16,9 @@ Usage:
 - --dump <id>: print the lowered untyped program of one test (loader
   golden-check / curation aid).
 - --unit: run the obseq3 unit tests first.
+- --osea: differential mode — additionally compile each loaded program to
+  OSEA-IR-v3 and require the same verdict as mirlite (mismatch = failure;
+  compiler-unsupported constructs are reported as skipped).
 -/
 
 namespace conformance
@@ -26,6 +30,7 @@ structure Args where
   record : Bool := false
   dump : Option String := none
   unit : Bool := false
+  osea : Bool := false
 
 def parseArgs : List String → Except String Args
   | [] => .ok {}
@@ -35,6 +40,7 @@ def parseArgs : List String → Except String Args
   | "--record" :: rest => do return { ← parseArgs rest with record := true }
   | "--dump" :: v :: rest => do return { ← parseArgs rest with dump := some v }
   | "--unit" :: rest => do return { ← parseArgs rest with unit := true }
+  | "--osea" :: rest => do return { ← parseArgs rest with osea := true }
   | arg :: _ => .error s!"unknown argument {arg}"
 
 def dumpTest (charonDir : String) (m : Manifest) (id : String) : IO UInt32 := do
@@ -80,6 +86,7 @@ def realMain (args : List String) : IO UInt32 := do
   | .ok a => do
     if a.unit then
       obseq3.Tests.runAll
+      obseq3.CompileTests.runAll
     match a.manifest, a.charonDir with
     | some mPath, some cDir => do
         let content ← IO.FS.readFile mPath
@@ -97,7 +104,7 @@ def realMain (args : List String) : IO UInt32 := do
                       | none => m.tests
                     let mut results := []
                     for e in tests do
-                      let r ← runEntry cDir e
+                      let r ← runEntry cDir a.osea e
                       reportResult r a.record
                       results := r :: results
                     summarize results.reverse

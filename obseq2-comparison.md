@@ -4,6 +4,33 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — OSEA-IR v3 and the Differential Oracle (compiler back online)
+
+Eleventh increment: the mission's compiler leg restarts on the v3 semantics.
+`src/obseq3/oseair.lean` forks the v2 target with the machine parameterized by
+`obseq3.PermissionModel` (`perms : M.State`, symmetric with mirlite, so a future
+`CompilerInv` states `s_osea.perms = s_mir.perms` verbatim), all permission calls
+range-based, and one `Rhs.Borrow (kind, prot, mask, len)` replacing the three v2 borrow
+forms; `Die` carries the borrow's static length. `src/obseq3/compile.lean` ports the
+Checked compiler family for the proof-core subset (constInit/copy/ref/halt; everything
+else `CompilerError.unsupported`). Three deliberate scheme changes vs v2: deref lowering
+no longer dies the loaded pointer register (its tag was loaded, not minted — dying it
+would pop the source's own reference under per-cell stacks); `ensurePlaceRoot` allocates
+a projected destination's root local before the rhs, mirroring mirlite's
+`preparePlaceAssign` (aggregate desugaring assigns `_x.0` first); allocation order
+matches mirlite so both machines mint identical addresses.
+
+The harness gained `--osea`: compile each loaded program, run it, and require the same
+verdict as mirlite — with target UB attributed to a source statement via per-statement
+label ranges (`stmtLabelRanges`). First run: **osea: matched 25 | mismatch 0 |
+skipped 51**; 14 of the matches are fail-tests UB-matched at the exact statement.
+None of the plan's three GEP-as-ownership-events risks fired (the Raw-temp Die risk is
+vacuous: compiler temps are never Raw). Skip histogram: pushProtectors 31 · alloc 6 ·
+uninit 6 · exposeAddr 5 · ptrCast 2 · ptrOffset 1 — parked as named instruction designs.
+Unit tests: 5 golden + 6 differential (2 negatives). Suite unchanged: pass 76 | fail 0.
+
+---
+
 ## 2026-08-15 — The Box Unique Retag: Claim Unqualified
 
 Tenth increment. Suite: **pass 76 | fail 0 | xfail 0 | xpass 0** — fail tests **56/75**

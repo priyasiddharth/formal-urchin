@@ -217,3 +217,38 @@ the match rewrites revert if SwitchInt is unparked.
 
 **References:** conformance/README.md (claim + rule→witness table),
 durable/sb-conformance-claim.md, manifest.json (per-test ground truth).
+
+## OSEA-v3 remaining increments (compiler coverage beyond the proof core)
+**Status:** parked 2026-08-15
+**Context:** `src/obseq3/compile.lean` compiles the proof-core subset
+(constInit/copy/ref/halt); `--osea` differential mode: matched 25 |
+mismatch 0 | skipped 51 on the 76-passing suite. Each skipped construct
+has a planned target instruction. Skip histogram with designs:
+- `pushProtectors`/`popProtectors` (31 tests): `Instr.PushProt`/`PopProt`
+  calling `M.pushFrame`/`M.popFrame`; the seam retag's protected Borrow
+  already carries `prot` — only the frame bracketing is missing. Largest
+  single unlock.
+- `Stmt.alloc`/`dealloc` (6): `Rhs.AllocN (len-operand)` + `Instr.Dealloc`;
+  needs the allocs table + `removeRange` ported into `oseair.Mem` (v3
+  mirlite has them; oseair.Mem deliberately doesn't yet).
+- `RExpr.uninit` (6, statics hoisting): CStore of `Val.Undef` cells — a
+  `CStoreUndef ty` or letting CStore accept undef lists; trivial.
+- `exposeAddr`/`fromExposed` (5): `Instr.Expose (reg)` (M.expose + read),
+  `Rhs.FromExposed` (needs `Mem.resolveAddr` port + wildcardTag ptr).
+- `ptrCast` (2): tag-preserving one-cell copy — a Load without... no: a
+  `Rhs.PtrCast (reg)` that re-types the register value, plus the M.read
+  of the source cell to match mirlite's cast-as-read.
+- `ptrOffset` (1): `Rhs.PtrAdd (reg) (delta)` — pure offset arithmetic
+  on the register's Ptr, no permission event (mirlite does a read of the
+  source cell — mirror that).
+- `assignIf` (enums): `Instr.SkipIf (reg) (val) (n)` — the code-map
+  design (Prog = Nat → Option Instr) was kept exactly for this.
+- `refSlice`: Borrow with runtime len — `Rhs.BorrowRest` reading len
+  from the pointee allocation size, as mirlite's refSlice does.
+**Why parked:** proof-core-first scope (user decision 2026-08-14); each
+increment should land with its own differential numbers.
+**To resume:** pick pushProtectors first (31 tests); add instruction to
+`oseair.lean`, emission in `compileStmtChecked`, goldens + rerun `--osea`.
+**Effort estimate:** pushProtectors ~1h; alloc/dealloc ~2h; others ~30min each.
+**References:** journal/2026-08/2026-08-15-osea-v3-compiler-landed.md,
+obseq2-comparison.md 2026-08-15 entry, MASTER INVENTORY above.
