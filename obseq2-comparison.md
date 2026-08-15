@@ -4,6 +4,20 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — The Box Unique Retag: Claim Unqualified
+
+Tenth increment. Suite: **pass 76 | fail 0 | xfail 0 | xpass 0** — fail tests **56/75**
+(48 line-accurate), 20 pass scenarios. Box arguments now receive miri's box retag at
+inline seams: a protected Unique reborrow of the pointee (`UTy.boxT`; `Box::from_raw` =
+tag-preserving copy; `mem::forget` = no-op). `box_noalias_violation` — whose expected
+error, "weakly protected", is a category existing solely for this rule — is conformant at
+miri's line, and all previously-passing Box tests held. The conformance claim loses its
+one SB-policy qualification; what remains documented is the weak-vs-strong protector
+dealloc nuance and untagged plain Box assignments, both unexercised by any reachable
+test. The 19 remaining fail tests are language surface only.
+
+---
+
 ## 2026-08-14 — The Conformance Claim: Complete SB Rule Coverage
 
 Ninth and final increment of the session. Two stragglers whose unsupported-reasons

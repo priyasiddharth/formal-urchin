@@ -39,6 +39,7 @@ inductive UTy
 | structT (tys : List UTy)   -- named struct: fields are NOT retagged at seams
 | enum (variants : List (List UTy))
 | cell (inner : UTy)     -- UnsafeCell/Cell/Atomic*: interior-mutable region
+| boxT (inner : UTy)     -- Box<T>: unique-retagged at seams (miri's box retag)
 | slice (isRaw mutbl : Bool) (elem : UTy)  -- pointer-to-slice: one-cell fat value
 | sliceData (elem : UTy)                   -- the unsized [T] itself (place types only)
 | unsupported (desc : String)
@@ -46,7 +47,7 @@ deriving Repr, BEq, Inhabited
 
 /-- Cell count of a type (mirrors `blockSize ∘ toLayout`). -/
 partial def uSize : UTy → Nat
-  | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ => 1
+  | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => 1
   | .sliceData _ => 0
   | .cell inner => uSize inner
   | .tup tys | .structT tys => (tys.map uSize).foldl (· + ·) 0
@@ -57,7 +58,7 @@ partial def uSize : UTy → Nat
 /-- UnsafeCell freeze mask: true for cells inside an interior-mutable
     region. Shared/raw-const retags give masked cells SharedReadWrite. -/
 partial def freezeMask : UTy → List Bool
-  | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ => [false]
+  | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => [false]
   | .sliceData _ => []
   | .cell inner => List.replicate (uSize inner) true
   | .tup tys | .structT tys => tys.flatMap freezeMask
@@ -458,7 +459,7 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                   let last := info.path.getLast?.getD "?"
                   if last == "Box" then
                     match ctx.boxPointee.lookup did with
-                    | some pointee => .raw true (parseTy ctx (fuel - 1) pointee)
+                    | some pointee => .boxT (parseTy ctx (fuel - 1) pointee)
                     | none => .unsupported "Box with uninferred pointee"
                   else if last == "Layout" then
                     .nat  -- Layout carries only its size (constructor is shimmed)

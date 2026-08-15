@@ -153,6 +153,7 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
     not descend into interior-mutable regions. -/
 partial def containsRef : UTy → Bool
   | .ref _ _ => true
+  | .boxT _ => true            -- Box: unique-retagged at seams (miri box retag)
   | .slice false _ _ => true   -- reference-to-slice: seam-retagged (runtime length)
   | .tup tys => tys.any containsRef
   | .structT _ => false  -- miri does NOT fn-entry-retag named-struct fields
@@ -174,6 +175,12 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
       return pushOut st (.assign dst
         (.ref (if mutbl then .mut else .shared) prot
           { pointee src with ty := inner }) line)
+  | .boxT inner =>
+      -- miri's box retag: a Unique reborrow of the pointee. Protection is
+      -- weak in miri (dealloc allowed during the call) — our protector
+      -- blocks pops identically; the dealloc difference is unexercised.
+      return pushOut st (.assign dst
+        (.ref .mut prot { pointee src with ty := inner }) line)
   | .slice false mutbl _ =>
       -- reference-to-slice: runtime-length retag via the fat value
       return pushOut st (.assign dst
@@ -528,6 +535,17 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
           return pushOut st (.assign dest
             (.refSlice (if mutbl then .rawMut else .rawConst) false tmp) line)
       | _ => .error s!"unsupported: as_ptr argument is not a place (line {line})"
+  else if f.path == ["alloc", "boxed", "from_raw"] then
+    -- Box::from_raw: adopts the raw pointer's tag (a plain value copy;
+    -- the box retag happens at the next seam)
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          return pushOut st (.assign dest (.use (.copy p)) line)
+      | _ => .error s!"unsupported: from_raw argument is not a place (line {line})"
+  else if f.path == ["core", "mem", "forget"] then
+    -- mem::forget: no drop, no access; protectors end at fn return anyway
+    some fun st _args _dest _line => return st
   else if f.path == ["core", "mem", "drop"] then
     -- mem::drop: consumes the value; drop glue for modeled types is
     -- either nothing or elided flag maintenance (RefCell guards)

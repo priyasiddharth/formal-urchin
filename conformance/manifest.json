@@ -860,13 +860,19 @@
     {
       "id": "fail/both_borrows/box_noalias_violation",
       "source": "corpus/tests/fail/both_borrows/box_noalias_violation.rs",
-      "prep": null,
+      "prep": "prep/box_noalias_violation.rs",
       "artifact": "box_noalias_violation.ullbc.json",
-      "status": "unsupported",
-      "reason": "Box + protectors",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 11
+      },
+      "rewrites": [
+        "dropped revisions/annotations"
+      ],
+      "miri_error": "weakly protected",
+      "note": "miri's weak box protector blocks the pop just like our (strong) one; the weak/strong difference is dealloc-during-call, unexercised"
     },
     {
       "id": "fail/both_borrows/buggy_as_mut_slice",

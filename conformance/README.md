@@ -61,12 +61,15 @@ un-modeled SB rules. Rule → witness map:
 | UnsafeCell freeze masks | interior_mut1, mixed_mutability_static, cell_inside_struct |
 | deallocation (grant + protector + stack removal) | illegal_dealloc1, invalidate_against_protector3 |
 | exposed provenance / wildcards | exposed_only_ro, unescaped_local, *_despite_exposed* |
+| box unique retag (weak protector) | box_noalias_violation, box_exclusive_violation1 |
 | provenance-preserving ptr ops | transmute-is-no-escape, illegal_read8, array_casts |
 | runtime-length (slice) retags | fnentry_invalidation2 |
 
-Documented approximations (each noted where it applies): Box is an
-implicit mutable raw (no Unique box retag/protector — the one genuine
-SB-policy simplification; box_noalias_violation would need it);
+Documented approximations (each noted where it applies): the box
+protector is modeled with the same pop-blocking as strong protectors
+(miri's weak protector differs only in permitting deallocation during
+the call — unexercised by any reachable test); plain Box-typed
+assignments (`let b2 = b`) are not retagged (no test exercises it);
 wildcard resolution is determinized (topmost exposed granting item) vs
 miri's angelic reading; RefCell shims elide the borrow flag; hoisted
 statics start uninitialized; the retag×data-race interaction (threads)
@@ -74,8 +77,8 @@ is out of scope.
 
 ## Current score (miri @ PIN)
 
-- fail tests: 55/75 verdict-conformant (line-accurate on 47), 0 xfail,
-  20 fail tests unsupported with per-test blockers (41 unsupported
+- fail tests: 56/75 verdict-conformant (line-accurate on 48), 0 xfail,
+  19 fail tests unsupported with per-test blockers (40 unsupported
   entries overall incl. pass files/scenarios).
 - pass scenarios: 20 supported and clean.
 - Every test that loads agrees with Miri's verdict; there are no
