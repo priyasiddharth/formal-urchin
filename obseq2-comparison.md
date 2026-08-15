@@ -4,6 +4,18 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — OSEA-v3 Protector Frames (matched 25 → 53)
+
+Twelfth increment, ~20 lines: `Instr.PushProt`/`PopProt` in oseair calling
+`M.pushFrame`/`M.popFrame` (pop errors propagate as target UB), emitted directly from
+`Stmt.pushProtectors`/`popProtectors`. The protected seam-retag borrows already carried
+`prot` into `Rhs.Borrow`, so only the frame bracketing was missing. Differential:
+**matched 53 | mismatch 0 | skipped 23** — every otherwise-core inlined-call test now
+agrees with mirlite, protector UB attributed to the same statement. `assignIf` (3 tests)
+surfaced from behind pushProtectors. Unit tests 14/14 (golden g6, differential d7/d8).
+
+---
+
 ## 2026-08-15 — OSEA-IR v3 and the Differential Oracle (compiler back online)
 
 Eleventh increment: the mission's compiler leg restarts on the v3 semantics.

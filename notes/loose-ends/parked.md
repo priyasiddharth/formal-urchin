@@ -224,10 +224,11 @@ durable/sb-conformance-claim.md, manifest.json (per-test ground truth).
 (constInit/copy/ref/halt); `--osea` differential mode: matched 25 |
 mismatch 0 | skipped 51 on the 76-passing suite. Each skipped construct
 has a planned target instruction. Skip histogram with designs:
-- `pushProtectors`/`popProtectors` (31 tests): `Instr.PushProt`/`PopProt`
-  calling `M.pushFrame`/`M.popFrame`; the seam retag's protected Borrow
-  already carries `prot` — only the frame bracketing is missing. Largest
-  single unlock.
+- ~~`pushProtectors`/`popProtectors`~~ **DONE 2026-08-15** (same-day
+  follow-up): `Instr.PushProt`/`PopProt` calling `M.pushFrame`/
+  `M.popFrame`; matched 25 → 53, mismatch still 0; remaining skips 23
+  (alloc 6, uninit 6, exposeAddr 5, assignIf 3 — newly surfaced —
+  ptrCast 2, ptrOffset 1).
 - `Stmt.alloc`/`dealloc` (6): `Rhs.AllocN (len-operand)` + `Instr.Dealloc`;
   needs the allocs table + `removeRange` ported into `oseair.Mem` (v3
   mirlite has them; oseair.Mem deliberately doesn't yet).

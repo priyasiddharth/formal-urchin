@@ -95,6 +95,8 @@ inductive Instr
 | CStore (ty : TyVal) (val : List Val) (ptr : Register)
 | Memcpy (dst : Register) (src : Register) (ty : TyVal)
 | Die (reg : Register) (len : Nat)
+| PushProt
+| PopProt
 | Halt
 deriving Repr, Inhabited, BEq
 
@@ -202,6 +204,12 @@ def stepWith (M : PermissionModel) (A : AllocatorSpec)
             Result.Ok { state with perms := perms2, pc := state.pc + 1 }
           | .error msg => Result.Err msg
        | _ => Result.Err "Die expects Ptr"
+    | Instr.PushProt =>
+       Result.Ok { state with perms := M.pushFrame state.perms, pc := state.pc + 1 }
+    | Instr.PopProt =>
+       match M.popFrame state.perms with
+       | .ok perms2 => Result.Ok { state with perms := perms2, pc := state.pc + 1 }
+       | .error msg => Result.Err msg
     | Instr.Memcpy dst src ty =>
        match state.reg.lookup dst, state.reg.lookup src with
        | some (_, [Val.Ptr dBase dOff dSize dTag]), some (_, [Val.Ptr sBase sOff sSize sTag]) =>

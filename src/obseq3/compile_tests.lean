@@ -108,10 +108,29 @@ def g4_field_offsets_and_die : IO Unit :=
 
 /-- Non-core statements are rejected with `unsupported`, not miscompiled. -/
 def g5_unsupported_stmt : IO Unit := do
-  match compileProg (Γ := Γ1) [.pushProtectors, .halt] with
+  match compileProg (Γ := Γ1) [.assign x1 .uninit, .halt] with
   | .error (.unsupported _) => pure ()
   | .error e => throw (IO.userError s!"g5: expected unsupported, got {reprStr e}")
   | .ok _ => throw (IO.userError "g5: expected unsupported, got ok")
+
+/-- Protector frames compile to `PushProt`/`PopProt` around the
+    protected borrow. -/
+def g6_protector_frame : IO Unit :=
+  expectCode Γ2
+    [.assign x2 (.constInit 7),
+     .pushProtectors,
+     .assign p2 (.ref .Mut true [] x2),
+     .popProtectors,
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
+     Instr.CStore natTy [Val.Dat 7] (Register.R 0),
+     Instr.PushProt,
+     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut true [] 1 (Register.R 0) 0),
+     Instr.RStore pTy (Register.R 2) (Register.R 1),
+     Instr.PopProt,
+     Instr.Halt]
+    "g6 protector frame"
 
 /-! ## Differential execution -/
 
@@ -246,18 +265,43 @@ def d6_tuple_copy : IO Unit :=
      .assign cpyD (.copy tupD)]
     .ok "d6 tuple copy"
 
+/-- Negative: a write through the owner while the `&mut` is protected is
+    UB at the same statement on both machines. -/
+def d7_protected_pop_is_ub : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 7),
+     .pushProtectors,
+     .assign pA (.ref .Mut true [] xA),
+     .assign xA (.constInit 9)]
+    (.ub 3) "d7 protected pop is ub"
+
+/-- Positive: after `popProtectors` the protection ends; the owner write
+    pops the (now unprotected) borrow without UB. -/
+def d8_pop_after_frame_ok : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 7),
+     .pushProtectors,
+     .assign pA (.ref .Mut true [] xA),
+     .assign (.deref pA) (.constInit 8),
+     .popProtectors,
+     .assign xA (.constInit 9)]
+    .ok "d8 pop after frame ok"
+
 def runAll : IO Unit := do
   g1_const_fresh_local
   g2_protected_masked_ref
   g3_deref_destination
   g4_field_offsets_and_die
   g5_unsupported_stmt
+  g6_protector_frame
   d1_owner_read_pops_mut
   d2_deref_roundtrip
   d3_field_borrow
   d4_owner_field_write_pops
   d5_disjoint_field_borrows
   d6_tuple_copy
-  IO.println "obseq3 compiler tests passed (11/11)"
+  d7_protected_pop_is_ub
+  d8_pop_after_frame_ok
+  IO.println "obseq3 compiler tests passed (14/14)"
 
 end obseq3.CompileTests

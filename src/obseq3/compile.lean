@@ -6,7 +6,8 @@ mirlite-v3 → OSEA-IR-v3 compiler: the Checked family of
 `src/obseq2/compile.lean`, ported to the v3 syntax/target.
 
 Differences from v2:
-- proof-core subset: `constInit`/`copy`/`ref`/`halt` compile; every other
+- proof-core subset plus protector frames: `constInit`/`copy`/`ref`/
+  `halt`/`pushProtectors`/`popProtectors` compile; every other
   statement/rvalue form is rejected with `CompilerError.unsupported`;
 - one `Rhs.Borrow` (kind, prot, mask, len) replaces the three v2 borrow
   forms; internal place-lowering borrows use `prot := false, mask := []`,
@@ -521,6 +522,10 @@ inductive StmtEvidence {Γ : Ctx} : Stmt Γ → Type where
       (dstEv : PlaceToRegEvidence RefKind.Mut dst dstRes)
       (rhsEv : RExprToEvidence dstRes.reg rhs) :
       StmtEvidence (.assign dst rhs)
+  | pushProtectors :
+      StmtEvidence .pushProtectors
+  | popProtectors :
+      StmtEvidence .popProtectors
 
 def compileStmtChecked {Γ : Ctx} :
     (stmt : Stmt Γ) → CheckedEvidenceM Unit (fun _ => StmtEvidence stmt)
@@ -545,11 +550,15 @@ def compileStmtChecked {Γ : Ctx} :
         result := (),
         evidence := StmtEvidence.assignPlace dst rhs dstRes dstOut.evidence rhsOut.evidence
       }
+  | .pushProtectors => do
+      let _ ← CheckedCompilerM.lift (emitM [Instr.PushProt])
+      pure { result := (), evidence := StmtEvidence.pushProtectors }
+  | .popProtectors => do
+      let _ ← CheckedCompilerM.lift (emitM [Instr.PopProt])
+      pure { result := (), evidence := StmtEvidence.popProtectors }
   | .assignIf _ _ _ _ => CheckedCompilerM.throw (.unsupported "stmt assignIf")
   | .alloc _ _ => CheckedCompilerM.throw (.unsupported "stmt alloc")
   | .dealloc _ => CheckedCompilerM.throw (.unsupported "stmt dealloc")
-  | .pushProtectors => CheckedCompilerM.throw (.unsupported "stmt pushProtectors")
-  | .popProtectors => CheckedCompilerM.throw (.unsupported "stmt popProtectors")
 
 def compileStmtsChecked {Γ : Ctx} : Prog Γ → CheckedCompilerM Unit
   | [] => pure ()
