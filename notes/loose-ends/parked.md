@@ -103,3 +103,37 @@ at inline returns; statics = lowering.lean pass only.
 **Effort estimate:** protectors ~1 day; statics ~2 h
 **References:** conformance/README.md, plans/sb_conformance_obseq3.md,
 journal/2026-08/2026-08-14-obseq3-conformance-landed.md
+
+## SwitchInt execution (runtime control flow in obseq3)
+**Status:** parked 2026-08-15
+**Context:** The executed obseq3 program is a straight-line statement
+list; all control flow is discharged at LOWERING time (goto followed,
+calls inlined, asserts const-folded, loops rejected). SwitchInt is the
+first construct with a runtime-chosen successor, so supporting it means
+jumps in the executed IR for the first time: `Stmt.switch`/`Stmt.goto`
+with a non-monotonic pc, the lowering emitting ALL blocks with a
+block→pc layout instead of walking one path, runtime BinaryOp results
+and Discriminant reads feeding the scrutinee, and panic arms lowered to
+abort. The subtle cost: the static trackers (constVals for array
+indices, fnPtrs for indirect calls, assert discharge) are sound only
+because execution is single-path — with CFG joins they need
+flow-sensitive invalidation or per-block scoping.
+**Why parked:** the conformance claim is complete without it — no SB
+rule needs it; it only re-reaches existing rules through more program
+shapes. The remaining fail tests it would unlock (zst_slice,
+buggy_split_at_mut, fnentry_invalidation, un-rewriting the
+Option-match mains, un-eliding RefCell's borrow flags) are language
+surface.
+**To resume:** (1) add Stmt.goto/Stmt.switch + non-monotonic pc to
+obseq3 (runN already runs on fuel, loops are safe); (2) restructure
+lowerCrate to emit per-block statement runs with a block→pc map and
+patch targets after layout — inlining still concatenates per-function
+layouts; (3) demote constVals/fnPtrs to per-block scope (invalidate at
+block entry) or make them a simple forward analysis; (4) support
+runtime BinaryOp results (word semantics exist; drop the const-only
+restriction) and the Discriminant rvalue (read payload slot 0);
+(5) lower Assert dynamic arms and panic edges to an abort statement.
+**Effort estimate:** ~1-2 days (the lowering restructure dominates)
+**References:** journal/2026-08/2026-08-14-slices-landed.md (the
+"retag-rule frontier is done" boundary), conformance/README.md
+(remaining-exclusions list), durable/sb-conformance-claim.md
