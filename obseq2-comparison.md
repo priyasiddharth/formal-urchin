@@ -4,6 +4,23 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — OSEA-v3 SkipIf: the First Branch (matched 71; 93% differential)
+
+Sixteenth increment. `assignIf` compiles via `Instr.SkipIf discrPtr val skip` — an
+event-free discriminant peek (mirlite's raw `mem.find?`, no SB read) with a forward-only
+jump over the guarded block, whose length is measured by a dry-run compilation
+(`emitSkipIfAround`; sound because instructions carry only registers and relative skips,
+so emitted content is start-label-independent). The code-map `Prog = Nat → Option Instr`
+design absorbed the first branch with no interpreter-shape changes; statement ranges stay
+contiguous so UB attribution is untouched. The skip suppresses the block's SB *events*,
+not just its store (d17: a skipped guarded write leaves a `&mut` alive that the block's
+Borrow would have popped). One latent asymmetry recorded, unreachable from the corpus:
+a fresh local first assigned under a skipped guard. Differential: **matched 71 |
+mismatch 0 | skipped 5** (all 3 enum tests agree; remaining ptrCast 3 · ptrOffset 2).
+Unit tests 29/29, count now derived from the test list.
+
+---
+
 ## 2026-08-15 — OSEA-v3 Exposed Provenance (matched 68; 89% differential)
 
 Fifteenth increment. `Rhs.ExposeAddr`/`Rhs.FromExposed` as a pair, with the allocs table

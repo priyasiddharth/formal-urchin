@@ -8,8 +8,9 @@ mirlite-v3 → OSEA-IR-v3 compiler: the Checked family of
 Differences from v2:
 - compiled subset: `constInit`/`copy`/`ref`/`uninit`/`exposeAddr`/
   `fromExposed`/`halt`, `pushProtectors`/`popProtectors`,
-  `alloc`/`dealloc`; the remaining forms (`assignIf`, `ptrCast`,
-  `ptrOffset`, `refSlice`) are rejected with `CompilerError.unsupported`;
+  `alloc`/`dealloc`, `assignIf` (via `SkipIf`, the target's only —
+  forward-only — branch); the remaining forms (`ptrCast`, `ptrOffset`,
+  `refSlice`) are rejected with `CompilerError.unsupported`;
 - one `Rhs.Borrow` (kind, prot, mask, len) replaces the three v2 borrow
   forms; internal place-lowering borrows use `prot := false, mask := []`,
   while an `RExpr.ref`'s own prot/mask are carried into the final borrow;
@@ -545,6 +546,41 @@ def compileRExprToChecked
   | .ptrOffset _ _ => CheckedCompilerM.throw (.unsupported "rvalue ptrOffset")
   | .refSlice _ _ _ => CheckedCompilerM.throw (.unsupported "rvalue refSlice")
 
+/-- Evidence-free twin of `compileStmtChecked`'s two assign cases (kept in
+    sync with them), for use as the guarded block of `assignIf`. -/
+def compileAssignChecked {Γ : Ctx} {τ : LayoutTy}
+    (dst : Place Γ τ) (rhs : RExpr Γ τ) : CheckedCompilerM Unit :=
+  match dst with
+  | .local loc => do
+      let dstOut ← CheckedCompilerM.lift (ensureLocalRegE loc)
+      let _ ← compileRExprToChecked dstOut.result.reg rhs
+      pure ()
+  | dst => do
+      let _ ← CheckedCompilerM.lift (ensurePlaceRoot dst)
+      let dstOut ← placeToRegChecked RefKind.Mut dst
+      let _ ← compileRExprToChecked dstOut.result.reg rhs
+      let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstOut.result.cleanup))
+      pure ()
+
+/-- Emit `SkipIf discrReg val n` followed by `body`, where `n` is the
+    body's emitted length — measured by a dry-run compilation from the
+    current state. The dry run and the real run start from the same
+    `nextReg`/`placeRegMap`, and instructions carry only registers and
+    *relative* skips, so both runs emit identical instruction sequences;
+    only the start label differs. A body that fails to compile rejects
+    the whole statement without emitting anything. -/
+def emitSkipIfAround (discrReg : Register) (val : Word)
+    (body : CheckedCompilerM Unit) : CheckedCompilerM Unit :=
+  ⟨fun cs =>
+    let probe := body.toCompilerM cs
+    match probe.1 with
+    | .error err => (.error err, ⟨cs, StateIncr.refl cs⟩)
+    | .ok _ =>
+      let bodyLen := probe.2.1.nextLabel - cs.nextLabel
+      let cs1 := emit cs [Instr.SkipIf discrReg val bodyLen]
+      let real := body.toCompilerM cs1
+      (real.1, ⟨real.2.1, (emit_state_incr cs [Instr.SkipIf discrReg val bodyLen]).trans real.2.2⟩)⟩
+
 /-- Lower an `AllocLen` to a register holding the fresh heap pointer.
     `const n` → `AllocN`; `fromPlace p` → lower `p` (Shared) and emit
     `AllocDyn`, whose in-instruction length read mirrors mirlite's
@@ -582,6 +618,10 @@ inductive StmtEvidence {Γ : Ctx} : Stmt Γ → Type where
       StmtEvidence .pushProtectors
   | popProtectors :
       StmtEvidence .popProtectors
+  | assignIf
+      {τ : LayoutTy} (discr : Place Γ obseq.LayoutTy.NatL) (val : Word)
+      (dst : Place Γ τ) (rhs : RExpr Γ τ) :
+      StmtEvidence (.assignIf discr val dst rhs)
   | alloc
       {τ : LayoutTy} (dst : Place Γ (obseq.LayoutTy.PtrL τ)) (len : AllocLen Γ) :
       StmtEvidence (.alloc dst len)
@@ -645,7 +685,14 @@ def compileStmtChecked {Γ : Ctx} :
           ++ cleanupInstrs pOut.result.cleanup
           ++ [Instr.Dealloc loadedReg]))
       pure { result := (), evidence := StmtEvidence.dealloc dst }
-  | .assignIf _ _ _ _ => CheckedCompilerM.throw (.unsupported "stmt assignIf")
+  | .assignIf discr val dst rhs => do
+      -- discriminant lowering is event-free for the corpus shapes (enum
+      -- field 0 → projZero; locals → register lookup); any temp borrows
+      -- die BEFORE the SkipIf — safe because SkipIf performs no SB access
+      let discrOut ← placeToRegChecked RefKind.Shared discr
+      let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs discrOut.result.cleanup))
+      emitSkipIfAround discrOut.result.reg val (compileAssignChecked dst rhs)
+      pure { result := (), evidence := StmtEvidence.assignIf discr val dst rhs }
 
 def compileStmtsChecked {Γ : Ctx} : Prog Γ → CheckedCompilerM Unit
   | [] => pure ()

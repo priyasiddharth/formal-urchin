@@ -251,8 +251,12 @@ has a planned target instruction. Skip histogram with designs:
 - `ptrOffset` (1): `Rhs.PtrAdd (reg) (delta)` — pure offset arithmetic
   on the register's Ptr, no permission event (mirlite does a read of the
   source cell — mirror that).
-- `assignIf` (enums): `Instr.SkipIf (reg) (val) (n)` — the code-map
-  design (Prog = Nat → Option Instr) was kept exactly for this.
+- ~~`assignIf`~~ **DONE 2026-08-15**: `Instr.SkipIf` — event-free
+  discriminant peek (mirlite uses raw mem.find?, no SB read), forward
+  skip over the guarded block whose length comes from a dry-run
+  compilation. matched 68 → 71. One latent asymmetry recorded
+  (fresh-local-under-skipped-guard; unreachable from the corpus) in
+  journal/2026-08/2026-08-15-osea-skipif.md.
 - `refSlice`: Borrow with runtime len — `Rhs.BorrowRest` reading len
   from the pointee allocation size, as mirlite's refSlice does.
 **Why parked:** proof-core-first scope (user decision 2026-08-14); each

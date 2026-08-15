@@ -115,6 +115,7 @@ inductive Instr
 | Memcpy (dst : Register) (src : Register) (ty : TyVal)
 | Die (reg : Register) (len : Nat)
 | Dealloc (ptr : Register)
+| SkipIf (discrPtr : Register) (val : Word) (skip : Nat)
 | PushProt
 | PopProt
 | Halt
@@ -306,6 +307,17 @@ def stepWith (M : PermissionModel) (A : AllocatorSpec)
               Result.Ok { state with perms := perms2, mem := mem2, pc := state.pc + 1 }
             | .error msg => Result.Err msg
        | _ => Result.Err "Dealloc expects Ptr"
+    | Instr.SkipIf discrPtr val skip =>
+       -- event-free discriminant peek (mirlite's assignIf does a raw
+       -- mem.find?, no SB read); on mismatch jump over the guarded block
+       match state.reg.lookup discrPtr with
+       | some (_, [Val.Ptr base offset _ _]) =>
+          match state.mem.find? (base + offset) with
+          | some (Val.Dat v) =>
+            if v == val then Result.Ok { state with pc := state.pc + 1 }
+            else Result.Ok { state with pc := state.pc + 1 + skip }
+          | _ => Result.Err "assignIf discriminant is not a concrete word"
+       | _ => Result.Err "SkipIf expects Ptr"
     | Instr.PushProt =>
        Result.Ok { state with perms := M.pushFrame state.perms, pc := state.pc + 1 }
     | Instr.PopProt =>

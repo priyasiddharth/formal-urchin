@@ -162,6 +162,22 @@ def g9_dealloc : IO Unit :=
      Instr.Halt]
     "g9 dealloc"
 
+/-- `assignIf` compiles to an event-free `SkipIf` whose skip count is the
+    measured length of the guarded block (Borrow + CStore + Die here). -/
+def g11_assign_if_skip : IO Unit :=
+  expectCode ΓB
+    [.assign fld0B (.constInit 1),
+     .assignIf fld0B 1 fld1B (.constInit 7),
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
+     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
+     Instr.SkipIf (Register.R 0) 1 3,
+     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] 1 (Register.R 0) 1),
+     Instr.CStore natTy [Val.Dat 7] (Register.R 1),
+     Instr.Die (Register.R 1) 1,
+     Instr.Halt]
+    "g11 assignIf skip"
+
 def ΓA' : Ctx := [natL, ptrNat, natL]
 def xA' : Place ΓA' natL := .local ⟨⟨0, by decide⟩, rfl⟩
 def pA' : Place ΓA' ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -426,6 +442,38 @@ def d15_exposed_then_invalidated : IO Unit :=
      .assign (.deref qE) (.constInit 5)]
     (.ub 5) "d15 exposed then invalidated"
 
+/-- Positive: guard true — the guarded write happens on both machines. -/
+def d16_assign_if_taken : IO Unit :=
+  expectDiff ΓB
+    [.assign fld0B (.constInit 1),
+     .assignIf fld0B 1 fld1B (.constInit 7),
+     .assign tB (.copy fld1B)]
+    .ok "d16 assignIf taken"
+
+/-- Positive: guard false — the skip must suppress the block's SB events,
+    not just its store: if the guarded Borrow executed, it would pop the
+    `&mut` and the final deref copy would be UB. -/
+def d17_assign_if_skipped_suppresses_events : IO Unit :=
+  expectDiff ΓB
+    [.assign fld0B (.constInit 0),
+     .assign fld1B (.constInit 2),
+     .assign pB (.ref .Mut false [] fld1B),
+     .assignIf fld0B 1 fld1B (.constInit 9),
+     .assign tB (.copy (.deref pB))]
+    .ok "d17 assignIf skipped suppresses events"
+
+/-- Negative: guard true and the guarded assignment itself is UB (write
+    through a popped borrow) — attributed to the assignIf statement on
+    both machines. -/
+def d18_assign_if_body_ub : IO Unit :=
+  expectDiff ΓA'
+    [.assign xA' (.constInit 1),
+     .assign pA' (.ref .Mut false [] xA'),
+     .assign xA' (.constInit 2),
+     .assign tA' (.constInit 1),
+     .assignIf tA' 1 (.deref pA') (.constInit 5)]
+    (.ub 4) "d18 assignIf body ub"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -437,6 +485,7 @@ def allTests : List (IO Unit) := [
   g8_heap_alloc,
   g9_dealloc,
   g10_expose_addr,
+  g11_assign_if_skip,
   d1_owner_read_pops_mut,
   d2_deref_roundtrip,
   d3_field_borrow,
@@ -451,7 +500,10 @@ def allTests : List (IO Unit) := [
   d12_double_free,
   d13_dynamic_alloc_len,
   d14_expose_roundtrip,
-  d15_exposed_then_invalidated]
+  d15_exposed_then_invalidated,
+  d16_assign_if_taken,
+  d17_assign_if_skipped_suppresses_events,
+  d18_assign_if_body_ub]
 
 def runAll : IO Unit := do
   allTests.forM id
