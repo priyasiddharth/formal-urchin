@@ -75,6 +75,10 @@ miri's angelic reading; RefCell shims elide the borrow flag; hoisted
 statics start uninitialized; the retag×data-race interaction (threads)
 is out of scope.
 
+The single consolidated inventory of everything unimplemented or
+approximated lives in `notes/loose-ends/parked.md` (MASTER INVENTORY);
+per-test blockers are in `manifest.json`.
+
 ## Current score (miri @ PIN)
 
 - fail tests: 56/75 verdict-conformant (line-accurate on 48), 0 xfail,

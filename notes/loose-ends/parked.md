@@ -77,14 +77,8 @@ durable/v1-v2-sb-model-divergences-from-miri-sb.md
 ## Conformance Phase C: protectors first, statics cheapest
 **Status:** partially resolved 2026-08-14 (same day) — protectors and
 statics hoisting landed as sketched below; suite now 34 pass / 0 fail /
-0 xfail, fail tests 27/75. Remaining after the eighth increment (slices/runtime-length retags,
-fail 53/75, journal/2026-08/2026-08-14-slices-landed.md): the 22
-unsupported fail tests all need dynamic control flow (SwitchInt
-execution: zst_slice, buggy_split_at_mut, Option matches), std
-containers (Vec/String/Rc: buggy_as_mut_slice, illegal_read5),
-threads (retag_data_race_*), drop glue (drop_in_place_*), closures/
-fn-ptr protectors (deallocate_against_protector*, newtype_*), unions
-(illegal_read3), or MaybeUninit. The retag-rule frontier is done.
+0 xfail, fail tests 27/75. [superseded 2026-08-15] The remaining-bucket details now live in ONE
+place: the MASTER INVENTORY entry at the end of this file.
 Originally parked 2026-08-14
 **Context:** score stands at fail 23/75 + 2 xfail (protectors), pass 9
 scenarios (commit 445cbf4). Protectors would convert both xfails plus
@@ -137,3 +131,89 @@ restriction) and the Discriminant rvalue (read payload slot 0);
 **References:** journal/2026-08/2026-08-14-slices-landed.md (the
 "retag-rule frontier is done" boundary), conformance/README.md
 (remaining-exclusions list), durable/sb-conformance-claim.md
+
+## MASTER INVENTORY: everything unimplemented or approximated (obseq3 conformance)
+**Status:** living inventory, started 2026-08-15 — THE single place for
+this; update here, not in scattered journal entries. Per-test blockers
+live in conformance/manifest.json (`reason`/`note` fields); this is the
+feature-level view.
+
+### A. Language/std features not implemented (block the 19 unsupported fail tests + pass files)
+1. **SwitchInt / runtime control flow** — parked with a resume plan
+   (own entry below). Blocks: zst_slice, buggy_split_at_mut,
+   fnentry_invalidation, the Option-match mains (currently rewritten),
+   RefCell's real borrow-flag checks, Result/unwrap paths.
+2. **Runtime integer arithmetic** (BinaryOp with non-const operands) —
+   only const-foldable arithmetic exists (bounds checks). Collapses
+   into #1 when unparked. Blocks split_at_mut's len math.
+3. **Runtime array indexing / subslicing** — Index projections resolve
+   only through tracked constants; range indexing (`&a[0..0]`) needs
+   the std Index chain (#1).
+4. **Std containers**: Vec/String/vec! (buggy_as_mut_slice,
+   box-custom-alloc-aliasing), Rc (illegal_read5), NonNull
+   (mut_exclusive_violation2).
+5. **Threads + the data-race detector** (retag_data_race_* ×3) — a
+   different checker's interaction with retags; out of scope for SB.
+6. **Drop glue** — real Drop impls (drop_in_place_retag/protector);
+   drops currently lower to no-op gotos, box frees via the dealloc shim.
+7. **Closures / fn-ptr arguments** beyond statically-tracked reified
+   fns (newtype_retagging, newtype_pair_retagging,
+   deallocate_against_protector1/2, track_caller).
+8. **Unions** (illegal_read3).
+9. **Misc std/lang**: MaybeUninit, coroutines, C variadics, trait
+   objects/dyn, Pin/UnsafePinned, custom allocators (pass files).
+10. **Static initializers** — hoisted statics start undef; a test
+    READING a static's initial value would need initializer inlining.
+11. **Miri-internal tests**: stack-printing, unknown-bottom-gc,
+    zst-field-retagging-terminates.
+
+### B. SB-model approximations (implemented, but simplified — all noted where they apply)
+1. **Wildcard determinization**: accesses resolve to the topmost
+   exposed granting item vs miri's angelic/"unknown bottom" reading.
+   Verdicts coincide on all covered tests.
+2. **Box protector strength**: modeled with strong-style pop-blocking;
+   miri's WEAK protector differs only in allowing dealloc during the
+   call (unexercised). Plain Box-typed assignments (`let b2 = b`) are
+   not retagged (miri's AddRetag would; unexercised).
+3. **RefCell flag elision**: borrow/borrow_mut/deref/replace shims skip
+   the borrow flag — valid only for conflict-free executions (all the
+   corpus exercises); a test relying on a borrow-flag panic stays
+   unsupported.
+4. **Slice length convention**: a slice value is one cell; length =
+   rest of its allocation (size − offset). No subslices.
+5. **Enum layout**: discriminant word + prefix-merged payload — no
+   niche optimization; incompatible variant layouts and nested refs in
+   payloads are unsupported; payload seam retags are assignIf-guarded;
+   the assignIf discriminant read is a raw memory inspection (no SB
+   access; miri validity-reads it).
+6. **Interior-mutability fallbacks**: Atomic* = one-word cell;
+   UnsafeCell/Cell with uninferrable pointee falls back to one word.
+7. **Layout/alignment**: Layout ≈ its size word; alignment is ignored
+   everywhere (alignment UB is not SB); dealloc ignores the layout-size
+   argument (uses the allocation's size).
+8. **Value fidelity**: 1 cell per scalar (no bytes/padding — relative
+   aliasing preserved, absolute sizes differ); negative constants clamp
+   to 0 in value positions; `+=`-style rewrites store wrong values —
+   sound because stored words re-enter the aliasing model only as
+   addresses (fromExposed), discriminants (assignIf), or sizes
+   (AllocLen), each of which is exact or rejected; pass tests do not
+   check final memory contents.
+9. **Retag placement under inlining**: fn-entry retags synthesize at
+   call sites, so 8 tests are verdict-only with the line noted
+   (aliasing_mut1-4; return_invalid tuple/option ×4 — miri flags the
+   callee signature / `ret` line).
+10. **No read-only memory**: static_memory_modification matches
+    verdict+line via a frozen-write failure instead of miri's
+    read-only-memory validity error.
+11. **Messages**: error text approximates miri's wording (several match
+    verbatim); the harness never matches text — verdict + line only.
+
+### C. Prep rewrites
+Recorded per-test in conformance/manifest.json `rewrites` and in each
+prep header: asserts → plain reads, `+=` → read-then-write, post-UB
+`match` → `let _`, method/intrinsic avoidance (ptr1.write → *ptr1,
+transmute → cast chains where noted). Tier-3 arithmetic rewrites and
+the match rewrites revert if SwitchInt is unparked.
+
+**References:** conformance/README.md (claim + rule→witness table),
+durable/sb-conformance-claim.md, manifest.json (per-test ground truth).
