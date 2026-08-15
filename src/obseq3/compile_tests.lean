@@ -426,32 +426,35 @@ def d15_exposed_then_invalidated : IO Unit :=
      .assign (.deref qE) (.constInit 5)]
     (.ub 5) "d15 exposed then invalidated"
 
+def allTests : List (IO Unit) := [
+  g1_const_fresh_local,
+  g2_protected_masked_ref,
+  g3_deref_destination,
+  g4_field_offsets_and_die,
+  g5_unsupported_stmt,
+  g6_protector_frame,
+  g7_uninit_undef_store,
+  g8_heap_alloc,
+  g9_dealloc,
+  g10_expose_addr,
+  d1_owner_read_pops_mut,
+  d2_deref_roundtrip,
+  d3_field_borrow,
+  d4_owner_field_write_pops,
+  d5_disjoint_field_borrows,
+  d6_tuple_copy,
+  d7_protected_pop_is_ub,
+  d8_pop_after_frame_ok,
+  d9_uninit_materialize,
+  d10_heap_lifecycle,
+  d11_use_after_free,
+  d12_double_free,
+  d13_dynamic_alloc_len,
+  d14_expose_roundtrip,
+  d15_exposed_then_invalidated]
+
 def runAll : IO Unit := do
-  g1_const_fresh_local
-  g2_protected_masked_ref
-  g3_deref_destination
-  g4_field_offsets_and_die
-  g5_unsupported_stmt
-  g6_protector_frame
-  g7_uninit_undef_store
-  g8_heap_alloc
-  g9_dealloc
-  g10_expose_addr
-  d1_owner_read_pops_mut
-  d2_deref_roundtrip
-  d3_field_borrow
-  d4_owner_field_write_pops
-  d5_disjoint_field_borrows
-  d6_tuple_copy
-  d7_protected_pop_is_ub
-  d8_pop_after_frame_ok
-  d9_uninit_materialize
-  d10_heap_lifecycle
-  d11_use_after_free
-  d12_double_free
-  d13_dynamic_alloc_len
-  d14_expose_roundtrip
-  d15_exposed_then_invalidated
-  IO.println "obseq3 compiler tests passed (25/25)"
+  allTests.forM id
+  IO.println s!"obseq3 compiler tests passed ({allTests.length}/{allTests.length})"
 
 end obseq3.CompileTests

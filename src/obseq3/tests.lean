@@ -236,20 +236,23 @@ def t10_disjoint_field_borrows : IO Unit := do
   let _ ← expectOk (run ΓC prog) "t10 disjoint field borrows"
   pure ()
 
+def allTests : List (IO Unit) := [
+  t1_child_popped_by_parent_read,
+  t2_raw_const_is_read_only,
+  t3_raw_mut_writable_and_survives_read,
+  t4_per_cell_stacks,
+  t5_shared_popped_by_write,
+  t6_deref_write_then_owner_read,
+  t7_deref_write_ok,
+  t8_field_borrow_at_offset,
+  t9_field_borrow_invalidated_by_direct_write,
+  t10_disjoint_field_borrows,
+  t11_protected_item_blocks_pop,
+  t12_protected_shared_blocks_write,
+  t13_freeze_mask_and_weak_protection]
+
 def runAll : IO Unit := do
-  t1_child_popped_by_parent_read
-  t2_raw_const_is_read_only
-  t3_raw_mut_writable_and_survives_read
-  t4_per_cell_stacks
-  t5_shared_popped_by_write
-  t6_deref_write_then_owner_read
-  t7_deref_write_ok
-  t8_field_borrow_at_offset
-  t9_field_borrow_invalidated_by_direct_write
-  t10_disjoint_field_borrows
-  t11_protected_item_blocks_pop
-  t12_protected_shared_blocks_write
-  t13_freeze_mask_and_weak_protection
-  IO.println "obseq3 tests passed (13/13)"
+  allTests.forM id
+  IO.println s!"obseq3 tests passed ({allTests.length}/{allTests.length})"
 
 end obseq3.Tests
