@@ -245,12 +245,15 @@ has a planned target instruction. Skip histogram with designs:
   `Rhs.FromExposed` (read + resolveAddr → wildcardTag ptr); allocs
   table + resolveAddr ported to oseair.Mem. matched 63 → 68; remaining:
   assignIf 3 · ptrCast 3 · ptrOffset 2.
-- `ptrCast` (2): tag-preserving one-cell copy — a Load without... no: a
-  `Rhs.PtrCast (reg)` that re-types the register value, plus the M.read
-  of the source cell to match mirlite's cast-as-read.
-- `ptrOffset` (1): `Rhs.PtrAdd (reg) (delta)` — pure offset arithmetic
-  on the register's Ptr, no permission event (mirlite does a read of the
-  source cell — mirror that).
+- ~~`ptrCast`~~ **DONE 2026-08-15**: no new instruction — mirlite's
+  cast is a tag-preserving one-cell copy with an SB read = `Memcpy` at
+  PTy.
+- ~~`ptrOffset`~~ **DONE 2026-08-15**: `Rhs.PtrOffset (reg) (deltaCells)`
+  with the delta pre-scaled to cells at compile time (delta · blockSize
+  of the source pointee); reads the cell via the place's tag, shifts the
+  stored pointer's offset, preserves its tag; negative-past-base errs.
+  matched 71 → 75; the ONLY remaining skip is fnentry_invalidation2
+  (refSlice).
 - ~~`assignIf`~~ **DONE 2026-08-15**: `Instr.SkipIf` — event-free
   discriminant peek (mirlite uses raw mem.find?, no SB read), forward
   skip over the guarded block whose length comes from a dry-run

@@ -6,11 +6,12 @@ mirlite-v3 → OSEA-IR-v3 compiler: the Checked family of
 `src/obseq2/compile.lean`, ported to the v3 syntax/target.
 
 Differences from v2:
-- compiled subset: `constInit`/`copy`/`ref`/`uninit`/`exposeAddr`/
-  `fromExposed`/`halt`, `pushProtectors`/`popProtectors`,
+- compiled subset: everything except `refSlice` (rejected with
+  `CompilerError.unsupported`) — `constInit`/`copy`/`ref`/`uninit`/
+  `exposeAddr`/`fromExposed`/`ptrCast` (a Memcpy at PTy)/`ptrOffset`
+  (delta pre-scaled to cells)/`halt`, `pushProtectors`/`popProtectors`,
   `alloc`/`dealloc`, `assignIf` (via `SkipIf`, the target's only —
-  forward-only — branch); the remaining forms (`ptrCast`, `ptrOffset`,
-  `refSlice`) are rejected with `CompilerError.unsupported`;
+  forward-only — branch);
 - one `Rhs.Borrow` (kind, prot, mask, len) replaces the three v2 borrow
   forms; internal place-lowering borrows use `prot := false, mask := []`,
   while an `RExpr.ref`'s own prot/mask are carried into the final borrow;
@@ -483,6 +484,15 @@ inductive RExprToEvidence {Γ : Ctx}
       {τ : LayoutTy} (src : Place Γ obseq.LayoutTy.NatL) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
       RExprToEvidence dstPtr (.fromExposed (τ := τ) src)
+  | ptrCast
+      {σ τ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
+      (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
+      RExprToEvidence dstPtr (.ptrCast (τ := τ) src)
+  | ptrOffset
+      {σ τ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (delta : Int)
+      (srcRes : PtrResult)
+      (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
+      RExprToEvidence dstPtr (.ptrOffset (τ := τ) src delta)
 
 def compileRExprToChecked
   (dstPtr : Register)
@@ -542,8 +552,30 @@ def compileRExprToChecked
         result := (),
         evidence := RExprToEvidence.fromExposed src srcRes srcOut.evidence
       }
-  | .ptrCast _ => CheckedCompilerM.throw (.unsupported "rvalue ptrCast")
-  | .ptrOffset _ _ => CheckedCompilerM.throw (.unsupported "rvalue ptrOffset")
+  | .ptrCast src => do
+      -- tag-preserving type-punning cast = a one-cell copy with an SB
+      -- read, which is exactly Memcpy at PTy
+      let srcOut ← placeToRegChecked RefKind.Shared src
+      let srcRes := srcOut.result
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Memcpy dstPtr srcRes.reg obseq.TyVal.PTy] ++ cleanupInstrs srcRes.cleanup))
+      pure {
+        result := (),
+        evidence := RExprToEvidence.ptrCast src srcRes srcOut.evidence
+      }
+  | .ptrOffset (σ := σ) src delta => do
+      -- delta is in pointees of the SOURCE type; pre-scale to cells
+      let srcOut ← placeToRegChecked RefKind.Shared src
+      let srcRes := srcOut.result
+      let tmpReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Assgn tmpReg (Rhs.PtrOffset srcRes.reg (delta * (blockSize σ : Int)))]
+          ++ cleanupInstrs srcRes.cleanup
+          ++ [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr]))
+      pure {
+        result := (),
+        evidence := RExprToEvidence.ptrOffset src delta srcRes srcOut.evidence
+      }
   | .refSlice _ _ _ => CheckedCompilerM.throw (.unsupported "rvalue refSlice")
 
 /-- Evidence-free twin of `compileStmtChecked`'s two assign cases (kept in

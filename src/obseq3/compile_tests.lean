@@ -108,7 +108,7 @@ def g4_field_offsets_and_die : IO Unit :=
 
 /-- Non-core statements are rejected with `unsupported`, not miscompiled. -/
 def g5_unsupported_stmt : IO Unit := do
-  match compileProg (Γ := Γ2) [.assign p2 (.ptrCast p2), .halt] with
+  match compileProg (Γ := Γ2) [.assign p2 (.refSlice .Shared false p2), .halt] with
   | .error (.unsupported _) => pure ()
   | .error e => throw (IO.userError s!"g5: expected unsupported, got {reprStr e}")
   | .ok _ => throw (IO.userError "g5: expected unsupported, got ok")
@@ -474,6 +474,68 @@ def d18_assign_if_body_ub : IO Unit :=
      .assignIf tA' 1 (.deref pA') (.constInit 5)]
     (.ub 4) "d18 assignIf body ub"
 
+def ptrPair := obseq.LayoutTy.PtrL pairL
+def ΓF : Ctx := [pairL, ptrPair, ptrNat, natL]
+def tupF : Place ΓF pairL := .local ⟨⟨0, by decide⟩, rfl⟩
+def fld0F : Place ΓF natL := .proj tupF (.field ⟨0, by decide⟩ .nil)
+def fld1F : Place ΓF natL := .proj tupF (.field ⟨1, by decide⟩ .nil)
+def rF : Place ΓF ptrPair := .local ⟨⟨1, by decide⟩, rfl⟩
+def qF : Place ΓF ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def tF : Place ΓF natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- `ptrOffset` deltas are pre-scaled by the source pointee's blockSize:
+    `.ptrOffset r 1` on a `*mut (u64,u64)` emits `PtrOffset _ 2`. -/
+def g12_ptr_offset_prescaled : IO Unit :=
+  expectCode ΓF
+    [.assign fld0F (.constInit 1),
+     .assign rF (.ref (.Raw true) false [] tupF),
+     .assign qF (.ptrOffset rF 1),
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
+     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] 2 (Register.R 0) 0),
+     Instr.RStore pTy (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 4) (Rhs.PtrOffset (Register.R 1) 2),
+     Instr.RStore pTy (Register.R 4) (Register.R 3),
+     Instr.Halt]
+    "g12 ptrOffset prescaled"
+
+/-- Positive: tag-preserving cast round trip — the cast copy keeps the
+    raw's provenance, so the write through the casted pointer is fine. -/
+def d19_ptr_cast_roundtrip : IO Unit :=
+  expectDiff ΓE
+    [.assign xE (.constInit 1),
+     .assign pE (.ref (.Raw true) false [] xE),
+     .assign qE (.ptrCast pE),
+     .assign (.deref qE) (.constInit 5),
+     .assign tE (.copy xE)]
+    .ok "d19 ptrCast roundtrip"
+
+/-- Positive: the `(&raw mut tup) as *mut u64` + `.add(1)` idiom — cast
+    to the element type, offset one cell into the pair, write through
+    the raw's whole-range provenance. -/
+def d20_cast_then_offset_into_pair : IO Unit :=
+  expectDiff ΓF
+    [.assign fld0F (.constInit 1),
+     .assign fld1F (.constInit 2),
+     .assign rF (.ref (.Raw true) false [] tupF),
+     .assign qF (.ptrCast rF),
+     .assign qF (.ptrOffset qF 1),
+     .assign (.deref qF) (.constInit 9),
+     .assign tF (.copy fld1F)]
+    .ok "d20 cast then offset into pair"
+
+/-- Negative: offsetting before the allocation base is UB at the
+    ptrOffset statement on both machines. -/
+def d21_offset_before_base : IO Unit :=
+  expectDiff ΓE
+    [.assign xE (.constInit 1),
+     .assign pE (.ref (.Raw true) false [] xE),
+     .assign qE (.ptrOffset pE (-1))]
+    (.ub 2) "d21 offset before base"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -486,6 +548,7 @@ def allTests : List (IO Unit) := [
   g9_dealloc,
   g10_expose_addr,
   g11_assign_if_skip,
+  g12_ptr_offset_prescaled,
   d1_owner_read_pops_mut,
   d2_deref_roundtrip,
   d3_field_borrow,
@@ -503,7 +566,10 @@ def allTests : List (IO Unit) := [
   d15_exposed_then_invalidated,
   d16_assign_if_taken,
   d17_assign_if_skipped_suppresses_events,
-  d18_assign_if_body_ub]
+  d18_assign_if_body_ub,
+  d19_ptr_cast_roundtrip,
+  d20_cast_then_offset_into_pair,
+  d21_offset_before_base]
 
 def runAll : IO Unit := do
   allTests.forM id

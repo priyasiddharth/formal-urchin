@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-15 — OSEA-v3 Pointer Ops: ptrCast for Free, PtrOffset Pre-Scaled (matched 75/76)
+
+Seventeenth increment. `ptrCast` compiled with NO new instruction — mirlite's semantics
+(tag-preserving one-cell copy with an SB read) is exactly `Memcpy` at PTy; that's the
+third construct absorbed by an existing instruction (after uninit → CStore-of-Undef and
+const-alloc → AllocN). `Rhs.PtrOffset` carries its delta pre-scaled to cells
+(delta · blockSize of the source pointee, known statically — the Die-length pattern);
+runtime reads the cell via the place's tag, shifts the STORED pointer's offset with tag
+preserved, and errs on negative-past-base like mirlite. Differential: **matched 75 |
+mismatch 0 | skipped 1** — the sole remaining skip is fnentry_invalidation2, blocked on
+`refSlice`, the last uncompiled construct. Unit tests 33/33 (g12 pins the scaling;
+d19/d20 the cast-and-add idiom; d21 offset-before-base UB).
+
+---
+
 ## 2026-08-15 — OSEA-v3 SkipIf: the First Branch (matched 71; 93% differential)
 
 Sixteenth increment. `assignIf` compiles via `Instr.SkipIf discrPtr val skip` — an
