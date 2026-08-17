@@ -31,13 +31,54 @@ abbrev Word := Nat
 abbrev Tag := Nat
 
 /-- Surface kinds for reference-creating operations (retags).
-    `TwoPhase` is a reserved two-phase `&mut`: like Miri's SB treatment it
-    performs only a *read* parent access and pushes a SharedReadWrite-like
-    item (writable, survives reads). -/
+
+    A retag (`sb_ref`) derives a child pointer with one fresh tag from a
+    parent tag over a range of cells. The kind decides, per cell:
+    - which access (if any) is performed through the PARENT — this is
+      what invalidates siblings (a write pops items above the parent, a
+      read disables Unique items above it);
+    - which `Item` the child contributes (`RefKind.toItem`);
+    - where that item is placed: pushed on TOP of the stack, or inserted
+      directly ABOVE the granting item (Miri's SharedReadWrite placement,
+      which is what lets sibling raw pointers coexist in one group).
+
+    Orthogonal parameters of `sb_ref`, independent of the kind: with
+    `prot := true` (fn-entry retags at inline call seams) the fresh tag
+    is registered in the innermost protector frame; the freeze `mask`
+    marks `UnsafeCell` cells and changes only the `Shared`/`Raw false`
+    behavior (see below).
+
+    Kinds originate in the conformance lowering (`toRefKind`, from ULLBC
+    `Rvalue::Ref`/`Rvalue::RawPtr` and seam retags) and are carried
+    verbatim into the target IR's `Rhs.Borrow`/`Rhs.BorrowRest`; the
+    compiler's own internal place-lowering borrows use only `Shared` and
+    `Mut`. -/
 inductive RefKind
+/-- `&T`, a shared reference. Per cell: read access via the parent, then
+    push the frozen `Item.Ref` on top (read-only; killed by any writer
+    below). Cells the freeze mask marks interior-mutable instead get a
+    SharedReadWrite `RawPtr true` inserted above the granting item with
+    NO access — `UnsafeCell` contents stay writable behind `&`. -/
 | Shared
+/-- `&mut T`, a unique reference. Per cell: write access via the parent
+    (pops everything above it), then push `Item.MutRef` (Unique) on top.
+    Also the kind used for Box retags and for every compiler-internal
+    borrow minted while lowering assignment destinations. -/
 | Mut
+/-- Raw pointers. `Raw true` (`*mut T`, `&raw mut`): NO parent access —
+    the SharedReadWrite `RawPtr true` item is inserted directly above the
+    granting item, so sibling mutable raws join one group instead of
+    invalidating each other. `Raw false` (`*const T`): like `Shared` —
+    read access plus a read-only `RawPtr false` pushed on top, with
+    masked (`UnsafeCell`) cells getting the access-free SharedReadWrite
+    insertion instead. -/
 | Raw (mutbl : Bool)
+/-- A reserved two-phase `&mut` (ULLBC `TwoPhaseMut`, from `&mut` in
+    autoref positions). Per cell: only a READ parent access, then a
+    SharedReadWrite-like `RawPtr true` inserted above the granting item —
+    writable and read-surviving until activation, matching Miri's SB
+    treatment of reservations (`two_phase_aliasing_violation` is the
+    conformance witness). -/
 | TwoPhase
 deriving Inhabited, Repr, BEq, DecidableEq
 
