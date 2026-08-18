@@ -556,6 +556,23 @@ theorem ListRel.imp {α β} {R S : α → β → Prop}
           simp only [ListRel] at hr ⊢
           exact ⟨h a b hr.1, ih hr.2⟩
 
+theorem ListRel.length_eq {α β} {R : α → β → Prop} :
+    ∀ {as : List α} {bs : List β}, ListRel R as bs → as.length = bs.length := by
+  intro as
+  induction as with
+  | nil =>
+      intro bs hr
+      cases bs with
+      | nil => rfl
+      | cons b bs => simp [ListRel] at hr
+  | cons a as ih =>
+      intro bs hr
+      cases bs with
+      | nil => simp [ListRel] at hr
+      | cons b bs =>
+          simp only [ListRel] at hr
+          simp [ih hr.2]
+
 /-- Item-wise simulation: same constructor, tag mapped by ρt. Preserving the
     constructor (incl. `Disabled`) keeps SRW-grouping structure identical. -/
 def ItemSim (ρt : TagRenameMap) : Item → Item → Prop
@@ -1031,20 +1048,57 @@ theorem emitM_cleanup_preserves_mem
   intro instr h_mem
   exact cleanupInstrs_mem_preserves h_mem
 
-/-- AUDIT SORRY (§E, mechanical): everything `placeToRegChecked` emits
-    preserves target memory — borrows, loads, and cleanup `Die`s only.
-    obseq2 proved the erased (`placeToRegE`) instance by the same structural
-    induction; the v3 Checked variant needs the `checkedEmitsPreservesMem_*`
-    combinators to see through the equation-compiled `match`/`dite` of
-    `placeToRegChecked`, which `apply` does not unify up to. All the leaf
-    lemmas (`emitM_single_borrow/load_preserves_mem`,
-    `emitM_cleanup_preserves_mem`, `freshRegM_emits_preserves_mem`) are
-    proved above; only the induction glue is missing. -/
+/-- Everything `placeToRegChecked` emits preserves target memory —
+    borrows, loads, and cleanup `Die`s only. Structural induction over the
+    place, gluing the `checkedEmitsPreservesMem_*` combinators. -/
 theorem placeToRegChecked_emits_preserves_mem
     {Γ : Ctx} {τ : LayoutTy}
     (kind : RefKind) (p : Place Γ τ) :
     EmitsPreservesMem (placeToRegChecked kind p).toCompilerM := by
-  sorry
+  induction p generalizing kind with
+  | «local» loc =>
+      intro cs label h_lo h_hi instr h_code
+      have h_next :
+          (CompilerM.run (placeToRegChecked kind (.local loc)).toCompilerM cs).nextLabel
+            = cs.nextLabel := by
+        show ((placeToRegChecked kind (.local loc)).toCompilerM cs).2.1.nextLabel
+          = cs.nextLabel
+        simp only [placeToRegChecked]
+        split <;> rfl
+      rw [h_next] at h_hi
+      exact False.elim ((Nat.not_lt_of_ge h_lo) h_hi)
+  | proj base path ih =>
+      simp only [placeToRegChecked]
+      refine checkedEmitsPreservesMem_bind (m := placeToRegChecked kind base)
+        (ih kind) (fun baseOut => ?_)
+      by_cases hoff : pathOffset path = 0
+      · simp only [hoff, dite_true]
+        exact checkedEmitsPreservesMem_pure _
+      · simp only [hoff, dite_false]
+        refine checkedEmitsPreservesMem_bind
+          (checkedEmitsPreservesMem_lift freshRegM_emits_preserves_mem)
+          (fun tmpReg => ?_)
+        refine checkedEmitsPreservesMem_bind
+          (checkedEmitsPreservesMem_lift
+            (emitM_single_borrow_preserves_mem kind tmpReg baseOut.result.reg
+              _ (pathOffset path)))
+          (fun _ => ?_)
+        exact checkedEmitsPreservesMem_pure _
+  | deref ptrPlace ih =>
+      simp only [placeToRegChecked]
+      refine checkedEmitsPreservesMem_bind (m := placeToRegChecked RefKind.Shared ptrPlace)
+        (ih RefKind.Shared) (fun ptrOut => ?_)
+      refine checkedEmitsPreservesMem_bind
+        (checkedEmitsPreservesMem_lift freshRegM_emits_preserves_mem)
+        (fun loadedReg => ?_)
+      refine checkedEmitsPreservesMem_bind
+        (checkedEmitsPreservesMem_lift
+          (emitM_single_load_preserves_mem loadedReg ptrOut.result.reg))
+        (fun _ => ?_)
+      refine checkedEmitsPreservesMem_bind
+        (checkedEmitsPreservesMem_lift (emitM_cleanup_preserves_mem ptrOut.result.cleanup))
+        (fun _ => ?_)
+      exact checkedEmitsPreservesMem_pure _
 
 /-! ## §F Execution helpers -/
 
@@ -1221,15 +1275,75 @@ the obligation graph is explicit. -/
    `obseq3/proof/keystone.lean` (it needs only `obseq3.sb`, no simulation
    vocabulary; kept separate so this file stays the invariant layer). -/
 
-/-- BRIDGE 2: range memory-write simulation. A source `writeResolvedPlace`
-    of `values` is matched by a target `writeThroughPtr` of `Forall₂`-related
-    `vals` through a `PlaceRegReady` register: the target write succeeds,
-    `SourceMemSim` is re-established cell-by-cell, and the register file is
-    unchanged (pc advances by one). The perms reconciliation is left to the
-    caller (bridge 1 + bridge 3). Obligations: bounds transport under
-    `IdentityOnDomain ρa`, the `useMut` from `PlaceRegReady`, and an
-    induction over `writeWordSeq` extending `SourceMemSim` at each written
-    cell (obseq2 proved exactly the single-cell instance). -/
+/-- Single-cell `SourceMemSim` extension under identity-ρa: writing
+    `MemValSim`-related values at an identity-renamed address preserves
+    the forward memory simulation. -/
+theorem SourceMemSim.write_extend
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {m : mirlite.Mem} {m' : oseair.Mem} {addr : Word}
+    {v : mirlite.MemValue} {v' : Val}
+    (h_id : IdentityOnDomain ρa)
+    (h_addr : ρa addr = some addr)
+    (h_v : MemValSim ρa ρt v v')
+    (h_sms : SourceMemSim ρa ρt m m') :
+    SourceMemSim ρa ρt (m.write addr v) (m'.write addr v') := by
+  intro a value h_find
+  by_cases ha : a = addr
+  · subst ha
+    rw [mirlite_find?_write_self] at h_find
+    injection h_find with h_val
+    subst h_val
+    exact ⟨a, v', h_addr, oseair_find?_write_self _ _ _, h_v⟩
+  · rw [mirlite_find?_write_ne _ _ _ _ ha] at h_find
+    obtain ⟨a', value', h_ra, h_of, h_mvs⟩ := h_sms a value h_find
+    have haa' : a = a' := h_id a a' h_ra
+    refine ⟨a', value', h_ra, ?_, h_mvs⟩
+    rw [oseair_find?_write_ne m' a' addr v' (by rw [← haa']; exact ha)]
+    exact h_of
+
+/-- Range extension: writing `ListRel`-related value sequences at
+    identity-renamed addresses preserves `SourceMemSim`. -/
+theorem SourceMemSim.writeWordSeq_extend
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    (h_id : IdentityOnDomain ρa) :
+    ∀ (values : List mirlite.MemValue) (vals : List Val)
+      (m : mirlite.Mem) (m' : oseair.Mem) (addr : Word),
+      ListRel (MemValSim ρa ρt) values vals →
+      (∀ k, k < values.length → ρa (addr + k) = some (addr + k)) →
+      SourceMemSim ρa ρt m m' →
+      SourceMemSim ρa ρt (mirlite.writeWordSeq m addr values)
+        (oseair.writeWordSeq m' addr vals) := by
+  intro values
+  induction values with
+  | nil =>
+      intro vals m m' addr h_rel h_dom h_sms
+      cases vals with
+      | nil => exact h_sms
+      | cons b bs => simp [ListRel] at h_rel
+  | cons v values ih =>
+      intro vals m m' addr h_rel h_dom h_sms
+      cases vals with
+      | nil => simp [ListRel] at h_rel
+      | cons v' vals =>
+          simp only [ListRel] at h_rel
+          show SourceMemSim ρa ρt
+            (mirlite.writeWordSeq (m.write addr v) (addr + 1) values)
+            (oseair.writeWordSeq (m'.write addr v') (addr + 1) vals)
+          refine ih vals _ _ _ h_rel.2 ?_
+            (SourceMemSim.write_extend h_id
+              (h_dom 0 (Nat.succ_pos _)) h_rel.1 h_sms)
+          intro k hk
+          have h := h_dom (k + 1) (by simpa using Nat.succ_lt_succ hk)
+          rw [Nat.add_assoc addr 1 k, Nat.add_comm 1 k]
+          exact h
+
+/-- BRIDGE 2, CLOSED: range memory-write simulation. A source
+    `writeResolvedPlace` of `values` is matched by a target
+    `writeThroughPtr` of `ListRel`-related `vals` through a
+    `PlaceRegReady` register: the target write succeeds, `SourceMemSim`
+    is re-established cell-by-cell, and the register file is unchanged
+    (pc advances by one). The perms reconciliation is left to the caller
+    (bridges 1 and 3). -/
 theorem writeThroughPtr_sim
     {Γ : Ctx} {τ : LayoutTy}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -1237,6 +1351,7 @@ theorem writeThroughPtr_sim
     {s_osea : oseair.State MSB}
     {resolved : mirlite.PlaceRes}
     {dstReg : Register}
+    (msg : String)
     (values : List mirlite.MemValue) (vals : List Val)
     (h_vl : values.length = blockSize τ)
     (h_rel : ListRel (MemValSim ρa ρt) values vals)
@@ -1248,28 +1363,39 @@ theorem writeThroughPtr_sim
     (h_write : mirlite.writeResolvedPlace (τ := τ) MSB s_pre resolved values h_vl
                = mirlite.Result.ok s_mir') :
     ∃ s_osea',
-      oseair.writeThroughPtr MSB s_osea dstReg vals "CStore Invalid Ptr"
+      oseair.writeThroughPtr MSB s_osea dstReg vals msg
         = oseair.Result.Ok s_osea' ∧
       SourceMemSim ρa ρt s_mir'.mem s_osea'.mem ∧
       s_osea'.reg = s_osea.reg ∧
       s_osea'.pc = s_osea.pc + 1 := by
-  sorry
+  obtain ⟨b', t', h_rho_base, h_entry, p2, h_useMut⟩ := h_ptr
+  have hb : b' = resolved.allocBase := (h_id_a _ _ h_rho_base).symm
+  subst hb
+  have h_addr : resolved.allocBase + (resolved.addr - resolved.allocBase)
+      = resolved.addr := Nat.add_sub_cancel' h_le
+  rw [h_addr] at h_useMut
+  have h_len : values.length = vals.length := ListRel.length_eq h_rel
+  simp only [mirlite.writeResolvedPlace] at h_write
+  split at h_write
+  · simp at h_write
+  · rename_i h_nb
+    split at h_write
+    · rename_i perms' h_useMut_src
+      cases h_write
+      refine ⟨{ s_osea with perms := p2, mem := oseair.writeWordSeq s_osea.mem resolved.addr vals, pc := s_osea.pc + 1 }, ?_, ?_, rfl, rfl⟩
+      · have h_lookup : oseair.RegMap.lookup s_osea.reg dstReg =
+            some (obseq.TyVal.PTy, [Val.Ptr resolved.allocBase
+              (resolved.addr - resolved.allocBase) resolved.allocSize t']) := h_entry
+        simp only [oseair.writeThroughPtr, h_lookup, h_addr]
+        rw [if_neg (by rw [← h_len]; exact h_nb)]
+        simp [h_useMut]
+      · exact SourceMemSim.writeWordSeq_extend h_id_a values vals _ _ _
+          h_rel h_dom h_sms
+    · simp at h_write
 
-/-- BRIDGE 3: SB operations respect `PermSim` — renamed-equal states with a
-    renamed acting tag produce renamed-equal results (and identical error
-    behavior). Stated for the write; `sb_read`, `sb_die`, and `sb_ref` need
-    the same transport (`sb_ref` additionally extends ρt with the fresh-tag
-    pair, preserving `TagRenameWF` because both machines mint strictly above
-    every previously mapped tag). This is the one genuinely new SB lemma
-    family vs obseq2 — the price of the honest (non-equality) relation. -/
-theorem sb_write_respects_PermSim
-    {ρt : TagRenameMap} {src tgt src' : AccessPerms}
-    {addr : Word} {len : Nat} {tagS tagT : Tag}
-    (h_sim : PermSim ρt src tgt)
-    (h_wf : TagRenameWF ρt)
-    (h_tag : ρt tagS = some tagT)
-    (h_src : sb_write src addr len tagS = .ok src') :
-    ∃ tgt', sb_write tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' := by
-  sorry
+/- BRIDGE 3 — `sb_write_respects_PermSim` — is CLOSED for the write in
+   `obseq3/proof/permsim_transport.lean` (which holds the whole transport
+   lemma family; the read/die/ref members are stated there when their
+   consumers close). -/
 
 end obseq3.proof

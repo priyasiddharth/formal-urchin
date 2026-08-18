@@ -348,6 +348,102 @@ theorem foldCells_ok_of_cells
       rw [show i + 1 + n = i + (n + 1) from Nat.add_right_comm i 1 n]
       rfl
 
+/-- Index-free inversion for `foldCells` with a content-driven op:
+    a successful fold determines per-cell inputs and outputs and a
+    `setChain` characterization of the result. -/
+theorem foldCells_ok_inv
+    {op : AccessPerms → Word → Except String AccessPerms}
+    {C : Word → BorrowStack → Except String BorrowStack}
+    {msgNone : Word → String}
+    {P : List (List Tag)} {E : List Tag} {N : Tag} {addr : Word}
+    (h_op : ∀ ap a, ap.protFrames = P → ap.exposed = E → ap.NextTag = N →
+      op ap a =
+        match SB.find? ap.StackMap a with
+        | none => .error (msgNone a)
+        | some stack =>
+          match C a stack with
+          | .error e => .error e
+          | .ok v => .ok { ap with StackMap := SB.set ap.StackMap a v }) :
+    ∀ (len i : Nat) (ap ap' : AccessPerms),
+      ap.protFrames = P → ap.exposed = E → ap.NextTag = N →
+      foldCells op ap (addr + i) len = .ok ap' →
+      ∃ V W : Nat → BorrowStack,
+        (∀ j, i ≤ j → j < i + len →
+          SB.find? ap.StackMap (addr + j) = some (V j) ∧
+            C (addr + j) (V j) = .ok (W j)) ∧
+        ap' = { ap with StackMap := setChain ap.StackMap (chain W addr i (i + len)) } := by
+  intro len
+  induction len with
+  | zero =>
+      intro i ap ap' h_pf h_ex h_nt h_fold
+      rw [foldCells] at h_fold
+      cases h_fold
+      refine ⟨fun _ => [], fun _ => [], fun j h1 h2 => by omega, ?_⟩
+      rw [chain_stop (by omega)]
+      rfl
+  | succ n ih =>
+      intro i ap ap' h_pf h_ex h_nt h_fold
+      rw [foldCells, h_op ap (addr + i) h_pf h_ex h_nt] at h_fold
+      cases h_find : SB.find? ap.StackMap (addr + i) with
+      | none => simp [h_find] at h_fold
+      | some v =>
+          simp only [h_find] at h_fold
+          cases h_C : C (addr + i) v with
+          | error e => simp [h_C] at h_fold
+          | ok w =>
+              simp only [h_C] at h_fold
+              rw [show addr + i + 1 = addr + (i + 1) from rfl] at h_fold
+              obtain ⟨V', W', h_cells', h_ap'⟩ :=
+                ih (i + 1) { ap with StackMap := SB.set ap.StackMap (addr + i) w } ap'
+                  h_pf h_ex h_nt h_fold
+              refine ⟨fun j => if j = i then v else V' j,
+                      fun j => if j = i then w else W' j, ?_, ?_⟩
+              · intro j h1 h2
+                by_cases hj : j = i
+                · subst hj
+                  simp [h_find, h_C]
+                · have h_ne : addr + j ≠ addr + i :=
+                    fun hc => hj (Nat.add_left_cancel hc)
+                  have h := h_cells' j (by omega) (by omega)
+                  rw [show ({ ap with StackMap := SB.set ap.StackMap (addr + i) w }
+                        : AccessPerms).StackMap = SB.set ap.StackMap (addr + i) w
+                      from rfl] at h
+                  rw [SB.find?_set_ne _ h_ne] at h
+                  simp [hj, h.1, h.2]
+              · have h_tail :
+                    chain (fun j => if j = i then w else W' j) addr (i + 1) (i + (n + 1))
+                      = chain W' addr (i + 1) (i + 1 + n) := by
+                  rw [show i + (n + 1) = i + 1 + n from (Nat.add_right_comm i 1 n).symm]
+                  exact chain_congr (fun j h1 _ => by
+                    have : j ≠ i := by omega
+                    simp [this])
+                rw [h_ap', chain_step (show i < i + (n + 1) from
+                      Nat.lt_add_of_pos_right (Nat.succ_pos n)),
+                    setChain]
+                simp [h_tail]
+
+/-- `writeCell` in content-driven form, with `protFrames`/`exposed`
+    abstracted to their values (the `h_op` shape the fold lemmas eat). -/
+theorem writeCell_content_form
+    {P : List (List Tag)} {E : List Tag}
+    (t : Tag) (ap : AccessPerms) (a : Word)
+    (h_pf : ap.protFrames = P) (h_ex : ap.exposed = E) :
+    writeCell ap a t =
+      match SB.find? ap.StackMap a with
+      | none => .error s!"sb-write: no borrow stack at address {a}"
+      | some stack =>
+        match writeCellContent P E a t stack with
+        | .error e => .error e
+        | .ok v => .ok { ap with StackMap := SB.set ap.StackMap a v } := by
+  cases h_find : SB.find? ap.StackMap a with
+  | none => simp only [writeCell, h_find]
+  | some stack =>
+      cases h_content : writeCellContent P E a t stack with
+      | error e =>
+          simp only [writeCell, h_pf, h_ex, h_find, h_content]
+      | ok v =>
+          simp only [writeCell, h_pf, h_ex, h_find, h_content]
+
 /-! ## Content-level facts -/
 
 theorem writeCellContent_top_mutref

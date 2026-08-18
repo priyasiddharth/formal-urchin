@@ -282,12 +282,15 @@ enumerated in proof/compiler.lean's audit. The invariant is the corrected
 places — see journal 2026-08-15-obseq3-proof-skeleton).
 **Why parked:** skeleton-first scope (user decision); each sorry is an
 independent increment.
-**To resume:** keystone `sb_ref_use_die_cancels` CLOSED 2026-08-15
-(proof/keystone.lean — setChain normal form; audit now 7 sorries, order
-4→5→7→1→2→6→3). Next: the range `writeThroughPtr_sim` (reuse
-keystone's foldCells_ok_of_cells + a writeWordSeq/SourceMemSim
-induction), then `sb_write_respects_PermSim` (ListRel transport over
-writeCellContent), then the const_write leaf.
+**To resume:** keystone CLOSED 2026-08-15; bridges 2+3 and the §E glue
+CLOSED 2026-08-18 (writeThroughPtr_sim in common §G;
+sb_write_respects_PermSim + the whole transport family in
+proof/permsim_transport.lean; audit now 4 sorries, order 4→1→2→3).
+Next: the fresh-root evidence branch (needs "placeToRegChecked succeeds
+after ensurePlaceRoot allocated the root"), then the const_write leaf
+(fragment execution + the closed bridges + invariant reconstruction),
+then copy (sb_read transport member + Memcpy sim), then ref (the
+ρt-growing sb_ref transport member).
 **Effort estimate:** keystone ~half-day; bridges 2-3 ~half-day each;
 const_write leaf ~1 day (fragment execution plumbing); copy/ref ~1-2 days
 each (ref extends ρt).

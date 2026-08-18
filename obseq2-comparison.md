@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-18 — Bridges 2 and 3 Closed: the Transport Family Lands (audit 7 → 4)
+
+Twenty-first increment. All three common.lean sorries closed. The §E combinator glue
+was mechanical once binds got explicit arguments. BRIDGE 2 (`writeThroughPtr_sim`)
+needed only pointwise memory reasoning — `SourceMemSim.write_extend` (obseq2's
+single-cell core) folded over paired value lists — no setChain machinery, exactly as
+assessed. BRIDGE 3 (`sb_write_respects_PermSim`, new proof/permsim_transport.lean,
+~560 lines) is the ρt-transport family executed per the refactor plan: generic
+`ListRel` transports, the `beq_eq` injectivity workhorse, constructor-preserving
+`ItemSim` facts (why the relation was designed that way — SRW grouping via
+`reverse ∘ takeWhile` transports for free), `splitStack`/`firstProtectedIn`/
+`writeCellContent` transports, and relational `setChain`, riding the keystone's new
+`foldCells_ok_inv`/`writeCell_content_form` wrappers. Non-wildcard acting tags only —
+core programs cannot mint wildcards, so the `resolveWildcardIn` transport defers with
+the non-core constructs. Remaining: the four leaf-side sorries (order 4→1→2→3).
+All suites unchanged (pass 76, differential 76/0/0, units 13+36).
+
+---
+
 ## 2026-08-15 — Keystone Closed: Ref-Use-Die Cancellation via a setChain Normal Form
 
 Twentieth increment. `sb_ref_use_die_cancels` — the lemma obseq2's const_write sorry

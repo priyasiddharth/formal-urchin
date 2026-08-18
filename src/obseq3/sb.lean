@@ -117,6 +117,11 @@ def grantsWrite : Item → Bool
 | RawPtr true _ => true
 | _ => false
 
+/-- SharedReadWrite items (the write-grouping class). -/
+def isSrw : Item → Bool
+| RawPtr true _ => true
+| _ => false
+
 end Item
 
 def RefKind.toItem : RefKind → Tag → Item
@@ -269,11 +274,9 @@ def writeCellContent (pf : List (List Tag)) (ex : List Tag) (addr : Word) (tag :
       -- group are popped (miri's disable_mut_does_not_merge_srw is
       -- the negative test: SRWs separated by a Unique are distinct
       -- groups and still invalidate each other)
-      let isSrw : Item → Bool := fun k =>
-        match k with | .RawPtr true _ => true | _ => false
       let (srwRun, rest) :=
-        if isSrw item then
-          let grp := above.reverse.takeWhile isSrw
+        if item.isSrw then
+          let grp := above.reverse.takeWhile Item.isSrw
           (grp.reverse, above.take (above.length - grp.length))
         else ([], above)
       match firstProtectedIn pf rest with
