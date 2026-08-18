@@ -4,6 +4,23 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-18 — Regime A: the First End-to-End Statement Simulation
+
+Twenty-second increment. The const-write evidence lemma is total (fresh-root branch via
+`ensurePlaceRoot_maps_root`), and REGIME A — constant write to a bound local — is proved
+end to end: fragment computation and location, BRIDGE 2 execution (its conclusion made
+concrete for this), BRIDGE 3 permission transport (first consumer of the new
+non-wildcard binding-tag fact in `LocalBindingSim`), full invariant rebuild.
+`const_write_resolved_simulation` is now a proved delegation over regimes. This is
+obseq2's long-parked "Step 4 regime-A milestone", done against the corrected PermSim
+invariant. Enabling surgery: the never-consumed `CompilerStateWF` conjunct dropped
+(returns strengthened when the proj regime needs it). The five remaining sorries each
+carry a NAMED missing invariant extension (lockstep allocation, strengthened WF, SB-env
+coherence, bidirectional memory, tag bounds) — invariant-design increments, exactly the
+"blocking factors" obseq2's own comments predicted. All suites unchanged.
+
+---
+
 ## 2026-08-18 — Bridges 2 and 3 Closed: the Transport Family Lands (audit 7 → 4)
 
 Twenty-first increment. All three common.lean sorries closed. The §E combinator glue

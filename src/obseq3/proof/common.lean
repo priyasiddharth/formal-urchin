@@ -657,7 +657,8 @@ def LocalBindingSim
       getPlaceInfo cs loc.idx.1 = some (reg, τ) ∧
       PtrRegisterEntry s_osea.reg reg base 0 (blockSize τ) tag ∧
       ρa binding.addr = some base ∧
-      ρt binding.tag = some tag
+      ρt binding.tag = some tag ∧
+      (binding.tag == wildcardTag) = false
 
 /-- Pointwise simulation between a source `MemValue` and a target `Val`. -/
 def MemValSim
@@ -696,9 +697,14 @@ def SourceMemSim
 
 /-- The main simulation invariant between a source mirlite state and a
     target OSEA state, both at `stackedBorrows`.
-    vs obseq2: `TargetLocalsReady` (a `True` placeholder) and `WellFormed`
-    (never consumed) are dropped; the perms conjunct is `PermSim ρt` instead
-    of literal equality; ρt is `TagRenameWF` instead of identity. -/
+    vs obseq2: `TargetLocalsReady` (a `True` placeholder), `WellFormed`
+    (never consumed), and `CompilerStateWF` (also never consumed; it will
+    return STRENGTHENED — with a placeRegMap bound — when the proj/deref
+    write regimes need register-collision freedom) are dropped; the perms
+    conjunct is `PermSim ρt` instead of literal equality; ρt is
+    `TagRenameWF` instead of identity, and `LocalBindingSim` additionally
+    records that bound locals carry non-wildcard tags (they are minted by
+    `sb_own`), which is what lets BRIDGE 3 fire on local writes. -/
 def CompilerInv
   {Γ : Ctx}
   (cs0 : CompilerState)
@@ -709,7 +715,6 @@ def CompilerInv
   (s_osea : oseair.State MSB) : Prop :=
   ∃ csPrefix,
     targetLabelAt cs0 prog s_mir.pc csPrefix s_osea.pc ∧
-    CompilerStateWF Γ csPrefix ∧
     LocalBindingSim ρa ρt s_mir.env s_osea csPrefix ∧
     SourceMemSim ρa ρt s_mir.mem s_osea.mem ∧
     PermSim ρt s_mir.perms s_osea.perms ∧
@@ -837,7 +842,7 @@ theorem placeInputsMapped_of_localBindingSim_resolvePlace
       | none =>
           simp [mirlite.resolvePlace?, h_lookup] at h_res
       | some binding =>
-          rcases h_lbs loc binding h_lookup with ⟨reg, base, tag, h_placeInfo, _, _, _⟩
+          rcases h_lbs loc binding h_lookup with ⟨reg, base, tag, h_placeInfo, _, _, _, _⟩
           exact ⟨reg, _, h_placeInfo⟩
   | proj base path ih =>
       cases h_base : mirlite.resolvePlace? s_mir base with
@@ -896,6 +901,32 @@ theorem ensurePlaceRoot_run_eq_of_mapped
       exact ih h_mapped
   | deref ptrPlace ih =>
       exact ih h_mapped
+
+/-- `ensurePlaceRoot` establishes its own postcondition: after it runs,
+    every local leaf reachable from the ROOT of `p` is mapped (the fresh
+    branch of `ensureLocalRegE` records the allocation in `placeRegMap`).
+    Since `PlaceInputsMapped` only constrains the root chain, this is
+    exactly `PlaceInputsMapped` for `p`. -/
+theorem ensurePlaceRoot_maps_root
+    {Γ : Ctx} {τ : LayoutTy}
+    (p : Place Γ τ) (cs : CompilerState) :
+    PlaceInputsMapped (CompilerM.run (ensurePlaceRoot p) cs) p := by
+  induction p with
+  | «local» loc =>
+      show ∃ reg layout,
+        getPlaceInfo (CompilerM.run (ensurePlaceRoot (.local loc)) cs) loc.idx.1
+          = some (reg, layout)
+      simp only [ensurePlaceRoot, CompilerM.run_bind, CompilerM.run_pure]
+      unfold CompilerM.run ensureLocalRegE
+      split
+      · rename_i reg layout h_lookup
+        exact ⟨reg, layout, h_lookup⟩
+      · rename_i h_lookup
+        exact ⟨_, _, by
+          simp only [setPlaceInfo, getPlaceInfo, freshReg, List.lookup, beq_self_eq_true]
+          exact rfl⟩
+  | proj base path ih => exact ih
+  | deref ptrPlace ih => exact ih
 
 /-! ## §E Fragment layout + emit-preserves-memory -/
 
@@ -1339,41 +1370,36 @@ theorem SourceMemSim.writeWordSeq_extend
 
 /-- BRIDGE 2, CLOSED: range memory-write simulation. A source
     `writeResolvedPlace` of `values` is matched by a target
-    `writeThroughPtr` of `ListRel`-related `vals` through a
-    `PlaceRegReady` register: the target write succeeds, `SourceMemSim`
-    is re-established cell-by-cell, and the register file is unchanged
-    (pc advances by one). The perms reconciliation is left to the caller
-    (bridges 1 and 3). -/
+    `writeThroughPtr` of `ListRel`-related `vals` through a register
+    holding a pointer to the resolved allocation whose tag grants the
+    write: the target write succeeds with the CONCRETE result state
+    (perms from the given `useMut`, memory the written sequence, pc+1),
+    and `SourceMemSim` is re-established cell-by-cell. -/
 theorem writeThroughPtr_sim
     {Γ : Ctx} {τ : LayoutTy}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
     {s_pre s_mir' : mirlite.State MSB Γ}
     {s_osea : oseair.State MSB}
     {resolved : mirlite.PlaceRes}
-    {dstReg : Register}
+    {dstReg : Register} {t' : Tag} {p2 : AccessPerms}
     (msg : String)
     (values : List mirlite.MemValue) (vals : List Val)
     (h_vl : values.length = blockSize τ)
     (h_rel : ListRel (MemValSim ρa ρt) values vals)
     (h_id_a : IdentityOnDomain ρa)
-    (h_ptr  : PlaceRegReady ρa s_osea.perms s_osea.reg dstReg resolved vals.length)
+    (h_entry : PtrRegisterEntry s_osea.reg dstReg resolved.allocBase
+        (resolved.addr - resolved.allocBase) resolved.allocSize t')
+    (h_useMut : MSB.useMut s_osea.perms resolved.addr vals.length t' = .ok p2)
     (h_sms  : SourceMemSim ρa ρt s_pre.mem s_osea.mem)
     (h_le   : resolved.allocBase ≤ resolved.addr)
     (h_dom  : ∀ k, k < values.length → ρa (resolved.addr + k) = some (resolved.addr + k))
     (h_write : mirlite.writeResolvedPlace (τ := τ) MSB s_pre resolved values h_vl
                = mirlite.Result.ok s_mir') :
-    ∃ s_osea',
-      oseair.writeThroughPtr MSB s_osea dstReg vals msg
-        = oseair.Result.Ok s_osea' ∧
-      SourceMemSim ρa ρt s_mir'.mem s_osea'.mem ∧
-      s_osea'.reg = s_osea.reg ∧
-      s_osea'.pc = s_osea.pc + 1 := by
-  obtain ⟨b', t', h_rho_base, h_entry, p2, h_useMut⟩ := h_ptr
-  have hb : b' = resolved.allocBase := (h_id_a _ _ h_rho_base).symm
-  subst hb
+    oseair.writeThroughPtr MSB s_osea dstReg vals msg
+      = oseair.Result.Ok { s_osea with perms := p2, mem := oseair.writeWordSeq s_osea.mem resolved.addr vals, pc := s_osea.pc + 1 } ∧
+    SourceMemSim ρa ρt s_mir'.mem (oseair.writeWordSeq s_osea.mem resolved.addr vals) := by
   have h_addr : resolved.allocBase + (resolved.addr - resolved.allocBase)
       = resolved.addr := Nat.add_sub_cancel' h_le
-  rw [h_addr] at h_useMut
   have h_len : values.length = vals.length := ListRel.length_eq h_rel
   simp only [mirlite.writeResolvedPlace] at h_write
   split at h_write
@@ -1382,7 +1408,7 @@ theorem writeThroughPtr_sim
     split at h_write
     · rename_i perms' h_useMut_src
       cases h_write
-      refine ⟨{ s_osea with perms := p2, mem := oseair.writeWordSeq s_osea.mem resolved.addr vals, pc := s_osea.pc + 1 }, ?_, ?_, rfl, rfl⟩
+      constructor
       · have h_lookup : oseair.RegMap.lookup s_osea.reg dstReg =
             some (obseq.TyVal.PTy, [Val.Ptr resolved.allocBase
               (resolved.addr - resolved.allocBase) resolved.allocSize t']) := h_entry

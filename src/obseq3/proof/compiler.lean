@@ -24,17 +24,34 @@ CLOSED:
   non-core constructs).
 - ✔ `placeToRegChecked_emits_preserves_mem` (common.lean §E, 2026-08-18).
 
-Remaining (4):
-1. `const_write_resolved_simulation`  (const_write.lean) — fragment
-   execution + the closed bridges + invariant reconstruction.
-2. `CompilerInv_step_copy`            (copy.lean) — Memcpy analog of
-   BRIDGE 2 plus the `sb_read` member of the transport family.
-3. `CompilerInv_step_ref`             (ref.lean) — the ρt-growing case;
-   needs the `sb_ref` transport member (extends ρt at the fresh pair).
-4. one branch of `const_write_stmt_evidence` (const_write.lean) — the
-   NEW-in-v3 fresh-root prepare of a projected destination.
+Remaining (5, decomposed 2026-08-18 — the const-write leaf split into
+regimes with REGIME A CLOSED): every remaining sorry is blocked on a
+NAMED invariant extension, which is the next design increment:
+1. `const_write_fresh_local_simulation` — needs the lockstep-allocation
+   conjunct (`s_osea.mem.addrStart = s_mir.mem.addrStart`) so ρa extends
+   at the equal fresh address, plus the `sb_own` transport member.
+2. `const_write_proj_simulation` — needs the strengthened
+   `CompilerStateWF` (placeRegMap register bound, temp-collision freedom)
+   and composes BRIDGE 1 with BRIDGE 3.
+3. `const_write_deref_simulation` — needs SB-env coherence (bound
+   locals' cells carry stacks in which the binding tag grants access)
+   for the `Load`'s read-through-own success.
+4. `CompilerInv_step_copy` — needs the `sb_read` transport member and a
+   bidirectional memory relation (source-absent cells read as undef;
+   one-directional `SourceMemSim` does not constrain the target there).
+5. `CompilerInv_step_ref` — needs the `sb_ref` transport member (extends
+   ρt at the fresh pair) and the tag-bound WF fact (mapped and stack
+   tags < NextTag on both machines) for injectivity of the extension.
 
-Suggested closing order: 4 → 1 → 2 → 3.
+CLOSED in the leaf layer (2026-08-18):
+- ✔ `const_write_stmt_evidence` — total (fresh-root branch via
+  `ensurePlaceRoot_maps_root`).
+- ✔ `const_write_resolved_simulation` — proved delegation over regimes;
+  REGIME A (bound local) closed end-to-end by
+  `const_write_local_existing_simulation`: fragment located via
+  `compileStmt_emitted_in_compProg` + `compileStmt_local_existing_run`,
+  executed via BRIDGE 2, permissions transported via BRIDGE 3, invariant
+  rebuilt (this is obseq2's long-parked "Step 4 regime-A milestone").
 -/
 
 namespace obseq3.proof
