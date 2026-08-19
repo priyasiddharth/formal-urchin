@@ -417,6 +417,246 @@ theorem writeCellContent_transport
               rw [← h_ok]
               exact ⟨by simp [ItemSim]; exact h_it, h_bl⟩
 
+/-! ## `readCellContent` / `dieCellContent` transports -/
+
+theorem ListRel.map {α β} {R : α → β → Prop} {f : α → α} {g : β → β}
+    (h_fg : ∀ x y, R x y → R (f x) (g y)) :
+    ∀ {as : List α} {bs : List β}, ListRel R as bs →
+      ListRel R (as.map f) (bs.map g) := by
+  intro as
+  induction as with
+  | nil =>
+      intro bs h
+      cases bs with
+      | nil => trivial
+      | cons b bs => simp [ListRel] at h
+  | cons a as ih =>
+      intro bs h
+      cases bs with
+      | nil => simp [ListRel] at h
+      | cons b bs =>
+          simp only [ListRel] at h
+          exact ⟨h_fg a b h.1, ih h.2⟩
+
+theorem ItemSim.poppedByRead_eq {ρt : TagRenameMap} {i i' : Item}
+    (h : ItemSim ρt i i') : i'.poppedByRead = i.poppedByRead := by
+  cases i with
+  | Own t => cases i' <;> simp only [ItemSim] at h <;> rfl
+  | MutRef t => cases i' <;> simp only [ItemSim] at h <;> rfl
+  | Ref t => cases i' <;> simp only [ItemSim] at h <;> rfl
+  | Disabled t => cases i' <;> simp only [ItemSim] at h <;> rfl
+  | RawPtr m t =>
+      cases i' <;> simp only [ItemSim] at h
+      rfl
+
+/-- The read access\'s disable-in-place map respects `ItemSim`. -/
+theorem ItemSim.disable_map {ρt : TagRenameMap} {k k' : Item}
+    (h : ItemSim ρt k k') :
+    ItemSim ρt (if k.poppedByRead then .Disabled k.tag else k)
+      (if k'.poppedByRead then .Disabled k'.tag else k') := by
+  cases k with
+  | MutRef t =>
+      cases k' <;> simp only [ItemSim] at h
+      simpa [Item.poppedByRead, Item.tag, ItemSim] using h
+  | Own t =>
+      cases k' <;> simp only [ItemSim] at h
+      simpa [Item.poppedByRead, ItemSim] using h
+  | Ref t =>
+      cases k' <;> simp only [ItemSim] at h
+      simpa [Item.poppedByRead, ItemSim] using h
+  | Disabled t =>
+      cases k' <;> simp only [ItemSim] at h
+      simpa [Item.poppedByRead, ItemSim] using h
+  | RawPtr m t =>
+      cases k' <;> simp only [ItemSim] at h
+      simpa [Item.poppedByRead, ItemSim] using h
+
+theorem readCell_content_form
+    {P : List (List Tag)} {E : List Tag}
+    (t : Tag) (ap : AccessPerms) (a : Word)
+    (h_pf : ap.protFrames = P) (h_ex : ap.exposed = E) :
+    readCell ap a t =
+      match SB.find? ap.StackMap a with
+      | none => .error s!"sb-read: no borrow stack at address {a}"
+      | some stack =>
+        match readCellContent P E a t stack with
+        | .error e => .error e
+        | .ok v => .ok { ap with StackMap := SB.set ap.StackMap a v } := by
+  cases h_find : SB.find? ap.StackMap a with
+  | none => simp only [readCell, h_find]
+  | some stack =>
+      cases h_content : readCellContent P E a t stack with
+      | error e =>
+          simp only [readCell, h_pf, h_ex, h_find, h_content]
+      | ok v =>
+          simp only [readCell, h_pf, h_ex, h_find, h_content]
+
+theorem readCellContent_transport
+    {ρt : TagRenameMap} {pfS pfT : List (List Tag)} {exS exT : List Tag}
+    {a a' : Word} {tagS tagT : Tag} {v v' : BorrowStack} {w : BorrowStack}
+    (h_wf : TagRenameWF ρt)
+    (h_pf : ListRel (TagListSim ρt) pfS pfT)
+    (h_t : ρt tagS = some tagT)
+    (h_ts : (tagS == wildcardTag) = false)
+    (h_v : StackSim ρt v v')
+    (h_ok : readCellContent pfS exS a tagS v = .ok w) :
+    ∃ w', readCellContent pfT exT a' tagT v' = .ok w' ∧ StackSim ρt w w' := by
+  have h_tt : (tagT == wildcardTag) = false := by
+    rw [h_wf.beq_eq h_t h_wf.2]
+    exact h_ts
+  unfold readCellContent at h_ok ⊢
+  rw [h_ts] at h_ok
+  rw [h_tt]
+  simp only [Bool.false_eq_true, if_false] at h_ok ⊢
+  cases h_split : splitStack v tagS with
+  | none => simp [h_split] at h_ok
+  | some triple =>
+      obtain ⟨ab, it, bl⟩ := triple
+      obtain ⟨ab', it', bl', h_split', h_ab, h_it, h_bl⟩ :=
+        splitStack_some_transport h_wf h_t h_v h_split
+      simp only [h_split] at h_ok
+      simp only [h_split']
+      have h_hit : ListRel (ItemSim ρt)
+          (ab.filter (·.poppedByRead)) (ab'.filter (·.poppedByRead)) :=
+        ListRel.filter (fun x y hxy => ItemSim.poppedByRead_eq hxy) h_ab
+      have h_map : ListRel (ItemSim ρt)
+          (ab.map (fun k => if k.poppedByRead then .Disabled k.tag else k))
+          (ab'.map (fun k => if k.poppedByRead then .Disabled k.tag else k)) :=
+        ListRel.map (fun x y hxy => ItemSim.disable_map hxy) h_ab
+      cases it with
+      | Disabled t =>
+          simp at h_ok
+      | Own t =>
+          cases it' <;> simp only [ItemSim] at h_it
+          cases h_fp : firstProtectedIn pfS (ab.filter (·.poppedByRead)) with
+          | some p => simp [h_fp] at h_ok
+          | none =>
+              simp only [h_fp] at h_ok
+              simp only [firstProtectedIn_none_transport h_wf h_pf h_hit h_fp]
+              simp only [Except.ok.injEq] at h_ok
+              refine ⟨_, rfl, ?_⟩
+              rw [← h_ok]
+              exact ListRel.append h_map ⟨by simp [ItemSim]; exact h_it, h_bl⟩
+      | MutRef t =>
+          cases it' <;> simp only [ItemSim] at h_it
+          cases h_fp : firstProtectedIn pfS (ab.filter (·.poppedByRead)) with
+          | some p => simp [h_fp] at h_ok
+          | none =>
+              simp only [h_fp] at h_ok
+              simp only [firstProtectedIn_none_transport h_wf h_pf h_hit h_fp]
+              simp only [Except.ok.injEq] at h_ok
+              refine ⟨_, rfl, ?_⟩
+              rw [← h_ok]
+              exact ListRel.append h_map ⟨by simp [ItemSim]; exact h_it, h_bl⟩
+      | Ref t =>
+          cases it' <;> simp only [ItemSim] at h_it
+          cases h_fp : firstProtectedIn pfS (ab.filter (·.poppedByRead)) with
+          | some p => simp [h_fp] at h_ok
+          | none =>
+              simp only [h_fp] at h_ok
+              simp only [firstProtectedIn_none_transport h_wf h_pf h_hit h_fp]
+              simp only [Except.ok.injEq] at h_ok
+              refine ⟨_, rfl, ?_⟩
+              rw [← h_ok]
+              exact ListRel.append h_map ⟨by simp [ItemSim]; exact h_it, h_bl⟩
+      | RawPtr m t =>
+          cases it' <;> simp only [ItemSim] at h_it
+          rw [h_it.1]
+          cases h_fp : firstProtectedIn pfS (ab.filter (·.poppedByRead)) with
+          | some p => simp [h_fp] at h_ok
+          | none =>
+              simp only [h_fp] at h_ok
+              simp only [firstProtectedIn_none_transport h_wf h_pf h_hit h_fp]
+              simp only [Except.ok.injEq] at h_ok
+              refine ⟨_, rfl, ?_⟩
+              rw [← h_ok]
+              exact ListRel.append h_map ⟨by simp [ItemSim]; exact h_it.2, h_bl⟩
+
+theorem dieCellContent_transport
+    {ρt : TagRenameMap} {pfS pfT : List (List Tag)}
+    {tagS tagT : Tag} {v v' : BorrowStack} {w : BorrowStack}
+    (h_wf : TagRenameWF ρt)
+    (h_pf : ListRel (TagListSim ρt) pfS pfT)
+    (h_t : ρt tagS = some tagT)
+    (h_v : StackSim ρt v v')
+    (h_ok : dieCellContent pfS tagS v = .ok w) :
+    ∃ w', dieCellContent pfT tagT v' = .ok w' ∧ StackSim ρt w w' := by
+  cases v with
+  | nil => simp [dieCellContent] at h_ok
+  | cons item below =>
+      cases v' with
+      | nil => simp [StackSim, ListRel] at h_v
+      | cons item' below' =>
+          simp only [StackSim, ListRel] at h_v
+          obtain ⟨h_i, h_bl⟩ := h_v
+          have h_beq : (item'.tag == tagT) = (item.tag == tagS) :=
+            h_wf.beq_eq (ItemSim.tag_rel h_i) h_t
+          simp only [dieCellContent] at h_ok ⊢
+          rw [h_beq]
+          cases hkt : item.tag == tagS with
+          | false => simp [hkt] at h_ok
+          | true =>
+              simp only [hkt, if_true] at h_ok ⊢
+              cases item with
+              | Own t => simp at h_ok
+              | Disabled t =>
+                  cases item' <;> simp only [ItemSim] at h_i
+                  rename_i t'
+                  cases h_prot : isProtectedIn pfS t with
+                  | true => simp [Item.tag, h_prot] at h_ok
+                  | false =>
+                      simp only [Item.tag, h_prot, Bool.false_eq_true, if_false,
+                        Except.ok.injEq] at h_ok
+                      have h_prot' : isProtectedIn pfT t' = false := by
+                        rw [isProtectedIn_transport h_wf h_i h_pf]
+                        exact h_prot
+                      simp only [Item.tag, h_prot', Bool.false_eq_true, if_false,
+                        Except.ok.injEq]
+                      exact ⟨_, rfl, h_ok ▸ h_bl⟩
+              | MutRef t =>
+                  cases item' <;> simp only [ItemSim] at h_i
+                  rename_i t'
+                  cases h_prot : isProtectedIn pfS t with
+                  | true => simp [Item.tag, h_prot] at h_ok
+                  | false =>
+                      simp only [Item.tag, h_prot, Bool.false_eq_true, if_false,
+                        Except.ok.injEq] at h_ok
+                      have h_prot' : isProtectedIn pfT t' = false := by
+                        rw [isProtectedIn_transport h_wf h_i h_pf]
+                        exact h_prot
+                      simp only [Item.tag, h_prot', Bool.false_eq_true, if_false,
+                        Except.ok.injEq]
+                      exact ⟨_, rfl, h_ok ▸ h_bl⟩
+              | Ref t =>
+                  cases item' <;> simp only [ItemSim] at h_i
+                  rename_i t'
+                  cases h_prot : isProtectedIn pfS t with
+                  | true => simp [Item.tag, h_prot] at h_ok
+                  | false =>
+                      simp only [Item.tag, h_prot, Bool.false_eq_true, if_false,
+                        Except.ok.injEq] at h_ok
+                      have h_prot' : isProtectedIn pfT t' = false := by
+                        rw [isProtectedIn_transport h_wf h_i h_pf]
+                        exact h_prot
+                      simp only [Item.tag, h_prot', Bool.false_eq_true, if_false,
+                        Except.ok.injEq]
+                      exact ⟨_, rfl, h_ok ▸ h_bl⟩
+              | RawPtr m t =>
+                  cases item' <;> simp only [ItemSim] at h_i
+                  rename_i m' t'
+                  rw [h_i.1]
+                  cases h_prot : isProtectedIn pfS t with
+                  | true => simp [Item.tag, h_prot] at h_ok
+                  | false =>
+                      simp only [Item.tag, h_prot, Bool.false_eq_true, if_false,
+                        Except.ok.injEq] at h_ok
+                      have h_prot' : isProtectedIn pfT t' = false := by
+                        rw [isProtectedIn_transport h_wf h_i.2 h_pf]
+                        exact h_prot
+                      simp only [Item.tag, h_prot', Bool.false_eq_true, if_false,
+                        Except.ok.injEq]
+                      exact ⟨_, rfl, h_ok ▸ h_bl⟩
+
 /-! ## `SB`/`setChain`-level transports -/
 
 theorem SB.find?_transport {ρt : TagRenameMap} :
@@ -528,6 +768,142 @@ theorem sb_write_respects_PermSim
       (msgNone := fun a => s!"sb-write: no borrow stack at address {a}")
       (P := tgt.protFrames) (E := tgt.exposed) (N := tgt.NextTag)
       (fun ap a h_pf h_ex _ => writeCell_content_form tagT ap a h_pf h_ex)
+      len 0 tgt (fun j => (h_pkg j).choose)
+      (fun j => (h_pkg j).choose_spec.choose)
+      rfl rfl rfl
+      (fun j h1 h2 => (h_pkg' j (by omega)).1)
+      (fun j h1 h2 => (h_pkg' j (by omega)).2.1)
+  rw [show (0 : Nat) + len = len from Nat.zero_add len] at h_tgt
+  refine ⟨_, h_tgt, ?_⟩
+  rw [h_src']
+  rw [show (0 : Nat) + len = len from Nat.zero_add len]
+  exact ⟨setChain_chain_respects h_stacks
+      (fun j h1 h2 => (h_pkg' j h2).2.2),
+    h_prot, h_exp, h_next⟩
+
+
+/-- BRIDGE 3 family, `sb_read` member: a successful source read through
+    `tagS` is matched by a target read through the renamed `tagT`, and the
+    results stay `PermSim`-related. Non-wildcard acting tags only. -/
+theorem sb_read_respects_PermSim
+    {ρt : TagRenameMap} {src tgt src' : AccessPerms}
+    {addr : Word} {len : Nat} {tagS tagT : Tag}
+    (h_sim : PermSim ρt src tgt)
+    (h_wf : TagRenameWF ρt)
+    (h_tag : ρt tagS = some tagT)
+    (h_ts : (tagS == wildcardTag) = false)
+    (h_src : sb_read src addr len tagS = .ok src') :
+    ∃ tgt', sb_read tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' := by
+  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
+  have h_src0 : foldCells (fun ap a => readCell ap a tagS) src (addr + 0) len
+      = .ok src' := h_src
+  obtain ⟨V, W, h_cells, h_src'⟩ :=
+    foldCells_ok_inv
+      (C := fun a stack => readCellContent src.protFrames src.exposed a tagS stack)
+      (msgNone := fun a => s!"sb-read: no borrow stack at address {a}")
+      (P := src.protFrames) (E := src.exposed) (N := src.NextTag)
+      (fun ap a h_pf h_ex _ => readCell_content_form tagS ap a h_pf h_ex)
+      len 0 src src' rfl rfl rfl h_src0
+  have h_pkg : ∀ j, ∃ vj, ∃ wj, j < len →
+      SB.find? tgt.StackMap (addr + j) = some vj ∧
+        readCellContent tgt.protFrames tgt.exposed (addr + j) tagT vj = .ok wj ∧
+        StackSim ρt (W j) wj := by
+    intro j
+    by_cases hj : j < len
+    · have hc := h_cells j (Nat.zero_le j) (by omega)
+      obtain ⟨s', h_find', h_ss⟩ := SB.find?_transport h_stacks hc.1
+      obtain ⟨w', h_w', h_ws⟩ :=
+        readCellContent_transport h_wf h_prot h_tag h_ts h_ss hc.2
+      exact ⟨s', w', fun _ => ⟨h_find', h_w', h_ws⟩⟩
+    · exact ⟨[], [], fun h => absurd h hj⟩
+  have h_pkg' : ∀ j, j < len →
+      SB.find? tgt.StackMap (addr + j) = some ((h_pkg j).choose) ∧
+        readCellContent tgt.protFrames tgt.exposed (addr + j) tagT
+          ((h_pkg j).choose) = .ok ((h_pkg j).choose_spec.choose) ∧
+        StackSim ρt (W j) ((h_pkg j).choose_spec.choose) :=
+    fun j hj => (h_pkg j).choose_spec.choose_spec hj
+  have h_tgt : foldCells (fun ap a => readCell ap a tagT) tgt (addr + 0) len =
+      .ok { tgt with StackMap := setChain tgt.StackMap (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 (0 + len)) } :=
+    foldCells_ok_of_cells
+      (C := fun a stack => readCellContent tgt.protFrames tgt.exposed a tagT stack)
+      (msgNone := fun a => s!"sb-read: no borrow stack at address {a}")
+      (P := tgt.protFrames) (E := tgt.exposed) (N := tgt.NextTag)
+      (fun ap a h_pf h_ex _ => readCell_content_form tagT ap a h_pf h_ex)
+      len 0 tgt (fun j => (h_pkg j).choose)
+      (fun j => (h_pkg j).choose_spec.choose)
+      rfl rfl rfl
+      (fun j h1 h2 => (h_pkg' j (by omega)).1)
+      (fun j h1 h2 => (h_pkg' j (by omega)).2.1)
+  rw [show (0 : Nat) + len = len from Nat.zero_add len] at h_tgt
+  refine ⟨_, h_tgt, ?_⟩
+  rw [h_src']
+  rw [show (0 : Nat) + len = len from Nat.zero_add len]
+  exact ⟨setChain_chain_respects h_stacks
+      (fun j h1 h2 => (h_pkg' j h2).2.2),
+    h_prot, h_exp, h_next⟩
+
+/-- BRIDGE 3 family, `sb_die` member: a successful source die through
+    `tagS` is matched by a target die through the renamed `tagT`, and the
+    results stay `PermSim`-related. (No wildcard side condition: `die` is
+    only ever invoked on compiler-minted tags.) -/
+theorem sb_die_respects_PermSim
+    {ρt : TagRenameMap} {src tgt src' : AccessPerms}
+    {addr : Word} {len : Nat} {tagS tagT : Tag}
+    (h_sim : PermSim ρt src tgt)
+    (h_wf : TagRenameWF ρt)
+    (h_tag : ρt tagS = some tagT)
+    (h_src : sb_die src addr len tagS = .ok src') :
+    ∃ tgt', sb_die tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' := by
+  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
+  have h_src0 : foldCells
+      (fun ap a =>
+        match ap.StackMap.find? a with
+        | none => .error s!"sb-die: no borrow stack at address {a}"
+        | some stack =>
+            match dieCellContent ap.protFrames tagS stack with
+            | .error e => .error e
+            | .ok below => .ok { ap with StackMap := ap.StackMap.set a below })
+      src (addr + 0) len = .ok src' := h_src
+  obtain ⟨V, W, h_cells, h_src'⟩ :=
+    foldCells_ok_inv
+      (C := fun _ stack => dieCellContent src.protFrames tagS stack)
+      (msgNone := fun a => s!"sb-die: no borrow stack at address {a}")
+      (P := src.protFrames) (E := src.exposed) (N := src.NextTag)
+      (fun ap a h_pf h_ex _ => by simp only [h_pf]; rfl)
+      len 0 src src' rfl rfl rfl h_src0
+  have h_pkg : ∀ j, ∃ vj, ∃ wj, j < len →
+      SB.find? tgt.StackMap (addr + j) = some vj ∧
+        dieCellContent tgt.protFrames tagT vj = .ok wj ∧
+        StackSim ρt (W j) wj := by
+    intro j
+    by_cases hj : j < len
+    · have hc := h_cells j (Nat.zero_le j) (by omega)
+      obtain ⟨s', h_find', h_ss⟩ := SB.find?_transport h_stacks hc.1
+      obtain ⟨w', h_w', h_ws⟩ :=
+        dieCellContent_transport h_wf h_prot h_tag h_ss hc.2
+      exact ⟨s', w', fun _ => ⟨h_find', h_w', h_ws⟩⟩
+    · exact ⟨[], [], fun h => absurd h hj⟩
+  have h_pkg' : ∀ j, j < len →
+      SB.find? tgt.StackMap (addr + j) = some ((h_pkg j).choose) ∧
+        dieCellContent tgt.protFrames tagT ((h_pkg j).choose)
+          = .ok ((h_pkg j).choose_spec.choose) ∧
+        StackSim ρt (W j) ((h_pkg j).choose_spec.choose) :=
+    fun j hj => (h_pkg j).choose_spec.choose_spec hj
+  have h_tgt : foldCells
+      (fun ap a =>
+        match ap.StackMap.find? a with
+        | none => .error s!"sb-die: no borrow stack at address {a}"
+        | some stack =>
+            match dieCellContent ap.protFrames tagT stack with
+            | .error e => .error e
+            | .ok below => .ok { ap with StackMap := ap.StackMap.set a below })
+      tgt (addr + 0) len =
+      .ok { tgt with StackMap := setChain tgt.StackMap (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 (0 + len)) } :=
+    foldCells_ok_of_cells
+      (C := fun _ stack => dieCellContent tgt.protFrames tagT stack)
+      (msgNone := fun a => s!"sb-die: no borrow stack at address {a}")
+      (P := tgt.protFrames) (E := tgt.exposed) (N := tgt.NextTag)
+      (fun ap a h_pf h_ex _ => by simp only [h_pf]; rfl)
       len 0 tgt (fun j => (h_pkg j).choose)
       (fun j => (h_pkg j).choose_spec.choose)
       rfl rfl rfl

@@ -217,36 +217,44 @@ def splitStack : BorrowStack → Tag → Option (BorrowStack × Item × BorrowSt
 
 /-! ## Single-cell primitives -/
 
-/-- Read access at one cell through `tag`: the granting item may be any
-    kind; items above it that are `poppedByRead` (Unique) are removed —
-    unless one of them is protected, which is UB. -/
+/-- The stack-level content of a read access (factored out of `readCell`
+    for the compiler-correctness proofs): the granting item may be any
+    kind; items above it that are `poppedByRead` (Unique) are DISABLED in
+    place — unless one of them is protected, which is UB. -/
+def readCellContent (pf : List (List Tag)) (ex : List Tag) (addr : Word) (tag : Tag)
+    (stack : BorrowStack) : Except String BorrowStack :=
+  match (if tag == wildcardTag
+         then (resolveWildcardIn ex stack false).elim
+                (Except.error s!"read access using <wildcard>: no exposed tags have suitable permission in the borrow stack at {addr}")
+                Except.ok
+         else .ok tag) with
+  | .error e => .error e
+  | .ok tag =>
+  match splitStack stack tag with
+  | none => .error s!"sb-read: tag {tag} does not exist in the borrow stack at {addr}"
+  | some (above, item, below) =>
+    match item with
+    | .Disabled _ =>
+        .error s!"sb-read: tag {tag} does not exist in the borrow stack at {addr} (disabled)"
+    | _ =>
+    let hit := above.filter (·.poppedByRead)
+    match firstProtectedIn pf hit with
+    | some p =>
+        .error s!"sb-read: not granting read access to tag {tag} at {addr} because that would remove item for tag {p.tag} which is strongly protected"
+    | none =>
+      -- DISABLE invalidated Uniques (do not remove): removal would
+      -- merge adjacent SharedReadWrite groups
+      let above' := above.map (fun k => if k.poppedByRead then .Disabled k.tag else k)
+      .ok (above' ++ item :: below)
+
+/-- Read access at one cell through `tag`. -/
 def readCell (ap : AccessPerms) (addr : Word) (tag : Tag) : Except String AccessPerms :=
   match ap.StackMap.find? addr with
   | none => .error s!"sb-read: no borrow stack at address {addr}"
   | some stack =>
-    match (if tag == wildcardTag
-           then (resolveWildcard ap stack false).elim
-                  (Except.error s!"read access using <wildcard>: no exposed tags have suitable permission in the borrow stack at {addr}")
-                  Except.ok
-           else .ok tag) with
+    match readCellContent ap.protFrames ap.exposed addr tag stack with
     | .error e => .error e
-    | .ok tag =>
-    match splitStack stack tag with
-    | none => .error s!"sb-read: tag {tag} does not exist in the borrow stack at {addr}"
-    | some (above, item, below) =>
-      match item with
-      | .Disabled _ =>
-          .error s!"sb-read: tag {tag} does not exist in the borrow stack at {addr} (disabled)"
-      | _ =>
-      let hit := above.filter (·.poppedByRead)
-      match firstProtected ap hit with
-      | some p =>
-          .error s!"sb-read: not granting read access to tag {tag} at {addr} because that would remove item for tag {p.tag} which is strongly protected"
-      | none =>
-        -- DISABLE invalidated Uniques (do not remove): removal would
-        -- merge adjacent SharedReadWrite groups
-        let above' := above.map (fun k => if k.poppedByRead then .Disabled k.tag else k)
-        .ok { ap with StackMap := ap.StackMap.set addr (above' ++ item :: below) }
+    | .ok v => .ok { ap with StackMap := ap.StackMap.set addr v }
 
 /-- The stack-level content of a write access (factored out of `writeCell`
     so the compiler-correctness proofs can characterize per-cell folds):

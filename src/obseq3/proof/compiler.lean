@@ -36,12 +36,15 @@ NAMED invariant extension, which is the next design increment:
 3. `const_write_deref_simulation` — needs SB-env coherence (bound
    locals' cells carry stacks in which the binding tag grants access)
    for the `Load`'s read-through-own success.
-4. `CompilerInv_step_copy` — needs the `sb_read` transport member and a
-   bidirectional memory relation (source-absent cells read as undef;
-   one-directional `SourceMemSim` does not constrain the target there).
+4. `CompilerInv_step_copy` — the `sb_read` transport member now EXISTS
+   (`sb_read_respects_PermSim`, 2026-08-19); still needs a bidirectional
+   memory relation (source-absent cells read as undef; one-directional
+   `SourceMemSim` does not constrain the target there) plus the Memcpy
+   execution lemma.
 5. `CompilerInv_step_ref` — needs the `sb_ref` transport member (extends
    ρt at the fresh pair) and the tag-bound WF fact (mapped and stack
-   tags < NextTag on both machines) for injectivity of the extension.
+   tags < NextTag on both machines) for injectivity of the extension;
+   its `Die` cleanup transport now exists (`sb_die_respects_PermSim`).
 
 CLOSED in the leaf layer (2026-08-18):
 - ✔ `const_write_stmt_evidence` — total (fresh-root branch via
