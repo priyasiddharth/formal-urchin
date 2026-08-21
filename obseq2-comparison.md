@@ -4,6 +4,27 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-21 — Regime D Spine-Complete: One Induction Replaces Three Theorems
+
+Twenty-fifth increment. `const_write_deref_spine_simulation` closes the constant
+write through EVERY all-deref pointer chain (`*p`, `**q`, any depth) in one theorem,
+subsuming the morning's depth-1 regime D1 and dissolving the D2/D3 residual split —
+regime D's only remaining sorry is a projection in the chain, which shares regime C's
+sb_ref blocker. The engine is `loadSpine_lowering_sim` (new proof/spine.lean): an
+induction over load-spine places whose conclusion hands the consumer a register with
+the ρ-renamed resolved pointer plus PermSim of the threaded perms and full framing.
+Attempting the induction surfaced a real semantics gap no test had hit: the target
+Load bounds-checks loaded pointers, mirlite's deref resolution didn't — the theorem
+was unprovable without either a perms↔mem coherence invariant or the mirrored check.
+Took the check (Miri's dereferenceable requirement, the read-side mirror of the write
+bounds check); suite unchanged 77/117, differential 77/0/0, t15/d25 pin the OOB
+alignment. The proof-shaping lesson worth keeping: sub-fragment code installation
+threads through `CheckedCompilerM.incr` + bind decomposition with tails kept folded —
+no closed forms needed — the pattern copy/ref/dealloc will reuse. Audit 6 → 5
+sorries; units 15/15 + 38/38; obseq2 green.
+
+---
+
 ## 2026-08-21 — Regime D1 Closed: The Canonical Deref Write Simulates
 
 Twenty-fourth increment, same-day payoff of the deref-read change. `*p := v` with a

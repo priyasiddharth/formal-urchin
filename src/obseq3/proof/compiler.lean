@@ -31,26 +31,24 @@ cannot clobber bound locals' registers) and the strengthened `MemValSim`
 pointer case (stored tags are non-wildcard; the referent range is in
 ρa's domain). These also discharge part of regime C's blocker list.
 
-Remaining (6): every remaining sorry is blocked on a NAMED obligation:
+Remaining (5): every remaining sorry is blocked on a NAMED obligation:
 1. `const_write_fresh_local_simulation` — needs the lockstep-allocation
    conjunct (`s_osea.mem.addrStart = s_mir.mem.addrStart`) so ρa extends
    at the equal fresh address, plus the `sb_own` transport member.
 2. `const_write_proj_simulation` — needs the `sb_ref` transport member
    for the internal `Borrow`, composed with BRIDGE 1 and BRIDGE 3 (the
    register-bound half of its blocker landed as `PlaceRegMapBound`).
-3. `const_write_deref_projPtr_simulation` (regime D2) — pointer place
-   under a projection: same `sb_ref`-transport blocker as regime C.
-4. `const_write_deref_nested_simulation` (regime D3) — `**q := v`:
-   a Load spine; each level is D1's `runN_Assgn_Load_ptr_step` +
-   `sb_read` transport + `MemValSim` inversion, but composing them
-   needs a length-generalized spine induction. Mechanical, no new SB
-   lemmas.
-5. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS
+3. `const_write_deref_nonspine_simulation` — a projection somewhere in
+   the dereferenced pointer place: its lowering emits a `Borrow` with
+   cleanup — same `sb_ref`-transport blocker as regime C (the former
+   D2/D3 split is gone: all-deref spines of EVERY depth closed
+   2026-08-21 via `loadSpine_lowering_sim`).
+4. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS
    (`sb_read_respects_PermSim`, 2026-08-19); still needs a bidirectional
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-6. `CompilerInv_step_ref` — needs the `sb_ref` transport member (extends
+5. `CompilerInv_step_ref` — needs the `sb_ref` transport member (extends
    ρt at the fresh pair) and the tag-bound WF fact (mapped and stack
    tags < NextTag on both machines) for injectivity of the extension;
    its `Die` cleanup transport now exists (`sb_die_respects_PermSim`).
@@ -64,18 +62,24 @@ CLOSED in the leaf layer (2026-08-18):
   `compileStmt_emitted_in_compProg` + `compileStmt_local_existing_run`,
   executed via BRIDGE 2, permissions transported via BRIDGE 3, invariant
   rebuilt (this is obseq2's long-parked "Step 4 regime-A milestone").
-- ✔ REGIME D1 `const_write_deref_local_simulation` (2026-08-21) —
-  `*p := v` with `p` a bound local, the canonical deref write. Enabled
-  by the same-day mirlite deref-read change: the `Load` is matched by
-  the source's `resolvePlaceAcc` read (`sb_read_respects_PermSim`), the
-  loaded value is the ρ-renamed stored pointer (`MemValSim` inversion),
-  the `CStore` is BRIDGE 2 + the `sb_write` member. Reusable pieces
-  extracted: `runN_Assgn_Load_ptr_step`,
+- ✔ REGIME D (load spines) `const_write_deref_spine_simulation`
+  (2026-08-21, subsuming the same-day depth-1 proof): `*p := v`,
+  `**q := v` and every deeper all-deref shape, via the spine mother
+  lemma `loadSpine_lowering_sim` (proof/spine.lean) — an induction over
+  `LoadSpine` places showing the compiled `Load` chain executes and
+  ends with a register holding the ρ-renamed resolved pointer, with the
+  threaded perms `PermSim`-related and everything else framed. Each
+  level's `Load` bounds check is matched by mirlite's dereferenceable
+  check (added 2026-08-21 to `resolvePlaceAcc` — the read-side mirror
+  of `writeResolvedPlace`'s bounds check; validated: suite 77/117,
+  differential 77/0/0, t15/d25 pin the OOB-deref alignment). Reusable
+  pieces: `loadSpine_lowering_sim`, `placeInputsMapped_of_resolveAcc`,
+  `LocalBindingSim.placeRegMap_congr`, `runN_Assgn_Load_ptr_step`,
   `resolvePlaceAcc_deref_local_inversion`,
   `LocalBindingSim.insert_fresh_reg`, `RegMap.lookup_insert_self`/`_ne`
   (+ `LawfulBEq Register`), `placeToRegChecked_local_existing`,
-  `emit_nil` (§D/§E/§F); the fresh-pointer-local case is vacuous
-  (`preparePlaceAssign` cannot allocate under a deref).
+  `emit_nil`; the fresh-root case is vacuous (`preparePlaceAssign`
+  cannot allocate under a deref).
 -/
 
 namespace obseq3.proof

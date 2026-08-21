@@ -17,6 +17,56 @@ Passes (fused into one walk):
 
 Any construct outside the fragment yields `.error "unsupported: …"`,
 which the harness reports as the test's unsupported-reason.
+
+## Coverage: what is and isn't interpreted, and why
+
+The fragment is deliberately small: the suite's purpose is to score the
+*Stacked Borrows rule set* against Miri, so it covers exactly the language
+surface the corpus needs to exercise every SB mechanism (granting, pops,
+protectors, retags, UnsafeCell masks, exposed provenance, dealloc, …).
+Everything else is rejected — not because it is uninteresting, but because
+it adds *language* complexity (control flow, drop glue, threads, …)
+without exercising any *additional* SB rule. The conformance claim in
+`conformance/README.md` spells this out: remaining unsupported tests use
+unimplemented language/std features, not un-modeled SB rules.
+
+Covered (interpreted):
+- straight-line assignments: copies/moves, `ref` retags (all kinds,
+  with seam protection), aggregates (tuple desugaring + enum
+  discriminant/payload writes), `uninit`;
+- pointer/provenance ops: `exposeAddr`/`fromExposed`, constant
+  `ptrOffset`, runtime-length `refSlice` retags;
+- heap: `alloc`/`dealloc` via the std shims (`Box::new`, `alloc::alloc`,
+  `Layout::*`), incl. `Box` unique retags at seams;
+- interior mutability: `UnsafeCell`/`Cell`/`RefCell` shims with freeze
+  masks (RefCell flag elided — SB-irrelevant);
+- calls: inlined up to depth 8, with fn-entry/exit seam retags;
+  statically-resolved indirect calls;
+- statics: hoisted to locals, materialized `uninit` (initializers NOT
+  run — documented divergence);
+- constant-foldable arithmetic and statically-true asserts (bounds
+  checks).
+
+Not covered (rejected as `unsupported`), with the reason:
+- **loops / `switchInt` / real branches** — the target has only
+  forward-only `SkipIf`; general CFGs are language complexity, and no SB
+  rule needs them;
+- **unwind paths / `abort`** — exception machinery, no SB content;
+- **dynamic asserts / non-constant arithmetic / runtime array indices /
+  runtime pointer offsets** — the model has no dynamic value analysis;
+  indices/offsets must be static to compute layouts;
+- **recursion & deep (>8) call chains, unknown/bodyless callees,
+  unresolved indirect calls** — inlining must terminate statically;
+- **drop glue, closures, containers, threads, unions** (as they arise in
+  the corpus) — std/language machinery beyond the fragment; the SB rules
+  they would exercise are already witnessed by simpler tests;
+- **nested references in enum payloads** — would need per-variant
+  recursive retag emission; not exercised by the corpus;
+- **fn pointers stored into projections** — fn-pointer tracking is a
+  flat local↦defId map, sufficient for the corpus's call patterns.
+
+The consolidated inventory of blockers/approximations lives in
+`notes/loose-ends/parked.md`; per-test reasons in `conformance/manifest.json`.
 -/
 
 namespace conformance
@@ -572,6 +622,8 @@ mutual
 partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
     (f : UFun) (offset : Nat) (bb : Nat) (visited : List Nat) :
     Except String LowerSt := do
+  -- a revisited block = a loop: the fragment is straight-line only
+  -- (no SB rule needs general control flow)
   if visited.contains bb then
     .error s!"unsupported: control-flow loop in {f.name}"
   else
@@ -598,6 +650,7 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
             else
               .error s!"unsupported: statically failing assert (line {blk.termLine})"
         | none => .error s!"unsupported: dynamic assert condition (line {blk.termLine})"
+    -- unwinding and aborts are exception machinery with no SB content
     | .unwindResume => .error s!"unsupported: reached unwind path in {f.name}"
     | .abort => .error s!"unsupported: reached abort in {f.name}"
     | .unsupported d => .error s!"unsupported: {d} (line {blk.termLine})"
@@ -631,6 +684,8 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
 partial def inlineCall (crate : UCrate) (depth : Nat) (st : LowerSt)
     (funIdx : Nat) (args : List UOperand) (dest : UPlace) (line : Nat) :
     Except String LowerSt := do
+  -- bounded depth guarantees static termination of inlining
+  -- (recursion is rejected, not modeled)
   if depth == 0 then
     .error "unsupported: call inlining depth exceeded (recursion?)"
   else

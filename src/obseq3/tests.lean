@@ -256,6 +256,20 @@ def t14_deref_read_disables_sibling : IO Unit := do
   ]
   expectErr (run ΓE' prog) "t14 deref read disables sibling" "does not exist"
 
+/-- Dereferencing a pointer that has been offset out of its slice bounds
+    is UB at the deref itself (the dereferenceable check, mirroring the
+    compiled `Load`'s bounds check), even before any SB stack consultation
+    of the pointee. -/
+def t15_deref_oob_pointer : IO Unit := do
+  let prog : Prog ΓE' := [
+    .assign xE' (.constInit 1),
+    .assign pE' (.ref .Mut false [] xE'),
+    .assign qE' (.ref .Mut false [] pE'),
+    .assign qE' (.ptrOffset qE' 7),
+    .assign tE' (.copy (.deref (.deref qE')))
+  ]
+  expectErr (run ΓE' prog) "t15 deref oob pointer" "out-of-bounds"
+
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
   t2_raw_const_is_read_only,
@@ -270,7 +284,8 @@ def allTests : List (IO Unit) := [
   t11_protected_item_blocks_pop,
   t12_protected_shared_blocks_write,
   t13_freeze_mask_and_weak_protection,
-  t14_deref_read_disables_sibling]
+  t14_deref_read_disables_sibling,
+  t15_deref_oob_pointer]
 
 def runAll : IO Unit := do
   allTests.forM id

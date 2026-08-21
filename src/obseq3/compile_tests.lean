@@ -613,6 +613,18 @@ def d24_deref_read_alignment : IO Unit :=
      .assign tG (.copy (.deref (.deref qG)))]
     (.ub 4) "d24 deref read alignment"
 
+/-- The OOB-deref alignment: both machines flag dereferencing an
+    out-of-slice pointer at the same statement (mirlite's dereferenceable
+    check vs the compiled `Load`'s bounds check). -/
+def d25_deref_oob_alignment : IO Unit :=
+  expectDiff ΓG
+    [.assign xG (.constInit 1),
+     .assign pG (.ref .Mut false [] xG),
+     .assign qG (.ref .Mut false [] pG),
+     .assign qG (.ptrOffset qG 7),
+     .assign tG (.copy (.deref (.deref qG)))]
+    (.ub 4) "d25 deref oob alignment"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -650,7 +662,8 @@ def allTests : List (IO Unit) := [
   d21_offset_before_base,
   d22_ref_slice_write,
   d23_ref_slice_pops,
-  d24_deref_read_alignment]
+  d24_deref_read_alignment,
+  d25_deref_oob_alignment]
 
 def runAll : IO Unit := do
   allTests.forM id

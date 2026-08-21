@@ -1279,6 +1279,22 @@ theorem LocalBindingSim.insert_fresh_reg
     rw [RegMap.lookup_insert_ne _ h_ne]
     exact h_entry
 
+/-- `LocalBindingSim` only consults the compiler state through
+    `getPlaceInfo`, so it transfers across compiler states with equal
+    place-register maps (fragment runs never shrink the map). -/
+theorem LocalBindingSim.placeRegMap_congr
+    {Γ : Ctx} {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {env : mirlite.Env Γ} {s : oseair.State MSB} {cs cs' : CompilerState}
+    (h_prm : cs'.placeRegMap = cs.placeRegMap)
+    (h_lbs : LocalBindingSim ρa ρt env s cs) :
+    LocalBindingSim ρa ρt env s cs' := by
+  intro τ loc binding h_env
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw⟩ := h_lbs loc binding h_env
+  refine ⟨reg, base, tag, ?_, h_entry, h_ra, h_rt, h_nw⟩
+  show cs'.placeRegMap.lookup loc.idx.1 = _
+  rw [h_prm]
+  exact h_pi
+
 /-- Invert a successful mirlite access-resolution of `*ploc` for a bound
     pointer local: the pointer cell was SB-read through the binding tag and
     holds a `ptrVal`, whose fields are the resolved place. Reused by the
@@ -1296,6 +1312,10 @@ theorem resolvePlaceAcc_deref_local_inversion
       mirlite.Mem.find? s.mem pbind.addr = some (.ptrVal b o sz t) ∧
       resolved = { addr := b + o, tag := t, allocBase := b, allocSize := sz } := by
   simp only [mirlite.resolvePlaceAcc, h_env] at h_res
+  rw [if_neg (by
+    rintro (h | h)
+    · exact absurd h (Nat.lt_irrefl _)
+    · exact absurd h (Nat.not_succ_le_self _))] at h_res
   split at h_res
   · exact absurd h_res (by simp)
   · rename_i perms'' h_read

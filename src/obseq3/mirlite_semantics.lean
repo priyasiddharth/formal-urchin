@@ -164,6 +164,14 @@ def resolvePlaceAcc (M : PermissionModel) (state : State M Γ) :
       match resolvePlaceAcc M state ptrPlace with
       | .error e => .error e
       | .ok (ptrRes, perms') =>
+          -- the pointer being dereferenced must itself be in bounds of its
+          -- slice — Miri's dereferenceable requirement, and the read-side
+          -- mirror of `writeResolvedPlace`'s bounds check (the compiled
+          -- `Rhs.Load` performs the identical check)
+          if ptrRes.addr < ptrRes.allocBase ∨
+             ptrRes.addr ≥ ptrRes.allocBase + ptrRes.allocSize then
+            .error "deref of an out-of-bounds pointer"
+          else
           match M.read perms' ptrRes.addr 1 ptrRes.tag with
           | .error e => .error s!"read access failed: {e}"
           | .ok perms'' =>
