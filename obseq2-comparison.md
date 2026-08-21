@@ -4,6 +4,37 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-21 — Regime C: One Source Write, Three Target Events
+
+Twenty-eighth increment. `loc.field := v` now simulates end-to-end at a nonzero
+offset — the borrow composition, and the first consumer of the keystone proved back
+on 08-15. What makes it the interesting regime is the asymmetry: the source performs
+exactly one permission event, a write through the root's tag, while the target
+performs three — `Borrow(Mut)`, the `CStore` through the fresh tag, and the cleanup
+`Die`. BRIDGE 1 says those three have the net stack effect of the one, up to the tag
+counter, and `PermSim` cares about nothing else, so the relation transfers to the
+post-`Die` state unchanged.
+
+Two obligations had to be answered rather than assumed, and both answers generalize.
+The internal borrow has no source counterpart, so its *success* cannot be transported
+from anywhere — it comes instead from the target write's success, since a `Mut` retag
+is per cell exactly that write plus a push that cannot fail. And the keystone's two
+side conditions (the fresh tag is neither protected nor the wildcard) turn out to be
+consequences of the invariant already carried: protector frames on the target are ρt
+images of source frames, and the tag bound puts every image strictly below the
+counter, so the counter cannot appear in a frame. Worth noting what did *not* happen:
+ρt does not grow here at all. The internal fresh tag is never mapped, which is exactly
+why the compiler's temp borrows stay invisible to the invariant.
+
+The day's other correction is embarrassing but useful: `lake build` never compiled
+the proof libraries. Only `Core` is a default target, so a proof file can be broken
+while the build reports success — the symptom was edits to `common.lean` appearing to
+have no downstream effect at all. The check is `lake build Obseq3Proof`; the notes
+convention has been fixed. Suite 77/117 pass, differential 77/0/0, and every new
+theorem's axiom list is the standard three.
+
+---
+
 ## 2026-08-21 — The Ref Leaf Grows ρt, and the Opaque-BEq Trap
 
 Twenty-seventh increment. `dl = &sl` now simulates end-to-end

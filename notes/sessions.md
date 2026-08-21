@@ -147,10 +147,26 @@ CompilerInv conjunct (commit 2ca77da) and the ref leaf's core regime
 dev-log increment 27. grind was adopted for the small-lemma tier per
 the user's instruction and closed every new small lemma; the opaque
 derived-BEq trap on TyVal/LayoutTy was found and fixed at the root.
-**Next-session pickup candidates:** audit obligation 4 (copy:
-bidirectional memory relation + Memcpy lemma); obligation 1
-(fresh-local: lockstep-allocation conjunct + `sb_own` transport, which
-also unblocks the ref leaf's REF-FRESH-DST regime); or the regime-C
-composition shared by `const_write_proj`, `const_write_deref_nonspine`
-and the ref leaf's REF-NONLOCAL-DST/SRC regimes (all four now need the
-SAME borrow-lowering composition, no new transport).
+**Third leg — regime C (commit 036c9ad):** the borrow composition is
+closed for a bound root local at a nonzero offset
+(`const_write_proj_local_simulation`), the first consumer of BRIDGE 1.
+New reusable pieces: `sb_ref_Mut_ok_of_sb_write` (internal events get
+their success obligation from the target, not from a source event),
+`isProtectedIn_NextTag_false`/`NextTag_ne_wildcard` (BRIDGE 1's side
+conditions derived from PermSim + TagRenameBound), `PermSim.congr_target`,
+`runN_Die_step`, and a block-domain conjunct on `LocalBindingSim`.
+See journal 2026-08-21-regime-c.md and dev-log increment 28.
+**Critical correction (self-found, high value):** plain `lake build`
+does NOT build the proof libraries — only the `Core` default target.
+Use `lake build Obseq3Proof`. notes/CLAUDE.md's convention line was
+wrong and is fixed; any earlier "build green" from plain `lake build`
+was a statement about the non-proof code only.
+**Next-session pickup candidates:** ONE generalization now unblocks five
+sorried regimes — restate the borrow composition over an OPAQUE base run
+(the way `loadSpine_lowering_sim` is stated): it closes PROJ-NESTED,
+PROJ-OVER-DEREF, `const_write_deref_nonspine`, and the ref leaf's
+REF-NONLOCAL-DST/SRC. Cheaper alternatives: PROJ-ZERO-OFFSET (regime A's
+shape at a projected place, needs only its fragment lemma); obligation 4
+(copy: bidirectional memory relation + Memcpy lemma); obligation 1
+(fresh-local: lockstep allocation + `sb_own` transport, which also
+unblocks REF-FRESH-DST and PROJ-FRESH-ROOT).

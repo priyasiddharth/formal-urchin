@@ -68,16 +68,26 @@ obligation:
 1. `const_write_fresh_local_simulation` — needs the lockstep-allocation
    conjunct (`s_osea.mem.addrStart = s_mir.mem.addrStart`) so ρa extends
    at the equal fresh address, plus the `sb_own` transport member.
-2. `const_write_proj_simulation` — the `sb_ref` transport member now
-   EXISTS (2026-08-21); remaining: compose it with BRIDGE 1 and BRIDGE 3
-   through the projected-dst lowering fragment (the register-bound half
-   landed as `PlaceRegMapBound`), and supply its `TagRenameBound`
-   hypothesis (see 5).
+2. `const_write_proj_simulation` — REGIME C's CORE CLOSED 2026-08-21:
+   `const_write_proj_local_simulation` proves `loc.field := v` at a
+   nonzero offset over a bound root local. This is THE BORROW
+   COMPOSITION: the source's single parent write is matched by the
+   target's `Borrow(Mut) ; CStore ; Die`, cancelled by BRIDGE 1, with
+   the internal borrow's SUCCESS supplied by `sb_ref_Mut_ok_of_sb_write`
+   (no source event to transport) and BRIDGE 1's side conditions derived
+   from `PermSim` + `TagRenameBound` (`isProtectedIn_NextTag_false`,
+   `NextTag_ne_wildcard`). ρt does not grow — internal fresh tags are
+   never mapped. Four named residuals remain in the delegation:
+   PROJ-FRESH-ROOT (regime-B blocker), PROJ-ZERO-OFFSET (no `Borrow` is
+   emitted at all — regime A's shape at a projected place, needs only
+   its fragment lemma), PROJ-NESTED and PROJ-OVER-DEREF (both need this
+   proof generalized over an OPAQUE base run, the way
+   `loadSpine_lowering_sim` is stated).
 3. `const_write_deref_nonspine_simulation` — a projection somewhere in
-   the dereferenced pointer place: its lowering emits a `Borrow` with
-   cleanup — same composition work as 2 (the former D2/D3 split is
-   gone: all-deref spines of EVERY depth closed 2026-08-21 via
-   `loadSpine_lowering_sim`).
+   the dereferenced pointer place. The borrow composition it needs now
+   EXISTS (item 2); what remains is the generalization over an opaque
+   base run, shared with PROJ-NESTED/PROJ-OVER-DEREF and with the ref
+   leaf's REF-NONLOCAL regimes — one piece of work unblocking all five.
 4. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS
    (`sb_read_respects_PermSim`, 2026-08-19); still needs a bidirectional
    memory relation (source-absent cells read as undef; one-directional

@@ -26,9 +26,13 @@ sessions.md          — index of significant sessions (read latest
 - v2 (live) proofs: `src/obseq2/proof/`. v1 (reference only):
   `src/obseq/proof/` — see durable/dont-port-v1-proofs-reconstruct-in-v2.md
   before reusing anything from v1.
-- Build check: `lake build` — healthy means all jobs green with only
-  the expected `sorry` warnings (count tracked in the latest journal
-  state snapshot).
+- Build check: **`lake build Obseq3Proof`** (and `Obseq2Proof` for v2).
+  Plain `lake build` builds only the `Core` default target
+  (`obseq`/`obseq2`/`interp`) — **it does not compile the proof
+  libraries at all**, so a proof file can be broken while `lake build`
+  reports success. Healthy means all jobs green with only the expected
+  `sorry` warnings (count tracked in the latest journal state snapshot).
+  Corrected 2026-08-21; see journal/2026-08/2026-08-21-regime-c.md.
 - `[EMP]` notes stamp "Verified against" with this repo's commit
   (`git rev-parse --short HEAD`), since the Lean code is the moving
   target.
