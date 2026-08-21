@@ -706,6 +706,20 @@ def PermSim (ρt : TagRenameMap) (src tgt : AccessPerms) : Prop :=
   TagListSim ρt src.exposed tgt.exposed ∧
   src.NextTag ≤ tgt.NextTag
 
+/-- `PermSim` only looks at the stack map, the frames, the exposed set and
+    the counter, so it transfers to any target agreeing on the three lists
+    with a counter at least as large. This is what lets a target state
+    reached by `Borrow; use; Die` inherit the relation proved for the bare
+    parent access (BRIDGE 1's conclusion is exactly these equations). -/
+theorem PermSim.congr_target {ρt : TagRenameMap} {src tgt tgt' : AccessPerms}
+    (h_sim : PermSim ρt src tgt)
+    (h_sm : tgt'.StackMap = tgt.StackMap)
+    (h_pf : tgt'.protFrames = tgt.protFrames)
+    (h_ex : tgt'.exposed = tgt.exposed)
+    (h_nt : tgt.NextTag ≤ tgt'.NextTag) :
+    PermSim ρt src tgt' := by
+  grind [PermSim]
+
 /-- `PermSim` transports along rename growth (renames only appear
     positively). -/
 theorem PermSim.rename_mono
@@ -752,7 +766,11 @@ def LocalBindingSim
       PtrRegisterEntry s_osea.reg reg base 0 (blockSize τ) tag ∧
       ρa binding.addr = some base ∧
       ρt binding.tag = some tag ∧
-      (binding.tag == wildcardTag) = false
+      (binding.tag == wildcardTag) = false ∧
+      -- the local's WHOLE block is in ρa's domain (allocations are
+      -- lockstep), which is what a PROJECTED write needs: its target
+      -- address is `binding.addr + offset`, not the block base
+      (∀ k, k < blockSize τ → ∃ a', ρa (binding.addr + k) = some a')
 
 /-- Pointwise simulation between a source `MemValue` and a target `Val`. -/
 def MemValSim
@@ -798,6 +816,84 @@ def SourceMemSim
       oseair.Mem.find? mem_osea addr' = some value' ∧
       MemValSim ρa ρt value value'
 
+/-! ### The internal borrow's side conditions
+
+The compiler-internal `Borrow(Mut)` has NO source counterpart, so BRIDGE 1
+(`sb_ref_use_die_cancels`) must be fed its two side conditions — the fresh
+tag is neither the wildcard nor protected — from the invariant rather than
+from a matching source event. Both follow from `TagRenameBound`: every
+mapped tag pair sits strictly below the two counters, so the target's next
+tag is above everything ρt mentions, and (via `PermSim`) every tag in a
+target protector frame is a ρt image. -/
+
+theorem TagListSim.mem_image {ρt : TagRenameMap} :
+    ∀ {fS fT : List Tag}, TagListSim ρt fS fT →
+      ∀ {t' : Tag}, fT.contains t' = true → ∃ t, ρt t = some t' := by
+  intro fS
+  induction fS with
+  | nil =>
+      intro fT h t' h_mem
+      cases fT with
+      | nil => simp at h_mem
+      | cons y ys => simp [TagListSim, ListRel] at h
+  | cons x xs ih =>
+      intro fT h t' h_mem
+      cases fT with
+      | nil => simp at h_mem
+      | cons y ys =>
+          simp only [TagListSim, ListRel] at h
+          rw [List.contains_cons] at h_mem
+          cases h_y : (t' == y) with
+          | true =>
+              refine ⟨x, ?_⟩
+              rw [eq_of_beq h_y]
+              exact h.1
+          | false =>
+              rw [h_y, Bool.false_or] at h_mem
+              exact ih h.2 h_mem
+
+theorem isProtectedIn_image {ρt : TagRenameMap} :
+    ∀ {pfS pfT : List (List Tag)}, ListRel (TagListSim ρt) pfS pfT →
+      ∀ {t' : Tag}, isProtectedIn pfT t' = true → ∃ t, ρt t = some t' := by
+  intro pfS
+  induction pfS with
+  | nil =>
+      intro pfT h t' h_prot
+      cases pfT with
+      | nil => simp [isProtectedIn] at h_prot
+      | cons f fs => simp [ListRel] at h
+  | cons f fs ih =>
+      intro pfT h t' h_prot
+      cases pfT with
+      | nil => simp [ListRel] at h
+      | cons f' fs' =>
+          simp only [ListRel] at h
+          simp only [isProtectedIn, List.any_cons, Bool.or_eq_true] at h_prot
+          cases h_prot with
+          | inl h_here => exact TagListSim.mem_image h.1 h_here
+          | inr h_rest => exact ih h.2 (by simpa [isProtectedIn] using h_rest)
+
+/-- The target's fresh tag is never protected: protector frames hold only
+    ρt images, and `TagRenameBound` puts every image below the counter. -/
+theorem isProtectedIn_NextTag_false {ρt : TagRenameMap} {src tgt : AccessPerms}
+    (h_sim : PermSim ρt src tgt)
+    (h_b : TagRenameBound ρt src.NextTag tgt.NextTag) :
+    isProtectedIn tgt.protFrames tgt.NextTag = false := by
+  cases h : isProtectedIn tgt.protFrames tgt.NextTag with
+  | false => rfl
+  | true =>
+      obtain ⟨t, h_t⟩ := isProtectedIn_image h_sim.2.1 h
+      exact absurd (h_b t tgt.NextTag h_t).2 (Nat.lt_irrefl _)
+
+/-- The target's fresh tag is never the wildcard: the wildcard is mapped
+    (to itself), hence strictly below the counter. -/
+theorem NextTag_ne_wildcard {ρt : TagRenameMap} {src tgt : AccessPerms}
+    (h_wf : TagRenameWF ρt)
+    (h_b : TagRenameBound ρt src.NextTag tgt.NextTag) :
+    (tgt.NextTag == wildcardTag) = false := by
+  have h_pos := (h_b wildcardTag wildcardTag h_wf.2).2
+  grind [wildcardTag]
+
 /-! ### Rename-growth transport for the state relations
 
 The `sb_ref` statement extends ρt at the fresh tag pair; every relation in
@@ -823,8 +919,10 @@ theorem LocalBindingSim.rename_mono
     (h_lbs : LocalBindingSim ρa ρt env s_osea cs) :
     LocalBindingSim ρa' ρt' env s_osea cs := by
   intro τ loc binding h_env
-  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw⟩ := h_lbs loc binding h_env
-  exact ⟨reg, base, tag, h_pi, h_entry, h_addr _ _ h_ra, h_tag _ _ h_rt, h_nw⟩
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ :=
+    h_lbs loc binding h_env
+  exact ⟨reg, base, tag, h_pi, h_entry, h_addr _ _ h_ra, h_tag _ _ h_rt, h_nw,
+    fun k hk => ⟨(h_dom k hk).choose, h_addr _ _ (h_dom k hk).choose_spec⟩⟩
 
 /-! ### NextTag preservation — carrying `TagRenameBound` across steps
 
@@ -1639,6 +1737,25 @@ theorem runN_RStore_step
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok s' := by
     simp only [oseair.step, oseair.stepWith, h_instr, h_src, h_ptr]
     simp [h_ty, h_wtp]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- A `Die` through a pointer register executes in one `runN` step when the
+    corresponding `sb_die` succeeds (the cleanup half of a place-lowering
+    borrow). -/
+theorem runN_Die_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (reg : Register) (len : Nat)
+    {b o sz : Word} {t : Tag} {p2 : AccessPerms}
+    (h_instr : compProg s.pc = some (Instr.Die reg len))
+    (h_entry : PtrRegisterEntry s.reg reg b o sz t)
+    (h_die : MSB.die s.perms (b + o) len t = .ok p2) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p2, pc := s.pc + 1 } := by
+  have h_lookup : oseair.RegMap.lookup s.reg reg
+      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p2, pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, h_lookup, h_die]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- A single `Die` step leaves the register file unchanged. -/

@@ -1262,6 +1262,45 @@ theorem refCellContent_transport
           exact insertAboveContent_transport h_wf h_t
             (by simp [ItemSim]; exact h_new) h_u h_ok
 
+/-- A `Mut` retag succeeds exactly where the same-range write through the
+    parent succeeds: per cell it IS that write, followed by a `pushCell`
+    that cannot fail (the stack exists — the write just rewrote it).
+
+    This is what a compiler-INTERNAL borrow needs. Regime C's `Borrow(Mut)`
+    has no source counterpart, so its success cannot come from transporting
+    a source event; it comes from the source write that the fragment is
+    lowering, via this lemma. -/
+theorem sb_ref_Mut_ok_of_sb_write
+    {ap ap' : AccessPerms} {addr : Word} {len : Nat} {tag : Tag}
+    (h_ts : (tag == wildcardTag) = false)
+    (h_write : sb_write ap addr len tag = .ok ap') :
+    ∃ apR, sb_ref ap addr len tag .Mut false [] = .ok (apR, ap.NextTag) := by
+  have h_write0 : foldCells (fun ap a => writeCell ap a tag) ap (addr + 0) len
+      = .ok ap' := h_write
+  obtain ⟨V, W, h_cells, -⟩ :=
+    foldCells_ok_inv
+      (C := fun a stack => writeCellContent ap.protFrames ap.exposed a tag stack)
+      (msgNone := fun a => s!"sb-write: no borrow stack at address {a}")
+      (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag)
+      (fun ap' a h_pf h_ex _ => writeCell_content_form tag ap' a h_pf h_ex)
+      len 0 ap ap' rfl rfl rfl h_write0
+  have h_go := foldCellsIdx_ok_of_cells
+    (op := refCellOp tag ap.NextTag .Mut [])
+    (C := fun i v? => refCellContent ap.protFrames ap.exposed (addr + i)
+      tag ap.NextTag .Mut [] i v?)
+    (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag + 1)
+    (fun ap' i h_pf h_ex _ =>
+      refCellOp_content_form tag ap.NextTag .Mut [] h_ts ap' i h_pf h_ex)
+    (i := 0) (len := len)
+    { ap with NextTag := ap.NextTag + 1 }
+    V (fun j => .MutRef ap.NextTag :: W j)
+    rfl rfl rfl
+    (fun j h1 h2 => (h_cells j h1 (by omega)).1)
+    (fun j h1 h2 => by
+      simp only [refCellContent, (h_cells j h1 (by omega)).2])
+  rw [sb_ref_unfold, h_go]
+  exact ⟨_, rfl⟩
+
 /-- BRIDGE 3 family, `sb_ref` member — the ρt-GROWING transport: a
     successful source retag through `tagS` is matched by a target retag
     through the renamed `tagT`. The fresh tags are the two counters (which

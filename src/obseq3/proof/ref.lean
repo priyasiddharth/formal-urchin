@@ -126,7 +126,7 @@ theorem ref_local_local_existing_simulation
       -- BRIDGE 3, ref member: the target retag succeeds, ρt extends
       obtain ⟨permsT1, h_ref_tgt, h_freshS, h_snt1, h_tnt1, h_psim1,
           h_wf', h_incr, h_bound1⟩ :=
-        sb_ref_respects_PermSim h_psim h_wf_t h_trb h_rt_s h_nw_s h_ref_src
+        sb_ref_respects_PermSim h_psim h_wf_t h_trb h_rt_s h_nw_s.1 h_ref_src
       -- the fresh source tag is positive, so non-wildcard
       have h_freshS_nw : (freshS == wildcardTag) = false := by
         have h_pos := (h_trb _ _ h_wf_t.2).1
@@ -197,7 +197,7 @@ theorem ref_local_local_existing_simulation
       have h_rt_d' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) dbind.tag
           = some dtag := h_incr _ _ h_rt_d
       obtain ⟨permsT2, h_useMut_tgt, h_psim2⟩ :=
-        sb_write_respects_PermSim h_psim1 h_wf' h_rt_d' h_nw_d h_useMut_src
+        sb_write_respects_PermSim h_psim1 h_wf' h_rt_d' h_nw_d.1 h_useMut_src
       -- the stored pointer values are related at the extended map
       have h_mvs : MemValSim ρa (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
           (mirlite.MemValue.ptrVal sbind.addr (sbind.addr - sbind.addr)
