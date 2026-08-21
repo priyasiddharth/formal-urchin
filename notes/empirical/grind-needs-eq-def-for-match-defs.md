@@ -32,6 +32,15 @@ a `match` and grind's first attempt fails. It costs nothing to try and
 is the difference between a one-line proof and a hand-rolled
 `cases … <;> simp only […]` bash of 10–25 lines.
 
+**Related (2026-08-21, same toolchain): grind beats omega on some
+arithmetic.** Twice this session `omega` failed on trivial goals
+(`addr + (k+1) = addr + 1 + k`, `a + 0 + n ≤ a + n`) reporting
+counterexamples over atoms that do not appear in the goal — the
+metavariable-leak pattern. `grind` closed the first outright where omega
+needed a hand-written `rw [Nat.add_assoc, Nat.add_comm 1 k]`. When omega
+fails on a goal you can see is true, try `grind` before hand-rolling
+rewrites.
+
 **Scope:** this is about GOAL-side reduction only. It does not help
 grind with ∃-witness assembly or monadic `bind`/`pure` unfolding — see
 `journal/2026-08/2026-08-21-grind-assessment.md` for the full
