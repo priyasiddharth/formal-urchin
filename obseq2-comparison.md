@@ -4,6 +4,42 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-21 — Copy, and the Direction the Memory Relation Was Missing
+
+Twenty-ninth increment. `dl := sl` between two bound locals now simulates, which
+means every statement kind in the proof core — halt, constInit, ref, copy — has a
+working core. The permission half was the easy half: both machines perform the same
+two events in the same order, an SB read over the source block and a write over the
+destination block, and both transports already existed. The target does it in a
+single `Memcpy`, so the fragment is one instruction.
+
+The content was in the values, and it surfaced a real gap rather than a missing
+lemma. `SourceMemSim` only ever constrained the target where the *source* has a
+cell. That is enough for writes, which carry their own values, but a copy reads —
+and both machines' `readWordSeq` return `undef` at an absent cell, so copying out of
+a range the source has never written would have required relating `undef` to whatever
+the target happened to hold there. Not provable, and rightly so: the invariant simply
+never said the two memories agree about absence. `TargetAbsentSim` says exactly that
+and nothing more, and `readWordSeq_sim` — the two machines read related sequences,
+including at the undef cells — is what the copy proof actually rests on. All four
+previously-closed regimes re-establish it for free, since each one writes matching
+sequences at matching addresses.
+
+Worth recording that copy was already the best-tested rvalue in the project before
+any of this: 17 of 36 differential tests exercise it, including a multi-cell tuple
+`Memcpy`, and it is the lowering of every Rust `use` operand, so nearly the whole
+Miri corpus runs copies through both machines. The risk was never that the semantics
+were wrong — only that the invariant could not say why they agreed.
+
+One correction lands with this increment: yesterday's claim that a single
+generalization would close five sorried regimes was wrong. Three different shapes
+hide behind those names, and two of them need a *read*-flavoured sibling of the
+keystone, because the deref lowering emits its inner cleanup itself and so cancels
+`Borrow(Shared) ; Load ; Die` rather than the Mut-and-write chain. The audit and the
+notes now say so.
+
+---
+
 ## 2026-08-21 — Regime C: One Source Write, Three Target Events
 
 Twenty-eighth increment. `loc.field := v` now simulates end-to-end at a nonzero
