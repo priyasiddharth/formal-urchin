@@ -14,9 +14,13 @@ Scope note: the acting tag is assumed non-wildcard
 (`(tagS == wildcardTag) = false`). Wildcard resolution transport
 (`resolveWildcardIn` over the renamed exposed set) is deliberately out of
 scope: proof-core programs cannot mint wildcard pointers (`fromExposed`
-is not a core rvalue), so no core acting tag is ever the wildcard. The
-`sb_read`/`sb_die`/`sb_ref` members of the family reuse this file's
-lemma stack and are stated when their consumers (leaves 2–3) close.
+is not a core rvalue), so no core acting tag is ever the wildcard.
+
+All four members are now theorems: `sb_write_respects_PermSim` /
+`sb_read_respects_PermSim` / `sb_die_respects_PermSim` (same-ρt
+transports over `foldCells`) and `sb_ref_respects_PermSim` (2026-08-21,
+the ρt-GROWING member over `foldCellsIdx`, extending ρt at the fresh
+tag pair under a `TagRenameBound` injectivity guard).
 -/
 
 namespace obseq3.proof
@@ -937,10 +941,14 @@ theorem refCellContent_none_error
   intro h
   cases kind with
   | Mut => simp [refCellContent] at h
-  | Shared => cases hm : mask.getD i false <;> simp [refCellContent, hm] at h
+  | Shared =>
+      simp only [refCellContent] at h
+      split at h <;> simp at h
   | Raw m =>
       cases m with
-      | false => cases hm : mask.getD i false <;> simp [refCellContent, hm] at h
+      | false =>
+          simp only [refCellContent] at h
+          split at h <;> simp at h
       | true => simp [refCellContent] at h
   | TwoPhase => simp [refCellContent] at h
 
@@ -989,7 +997,9 @@ theorem sb_ref_unfold (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag)
     | ok apR =>
         cases prot with
         | false => rfl
-        | true => cases h : apR.protFrames <;> simp [bind, Except.bind, h]
+        | true =>
+            cases h : apR.protFrames <;>
+              simp [bind, Except.bind, pure, Except.pure, h]
   cases kind with
   | Mut =>
       simp only [sb_ref, freshTag, RefKind.toItem, refCellOp]
@@ -1022,16 +1032,16 @@ theorem refCellOp_content_form
         | .error e => .error e
         | .ok v => .ok { ap with StackMap := SB.set ap.StackMap (addr + i) v } := by
   intro ap i h_pf h_ex
-  have h_insert : ∀ (item : Item),
-      insertAboveCell ap (addr + i) tag item =
-        match SB.find? ap.StackMap (addr + i) with
+  have h_insert : ∀ (ap' : AccessPerms) (item : Item),
+      insertAboveCell ap' (addr + i) tag item =
+        match SB.find? ap'.StackMap (addr + i) with
         | none => .error s!"sb-insert: no borrow stack at address {addr + i}"
         | some stack =>
           match insertAboveContent (addr + i) tag item stack with
           | .error e => .error e
-          | .ok v => .ok { ap with StackMap := SB.set ap.StackMap (addr + i) v } := by
-    intro item
-    cases h_find : SB.find? ap.StackMap (addr + i) with
+          | .ok v => .ok { ap' with StackMap := SB.set ap'.StackMap (addr + i) v } := by
+    intro ap' item
+    cases h_find : SB.find? ap'.StackMap (addr + i) with
     | none => simp only [insertAboveCell, h_find]
     | some stack =>
         simp only [insertAboveCell, h_find, h_ts, Bool.false_eq_true, if_false]
@@ -1108,30 +1118,15 @@ theorem refCellOp_content_form
           | ok v =>
               simp only [refCellOp, refCellContent, readCell, h_pf, h_ex, h_find,
                 h_content, bind, Except.bind]
-              rw [show insertAboveCell { ap with StackMap := SB.set ap.StackMap (addr + i) v }
-                    (addr + i) tag (.RawPtr true newTag) =
-                  match SB.find? (SB.set ap.StackMap (addr + i) v) (addr + i) with
-                  | none => .error s!"sb-insert: no borrow stack at address {addr + i}"
-                  | some stack =>
-                    match insertAboveContent (addr + i) tag (.RawPtr true newTag) stack with
-                    | .error e => .error e
-                    | .ok u => .ok { ap with StackMap :=
-                        SB.set (SB.set ap.StackMap (addr + i) v) (addr + i) u }
-                  from by
-                    cases h_find' : SB.find? (SB.set ap.StackMap (addr + i) v) (addr + i) with
-                    | none => simp only [insertAboveCell, h_find']
-                    | some stack' =>
-                        simp only [insertAboveCell, h_find', h_ts, Bool.false_eq_true,
-                          if_false]
-                        cases h_split : splitStack stack' tag with
-                        | none => simp [insertAboveContent, h_split]
-                        | some triple =>
-                            obtain ⟨ab, it, bl⟩ := triple
-                            cases it <;> simp [insertAboveContent, h_split]]
-              rw [SB.find?_set_self]
+              rw [h_insert]
+              simp only [show ({ ap with StackMap := SB.set ap.StackMap (addr + i) v }
+                    : AccessPerms).StackMap = SB.set ap.StackMap (addr + i) v from rfl,
+                SB.find?_set_self]
               cases h_ins : insertAboveContent (addr + i) tag (.RawPtr true newTag) v with
-              | error e => rfl
-              | ok u => simp only [SB.set_set]
+              | error e => simp only [h_ins]
+              | ok u =>
+                  simp only [h_ins]
+                  simp [SB.set_set]
 
 /-- `insertAboveContent` transport: the untouched stack parts stay related,
     and the inserted items are related by hypothesis. -/
@@ -1207,8 +1202,8 @@ theorem refCellContent_transport
       | ok u =>
           simp only [h_w, Except.ok.injEq] at h_ok
           obtain ⟨u', h_w', h_u⟩ :=
-            writeCellContent_transport h_wf h_pf h_t h_ts h_v h_w
-          simp only [h_w']
+            writeCellContent_transport (a' := a') h_wf h_pf h_t h_ts h_v h_w
+          rw [h_w']
           refine ⟨_, rfl, ?_⟩
           rw [← h_ok]
           exact ⟨by simp [ItemSim]; exact h_new, h_u⟩
@@ -1225,8 +1220,8 @@ theorem refCellContent_transport
           | ok u =>
               simp only [h_r, Except.ok.injEq] at h_ok
               obtain ⟨u', h_r', h_u⟩ :=
-                readCellContent_transport h_wf h_pf h_t h_ts h_v h_r
-              simp only [h_r']
+                readCellContent_transport (a' := a') h_wf h_pf h_t h_ts h_v h_r
+              rw [h_r']
               refine ⟨_, rfl, ?_⟩
               rw [← h_ok]
               exact ⟨by simp [ItemSim]; exact h_new, h_u⟩
@@ -1246,8 +1241,8 @@ theorem refCellContent_transport
               | ok u =>
                   simp only [h_r, Except.ok.injEq] at h_ok
                   obtain ⟨u', h_r', h_u⟩ :=
-                    readCellContent_transport h_wf h_pf h_t h_ts h_v h_r
-                  simp only [h_r']
+                    readCellContent_transport (a' := a') h_wf h_pf h_t h_ts h_v h_r
+                  rw [h_r']
                   refine ⟨_, rfl, ?_⟩
                   rw [← h_ok]
                   exact ⟨by simp [ItemSim]; exact h_new, h_u⟩
@@ -1262,8 +1257,8 @@ theorem refCellContent_transport
       | ok u =>
           simp only [h_r] at h_ok
           obtain ⟨u', h_r', h_u⟩ :=
-            readCellContent_transport h_wf h_pf h_t h_ts h_v h_r
-          simp only [h_r']
+            readCellContent_transport (a' := a') h_wf h_pf h_t h_ts h_v h_r
+          rw [h_r']
           exact insertAboveContent_transport h_wf h_t
             (by simp [ItemSim]; exact h_new) h_u h_ok
 
@@ -1356,9 +1351,9 @@ theorem sb_ref_respects_PermSim
       -- Run the target fold.
       have h_goT : foldCellsIdx (refCellOp tagT tgt.NextTag kind mask)
           { tgt with NextTag := tgt.NextTag + 1 } addr 0 len =
-          .ok { tgt with NextTag := tgt.NextTag + 1, StackMap :=
-            setChain tgt.StackMap
-              (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 len) } := by
+          .ok { { tgt with NextTag := tgt.NextTag + 1 } with
+                StackMap := setChain tgt.StackMap
+                  (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 len) } := by
         have h_tt : (tagT == wildcardTag) = false := by
           rw [h_wf.beq_eq h_tag h_wf.2]
           exact h_ts
@@ -1369,18 +1364,31 @@ theorem sb_ref_respects_PermSim
           (fun ap i h_pf h_ex _ =>
             refCellOp_content_form tagT tgt.NextTag kind mask h_tt ap i h_pf h_ex)
           { tgt with NextTag := tgt.NextTag + 1 }
+          (fun j => (h_pkg j).choose)
           (fun j => (h_pkg j).choose_spec.choose)
           rfl rfl rfl
-          (fun j h1 h2 => by
-            rw [show ({ tgt with NextTag := tgt.NextTag + 1 } : AccessPerms).StackMap
-                  = tgt.StackMap from rfl, (h_pkg' j h2).1]
-            exact (h_pkg' j h2).2.1)
+          (fun j h1 h2 => (h_pkg' j h2).1)
+          (fun j h1 h2 => (h_pkg' j h2).2.1)
       -- The folded states are `PermSim`-related under the extension.
       have h_stacksR : ListRel (CellSim (ρt.extend src.NextTag tgt.NextTag))
           (setChain src.StackMap (chain W addr 0 len))
           (setChain tgt.StackMap
             (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 len)) :=
         setChain_chain_respects h_stacks' (fun j h1 h2 => (h_pkg' j h2).2.2)
+      -- Repackage through an existential so the target chain function is
+      -- OPAQUE: `Exists.choose` terms mention `tgt`'s fields in their
+      -- implicit predicates, which would make later goal rewrites of those
+      -- fields motive-ill-typed.
+      obtain ⟨W', h_goT, h_stacksR⟩ :
+          ∃ W'' : Nat → BorrowStack,
+            (foldCellsIdx (refCellOp tagT tgt.NextTag kind mask)
+              { tgt with NextTag := tgt.NextTag + 1 } addr 0 len =
+              .ok { { tgt with NextTag := tgt.NextTag + 1 } with
+                    StackMap := setChain tgt.StackMap (chain W'' addr 0 len) }) ∧
+            ListRel (CellSim (ρt.extend src.NextTag tgt.NextTag))
+              (setChain src.StackMap (chain W addr 0 len))
+              (setChain tgt.StackMap (chain W'' addr 0 len)) :=
+        ⟨fun j => (h_pkg j).choose_spec.choose, h_goT, h_stacksR⟩
       -- Discharge the protector-registration branch and assemble.
       rw [sb_ref_unfold, h_goT]
       subst h_apS
@@ -1389,23 +1397,14 @@ theorem sb_ref_respects_PermSim
           simp only [Bool.false_eq_true, if_false, Except.ok.injEq, Prod.mk.injEq]
             at h_src
           obtain ⟨h_eq1, h_eq2⟩ := h_src
-          refine ⟨_, rfl, h_eq2.symm, ?_, rfl, ?_, h_wf', h_incr, h_bound'⟩
-          · rw [← h_eq1]
-          · rw [← h_eq1]
-            exact ⟨h_stacksR, h_prot', h_exp', Nat.succ_le_succ h_next⟩
+          subst h_eq1
+          refine ⟨_, rfl, h_eq2.symm, rfl, rfl, ?_, h_wf', h_incr, h_bound'⟩
+          exact ⟨h_stacksR, h_prot', h_exp', Nat.succ_le_succ h_next⟩
       | true =>
-          simp only [if_true] at h_src ⊢
           cases h_pfS : src.protFrames with
-          | nil =>
-              rw [show ({ src with NextTag := src.NextTag + 1, StackMap :=
-                    setChain src.StackMap (chain W addr 0 len) }
-                  : AccessPerms).protFrames = src.protFrames from rfl, h_pfS] at h_src
-              simp at h_src
+          | nil => simp [h_pfS] at h_src
           | cons frame rest =>
-              rw [show ({ src with NextTag := src.NextTag + 1, StackMap :=
-                    setChain src.StackMap (chain W addr 0 len) }
-                  : AccessPerms).protFrames = src.protFrames from rfl, h_pfS] at h_src
-              simp only [Except.ok.injEq, Prod.mk.injEq] at h_src
+              simp [h_pfS, Prod.mk.injEq] at h_src
               obtain ⟨h_eq1, h_eq2⟩ := h_src
               -- Target frames are nonempty and related.
               rw [h_pfS] at h_prot'
@@ -1416,15 +1415,10 @@ theorem sb_ref_respects_PermSim
               | cons frame' rest' =>
                   rw [h_pfT] at h_prot'
                   simp only [ListRel] at h_prot'
-                  rw [show ({ tgt with NextTag := tgt.NextTag + 1, StackMap :=
-                        setChain tgt.StackMap
-                          (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 len) }
-                      : AccessPerms).protFrames = tgt.protFrames from rfl, h_pfT]
-                  refine ⟨_, rfl, h_eq2.symm ▸ rfl, ?_, rfl, ?_, h_wf', h_incr, h_bound'⟩
-                  · rw [← h_eq1]
-                  · rw [← h_eq1]
-                    refine ⟨h_stacksR, ?_, h_exp', Nat.succ_le_succ h_next⟩
-                    exact ⟨⟨h_new', h_prot'.1⟩, h_prot'.2⟩
+                  subst h_eq1
+                  refine ⟨_, rfl, h_eq2.symm, rfl, rfl, ?_, h_wf', h_incr, h_bound'⟩
+                  exact ⟨h_stacksR, ⟨⟨h_new', h_prot'.1⟩, h_prot'.2⟩, h_exp',
+                    Nat.succ_le_succ h_next⟩
 
 /-- BRIDGE 3 family, `sb_die` member: a successful source die through
     `tagS` is matched by a target die through the renamed `tagT`, and the

@@ -299,9 +299,10 @@ theorem foldCellsIdx_ok_inv
   termination_by i len => len - i
 
 /-- Construction for `foldCellsIdx` whose per-cell op is a content-driven
-    rewrite of its own cell: if every cell's content computation succeeds
-    (on the ORIGINAL map — earlier cells only touch their own address),
-    the fold succeeds with the corresponding `setChain`. -/
+    rewrite of its own cell: if every cell's stack is known (on the ORIGINAL
+    map — earlier cells only touch their own address) and every content
+    computation succeeds, the fold succeeds with the corresponding
+    `setChain`. -/
 theorem foldCellsIdx_ok_of_cells
     {op : AccessPerms → Word → Nat → Except String AccessPerms}
     {C : Nat → Option BorrowStack → Except String BorrowStack}
@@ -311,18 +312,17 @@ theorem foldCellsIdx_ok_of_cells
         match C i (SB.find? ap.StackMap (addr + i)) with
         | .error e => .error e
         | .ok v => .ok { ap with StackMap := SB.set ap.StackMap (addr + i) v }) :
-    ∀ {i len : Nat} (ap : AccessPerms) (W : Nat → BorrowStack),
+    ∀ {i len : Nat} (ap : AccessPerms) (V W : Nat → BorrowStack),
       ap.protFrames = P → ap.exposed = E → ap.NextTag = N →
-      (∀ j, i ≤ j → j < len → C j (SB.find? ap.StackMap (addr + j)) = .ok (W j)) →
+      (∀ j, i ≤ j → j < len → SB.find? ap.StackMap (addr + j) = some (V j)) →
+      (∀ j, i ≤ j → j < len → C j (some (V j)) = .ok (W j)) →
       foldCellsIdx op ap addr i len =
         .ok { ap with StackMap := setChain ap.StackMap (chain W addr i len) } := by
-  intro i len ap W h_pf h_ex h_nt h_cells
+  intro i len ap V W h_pf h_ex h_nt h_find h_content
   by_cases h : i < len
-  · rw [foldCellsIdx.eq_def, if_pos h, h_op ap i h_pf h_ex h_nt,
-        h_cells i (Nat.le_refl i) h]
-    have h_rest :=
+  · have h_rest :=
       foldCellsIdx_ok_of_cells h_op (i := i + 1)
-        { ap with StackMap := SB.set ap.StackMap (addr + i) (W i) } W
+        { ap with StackMap := SB.set ap.StackMap (addr + i) (W i) } V W
         h_pf h_ex h_nt
         (fun j h1 h2 => by
           have h_ne : addr + j ≠ addr + i :=
@@ -332,8 +332,12 @@ theorem foldCellsIdx_ok_of_cells
           rw [show ({ ap with StackMap := SB.set ap.StackMap (addr + i) (W i) }
                 : AccessPerms).StackMap = SB.set ap.StackMap (addr + i) (W i)
               from rfl, SB.find?_set_ne _ h_ne]
-          exact h_cells j (by omega) h2)
-    simp only at h_rest ⊢
+          exact h_find j (by omega) h2)
+        (fun j h1 h2 => h_content j (by omega) h2)
+    rw [foldCellsIdx.eq_def, if_pos h, h_op ap i h_pf h_ex h_nt,
+        h_find i (Nat.le_refl i) h, h_content i (Nat.le_refl i) h]
+    show foldCellsIdx op { ap with StackMap := SB.set ap.StackMap (addr + i) (W i) }
+        addr (i + 1) len = _
     rw [h_rest, chain_step h, setChain]
   · rw [foldCellsIdx.eq_def, if_neg h, chain_stop h]
     rfl

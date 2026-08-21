@@ -31,27 +31,48 @@ cannot clobber bound locals' registers) and the strengthened `MemValSim`
 pointer case (stored tags are non-wildcard; the referent range is in
 ρa's domain). These also discharge part of regime C's blocker list.
 
+- ✔ BRIDGE 3, `sb_ref` member `sb_ref_respects_PermSim`
+  (proof/permsim_transport.lean, 2026-08-21): the ρt-GROWING transport —
+  fresh tags are the two (differing) counters, results related under
+  `TagRenameMap.extend ρt src.NextTag tgt.NextTag`; injectivity of the
+  extension from the new `TagRenameBound` hypothesis (mapped pairs
+  strictly below both counters), which the lemma re-establishes at the
+  bumped counters. Engine: `refCellOp`/`refCellContent` content forms
+  over `foldCellsIdx` (per-`RefKind` cell ops incl. freeze-mask
+  `insertAboveCell` placements), `foldCellsIdx_ok_of_cells`
+  (keystone.lean), `insertAboveContent_transport`, and
+  `PermSim.rename_mono` for the untouched parts. Handles both protector
+  registration (`prot = true`) and the plain case. All four transport
+  members (write/read/die/ref) are now theorems.
+
 Remaining (5): every remaining sorry is blocked on a NAMED obligation:
 1. `const_write_fresh_local_simulation` — needs the lockstep-allocation
    conjunct (`s_osea.mem.addrStart = s_mir.mem.addrStart`) so ρa extends
    at the equal fresh address, plus the `sb_own` transport member.
-2. `const_write_proj_simulation` — needs the `sb_ref` transport member
-   for the internal `Borrow`, composed with BRIDGE 1 and BRIDGE 3 (the
-   register-bound half of its blocker landed as `PlaceRegMapBound`).
+2. `const_write_proj_simulation` — the `sb_ref` transport member now
+   EXISTS (2026-08-21); remaining: compose it with BRIDGE 1 and BRIDGE 3
+   through the projected-dst lowering fragment (the register-bound half
+   landed as `PlaceRegMapBound`), and supply its `TagRenameBound`
+   hypothesis (see 5).
 3. `const_write_deref_nonspine_simulation` — a projection somewhere in
    the dereferenced pointer place: its lowering emits a `Borrow` with
-   cleanup — same `sb_ref`-transport blocker as regime C (the former
-   D2/D3 split is gone: all-deref spines of EVERY depth closed
-   2026-08-21 via `loadSpine_lowering_sim`).
+   cleanup — same composition work as 2 (the former D2/D3 split is
+   gone: all-deref spines of EVERY depth closed 2026-08-21 via
+   `loadSpine_lowering_sim`).
 4. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS
    (`sb_read_respects_PermSim`, 2026-08-19); still needs a bidirectional
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-5. `CompilerInv_step_ref` — needs the `sb_ref` transport member (extends
-   ρt at the fresh pair) and the tag-bound WF fact (mapped and stack
-   tags < NextTag on both machines) for injectivity of the extension;
-   its `Die` cleanup transport now exists (`sb_die_respects_PermSim`).
+5. `CompilerInv_step_ref` — the `sb_ref` transport member now EXISTS
+   (`sb_ref_respects_PermSim`, 2026-08-21) and its `Die` cleanup
+   transport too (`sb_die_respects_PermSim`); remaining: carry
+   `TagRenameBound ρt s_mir.perms.NextTag s_osea.ap.NextTag` as a
+   `CompilerInv` conjunct (it holds at init where ρt maps only the
+   wildcard, and every transport member preserves it — write/read/die
+   keep counters and ρt, ref returns it re-established), then rebuild
+   the invariant with the extended ρt (`MemValSim` renames transport
+   via `TagRenameIncr`).
 
 CLOSED in the leaf layer (2026-08-18):
 - ✔ `const_write_stmt_evidence` — total (fresh-root branch via
