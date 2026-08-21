@@ -798,6 +798,34 @@ def SourceMemSim
       oseair.Mem.find? mem_osea addr' = some value' ∧
       MemValSim ρa ρt value value'
 
+/-! ### Rename-growth transport for the state relations
+
+The `sb_ref` statement extends ρt at the fresh tag pair; every relation in
+which renames appear only positively transports along the growth. -/
+
+theorem SourceMemSim.rename_mono
+    {ρa ρa' : AddrRenameMap} {ρt ρt' : TagRenameMap}
+    {mem_mir : mirlite.Mem} {mem_osea : oseair.Mem}
+    (h_addr : AddrRenameIncr ρa ρa')
+    (h_tag : TagRenameIncr ρt ρt')
+    (h_sms : SourceMemSim ρa ρt mem_mir mem_osea) :
+    SourceMemSim ρa' ρt' mem_mir mem_osea := by
+  intro addr value h_find
+  obtain ⟨addr', value', h_ra, h_find', h_mvs⟩ := h_sms addr value h_find
+  exact ⟨addr', value', h_addr _ _ h_ra, h_find',
+    MemValSim.rename_mono h_addr h_tag h_mvs⟩
+
+theorem LocalBindingSim.rename_mono
+    {Γ : Ctx} {ρa ρa' : AddrRenameMap} {ρt ρt' : TagRenameMap}
+    {env : mirlite.Env Γ} {s_osea : oseair.State MSB} {cs : CompilerState}
+    (h_addr : AddrRenameIncr ρa ρa')
+    (h_tag : TagRenameIncr ρt ρt')
+    (h_lbs : LocalBindingSim ρa ρt env s_osea cs) :
+    LocalBindingSim ρa' ρt' env s_osea cs := by
+  intro τ loc binding h_env
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw⟩ := h_lbs loc binding h_env
+  exact ⟨reg, base, tag, h_pi, h_entry, h_addr _ _ h_ra, h_tag _ _ h_rt, h_nw⟩
+
 /-! ### NextTag preservation — carrying `TagRenameBound` across steps
 
 `sb_write`/`sb_read`/`sb_die` never touch the tag counter (only `sb_own`
@@ -1561,6 +1589,56 @@ theorem runN_CStore_step
     split
     · rename_i hc; simp [h_size] at hc
     · exact h_wtp
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- An `Assgn` of a `Borrow` through an in-bounds pointer register executes
+    in one step: the retag runs on the target permission state and the dst
+    register receives the freshly-tagged pointer. -/
+theorem runN_Assgn_Borrow_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst breg : Register) (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (len : Nat) (offset : Word)
+    {b bo sz : Word} {t newTag : Tag} {p2 : AccessPerms}
+    (h_instr : compProg s.pc
+      = some (Instr.Assgn dst (Rhs.Borrow kind prot mask len breg offset)))
+    (h_entry : PtrRegisterEntry s.reg breg b bo sz t)
+    (h_lt : b + bo + offset < b + sz)
+    (h_ref : MSB.ref s.perms (b + bo + offset) len t kind prot mask
+      = .ok (p2, newTag)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p2,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr b (bo + offset) sz newTag]),
+               pc := s.pc + 1 } := by
+  have h_lookup : oseair.RegMap.lookup s.reg breg
+      = some (obseq.TyVal.PTy, [Val.Ptr b bo sz t]) := h_entry
+  have h_bounds : (b + bo + offset ≥ b + sz) = False := by
+    simp [Nat.not_le.mpr h_lt]
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p2,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr b (bo + offset) sz newTag]),
+               pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
+      h_bounds, if_false, h_ref]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- An `RStore` whose source register holds correctly-typed values executes
+    in exactly one `runN` step via `writeThroughPtr`. -/
+theorem runN_RStore_step
+    (compProg : oseair.Prog) (s s' : oseair.State MSB)
+    (ty srcTy : obseq.TyVal) (src ptr : Register) (vals : List Val)
+    {ptrEntry : obseq.TyVal × List Val}
+    (h_instr : compProg s.pc = some (Instr.RStore ty src ptr))
+    (h_src : oseair.RegMap.lookup s.reg src = some (srcTy, vals))
+    (h_ty : (srcTy != ty) = false)
+    (h_ptr : oseair.RegMap.lookup s.reg ptr = some ptrEntry)
+    (h_wtp : oseair.writeThroughPtr MSB s ptr vals "RStore Invalid Regs"
+      = oseair.Result.Ok s') :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok s' := by
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok s' := by
+    simp only [oseair.step, oseair.stepWith, h_instr, h_src, h_ptr]
+    simp [h_ty, h_wtp]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- A single `Die` step leaves the register file unchanged. -/

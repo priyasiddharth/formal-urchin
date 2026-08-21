@@ -6,13 +6,96 @@ inductive TyVal
 | NatTy
 | PTy
 | TupTy (tys : List TyVal)
-deriving Repr, BEq, Inhabited
+deriving Repr, Inhabited
 
 inductive LayoutTy
 | NatL
 | PtrL (inner : LayoutTy)
 | TupL (tys : List LayoutTy)
-deriving Repr, BEq, Inhabited
+deriving Repr, Inhabited
+
+/-! ### Structural equality
+
+`deriving BEq` on these NESTED inductives (the `List` payload) compiles to
+a `partial` — hence OPAQUE — function: nothing can be proved about it, not
+even `t == t`. Since the target machine's `RStore` guards on `srcTy != ty`,
+every proof about a register store would be stuck. So both `BEq`s are
+hand-written structurally, with reflexivity available as a simp lemma. -/
+
+mutual
+  def TyVal.beq : TyVal → TyVal → Bool
+  | .NatTy, .NatTy => true
+  | .PTy, .PTy => true
+  | .TupTy as, .TupTy bs => TyVal.beqList as bs
+  | _, _ => false
+
+  def TyVal.beqList : List TyVal → List TyVal → Bool
+  | [], [] => true
+  | a :: as, b :: bs => TyVal.beq a b && TyVal.beqList as bs
+  | _, _ => false
+end
+
+instance : BEq TyVal := ⟨TyVal.beq⟩
+
+mutual
+  def LayoutTy.beq : LayoutTy → LayoutTy → Bool
+  | .NatL, .NatL => true
+  | .PtrL a, .PtrL b => LayoutTy.beq a b
+  | .TupL as, .TupL bs => LayoutTy.beqList as bs
+  | _, _ => false
+
+  def LayoutTy.beqList : List LayoutTy → List LayoutTy → Bool
+  | [], [] => true
+  | a :: as, b :: bs => LayoutTy.beq a b && LayoutTy.beqList as bs
+  | _, _ => false
+end
+
+instance : BEq LayoutTy := ⟨LayoutTy.beq⟩
+
+mutual
+  theorem TyVal.beq_refl : ∀ t : TyVal, TyVal.beq t t = true
+  | .NatTy => rfl
+  | .PTy => rfl
+  | .TupTy ts => by
+      show TyVal.beqList ts ts = true
+      exact TyVal.beqList_refl ts
+
+  theorem TyVal.beqList_refl : ∀ ts : List TyVal, TyVal.beqList ts ts = true
+  | [] => rfl
+  | t :: ts => by
+      show (TyVal.beq t t && TyVal.beqList ts ts) = true
+      rw [TyVal.beq_refl t, TyVal.beqList_refl ts]
+      rfl
+end
+
+mutual
+  theorem LayoutTy.beq_refl : ∀ t : LayoutTy, LayoutTy.beq t t = true
+  | .NatL => rfl
+  | .PtrL a => by
+      show LayoutTy.beq a a = true
+      exact LayoutTy.beq_refl a
+  | .TupL ts => by
+      show LayoutTy.beqList ts ts = true
+      exact LayoutTy.beqList_refl ts
+
+  theorem LayoutTy.beqList_refl : ∀ ts : List LayoutTy, LayoutTy.beqList ts ts = true
+  | [] => rfl
+  | t :: ts => by
+      show (LayoutTy.beq t t && LayoutTy.beqList ts ts) = true
+      rw [LayoutTy.beq_refl t, LayoutTy.beqList_refl ts]
+      rfl
+end
+
+@[simp] theorem TyVal.beq_self (t : TyVal) : (t == t) = true := TyVal.beq_refl t
+
+@[simp] theorem TyVal.bne_self (t : TyVal) : (t != t) = false := by
+  simp only [bne, TyVal.beq_self, Bool.not_true]
+
+@[simp] theorem LayoutTy.beq_self (t : LayoutTy) : (t == t) = true :=
+  LayoutTy.beq_refl t
+
+@[simp] theorem LayoutTy.bne_self (t : LayoutTy) : (t != t) = false := by
+  simp only [bne, LayoutTy.beq_self, Bool.not_true]
 
 instance : ToString TyVal where
   toString t := reprStr t

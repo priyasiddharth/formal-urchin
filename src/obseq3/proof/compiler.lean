@@ -45,7 +45,26 @@ pointer case (stored tags are non-wildcard; the referent range is in
   registration (`prot = true`) and the plain case. All four transport
   members (write/read/die/ref) are now theorems.
 
-Remaining (5): every remaining sorry is blocked on a NAMED obligation:
+Invariant extension landed 2026-08-21 (with the `sb_ref` transport): the
+`TagRenameBound ρt s_mir.perms.NextTag s_osea.perms.NextTag` conjunct —
+every mapped tag pair sits strictly below both machines' counters, which
+is what makes the fresh-pair ρt extension injective. It holds at init
+(only the wildcard, tag 0, is mapped and counters start at 1) and is
+preserved by every event: `sb_write`/`sb_read`/`sb_die` keep both
+counters (`sb_*_NextTag` in common.lean, as does `resolvePlaceAcc`),
+and `sb_ref_respects_PermSim` returns it re-established at the bumped
+counters.
+
+Target-machine provability fix (2026-08-21): `deriving BEq` on the
+NESTED inductives `TyVal`/`LayoutTy` compiled to `partial` — hence
+OPAQUE — functions, so `ty != ty` was not reducible and NO proof about
+`Instr.RStore` (which guards on `srcTy != ty`) could get past the type
+check. Both `BEq`s are now hand-written structurally in obseq/types.lean
+with `beq_self`/`bne_self` simp lemmas. Behavior-neutral: suite 77/117
+pass, differential 77/0/0, unit tests green.
+
+Remaining (5 declarations): every remaining sorry is blocked on a NAMED
+obligation:
 1. `const_write_fresh_local_simulation` — needs the lockstep-allocation
    conjunct (`s_osea.mem.addrStart = s_mir.mem.addrStart`) so ρa extends
    at the equal fresh address, plus the `sb_own` transport member.
@@ -64,15 +83,20 @@ Remaining (5): every remaining sorry is blocked on a NAMED obligation:
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-5. `CompilerInv_step_ref` — the `sb_ref` transport member now EXISTS
-   (`sb_ref_respects_PermSim`, 2026-08-21) and its `Die` cleanup
-   transport too (`sb_die_respects_PermSim`); remaining: carry
-   `TagRenameBound ρt s_mir.perms.NextTag s_osea.ap.NextTag` as a
-   `CompilerInv` conjunct (it holds at init where ρt maps only the
-   wildcard, and every transport member preserves it — write/read/die
-   keep counters and ρt, ref returns it re-established), then rebuild
-   the invariant with the extended ρt (`MemValSim` renames transport
-   via `TagRenameIncr`).
+5. `CompilerInv_step_ref` — CORE REGIME CLOSED 2026-08-21:
+   `ref_local_local_existing_simulation` (proof/ref.lean) proves
+   `dl = &sl` for bound one-cell locals end-to-end, and it is the FIRST
+   ρt-GROWING statement simulation: `sb_ref_respects_PermSim` extends ρt
+   at the fresh tag pair, `sb_write_respects_PermSim` fires at the
+   extended map, BRIDGE 2 stores the pointer, and the invariant is
+   rebuilt with `SourceMemSim`/`LocalBindingSim`/`MemValSim` transported
+   along `TagRenameIncr`. Four named residual regimes remain as inline
+   sorries in the delegation: REF-FRESH-DST (unbound destination —
+   the regime-B `sb_own`/lockstep-allocation blocker), REF-NONLOCAL-DST
+   (projected/deref'd destination — regime-C borrow composition),
+   REF-NONLOCAL-SRC (projected/deref'd source place), REF-WIDE-SRC
+   (multi-cell referent — needs an allocation-domain invariant for
+   `MemValSim`'s range conjunct).
 
 CLOSED in the leaf layer (2026-08-18):
 - ✔ `const_write_stmt_evidence` — total (fresh-root branch via
