@@ -599,6 +599,11 @@ theorem TagRenameWF.extend {ρt : TagRenameMap} {nS nT : Tag}
     rw [TagRenameMap.extend_ne h_ne]
     exact h_wf.2
 
+theorem TagRenameBound.mono {ρt : TagRenameMap} {nS nT nS' nT' : Tag}
+    (h_b : TagRenameBound ρt nS nT) (h_s : nS ≤ nS') (h_t : nT ≤ nT') :
+    TagRenameBound ρt nS' nT' := by
+  grind [TagRenameBound]
+
 theorem TagRenameBound.extend {ρt : TagRenameMap} {nS nT : Tag}
     (h_b : TagRenameBound ρt nS nT) :
     TagRenameBound (ρt.extend nS nT) (nS + 1) (nT + 1) := by
@@ -793,6 +798,93 @@ def SourceMemSim
       oseair.Mem.find? mem_osea addr' = some value' ∧
       MemValSim ρa ρt value value'
 
+/-! ### NextTag preservation — carrying `TagRenameBound` across steps
+
+`sb_write`/`sb_read`/`sb_die` never touch the tag counter (only `sb_own`
+and `sb_ref` mint), so the tag-bound conjunct transfers verbatim across
+every non-minting event on either machine. -/
+
+theorem foldCells_NextTag
+    {op : AccessPerms → Word → Except String AccessPerms}
+    (h_op : ∀ ap a ap', op ap a = .ok ap' → ap'.NextTag = ap.NextTag) :
+    ∀ (len : Nat) (addr : Word) (ap ap' : AccessPerms),
+      foldCells op ap addr len = .ok ap' → ap'.NextTag = ap.NextTag := by
+  intro len
+  induction len with
+  | zero => intro addr ap ap' h; grind [foldCells]
+  | succ n ih => intro addr ap ap' h; grind [foldCells]
+
+theorem sb_write_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : sb_write ap addr len tag = .ok ap') :
+    ap'.NextTag = ap.NextTag :=
+  foldCells_NextTag (fun _ _ _ h' => by grind [writeCell.eq_def]) _ _ _ _ h
+
+theorem sb_read_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : sb_read ap addr len tag = .ok ap') :
+    ap'.NextTag = ap.NextTag :=
+  foldCells_NextTag (fun _ _ _ h' => by grind [readCell.eq_def]) _ _ _ _ h
+
+theorem sb_die_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : sb_die ap addr len tag = .ok ap') :
+    ap'.NextTag = ap.NextTag :=
+  foldCells_NextTag (fun _ _ _ h' => by grind) _ _ _ _ h
+
+/-- `MSB`-projection spellings of the preservation facts (defeq bridges so
+    callers and `grind` can match the projection form syntactically). -/
+theorem MSB_read_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : MSB.read ap addr len tag = .ok ap') :
+    ap'.NextTag = ap.NextTag := sb_read_NextTag h
+
+theorem MSB_useMut_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : MSB.useMut ap addr len tag = .ok ap') :
+    ap'.NextTag = ap.NextTag := sb_write_NextTag h
+
+theorem MSB_die_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : MSB.die ap addr len tag = .ok ap') :
+    ap'.NextTag = ap.NextTag := sb_die_NextTag h
+
+/-- Access-resolution only performs SB reads, so it preserves the counter. -/
+theorem resolvePlaceAcc_NextTag {Γ : Ctx} {s_mir : mirlite.State MSB Γ} :
+    ∀ {τ : LayoutTy} (p : Place Γ τ) {res : mirlite.PlaceRes}
+      {perms' : AccessPerms},
+      mirlite.resolvePlaceAcc MSB s_mir p = .ok (res, perms') →
+      perms'.NextTag = s_mir.perms.NextTag := by
+  intro τ p
+  induction p with
+  | «local» loc =>
+      intro res perms' h
+      grind [mirlite.resolvePlaceAcc]
+  | proj base path ih =>
+      intro res perms' h
+      simp only [mirlite.resolvePlaceAcc] at h
+      cases h_q : mirlite.resolvePlaceAcc MSB s_mir base with
+      | error e => simp [h_q] at h
+      | ok pr =>
+          obtain ⟨qRes, permsQ⟩ := pr
+          simp only [h_q] at h
+          cases h
+          exact ih h_q
+  | deref ptrPlace ih =>
+      intro res perms' h
+      simp only [mirlite.resolvePlaceAcc] at h
+      cases h_q : mirlite.resolvePlaceAcc MSB s_mir ptrPlace with
+      | error e => simp [h_q] at h
+      | ok pr =>
+          obtain ⟨qRes, permsQ⟩ := pr
+          simp only [h_q] at h
+          split at h
+          · simp at h
+          · cases h_r : MSB.read permsQ qRes.addr 1 qRes.tag with
+            | error e => simp [h_r] at h
+            | ok permsQ' =>
+                simp only [h_r] at h
+                split at h
+                · rename_i heq
+                  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                  rw [← h.2, MSB_read_NextTag h_r]
+                  exact ih h_q
+                · simp at h
+
 /-- The main simulation invariant between a source mirlite state and a
     target OSEA state, both at `stackedBorrows`.
     vs obseq2: `TargetLocalsReady` (a `True` placeholder), `WellFormed`
@@ -819,6 +911,7 @@ def CompilerInv
     PermSim ρt s_mir.perms s_osea.perms ∧
     IdentityOnDomain ρa ∧
     TagRenameWF ρt ∧
+    TagRenameBound ρt s_mir.perms.NextTag s_osea.perms.NextTag ∧
     PlaceRegMapBound csPrefix
 
 /-- Register `reg` holds a pointer to `resolved`, and the tag stored there

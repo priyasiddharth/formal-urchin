@@ -110,7 +110,8 @@ theorem loadSpine_lowering_sim
           placeOut.result.reg ∧
         (CheckedCompilerM.run (placeToRegChecked kind p) cs).placeRegMap = cs.placeRegMap ∧
         cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextReg ∧
-        cs.nextLabel ≤ (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextLabel := by
+        cs.nextLabel ≤ (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextLabel ∧
+        s_osea'.perms.NextTag = s_osea.perms.NextTag := by
   induction h_spine with
   | base loc =>
       intro kind cs s_osea resolved permsD h_res h_lbs h_prb h_sms h_psim h_pc h_inst
@@ -128,7 +129,7 @@ theorem loadSpine_lowering_sim
         placeToRegChecked_local_existing (kind := kind) h_pi
       refine ⟨placeOut, 0, s_osea, tag, h_pval, by rw [h_pres],
         by simp [oseair.runN], ?_, rfl, h_psim, h_lbs, ?_, h_rt, h_nw,
-        Nat.le_refl _, ?_, ?_, ?_, ?_, ?_⟩
+        Nat.le_refl _, ?_, ?_, ?_, ?_, ?_, rfl⟩
       · rw [h_prun]; exact h_pc
       · rw [h_pres, Nat.sub_self]
         exact h_entry
@@ -215,7 +216,7 @@ theorem loadSpine_lowering_sim
                 exact h_code
               obtain ⟨qOut, n1, s_mid, qtag, h_qval, h_qclean, h_qrun, h_qpc, h_qmem,
                 h_qpsim, h_qlbs, h_qentry, h_qrt, h_qnw, h_qle, h_qrange, h_qbelow,
-                h_qprm, h_qregmono, h_qlabmono⟩ :=
+                h_qprm, h_qregmono, h_qlabmono, h_qnt⟩ :=
                 ih RefKind.Shared cs s_osea qRes permsQ h_qres h_lbs h_prb h_sms h_psim
                   h_pc h_instQ
               -- concrete run/value of this level
@@ -299,7 +300,7 @@ theorem loadSpine_lowering_sim
               refine ⟨_, n1 + 1, _,  t2, h_valD, rfl,
                 (oseair_runN_add n1 1 s_osea compProg s_mid h_qrun).trans h_run1,
                 ?_, ?_, h_psim2, ?_, ?_, h_t, h_tnw, Nat.le_add_right b2 o2, ?_,
-                ?_, ?_, ?_, ?_⟩
+                ?_, ?_, ?_, ?_, (sb_read_NextTag h_read_tgt).trans h_qnt⟩
               · -- pc
                 show s_mid.pc + 1 = _
                 rw [h_qpc, h_runD]
