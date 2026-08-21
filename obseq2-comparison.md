@@ -4,6 +4,36 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-21 — The Ref Leaf Grows ρt, and the Opaque-BEq Trap
+
+Twenty-seventh increment. `dl = &sl` now simulates end-to-end
+(`ref_local_local_existing_simulation`) — the first statement whose proof GROWS the
+tag rename: the compiled `Borrow` mints a target tag while mirlite mints its own,
+and the invariant is re-established under ρt extended at that pair. Making this
+sayable took one honest invariant extension, `TagRenameBound` (every mapped pair
+below both counters — the injectivity guard the ref transport consumes), which is
+cheap to carry because nothing but a retag moves a counter: writes, reads, dies and
+the whole of access-resolution preserve them, so the conjunct rides along on every
+other statement for free.
+
+The day's real find was a provability trap in the target machine rather than in the
+proof. `deriving BEq` on `TyVal`/`LayoutTy` — both nested inductives — compiles to a
+`partial`, hence OPAQUE, function, so `ty != ty` is irreducible by `rfl`, `decide`,
+`simp` and `unfold` alike. Since `Instr.RStore` guards on exactly that comparison,
+no proof about a register store could ever pass its type check; the earlier regimes
+escaped only because `CStore` compares a `Nat` length instead. Both instances are now
+hand-written structurally with reflexivity lemmas — behavior-neutral, and confirmed
+so by the suites. Worth remembering as a rule: a derived instance on a nested
+inductive is opaque until proven otherwise, and opacity is only discovered when a
+proof reaches for it.
+
+`CompilerInv_step_ref` now delegates to the closed core with four NAMED residual
+regimes (fresh dst, non-local dst, non-local src, wide src). Suite 77/117 pass,
+differential 77/0/0, interp tests green; the core theorem's axiom list is the
+standard three.
+
+---
+
 ## 2026-08-21 — The sb_ref Transport: BRIDGE 3's Family Is Complete
 
 Twenty-sixth increment. `sb_ref_respects_PermSim` closes the last and only

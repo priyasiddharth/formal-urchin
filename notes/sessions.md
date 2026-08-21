@@ -140,9 +140,17 @@ plugin explicitly at user request.
 (NOT yet on main; worktree was cut from stale origin/main and reset to
 local main 8f73b13 — merge to main via fast-forward when convenient).
 Suite 77/117 pass, differential 77/0/0, build green.
-**Next-session pickup candidates:** audit obligation 5
-(`CompilerInv_step_ref`): add the `TagRenameBound` CompilerInv conjunct
-(holds at init, preserved by all four transports) then the ref leaf;
-or obligation 4 (copy: bidirectional memory relation + Memcpy lemma);
-or obligation 1 (fresh-local: lockstep-allocation conjunct + sb_own
-transport).
+**Continued in the same session (later legs):** the `TagRenameBound`
+CompilerInv conjunct (commit 2ca77da) and the ref leaf's core regime
+(commit 0d47351) — see the two journal entries
+2026-08-21-ref-leaf-core.md and 2026-08-21-grind-assessment.md, and
+dev-log increment 27. grind was adopted for the small-lemma tier per
+the user's instruction and closed every new small lemma; the opaque
+derived-BEq trap on TyVal/LayoutTy was found and fixed at the root.
+**Next-session pickup candidates:** audit obligation 4 (copy:
+bidirectional memory relation + Memcpy lemma); obligation 1
+(fresh-local: lockstep-allocation conjunct + `sb_own` transport, which
+also unblocks the ref leaf's REF-FRESH-DST regime); or the regime-C
+composition shared by `const_write_proj`, `const_write_deref_nonspine`
+and the ref leaf's REF-NONLOCAL-DST/SRC regimes (all four now need the
+SAME borrow-lowering composition, no new transport).
