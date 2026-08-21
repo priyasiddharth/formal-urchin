@@ -1011,6 +1011,32 @@ theorem resolvePlaceAcc_NextTag {Γ : Ctx} {s_mir : mirlite.State MSB Γ} :
                   exact ih h_q
                 · simp at h
 
+/-! ### The missing direction of the memory relation
+
+`SourceMemSim` constrains the target only where the SOURCE has a cell.
+That is enough for writes (which supply their own values) but NOT for
+reads: both machines' `readWordSeq` yield `undef`/`Val.Undef` at an
+absent cell, so a copy out of a range the source has never written would
+have to relate `undef` to whatever the target happens to hold there.
+`TargetAbsentSim` closes exactly that hole — and nothing more. -/
+
+/-- Where the source has no cell, neither does the target. -/
+def TargetAbsentSim
+  (ρa : AddrRenameMap)
+  (mem_mir : mirlite.Mem)
+  (mem_osea : oseair.Mem) : Prop :=
+  ∀ addr addr', ρa addr = some addr' →
+    mirlite.Mem.find? mem_mir addr = none →
+    oseair.Mem.find? mem_osea addr' = none
+
+theorem TargetAbsentSim.rename_mono
+    {ρa ρa' : AddrRenameMap} {mem_mir : mirlite.Mem} {mem_osea : oseair.Mem}
+    (h_id : IdentityOnDomain ρa') (h_incr : AddrRenameIncr ρa ρa')
+    (h_abs : TargetAbsentSim ρa mem_mir mem_osea)
+    (h_dom : ∀ addr addr', ρa' addr = some addr' → ρa addr = some addr') :
+    TargetAbsentSim ρa' mem_mir mem_osea :=
+  fun addr addr' h_ra h_none => h_abs addr addr' (h_dom addr addr' h_ra) h_none
+
 /-- The main simulation invariant between a source mirlite state and a
     target OSEA state, both at `stackedBorrows`.
     vs obseq2: `TargetLocalsReady` (a `True` placeholder), `WellFormed`
@@ -1034,6 +1060,7 @@ def CompilerInv
     targetLabelAt cs0 prog s_mir.pc csPrefix s_osea.pc ∧
     LocalBindingSim ρa ρt s_mir.env s_osea csPrefix ∧
     SourceMemSim ρa ρt s_mir.mem s_osea.mem ∧
+    TargetAbsentSim ρa s_mir.mem s_osea.mem ∧
     PermSim ρt s_mir.perms s_osea.perms ∧
     IdentityOnDomain ρa ∧
     TagRenameWF ρt ∧
@@ -1908,6 +1935,81 @@ theorem SourceMemSim.write_extend
     refine ⟨a', value', h_ra, ?_, h_mvs⟩
     rw [oseair_find?_write_ne m' a' addr v' (by rw [← haa']; exact ha)]
     exact h_of
+
+/-- A lockstep write extends `TargetAbsentSim`: inside the written range
+    both memories gain a cell, outside it neither changes. -/
+theorem TargetAbsentSim.writeWordSeq_extend
+    {ρa : AddrRenameMap}
+    (h_id : IdentityOnDomain ρa) :
+    ∀ (values : List mirlite.MemValue) (vals : List Val)
+      (m : mirlite.Mem) (m' : oseair.Mem) (addr : Word),
+      values.length = vals.length →
+      TargetAbsentSim ρa m m' →
+      TargetAbsentSim ρa (mirlite.writeWordSeq m addr values)
+        (oseair.writeWordSeq m' addr vals) := by
+  intro values
+  induction values with
+  | nil =>
+      intro vals m m' addr h_len h_abs
+      cases vals with
+      | nil => exact h_abs
+      | cons v vs => simp at h_len
+  | cons value values ih =>
+      intro vals m m' addr h_len h_abs
+      cases vals with
+      | nil => simp at h_len
+      | cons v vs =>
+          simp only [List.length_cons, Nat.succ.injEq] at h_len
+          refine ih vs (m.write addr value) (m'.write addr v) (addr + 1) h_len ?_
+          intro a a' h_ra h_none
+          by_cases h_eq : a = addr
+          · subst h_eq
+            rw [mirlite_find?_write_self] at h_none
+            exact absurd h_none (by simp)
+          · rw [mirlite_find?_write_ne _ _ _ _ h_eq] at h_none
+            have h_prev := h_abs a a' h_ra h_none
+            have h_a : a' = a := (h_id _ _ h_ra).symm
+            rw [oseair_find?_write_ne _ _ _ _ (by rw [h_a]; exact h_eq)]
+            exact h_prev
+
+/-- The reason `TargetAbsentSim` exists: with it, a range read on the two
+    machines produces `MemValSim`-related value lists — the absent cells
+    line up as `undef`/`Val.Undef`, and the present ones come from
+    `SourceMemSim`. This is the copy statement's core fact. -/
+theorem readWordSeq_sim
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {m : mirlite.Mem} {m' : oseair.Mem}
+    (h_id : IdentityOnDomain ρa)
+    (h_sms : SourceMemSim ρa ρt m m')
+    (h_abs : TargetAbsentSim ρa m m') :
+    ∀ (n : Nat) (addr : Word),
+      (∀ k, k < n → ρa (addr + k) = some (addr + k)) →
+      ListRel (MemValSim ρa ρt) (mirlite.readWordSeq m addr n)
+        (oseair.readWordSeq m' addr n) := by
+  intro n
+  induction n with
+  | zero => intro addr _; trivial
+  | succ n ih =>
+      intro addr h_dom
+      have h_here : ρa addr = some addr := by
+        have := h_dom 0 (Nat.succ_pos n)
+        simpa using this
+      have h_tail : ∀ k, k < n → ρa (addr + 1 + k) = some (addr + 1 + k) := by
+        intro k hk
+        have := h_dom (k + 1) (Nat.succ_lt_succ hk)
+        rw [show addr + (k + 1) = addr + 1 + k from by rw [Nat.add_assoc, Nat.add_comm 1 k]] at this
+        exact this
+      simp only [mirlite.readWordSeq, oseair.readWordSeq]
+      cases h_find : mirlite.Mem.find? m addr with
+      | none =>
+          rw [h_abs addr addr h_here h_find]
+          exact ⟨trivial, ih (addr + 1) h_tail⟩
+      | some value =>
+          obtain ⟨a', v', h_ra, h_find', h_mvs⟩ := h_sms addr value h_find
+          have h_aa : a' = addr := (h_id _ _ h_ra).symm
+          rw [h_aa] at h_find'
+          rw [h_find']
+          exact ⟨h_mvs, ih (addr + 1) h_tail⟩
 
 /-- Range extension: writing `ListRel`-related value sequences at
     identity-renamed addresses preserves `SourceMemSim`. -/

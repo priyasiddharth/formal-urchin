@@ -95,7 +95,8 @@ theorem ref_local_local_existing_simulation
       TagRenameIncr ρt ρt' ∧
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa ρt' s_mir' s_osea' := by
-  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_trb, h_prb⟩ := h_inv
+  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_abs, h_psim, h_id_a, h_wf_t,
+    h_trb, h_prb⟩ := h_inv
   obtain ⟨dstReg, dbase, dtag, h_pi_d, h_entry_d, h_ra_d, h_rt_d, h_nw_d⟩ :=
     h_lbs dl dbind h_env_d
   obtain ⟨srcReg, sbase, stag, h_pi_s, h_entry_s, h_ra_s, h_rt_s, h_nw_s⟩ :=
@@ -259,8 +260,9 @@ theorem ref_local_local_existing_simulation
       refine ⟨CheckedCompilerM.run
           (compileStmtChecked
             (Stmt.assign (.local dl) (.ref kind prot mask (.local sl)))) csPrefix,
-        ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim2,
-        h_id_a, h_wf', ?_, ?_⟩
+        ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms',
+        TargetAbsentSim.writeWordSeq_extend h_id_a _ _ _ _ _ rfl h_abs,
+        h_psim2, h_id_a, h_wf', ?_, ?_⟩
       · -- label agreement at pc + 1
         show s_osea.pc + 1 + 1 = _
         rw [h_pc, h_stmtRun]
