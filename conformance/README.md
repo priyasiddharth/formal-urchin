@@ -139,3 +139,18 @@ also per that test) — tuples are. Remaining exclusions: slice
 indexing/subslicing (runtime bounds), Vec/String, threads, general
 closures, drop glue, unions, MaybeUninit, Rc, enums needing control
 flow, dynamic arithmetic.
+
+## Local witnesses (`local/`)
+
+`conformance/local/` holds Rust test programs written for THIS project
+(not derived from the Miri corpus), lowered through the identical
+charon → loader pipeline. Their manifest entries carry
+`"provenance": "local-model-reasoned"`: the expected verdict is derived
+from the model (and, where noted, from Miri's documented semantics)
+but has NOT been verified against a real Miri run. Current entries:
+
+- `local/deref_read_disables_sibling` — the deref-read alignment
+  witness: evaluating `*p` reads `p` as an operand, disabling
+  `&mut *(&raw mut p)`; motivated the 2026-08-21 mirlite change making
+  deref resolution a real SB read (`resolvePlaceAcc`). Follow-up: run
+  the pinned Miri on this file and upgrade the provenance.

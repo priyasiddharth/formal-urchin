@@ -141,6 +141,38 @@ def resolvePlace? (state : State M Γ) : Place Γ τ → Option PlaceRes
                      allocBase := base, allocSize := size }
           | _ => none
 
+/-- Resolve a place FOR AN ACCESS: like `resolvePlace?`, but each `deref`
+    level performs a real SB read of the pointer cell — Miri's behavior
+    (evaluating `*p` reads `p` as an operand), and what the compiled code
+    does (`Rhs.Load`). The pure `resolvePlace?` remains for genuine raw
+    peeks: `assignIf` discriminants, matching the target's event-free
+    `SkipIf`. Threads the permission state; memory is read-only here. -/
+def resolvePlaceAcc (M : PermissionModel) (state : State M Γ) :
+    Place Γ τ → Except String (PlaceRes × M.State)
+  | .local loc =>
+      match state.env.lookup loc with
+      | some binding =>
+          .ok ({ addr := binding.addr, tag := binding.tag,
+                 allocBase := binding.addr, allocSize := blockSize τ }, state.perms)
+      | none => .error "place root local not allocated"
+  | .proj base path =>
+      match resolvePlaceAcc M state base with
+      | .error e => .error e
+      | .ok (res, perms') =>
+          .ok ({ res with addr := res.addr + PathTo.offset path }, perms')
+  | .deref ptrPlace =>
+      match resolvePlaceAcc M state ptrPlace with
+      | .error e => .error e
+      | .ok (ptrRes, perms') =>
+          match M.read perms' ptrRes.addr 1 ptrRes.tag with
+          | .error e => .error s!"read access failed: {e}"
+          | .ok perms'' =>
+              match state.mem.find? ptrRes.addr with
+              | some (.ptrVal base offset size tag) =>
+                  .ok ({ addr := base + offset, tag := tag,
+                         allocBase := base, allocSize := size }, perms'')
+              | _ => .error "deref of a non-pointer value"
+
 def writeResolvedPlace
   (M : PermissionModel)
   (state : State M Γ)
@@ -166,37 +198,6 @@ def allocateBase
   | .ok (permsOwned, tag) =>
       let env' := state.env.set loc { addr := addr, tag := tag }
       .ok { state with env := env', mem := mem', perms := permsOwned }
-
-def allocateBaseAndWrite
-  (M : PermissionModel)
-  (state : State M Γ)
-  (loc : Local Γ τ)
-  (values : List MemValue)
-  (_valuesLen : values.length = blockSize τ) : Result M Γ :=
-  let (addr, mem') := allocate state.mem (blockSize τ)
-  match M.own state.perms addr (blockSize τ) with
-  | .error e => .err s!"allocation failed: {e}"
-  | .ok (permsOwned, tag) =>
-    match M.useMut permsOwned addr values.length tag with
-    | .error e => .err s!"fresh allocation write failed: {e}"
-    | .ok perms' =>
-      let env' := state.env.set loc { addr := addr, tag := tag }
-      let mem'' := writeWordSeq mem' addr values
-      .ok { state with env := env', mem := mem'', perms := perms', pc := state.pc + 1 }
-
-def finishPlaceAssign
-  (M : PermissionModel)
-  (state : State M Γ)
-  (dst : Place Γ τ)
-  (values : List MemValue)
-  (valuesLen : values.length = blockSize τ) : Result M Γ :=
-  match resolvePlace? state dst with
-  | some resolvedDst => writeResolvedPlace M state resolvedDst values valuesLen
-  | none =>
-    match dst with
-    | .local loc => allocateBaseAndWrite M state loc values valuesLen
-    | .proj _ _ => .err "destination base place not allocated"
-    | .deref _ => .err "destination pointer place not allocated or not a pointer"
 
 /-- Allocate the root local underlying a (possibly projected) place.
     Deref roots are never allocated implicitly — the pointer must exist. -/
@@ -224,10 +225,10 @@ def evalRExpr
   | .constInit value =>
       .ok { values := [MemValue.word value], values_len := rfl, state := state }
   | .copy (τ := τ) src =>
-      match resolvePlace? state src with
-      | none => .err "copy source place not allocated"
-      | some resolved =>
-          match M.read state.perms resolved.addr (blockSize τ) resolved.tag with
+      match resolvePlaceAcc M state src with
+      | .error e => .err e
+      | .ok (resolved, permsR) =>
+          match M.read permsR resolved.addr (blockSize τ) resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               let state' := { state with perms := perms' }
@@ -242,10 +243,10 @@ def evalRExpr
             state := state }
   | .ptrCast src =>
       -- pointer type-punning cast: a tag-preserving one-cell copy
-      match resolvePlace? state src with
-      | none => .err "cast source place not allocated"
-      | some resolved =>
-          match M.read state.perms resolved.addr 1 resolved.tag with
+      match resolvePlaceAcc M state src with
+      | .error e => .err e
+      | .ok (resolved, permsR) =>
+          match M.read permsR resolved.addr 1 resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               let state' := { state with perms := perms' }
@@ -257,10 +258,10 @@ def evalRExpr
   | .ptrOffset (σ := σ) src delta =>
       -- pointer arithmetic: move the offset by delta pointees; the tag
       -- (provenance) is preserved
-      match resolvePlace? state src with
-      | none => .err "offset source place not allocated"
-      | some resolved =>
-          match M.read state.perms resolved.addr 1 resolved.tag with
+      match resolvePlaceAcc M state src with
+      | .error e => .err e
+      | .ok (resolved, permsR) =>
+          match M.read permsR resolved.addr 1 resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               match state.mem.find? resolved.addr with
@@ -276,10 +277,10 @@ def evalRExpr
   | .refSlice kind prot src =>
       -- retag of slice data: the fat value's length is the rest of its
       -- allocation (size - offset); a fresh tag over that runtime range
-      match resolvePlace? state src with
-      | none => .err "slice place not allocated"
-      | some resolved =>
-          match M.read state.perms resolved.addr 1 resolved.tag with
+      match resolvePlaceAcc M state src with
+      | .error e => .err e
+      | .ok (resolved, permsR) =>
+          match M.read permsR resolved.addr 1 resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               match state.mem.find? resolved.addr with
@@ -294,10 +295,10 @@ def evalRExpr
               | _ => .err "slice value is not a pointer"
   | .exposeAddr src =>
       -- ptr-to-int cast: expose the tag, yield the concrete address
-      match resolvePlace? state src with
-      | none => .err "cast source place not allocated"
-      | some resolved =>
-          match M.read state.perms resolved.addr 1 resolved.tag with
+      match resolvePlaceAcc M state src with
+      | .error e => .err e
+      | .ok (resolved, permsR) =>
+          match M.read permsR resolved.addr 1 resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               match state.mem.find? resolved.addr with
@@ -308,10 +309,10 @@ def evalRExpr
               | _ => .err "ptr-to-int cast of a non-pointer value"
   | .fromExposed src =>
       -- int-to-ptr cast: a wildcard pointer into the containing allocation
-      match resolvePlace? state src with
-      | none => .err "cast source place not allocated"
-      | some resolved =>
-          match M.read state.perms resolved.addr 1 resolved.tag with
+      match resolvePlaceAcc M state src with
+      | .error e => .err e
+      | .ok (resolved, permsR) =>
+          match M.read permsR resolved.addr 1 resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               match state.mem.find? resolved.addr with
@@ -322,10 +323,10 @@ def evalRExpr
                         state := { state with perms := perms' } }
               | _ => .err "int-to-ptr cast of a non-integer value"
   | .ref (τ := σ) kind prot mask src =>
-      match resolvePlace? state src with
-      | none => .err "reference source place not allocated"
-      | some resolved =>
-          match M.ref state.perms resolved.addr (blockSize σ) resolved.tag kind prot mask with
+      match resolvePlaceAcc M state src with
+      | .error e => .err e
+      | .ok (resolved, permsR) =>
+          match M.ref permsR resolved.addr (blockSize σ) resolved.tag kind prot mask with
           | .ok (perms', freshTag) =>
               .ok {
                 values := [MemValue.ptrVal resolved.allocBase
@@ -344,11 +345,17 @@ def doAssign
   (rhs : RExpr Γ τ) : Result M Γ :=
   match preparePlaceAssign M state dst with
   | .err msg => .err msg
-  | .ok stateForRhs =>
-  match evalRExpr M stateForRhs rhs with
+  | .ok s1 =>
+  -- resolve the destination WITH accesses (deref levels read their
+  -- pointer cells), once, before the rhs — matching the compiled
+  -- fragment's order (dst lowering, then rhs code, then the store)
+  match resolvePlaceAcc M s1 dst with
+  | .error e => .err e
+  | .ok (resolved, permsD) =>
+  match evalRExpr M { s1 with perms := permsD } rhs with
   | .err msg => .err msg
   | .ok output =>
-    finishPlaceAssign M output.state dst output.values output.values_len
+    writeResolvedPlace M output.state resolved output.values output.values_len
 
 /-- Read a runtime word for an `AllocLen`. A `fromPlace` read is a real
     SB read access through the place's tag. -/
@@ -357,10 +364,10 @@ def readAllocLen
   (state : State M Γ) : AllocLen Γ → Except String (Nat × State M Γ)
   | .const n => .ok (n, state)
   | .fromPlace p =>
-      match resolvePlace? state p with
-      | none => .error "allocation size place not allocated"
-      | some res =>
-          match M.read state.perms res.addr 1 res.tag with
+      match resolvePlaceAcc M state p with
+      | .error e => .error e
+      | .ok (res, permsR) =>
+          match M.read permsR res.addr 1 res.tag with
           | .error e => .error s!"allocation size read failed: {e}"
           | .ok perms' =>
               match state.mem.find? res.addr with
@@ -391,8 +398,11 @@ def stepStmt
   | .alloc (τ := τ) dst len =>
       match preparePlaceAssign M state dst with
       | .err msg => .err msg
-      | .ok state =>
-      match readAllocLen M state len with
+      | .ok s1 =>
+      match resolvePlaceAcc M s1 dst with
+      | .error e => .err e
+      | .ok (resolved, permsD) =>
+      match readAllocLen M { s1 with perms := permsD } len with
       | .error e => .err e
       | .ok (n, state) =>
           let units := n * blockSize τ
@@ -401,13 +411,13 @@ def stepStmt
           | .error e => .err s!"heap allocation failed: {e}"
           | .ok (perms', tag) =>
               let state := { state with mem := mem', perms := perms' }
-              finishPlaceAssign M state dst
+              writeResolvedPlace (τ := obseq.LayoutTy.PtrL τ) M state resolved
                 [MemValue.ptrVal base 0 units tag] rfl
   | .dealloc dst =>
-      match resolvePlace? state dst with
-      | none => .err "dealloc pointer place not allocated"
-      | some res =>
-          match M.read state.perms res.addr 1 res.tag with
+      match resolvePlaceAcc M state dst with
+      | .error e => .err e
+      | .ok (res, permsR) =>
+          match M.read permsR res.addr 1 res.tag with
           | .error e => .err s!"dealloc pointer read failed: {e}"
           | .ok perms' =>
               match state.mem.find? res.addr with

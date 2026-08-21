@@ -33,9 +33,12 @@ NAMED invariant extension, which is the next design increment:
 2. `const_write_proj_simulation` — needs the strengthened
    `CompilerStateWF` (placeRegMap register bound, temp-collision freedom)
    and composes BRIDGE 1 with BRIDGE 3.
-3. `const_write_deref_simulation` — needs SB-env coherence (bound
-   locals' cells carry stacks in which the binding tag grants access)
-   for the `Load`'s read-through-own success.
+3. `const_write_deref_simulation` — now closable with EXISTING machinery
+   (2026-08-21 deref-read change): mirlite's `resolvePlaceAcc` performs
+   the SB read the target `Load` performs, so the source step hypothesis
+   supplies the read's success and `sb_read_respects_PermSim` transports
+   it — no SB-env coherence invariant needed. Remaining work is fragment
+   execution only (locate + run the Load/CStore pair, à la regime A).
 4. `CompilerInv_step_copy` — the `sb_read` transport member now EXISTS
    (`sb_read_respects_PermSim`, 2026-08-19); still needs a bidirectional
    memory relation (source-absent cells read as undef; one-directional

@@ -4,6 +4,23 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-21 — Deref Resolution Reads: Risk Item (a) Resolved at the Source
+
+Twenty-third increment. mirlite place resolution for accesses (`resolvePlaceAcc`) now
+performs a real SB read per deref level — Miri's operand-read behavior and what the
+compiled `Load` already did. The divergence was real (`&mut p` disabled by `*p`'s
+evaluation: source-ok/target-UB before, Miri with the target); it is now pinned by t14,
+d24 (the program that previously mismatched), and a NEW `conformance/local/` witness —
+project-authored Rust through the same charon pipeline, provenance-marked
+model-reasoned pending a real Miri run. `doAssign` resolves the destination once, with
+accesses, before the rhs (the compiled order); the dead `finishPlaceAssign` path is
+gone. Validation all green first run: Miri corpus unchanged (its verdicts already
+assume the reads), differential extended to 77/0/0, suite pass 77/117. Regime D's
+blockers collapse to fragment execution — the source read's success now transports via
+`sb_read_respects_PermSim`, no SB-env coherence needed for deref.
+
+---
+
 ## 2026-08-18 — Regime A: the First End-to-End Statement Simulation
 
 Twenty-second increment. The const-write evidence lemma is total (fresh-root branch via

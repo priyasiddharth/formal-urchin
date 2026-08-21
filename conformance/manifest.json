@@ -1678,6 +1678,17 @@
         "try_borrow().unwrap_err() -> &**b probe"
       ],
       "note": "the flag probe becomes a shared reborrow (Result/unwrap_err need enums+control flow)"
+    },
+    {
+      "id": "local/deref_read_disables_sibling",
+      "artifact": "local/deref_read_disables_sibling.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 13
+      },
+      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "notes": "deref-read alignment witness: *p reads p, disabling &mut *(&raw mut p)"
     }
   ]
 }

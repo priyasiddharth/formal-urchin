@@ -592,6 +592,27 @@ def d23_ref_slice_pops : IO Unit :=
      .assign tF (.copy (.deref qF))]
     (.ub 4) "d23 refSlice pops"
 
+/-- Negative: the deref-read alignment witness. Resolving `*p` reads
+    `p`'s cell on BOTH machines (source: `resolvePlaceAcc`; target:
+    `Rhs.Load`), disabling the `&mut p` reborrow — using it afterwards is
+    UB at the same statement. Before the mirlite deref-read change this
+    program MISMATCHED (source ok, target UB): the risk-register item (a)
+    divergence, where Miri sides with the target. -/
+def ΓG : Ctx := [natL, ptrNat, obseq.LayoutTy.PtrL ptrNat, natL]
+def xG : Place ΓG natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pG : Place ΓG ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def qG : Place ΓG (obseq.LayoutTy.PtrL ptrNat) := .local ⟨⟨2, by decide⟩, rfl⟩
+def tG : Place ΓG natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+def d24_deref_read_alignment : IO Unit :=
+  expectDiff ΓG
+    [.assign xG (.constInit 1),
+     .assign pG (.ref .Mut false [] xG),
+     .assign qG (.ref .Mut false [] pG),
+     .assign (.deref pG) (.constInit 5),
+     .assign tG (.copy (.deref (.deref qG)))]
+    (.ub 4) "d24 deref read alignment"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -628,7 +649,8 @@ def allTests : List (IO Unit) := [
   d20_cast_then_offset_into_pair,
   d21_offset_before_base,
   d22_ref_slice_write,
-  d23_ref_slice_pops]
+  d23_ref_slice_pops,
+  d24_deref_read_alignment]
 
 def runAll : IO Unit := do
   allTests.forM id

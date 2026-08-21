@@ -237,7 +237,7 @@ theorem const_write_fresh_local_simulation
     {s_mir s_pre s_mir' : mirlite.State MSB Γ}
     {s_osea : oseair.State MSB}
     {loc : Local Γ obseq.LayoutTy.NatL}
-    {resolved : mirlite.PlaceRes}
+    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
     (compProg : oseair.Prog)
     (v : Word)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
@@ -245,9 +245,9 @@ theorem const_write_fresh_local_simulation
     (h_stmt : prog.get? s_mir.pc = some (.assign (.local loc) (.constInit v)))
     (h_env : mirlite.Env.lookup s_mir.env loc = none)
     (h_prep : mirlite.preparePlaceAssign MSB s_mir (.local loc) = .ok s_pre)
-    (h_res  : mirlite.resolvePlace? s_pre (.local loc) = some resolved)
+    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.local loc) = .ok (resolved, permsD))
     (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
-                 MSB s_pre resolved
+                 MSB { s_pre with perms := permsD } resolved
                  [mirlite.MemValue.word v] rfl = .ok s_mir') :
     ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
       AddrRenameIncr ρa ρa' ∧
@@ -267,16 +267,16 @@ theorem const_write_proj_simulation
     {s_mir s_pre s_mir' : mirlite.State MSB Γ}
     {s_osea : oseair.State MSB}
     {σ : LayoutTy} {base : Place Γ σ} {path : PathTo σ obseq.LayoutTy.NatL}
-    {resolved : mirlite.PlaceRes}
+    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
     (compProg : oseair.Prog)
     (v : Word)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     (h_stmt : prog.get? s_mir.pc = some (.assign (.proj base path) (.constInit v)))
     (h_prep : mirlite.preparePlaceAssign MSB s_mir (.proj base path) = .ok s_pre)
-    (h_res  : mirlite.resolvePlace? s_pre (.proj base path) = some resolved)
+    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.proj base path) = .ok (resolved, permsD))
     (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
-                 MSB s_pre resolved
+                 MSB { s_pre with perms := permsD } resolved
                  [mirlite.MemValue.word v] rfl = .ok s_mir') :
     ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
       AddrRenameIncr ρa ρa' ∧
@@ -296,16 +296,16 @@ theorem const_write_deref_simulation
     {s_mir s_pre s_mir' : mirlite.State MSB Γ}
     {s_osea : oseair.State MSB}
     {ptrPlace : Place Γ (obseq.LayoutTy.PtrL obseq.LayoutTy.NatL)}
-    {resolved : mirlite.PlaceRes}
+    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
     (compProg : oseair.Prog)
     (v : Word)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     (h_stmt : prog.get? s_mir.pc = some (.assign (.deref ptrPlace) (.constInit v)))
     (h_prep : mirlite.preparePlaceAssign MSB s_mir (.deref ptrPlace) = .ok s_pre)
-    (h_res  : mirlite.resolvePlace? s_pre (.deref ptrPlace) = some resolved)
+    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.deref ptrPlace) = .ok (resolved, permsD))
     (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
-                 MSB s_pre resolved
+                 MSB { s_pre with perms := permsD } resolved
                  [mirlite.MemValue.word v] rfl = .ok s_mir') :
     ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
       AddrRenameIncr ρa ρa' ∧
@@ -324,14 +324,14 @@ theorem const_write_resolved_simulation
     {s_mir s_pre s_mir' : mirlite.State MSB Γ}
     {s_osea : oseair.State MSB}
     {dst : Place Γ obseq.LayoutTy.NatL}
-    {resolved : mirlite.PlaceRes}
+    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
     (compProg : oseair.Prog)
     (v : Word)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     (h_stmt : prog.get? s_mir.pc = some (.assign dst (.constInit v)))
     (h_prep : mirlite.preparePlaceAssign MSB s_mir dst = .ok s_pre)
-    (h_res  : mirlite.resolvePlace? s_pre dst = some resolved)
+    (h_res  : mirlite.resolvePlaceAcc MSB s_pre dst = .ok (resolved, permsD))
     (csPrefix : CompilerState)
     (h_csAt : csAt cs0 prog s_mir.pc csPrefix)
     (stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence (.assign dst (.constInit v))))
@@ -339,7 +339,7 @@ theorem const_write_resolved_simulation
       CheckedCompilerM.value (compileStmtChecked (.assign dst (.constInit v)))
         csPrefix = Except.ok stmtOut)
     (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
-                 MSB s_pre resolved
+                 MSB { s_pre with perms := permsD } resolved
                  [mirlite.MemValue.word v] rfl = .ok s_mir') :
     ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
       AddrRenameIncr ρa ρa' ∧
@@ -355,11 +355,10 @@ theorem const_write_resolved_simulation
             cases h_prep
             rfl
           subst h_pre
-          have h_resolved : resolved = { addr := binding.addr, tag := binding.tag, allocBase := binding.addr, allocSize := blockSize obseq.LayoutTy.NatL } := by
-            simp only [mirlite.resolvePlace?, h_env] at h_res
-            cases h_res
-            rfl
-          subst h_resolved
+          simp only [mirlite.resolvePlaceAcc, h_env, Except.ok.injEq, Prod.mk.injEq] at h_res
+          obtain ⟨h_r1, h_r2⟩ := h_res
+          subst h_r1
+          subst h_r2
           obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
             const_write_local_existing_simulation compProg v h_comp h_inv h_stmt h_env h_write
           exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
@@ -415,25 +414,15 @@ theorem CompilerInv_step_constWrite
   | err msg =>
       simp [h_prep] at h_step
   | ok s_pre =>
-      simp only [h_prep, mirlite.evalRExpr] at h_step
-      simp only [mirlite.finishPlaceAssign] at h_step
-      split at h_step
-      · -- Prepared destination resolves: delegate to the leaf simulation.
-        rename_i resolved h_res
-        obtain ⟨csPrefix', stmtOut, h_csAt', h_stmtOut⟩ :=
-          const_write_stmt_evidence (s_pre := s_pre) v h_inv_full h_prep
-        exact const_write_resolved_simulation compProg v h_comp h_inv_full h_stmt h_prep h_res
-          csPrefix' h_csAt' stmtOut h_stmtOut h_step
-      · -- Destination does not resolve after successful preparation.
-        rename_i h_unresolved
-        split at h_step
-        · -- `.local loc`: preparation allocated it, so resolution succeeds.
-          rename_i loc
-          rcases prepare_local_assign_resolves (s := s_mir) (s' := s_pre)
-              (loc := loc) h_prep with ⟨resolved, h_resolved⟩
-          rw [h_unresolved] at h_resolved
-          simp at h_resolved
-        · simp at h_step
-        · simp at h_step
+      simp only [h_prep] at h_step
+      cases h_res : mirlite.resolvePlaceAcc MSB s_pre dst with
+      | error e => simp [h_res] at h_step
+      | ok pr =>
+          obtain ⟨resolved, permsD⟩ := pr
+          simp only [h_res, mirlite.evalRExpr] at h_step
+          obtain ⟨csPrefix', stmtOut, h_csAt', h_stmtOut⟩ :=
+            const_write_stmt_evidence (s_pre := s_pre) v h_inv_full h_prep
+          exact const_write_resolved_simulation compProg v h_comp h_inv_full h_stmt h_prep h_res
+            csPrefix' h_csAt' stmtOut h_stmtOut h_step
 
 end obseq3.proof

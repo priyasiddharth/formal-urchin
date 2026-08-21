@@ -297,3 +297,18 @@ each (ref extends ρt).
 **References:** proof/compiler.lean (audit), journal/2026-08/
 2026-08-15-obseq3-proof-skeleton.md, obseq2 sorries superseded by this
 decomposition (obseq2/proof stays frozen).
+
+
+## Verify local conformance witnesses against real Miri
+**Status:** parked 2026-08-21
+**Context:** conformance/local/ holds project-authored Rust witnesses
+(currently deref_read_disables_sibling.rs) with model-reasoned expected
+verdicts; the Miri-derived corpus stays ground truth.
+**Why parked:** running Miri needs a Miri build at the PIN commit; not
+part of the current toolchain setup (tools/ has charon only).
+**To resume:** build/install Miri at the PIN's miri_commit, `cargo miri
+run` each local/*.rs, compare verdict+line, flip the manifest provenance
+field to "miri-verified".
+**Effort estimate:** ~1h once a Miri toolchain is available.
+**References:** conformance/README.md (Local witnesses section),
+journal/2026-08/2026-08-21-deref-read.md.

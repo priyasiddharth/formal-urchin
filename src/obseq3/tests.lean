@@ -236,6 +236,26 @@ def t10_disjoint_field_borrows : IO Unit := do
   let _ ← expectOk (run ΓC prog) "t10 disjoint field borrows"
   pure ()
 
+/-- Deref resolution is a real SB read (Miri-faithful): evaluating `*p`
+    reads `p`'s cell, disabling a `&mut` reborrow of the pointer variable
+    itself. Before the 2026-08-21 change mirlite resolved derefs
+    access-free and this program was (wrongly) accepted. -/
+def ΓE' : Ctx := [natL, ptrNat, obseq.LayoutTy.PtrL ptrNat, natL]
+def xE' : Place ΓE' natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pE' : Place ΓE' ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def qE' : Place ΓE' (obseq.LayoutTy.PtrL ptrNat) := .local ⟨⟨2, by decide⟩, rfl⟩
+def tE' : Place ΓE' natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+def t14_deref_read_disables_sibling : IO Unit := do
+  let prog : Prog ΓE' := [
+    .assign xE' (.constInit 1),
+    .assign pE' (.ref .Mut false [] xE'),
+    .assign qE' (.ref .Mut false [] pE'),
+    .assign (.deref pE') (.constInit 5),      -- resolving *p READS p: disables q
+    .assign tE' (.copy (.deref (.deref qE')))  -- via q: UB
+  ]
+  expectErr (run ΓE' prog) "t14 deref read disables sibling" "does not exist"
+
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
   t2_raw_const_is_read_only,
@@ -249,7 +269,8 @@ def allTests : List (IO Unit) := [
   t10_disjoint_field_borrows,
   t11_protected_item_blocks_pop,
   t12_protected_shared_blocks_write,
-  t13_freeze_mask_and_weak_protection]
+  t13_freeze_mask_and_weak_protection,
+  t14_deref_read_disables_sibling]
 
 def runAll : IO Unit := do
   allTests.forM id
