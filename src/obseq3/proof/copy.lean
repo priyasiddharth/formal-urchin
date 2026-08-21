@@ -107,18 +107,12 @@ theorem copy_local_local_simulation
           (oseair.readWordSeq s_osea.mem sbind.addr (blockSize τ)) := by
         refine readWordSeq_sim h_id_a h_sms h_abs (blockSize τ) sbind.addr ?_
         intro k hk
-        obtain ⟨a', h_a'⟩ := h_dom_s k hk
-        have h_ida := h_id_a _ _ h_a'
-        rw [← h_ida] at h_a'
-        exact h_a'
+        exact h_id_a.dom_self (h_dom_s k hk)
       have h_dom_dst : ∀ k, k < (mirlite.readWordSeq s_mir.mem sbind.addr
           (blockSize τ)).length → ρa (dbind.addr + k) = some (dbind.addr + k) := by
         intro k hk
         rw [mirlite.readWordSeq_length] at hk
-        obtain ⟨a', h_a'⟩ := h_dom_d k hk
-        have h_ida := h_id_a _ _ h_a'
-        rw [← h_ida] at h_a'
-        exact h_a'
+        exact h_id_a.dom_self (h_dom_d k hk)
       -- fragment: a single Memcpy
       obtain ⟨h_stmtRun, stmtOut, h_stmtOut⟩ :=
         compileStmt_copy_local_local_run h_pi_d h_pi_s
@@ -134,8 +128,7 @@ theorem copy_local_local_simulation
           simpa using h
       -- the block sizes the machine uses are the layout's
       have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
-        rw [obseq.typeSize_layoutToTyVal]
-        rfl
+        grind [blockSize, obseq.typeSize_layoutToTyVal]
       have h_entry_d' : PtrRegisterEntry s_osea.reg dstReg dbind.addr 0
           (blockSize τ) dtag := h_entry_d
       have h_entry_s' : PtrRegisterEntry s_osea.reg srcReg sbind.addr 0

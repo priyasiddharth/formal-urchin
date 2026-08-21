@@ -527,6 +527,13 @@ theorem IdentityOnDomain.apply {α : Type} {ρ : α → Option α} {a a' : α}
     (h_id : IdentityOnDomain ρ) (h : ρ a = some a') : a = a' :=
   h_id a a' h
 
+/-- Membership in an identity-on-domain map's domain pins the value: this
+    is what turns the block-domain conjuncts (which only say "∃ a'") into
+    the `ρa x = some x` form every `writeThroughPtr_sim` call needs. -/
+theorem IdentityOnDomain.dom_self {α : Type} {ρ : α → Option α} {a : α}
+    (h_id : IdentityOnDomain ρ) (h : ∃ a', ρ a = some a') : ρ a = some a := by
+  grind [IdentityOnDomain]
+
 /-- v3's ρt discipline (replacing obseq2's identity): injective, and fixing
     the wildcard tag (int-to-ptr pointers carry `wildcardTag` on BOTH
     machines, so `MemValSim` needs it mapped to itself). Monotonicity of the
@@ -1830,8 +1837,7 @@ theorem runN_Memcpy_step
       = some (obseq.TyVal.PTy, [Val.Ptr sB sO sS sT]) := h_src
   have h_bounds : ((dB + dO + obseq.typeSize ty > dB + dS)
       || (sB + sO + obseq.typeSize ty > sB + sS)) = false := by
-    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not, Nat.not_lt]
-    exact ⟨h_dlt, h_slt⟩
+    grind
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with perms := p3,
                mem := oseair.writeWordSeq s.mem (dB + dO)
@@ -2018,15 +2024,8 @@ theorem TargetAbsentSim.writeWordSeq_extend
           simp only [List.length_cons, Nat.succ.injEq] at h_len
           refine ih vs (m.write addr value) (m'.write addr v) (addr + 1) h_len ?_
           intro a a' h_ra h_none
-          by_cases h_eq : a = addr
-          · subst h_eq
-            rw [mirlite_find?_write_self] at h_none
-            exact absurd h_none (by simp)
-          · rw [mirlite_find?_write_ne _ _ _ _ h_eq] at h_none
-            have h_prev := h_abs a a' h_ra h_none
-            have h_a : a' = a := (h_id _ _ h_ra).symm
-            rw [oseair_find?_write_ne _ _ _ _ (by rw [h_a]; exact h_eq)]
-            exact h_prev
+          grind [TargetAbsentSim, IdentityOnDomain, mirlite_find?_write_self,
+            mirlite_find?_write_ne, oseair_find?_write_ne]
 
 /-- The reason `TargetAbsentSim` exists: with it, a range read on the two
     machines produces `MemValSim`-related value lists — the absent cells
@@ -2053,8 +2052,7 @@ theorem readWordSeq_sim
       have h_tail : ∀ k, k < n → ρa (addr + 1 + k) = some (addr + 1 + k) := by
         intro k hk
         have := h_dom (k + 1) (Nat.succ_lt_succ hk)
-        rw [show addr + (k + 1) = addr + 1 + k from by rw [Nat.add_assoc, Nat.add_comm 1 k]] at this
-        exact this
+        grind
       simp only [mirlite.readWordSeq, oseair.readWordSeq]
       cases h_find : mirlite.Mem.find? m addr with
       | none =>

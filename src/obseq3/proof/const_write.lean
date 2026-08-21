@@ -524,10 +524,7 @@ theorem const_write_proj_local_simulation
           (fun k hk => by
             have hk0 : k = 0 := by simp at hk; omega
             subst hk0
-            obtain ⟨a', h_a'⟩ := h_dom (pathOffset path) h_off_lt
-            have h_ida := h_id_a _ _ h_a'
-            rw [← h_ida] at h_a'
-            simpa using h_a')
+            simpa using h_id_a.dom_self (h_dom (pathOffset path) h_off_lt))
           h_write
       have h_run2 := runN_CStore_step compProg
         ({ s_osea with
@@ -957,10 +954,7 @@ theorem const_write_deref_spine_simulation
             (fun k hk => by
               simp [Nat.lt_one_iff] at hk
               subst hk
-              obtain ⟨a', h_a'⟩ := h_range o2 h_osz
-              have h_ida := h_id_a _ _ h_a'
-              rw [← h_ida] at h_a'
-              exact h_a')
+              exact h_id_a.dom_self (h_range o2 h_osz))
             h_write
         have h_run2 := runN_CStore_step compProg ({ s_mid with perms := p2, reg := oseair.RegMap.insert s_mid.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared ptrPlace) csPrefix).nextReg) (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem (pRes.allocBase + (pRes.addr - pRes.allocBase)) (obseq.typeSize obseq.TyVal.PTy)), pc := s_mid.pc + 1 } : oseair.State MSB) _
           obseq.TyVal.NatTy [Val.Dat v]
