@@ -309,6 +309,10 @@ theorem compileProgFrom_code_eq_compileStmt
 def RegisterBelow (bound : Nat) : Register → Prop
   | .R idx => idx < bound
 
+theorem RegisterBelow.mono {b b' : Nat} (h : b ≤ b') :
+    ∀ {r : Register}, RegisterBelow b r → RegisterBelow b' r
+  | .R _, h_lt => Nat.lt_of_lt_of_le h_lt h
+
 /-- All registers mentioned in an `Rhs` have index strictly less than `bound`. -/
 def RhsRegsBelow (bound : Nat) : Rhs → Prop
   | .Load _ reg => RegisterBelow bound reg
@@ -461,6 +465,15 @@ theorem runN_preserves_mem
     registers below `nextReg`. -/
 def CompilerStateWF (_Γ : Ctx) (cs : CompilerState) : Prop :=
   CodeRegsBelow cs.nextReg cs.code
+
+/-- Every register recorded in the place-register map is below `nextReg` —
+    so a freshly minted register (`freshRegM` returns `nextReg`) can never
+    collide with a register the target uses to address a bound local. This
+    is the first installment of the strengthened `CompilerStateWF` the
+    proj/deref write regimes need; the fragment-internal `CodeRegsBelow`
+    half stays deferred. -/
+def PlaceRegMapBound (cs : CompilerState) : Prop :=
+  ∀ idx reg τ, getPlaceInfo cs idx = some (reg, τ) → RegisterBelow cs.nextReg reg
 
 /-- Register `reg` in `regMap` holds a pointer value with the given fields. -/
 def PtrRegisterEntry
@@ -667,7 +680,15 @@ def MemValSim
   | .undef,           .Undef             => True
   | .word v,          .Dat v'            => v' = v
   | .ptrVal b o s t,  .Ptr b' o' s' t'  =>
-      ρa b = some b' ∧ o' = o ∧ s' = s ∧ ρt t = some t'
+      ρa b = some b' ∧ o' = o ∧ s' = s ∧ ρt t = some t' ∧
+      -- core programs cannot mint wildcard pointers (`fromExposed` is not
+      -- a core rvalue), so stored pointer tags are non-wildcard — this is
+      -- what lets BRIDGE 3 fire on writes THROUGH loaded pointers
+      (t == wildcardTag) = false ∧
+      -- the referent block is in ρa's domain (allocations are lockstep),
+      -- which is what supplies `writeThroughPtr_sim`'s `h_dom` for deref
+      -- destinations
+      (∀ k, k < s → ∃ a', ρa (b + k) = some a')
   | _, _                                 => False
 
 theorem MemValSim.rename_mono
@@ -679,8 +700,9 @@ theorem MemValSim.rename_mono
     MemValSim ρa' ρt' mv v := by
   cases mv <;> cases v <;> simp [MemValSim] at h_sim ⊢
   · exact h_sim
-  · rcases h_sim with ⟨h_base, h_off, h_size, h_tag_old⟩
-    exact ⟨h_addr _ _ h_base, h_off, h_size, h_tag _ _ h_tag_old⟩
+  · rcases h_sim with ⟨h_base, h_off, h_size, h_tag_old, h_nw, h_dom⟩
+    exact ⟨h_addr _ _ h_base, h_off, h_size, h_tag _ _ h_tag_old, h_nw,
+      fun k hk => ⟨(h_dom k hk).choose, h_addr _ _ (h_dom k hk).choose_spec⟩⟩
 
 /-- Forward memory simulation at renamed addresses. -/
 def SourceMemSim
@@ -698,9 +720,10 @@ def SourceMemSim
 /-- The main simulation invariant between a source mirlite state and a
     target OSEA state, both at `stackedBorrows`.
     vs obseq2: `TargetLocalsReady` (a `True` placeholder), `WellFormed`
-    (never consumed), and `CompilerStateWF` (also never consumed; it will
-    return STRENGTHENED — with a placeRegMap bound — when the proj/deref
-    write regimes need register-collision freedom) are dropped; the perms
+    (never consumed) and the code half of `CompilerStateWF` are dropped;
+    the register half returned 2026-08-21 as `PlaceRegMapBound` (the
+    deref/proj write regimes mint temp registers and need them clear of
+    bound locals' registers); the perms
     conjunct is `PermSim ρt` instead of literal equality; ρt is
     `TagRenameWF` instead of identity, and `LocalBindingSim` additionally
     records that bound locals carry non-wildcard tags (they are minted by
@@ -719,7 +742,8 @@ def CompilerInv
     SourceMemSim ρa ρt s_mir.mem s_osea.mem ∧
     PermSim ρt s_mir.perms s_osea.perms ∧
     IdentityOnDomain ρa ∧
-    TagRenameWF ρt
+    TagRenameWF ρt ∧
+    PlaceRegMapBound csPrefix
 
 /-- Register `reg` holds a pointer to `resolved`, and the tag stored there
     grants a mutable write of `len` cells in `perms`. The tag is NOT in
@@ -763,6 +787,34 @@ theorem placeToRegChecked_local_ok_of_getPlaceInfo
     rfl
   · rename_i h_branch
     simp [h_branch] at h_lookup
+
+/-- Compute `placeToRegChecked` on an already-mapped local: no compiler-state
+    change, and the returned pointer result is the mapped register with no
+    cleanup. The run/value pair that lets fragment-computation lemmas step
+    over the local arm without touching its dependent match. -/
+theorem placeToRegChecked_local_existing
+    {Γ : Ctx} {τ layout : LayoutTy}
+    {kind : RefKind} {loc : Local Γ τ} {cs : CompilerState} {reg : Register}
+    (h : getPlaceInfo cs loc.idx.1 = some (reg, layout)) :
+    CheckedCompilerM.run (placeToRegChecked kind (.local loc)) cs = cs ∧
+    ∃ placeOut,
+      CheckedCompilerM.value (placeToRegChecked kind (.local loc)) cs
+        = Except.ok placeOut ∧
+      placeOut.result = { reg := reg, cleanup := [] } := by
+  simp only [CheckedCompilerM.run, CheckedCompilerM.value, CompilerM.run,
+    CompilerM.value, placeToRegChecked]
+  refine ⟨?_, ?_⟩
+  · split <;> rfl
+  · split
+    · rename_i reg' layout' h'
+      rw [h'] at h
+      injection h with h2
+      have h_eq : reg' = reg := congrArg Prod.fst h2
+      subst h_eq
+      exact ⟨_, rfl, rfl⟩
+    · rename_i h'
+      rw [h'] at h
+      cases h
 
 theorem placeToRegChecked_proj_ok_of_baseOk
     {Γ : Ctx} {σ τ : LayoutTy}
@@ -1131,7 +1183,162 @@ theorem placeToRegChecked_emits_preserves_mem
         (fun _ => ?_)
       exact checkedEmitsPreservesMem_pure _
 
+/-- Emitting the empty instruction list is a no-op on the compiler state
+    (the deref/cleanup lowering paths emit `cleanupInstrs [] = []`). -/
+theorem emit_nil (cs : CompilerState) : emit cs [] = cs := by
+  show ({ cs with
+    nextLabel := cs.nextLabel + 0,
+    code := fun label =>
+      if cs.nextLabel ≤ label ∧ label < cs.nextLabel + 0 then
+        ([] : List Instr).get? (label - cs.nextLabel)
+      else cs.code label } : CompilerState) = cs
+  have h_code : (fun label =>
+      if cs.nextLabel ≤ label ∧ label < cs.nextLabel + 0 then
+        ([] : List Instr).get? (label - cs.nextLabel)
+      else cs.code label) = cs.code := by
+    funext label
+    rw [if_neg]
+    rintro ⟨h1, h2⟩
+    exact absurd (Nat.lt_of_le_of_lt h1 h2) (Nat.lt_irrefl _)
+  rw [h_code]
+  show ({ cs with nextLabel := cs.nextLabel + 0 } : CompilerState) = cs
+  rw [Nat.add_zero]
+
 /-! ## §F Execution helpers -/
+
+theorem lookup_filter_ne {α β : Type} [BEq α] [LawfulBEq α] {a addr : α} (hne : a ≠ addr) :
+    (l : List (α × β)) →
+    List.lookup a (l.filter (fun p => p.1 != addr)) = List.lookup a l
+  | [] => rfl
+  | (k, val) :: ps => by
+      have ih := lookup_filter_ne (β := β) hne ps
+      by_cases hk : k = addr
+      · subst hk
+        rw [List.filter_cons_of_neg (by simp)]
+        rw [ih, List.lookup_cons]
+        have hb : (a == k) = false := by simp [hne]
+        rw [hb]
+      · rw [List.filter_cons_of_pos (by simp [hk]), List.lookup_cons, List.lookup_cons, ih]
+
+instance : LawfulBEq Register where
+  eq_of_beq {a b} h := by
+    cases a with | R n => cases b with | R m =>
+      have h' : (n == m) = true := h
+      simp only [beq_iff_eq] at h'
+      simp [h']
+  rfl {a} := by
+    cases a with | R n =>
+      show (n == n) = true
+      simp
+
+theorem RegMap.lookup_insert_self (r : oseair.RegMap) (reg : Register)
+    (v : obseq.TyVal × List Val) :
+    oseair.RegMap.lookup (oseair.RegMap.insert r reg v) reg = some v := by
+  simp [oseair.RegMap.insert, oseair.RegMap.lookup, List.lookup]
+
+theorem RegMap.lookup_insert_ne (r : oseair.RegMap) {reg' reg : Register}
+    (h : reg' ≠ reg) (v : obseq.TyVal × List Val) :
+    oseair.RegMap.lookup (oseair.RegMap.insert r reg v) reg'
+      = oseair.RegMap.lookup r reg' := by
+  show List.lookup reg' ((reg, v) :: r.filter (fun p => p.1 != reg))
+      = List.lookup reg' r
+  rw [List.lookup_cons]
+  have hb : (reg' == reg) = false := by
+    cases h_eq : reg' == reg
+    · rfl
+    · exact absurd (eq_of_beq h_eq) h
+  rw [hb]
+  exact lookup_filter_ne h r
+
+/-- Inserting a value at a fresh register (index at or above the compiler's
+    `nextReg`) preserves `LocalBindingSim`: no bound local can be mapped to
+    it, by `PlaceRegMapBound`. Reused by every fragment that mints a temp
+    register (deref `Load`, proj `Borrow`, copy's value registers). -/
+theorem LocalBindingSim.insert_fresh_reg
+    {Γ : Ctx} {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {env : mirlite.Env Γ} {s s' : oseair.State MSB} {cs : CompilerState}
+    {n : Nat} {val : obseq.TyVal × List Val}
+    (h_lbs : LocalBindingSim ρa ρt env s cs)
+    (h_prb : PlaceRegMapBound cs)
+    (h_ge : cs.nextReg ≤ n)
+    (h_reg : s'.reg = oseair.RegMap.insert s.reg (Register.R n) val) :
+    LocalBindingSim ρa ρt env s' cs := by
+  intro τ loc binding h_env
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw⟩ := h_lbs loc binding h_env
+  refine ⟨reg, base, tag, h_pi, ?_, h_ra, h_rt, h_nw⟩
+  have h_below := h_prb _ _ _ h_pi
+  show oseair.RegMap.lookup s'.reg reg = _
+  rw [h_reg]
+  cases reg with
+  | R m =>
+    have h_ne : Register.R m ≠ Register.R n := by
+      intro h_eq
+      injection h_eq with h_eq
+      subst h_eq
+      exact absurd h_below (Nat.not_lt.mpr h_ge)
+    rw [RegMap.lookup_insert_ne _ h_ne]
+    exact h_entry
+
+/-- Invert a successful mirlite access-resolution of `*ploc` for a bound
+    pointer local: the pointer cell was SB-read through the binding tag and
+    holds a `ptrVal`, whose fields are the resolved place. Reused by the
+    deref regimes of const-write, copy, and ref. -/
+theorem resolvePlaceAcc_deref_local_inversion
+    {Γ : Ctx} {τ : LayoutTy}
+    {s : mirlite.State MSB Γ}
+    {ploc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    {pbind : mirlite.Binding}
+    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
+    (h_env : mirlite.Env.lookup s.env ploc = some pbind)
+    (h_res : mirlite.resolvePlaceAcc MSB s (.deref (.local ploc)) = .ok (resolved, permsD)) :
+    ∃ (b o sz : Word) (t : Tag),
+      MSB.read s.perms pbind.addr 1 pbind.tag = .ok permsD ∧
+      mirlite.Mem.find? s.mem pbind.addr = some (.ptrVal b o sz t) ∧
+      resolved = { addr := b + o, tag := t, allocBase := b, allocSize := sz } := by
+  simp only [mirlite.resolvePlaceAcc, h_env] at h_res
+  split at h_res
+  · exact absurd h_res (by simp)
+  · rename_i perms'' h_read
+    split at h_res
+    · rename_i b o sz t h_find
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h_res
+      obtain ⟨h_r, h_p⟩ := h_res
+      exact ⟨b, o, sz, t, h_p ▸ h_read, h_find, h_r.symm⟩
+    · exact absurd h_res (by simp)
+
+/-- A pointer-typed `Load` executes in one `runN` step: the pointer register
+    is read, the SB read through the stored tag succeeds, and the loaded
+    cells land in the destination register. The permission success is the
+    caller's obligation — that is where the PermSim transport lives. -/
+theorem runN_Assgn_Load_ptr_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst preg : Register) (ty : obseq.TyVal)
+    {b o sz : Word} {t : Tag} {p2 : AccessPerms}
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.Load ty preg)))
+    (h_entry : PtrRegisterEntry s.reg preg b o sz t)
+    (h_lt : o < sz)
+    (h_read : MSB.read s.perms (b + o) (obseq.typeSize ty) t = .ok p2) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p2,
+               reg := oseair.RegMap.insert s.reg dst
+                 (ty, oseair.readWordSeq s.mem (b + o) (obseq.typeSize ty)),
+               pc := s.pc + 1 } := by
+  have h_lookup : oseair.RegMap.lookup s.reg preg
+      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  have h_bounds : ((b + o < b) || (b + o ≥ b + sz)) = false := by
+    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
+    exact ⟨Nat.not_lt.mpr (Nat.le_add_right b o),
+           Nat.not_le.mpr (Nat.add_lt_add_left h_lt b)⟩
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p2,
+               reg := oseair.RegMap.insert s.reg dst
+                 (ty, oseair.readWordSeq s.mem (b + o) (obseq.typeSize ty)),
+               pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
+      h_bounds, Bool.false_eq_true, if_false, h_read]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+
 
 /-- Fragment locator: an instruction populated in the per-statement code map
     appears verbatim at the same slot in the whole compiled program. -/
@@ -1243,20 +1450,6 @@ theorem runN_cleanupInstrs
   exact ⟨r, len, rfl⟩
 
 /-! ## §G Memory framing + the SB bridges -/
-
-theorem lookup_filter_ne {α β : Type} [BEq α] [LawfulBEq α] {a addr : α} (hne : a ≠ addr) :
-    (l : List (α × β)) →
-    List.lookup a (l.filter (fun p => p.1 != addr)) = List.lookup a l
-  | [] => rfl
-  | (k, val) :: ps => by
-      have ih := lookup_filter_ne (β := β) hne ps
-      by_cases hk : k = addr
-      · subst hk
-        rw [List.filter_cons_of_neg (by simp)]
-        rw [ih, List.lookup_cons]
-        have hb : (a == k) = false := by simp [hne]
-        rw [hb]
-      · rw [List.filter_cons_of_pos (by simp [hk]), List.lookup_cons, List.lookup_cons, ih]
 
 theorem mirlite_find?_write_self (m : mirlite.Mem) (addr : Word)
     (v : mirlite.MemValue) :

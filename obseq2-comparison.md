@@ -4,6 +4,29 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-21 — Regime D1 Closed: The Canonical Deref Write Simulates
+
+Twenty-fourth increment, same-day payoff of the deref-read change. `*p := v` with a
+bound pointer local now simulates end-to-end (`const_write_deref_local_simulation`):
+Load matched by the source's resolvePlaceAcc read via the sb_read transport, loaded
+value recovered as the ρ-renamed stored pointer via MemValSim inversion, CStore via
+BRIDGE 2 + sb_write. Two honest invariant extensions were needed (the morning's
+"existing machinery only" was over-optimistic): the `PlaceRegMapBound` conjunct
+(mapped registers < nextReg — the register half of obseq2's never-built strengthened
+CompilerStateWF; fresh Load temps cannot clobber bound locals) and a strengthened
+MemValSim pointer case (non-wildcard stored tags + referent range in ρa's domain).
+The proof was deliberately factored for reuse: Load step execution, deref-resolution
+inversion, fresh-register binding-sim preservation, RegMap update algebra (+ a
+LawfulBEq Register instance), mapped-local lowering run/value, emit_nil — all in
+common §D/§E/§F, consumed next by D3's spine induction, regime C, copy, and ref.
+Regime D delegates by pointer-place shape: D1 closed (fresh-local vacuous), D2 (proj
+pointer) merges its blocker with regime C's sb_ref transport, D3 (nested deref) is
+mechanical spine induction. Sorry count 5 → 6 by the split, but every closed shape is
+end-to-end. Validation: 14/14 + 37/37, suite 77/117 pass, differential 77/0/0,
+obseq2 green.
+
+---
+
 ## 2026-08-21 — Deref Resolution Reads: Risk Item (a) Resolved at the Source
 
 Twenty-third increment. mirlite place resolution for accesses (`resolvePlaceAcc`) now

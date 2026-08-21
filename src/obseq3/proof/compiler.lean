@@ -24,27 +24,33 @@ CLOSED:
   non-core constructs).
 - ✔ `placeToRegChecked_emits_preserves_mem` (common.lean §E, 2026-08-18).
 
-Remaining (5, decomposed 2026-08-18 — the const-write leaf split into
-regimes with REGIME A CLOSED): every remaining sorry is blocked on a
-NAMED invariant extension, which is the next design increment:
+Invariant extensions landed 2026-08-21 (with regime D1): the
+`PlaceRegMapBound` conjunct (mapped registers < nextReg — the register
+half of the once-planned strengthened `CompilerStateWF`; fresh temps
+cannot clobber bound locals' registers) and the strengthened `MemValSim`
+pointer case (stored tags are non-wildcard; the referent range is in
+ρa's domain). These also discharge part of regime C's blocker list.
+
+Remaining (6): every remaining sorry is blocked on a NAMED obligation:
 1. `const_write_fresh_local_simulation` — needs the lockstep-allocation
    conjunct (`s_osea.mem.addrStart = s_mir.mem.addrStart`) so ρa extends
    at the equal fresh address, plus the `sb_own` transport member.
-2. `const_write_proj_simulation` — needs the strengthened
-   `CompilerStateWF` (placeRegMap register bound, temp-collision freedom)
-   and composes BRIDGE 1 with BRIDGE 3.
-3. `const_write_deref_simulation` — now closable with EXISTING machinery
-   (2026-08-21 deref-read change): mirlite's `resolvePlaceAcc` performs
-   the SB read the target `Load` performs, so the source step hypothesis
-   supplies the read's success and `sb_read_respects_PermSim` transports
-   it — no SB-env coherence invariant needed. Remaining work is fragment
-   execution only (locate + run the Load/CStore pair, à la regime A).
-4. `CompilerInv_step_copy` — the `sb_read` transport member now EXISTS
+2. `const_write_proj_simulation` — needs the `sb_ref` transport member
+   for the internal `Borrow`, composed with BRIDGE 1 and BRIDGE 3 (the
+   register-bound half of its blocker landed as `PlaceRegMapBound`).
+3. `const_write_deref_projPtr_simulation` (regime D2) — pointer place
+   under a projection: same `sb_ref`-transport blocker as regime C.
+4. `const_write_deref_nested_simulation` (regime D3) — `**q := v`:
+   a Load spine; each level is D1's `runN_Assgn_Load_ptr_step` +
+   `sb_read` transport + `MemValSim` inversion, but composing them
+   needs a length-generalized spine induction. Mechanical, no new SB
+   lemmas.
+5. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS
    (`sb_read_respects_PermSim`, 2026-08-19); still needs a bidirectional
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-5. `CompilerInv_step_ref` — needs the `sb_ref` transport member (extends
+6. `CompilerInv_step_ref` — needs the `sb_ref` transport member (extends
    ρt at the fresh pair) and the tag-bound WF fact (mapped and stack
    tags < NextTag on both machines) for injectivity of the extension;
    its `Die` cleanup transport now exists (`sb_die_respects_PermSim`).
@@ -58,6 +64,18 @@ CLOSED in the leaf layer (2026-08-18):
   `compileStmt_emitted_in_compProg` + `compileStmt_local_existing_run`,
   executed via BRIDGE 2, permissions transported via BRIDGE 3, invariant
   rebuilt (this is obseq2's long-parked "Step 4 regime-A milestone").
+- ✔ REGIME D1 `const_write_deref_local_simulation` (2026-08-21) —
+  `*p := v` with `p` a bound local, the canonical deref write. Enabled
+  by the same-day mirlite deref-read change: the `Load` is matched by
+  the source's `resolvePlaceAcc` read (`sb_read_respects_PermSim`), the
+  loaded value is the ρ-renamed stored pointer (`MemValSim` inversion),
+  the `CStore` is BRIDGE 2 + the `sb_write` member. Reusable pieces
+  extracted: `runN_Assgn_Load_ptr_step`,
+  `resolvePlaceAcc_deref_local_inversion`,
+  `LocalBindingSim.insert_fresh_reg`, `RegMap.lookup_insert_self`/`_ne`
+  (+ `LawfulBEq Register`), `placeToRegChecked_local_existing`,
+  `emit_nil` (§D/§E/§F); the fresh-pointer-local case is vacuous
+  (`preparePlaceAssign` cannot allocate under a deref).
 -/
 
 namespace obseq3.proof
