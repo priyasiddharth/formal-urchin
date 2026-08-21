@@ -84,15 +84,28 @@ obligation:
    proof generalized over an OPAQUE base run, the way
    `loadSpine_lowering_sim` is stated).
 3. `const_write_deref_nonspine_simulation` — a projection somewhere in
-   the dereferenced pointer place. The borrow composition it needs now
-   EXISTS (item 2); what remains is the generalization over an opaque
-   base run, shared with PROJ-NESTED/PROJ-OVER-DEREF and with the ref
-   leaf's REF-NONLOCAL regimes — one piece of work unblocking all five.
-4. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS
-   (`sb_read_respects_PermSim`, 2026-08-19); still needs a bidirectional
-   memory relation (source-absent cells read as undef; one-directional
-   `SourceMemSim` does not constrain the target there) plus the Memcpy
-   execution lemma.
+   the dereferenced pointer place. CORRECTION (2026-08-21): this does
+   NOT reduce to item 2's composition. The deref lowering emits its
+   inner place's cleanup ITSELF, so the chain here is
+   `Borrow(Shared) ; Load ; Die` — a READ-flavoured cancellation, which
+   the keystone (Mut-and-write) does not cover. It needs that sibling
+   lemma, shared with COPY-NONLOCAL-SRC. The regimes that DO reduce to
+   item 2's composition over an opaque base run are PROJ-OVER-DEREF and
+   the ref leaf's REF-NONLOCAL-DST; PROJ-NESTED additionally needs
+   n-fold cancellation (two stacked borrow/die pairs).
+4. `CompilerInv_step_copy` — CORE REGIME CLOSED 2026-08-21:
+   `copy_local_local_simulation` (proof/copy.lean) proves `dl := sl`
+   between two bound locals. The bidirectional memory relation this
+   needed is now a `CompilerInv` conjunct, `TargetAbsentSim` (absent in
+   the source ⟹ absent in the target); `readWordSeq_sim` is its payoff
+   and the heart of the proof — the two machines read `MemValSim`-related
+   sequences, INCLUDING at cells the source never wrote, where both read
+   undef. `runN_Memcpy_step` supplies the execution. Five named residuals
+   remain: COPY-FRESH-DST (regime-B blocker), COPY-NONLOCAL-SRC — which
+   needs a READ-flavoured sibling of BRIDGE 1, since the existing
+   keystone cancels Mut-and-write and a `Borrow(Shared) ; Load ; Die`
+   chain is a different lemma — COPY-DEREF-SRC, COPY-NONLOCAL-DST and
+   COPY-DEREF-DST (all compositions of machinery that now exists).
 5. `CompilerInv_step_ref` — CORE REGIME CLOSED 2026-08-21:
    `ref_local_local_existing_simulation` (proof/ref.lean) proves
    `dl = &sl` for bound one-cell locals end-to-end, and it is the FIRST
