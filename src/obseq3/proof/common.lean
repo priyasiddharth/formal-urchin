@@ -1110,6 +1110,26 @@ theorem placeToRegChecked_local_ok_of_getPlaceInfo
   · rename_i h_branch
     simp [h_branch] at h_lookup
 
+/-- Compute `ensureLocalRegE` on an already-mapped local: no compiler-state
+    change, and the returned pointer result is the mapped register. -/
+theorem ensureLocalRegE_existing
+    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
+    {reg : Register}
+    (h : getPlaceInfo cs loc.idx.1 = some (reg, τ)) :
+    CompilerM.run (ensureLocalRegE loc) cs = cs ∧
+    (CompilerM.value (ensureLocalRegE loc) cs).result = { reg := reg, cleanup := [] } := by
+  unfold CompilerM.run CompilerM.value ensureLocalRegE
+  split
+  · rename_i reg' layout' h'
+    rw [h'] at h
+    injection h with h2
+    have h_eq : reg' = reg := congrArg Prod.fst h2
+    subst h_eq
+    exact ⟨rfl, rfl⟩
+  · rename_i h'
+    rw [h'] at h
+    cases h
+
 /-- Compute `placeToRegChecked` on an already-mapped local: no compiler-state
     change, and the returned pointer result is the mapped register with no
     cleanup. The run/value pair that lets fragment-computation lemmas step
@@ -1783,6 +1803,42 @@ theorem runN_Die_step
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with perms := p2, pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, h_lookup, h_die]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- A `Memcpy` between two in-bounds pointer registers executes in one
+    `runN` step: an SB read at the source range, an SB write at the
+    destination range, then the byte move. -/
+theorem runN_Memcpy_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst src : Register) (ty : obseq.TyVal)
+    {dB dO dS sB sO sS : Word} {dT sT : Tag} {p2 p3 : AccessPerms}
+    (h_instr : compProg s.pc = some (Instr.Memcpy dst src ty))
+    (h_dst : PtrRegisterEntry s.reg dst dB dO dS dT)
+    (h_src : PtrRegisterEntry s.reg src sB sO sS sT)
+    (h_dlt : dB + dO + obseq.typeSize ty ≤ dB + dS)
+    (h_slt : sB + sO + obseq.typeSize ty ≤ sB + sS)
+    (h_read : MSB.read s.perms (sB + sO) (obseq.typeSize ty) sT = .ok p2)
+    (h_write : MSB.useMut p2 (dB + dO) (obseq.typeSize ty) dT = .ok p3) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p3,
+               mem := oseair.writeWordSeq s.mem (dB + dO)
+                 (oseair.readWordSeq s.mem (sB + sO) (obseq.typeSize ty)),
+               pc := s.pc + 1 } := by
+  have h_dlook : oseair.RegMap.lookup s.reg dst
+      = some (obseq.TyVal.PTy, [Val.Ptr dB dO dS dT]) := h_dst
+  have h_slook : oseair.RegMap.lookup s.reg src
+      = some (obseq.TyVal.PTy, [Val.Ptr sB sO sS sT]) := h_src
+  have h_bounds : ((dB + dO + obseq.typeSize ty > dB + dS)
+      || (sB + sO + obseq.typeSize ty > sB + sS)) = false := by
+    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not, Nat.not_lt]
+    exact ⟨h_dlt, h_slt⟩
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p3,
+               mem := oseair.writeWordSeq s.mem (dB + dO)
+                 (oseair.readWordSeq s.mem (sB + sO) (obseq.typeSize ty)),
+               pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, h_dlook, h_slook,
+      h_bounds, Bool.false_eq_true, if_false, h_read, h_write]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- A single `Die` step leaves the register file unchanged. -/

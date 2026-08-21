@@ -98,26 +98,6 @@ theorem const_write_stmt_evidence
           }
           · simp [compileStmtChecked, compileRExprToChecked, h_dstOut, h_root]
 
-/-- Compute `ensureLocalRegE` on an already-mapped local: no compiler-state
-    change, and the returned pointer result is the mapped register. -/
-theorem ensureLocalRegE_existing
-    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
-    {reg : Register}
-    (h : getPlaceInfo cs loc.idx.1 = some (reg, τ)) :
-    CompilerM.run (ensureLocalRegE loc) cs = cs ∧
-    (CompilerM.value (ensureLocalRegE loc) cs).result = { reg := reg, cleanup := [] } := by
-  unfold CompilerM.run CompilerM.value ensureLocalRegE
-  split
-  · rename_i reg' layout' h'
-    rw [h'] at h
-    injection h with h2
-    have h_eq : reg' = reg := congrArg Prod.fst h2
-    subst h_eq
-    exact ⟨rfl, rfl⟩
-  · rename_i h'
-    rw [h'] at h
-    cases h
-
 /-- The compiled fragment of a constant write to an already-mapped local is
     exactly one `CStore` through the mapped register. -/
 theorem compileStmt_local_existing_run
