@@ -312,3 +312,36 @@ field to "miri-verified".
 **Effort estimate:** ~1h once a Miri toolchain is available.
 **References:** conformance/README.md (Local witnesses section),
 journal/2026-08/2026-08-21-deref-read.md.
+
+## sb_ref transport member (sb_ref_respects_PermSim) — WIP, 13 build errors
+**Status:** parked 2026-08-21 (usage-limit checkpoint, mid-iteration)
+**Context:** The highest-leverage remaining obligation: unblocks 3 of the
+5 audited sorries (const_write_proj, const_write_deref_nonspine,
+CompilerInv_step_ref). Branch `worktree-sb-ref-transport` (worktree
+.claude/worktrees/sb-ref-transport), commit 8355c05 on top of main
+8f73b13. NOTE: the worktree was created from stale origin/main and was
+reset --hard to local main — origin is months behind; do not rebase onto
+origin/main.
+**Landed green:** common.lean — `TagRenameMap.extend`, `TagRenameBound`
+(+ not_dom/extend_incr/WF.extend/Bound.extend); keystone.lean —
+`foldCellsIdx_ok_of_cells` (forward mate of `_ok_inv`).
+**Iterating:** permsim_transport.lean new §"sb_ref in fold-characterizable
+form": `insertAboveContent`, `refCellOp`, `refCellContent` (+ none_error),
+`sb_ref_unfold`, `refCellOp_content_form`, `insertAboveContent_transport`,
+`refCellContent_transport`, `sb_ref_respects_PermSim` (extends ρt at
+(src.NextTag, tgt.NextTag); returns WF/Incr/Bound at bumped counters).
+**To resume:** `cd .claude/worktrees/sb-ref-transport && lake build
+obseq3.proof.permsim_transport`. 13 errors, three clusters: (1) syntax:
+the big `show ... from by` inside TwoPhase branch of
+refCellOp_content_form (lines ~1111-1119) — hoist it into a standalone
+`have` before the rw; same for line 1360 record-update syntax in the
+final assembly. (2) `simp made no progress` at ~1211/1229/1250/1266 —
+the `if mask.getD i false` reductions in refCellContent_transport; use
+`rw [if_pos/if_neg]` on Bool conditions or plain simp with the mask hyp.
+(3) unsolved goals 940/943/992 (sb_ref_unfold h_tail error/rfl branches —
+likely needs bind/Except.bind unfolds instead of rfl) and 1315 (prot=true
+assembly). Design is sound; keystone lines 484-560 are the template for
+content-form unfolds (pushCell/SB.find?_set_self/SB.set_set collapse).
+**Effort estimate:** ~half-day of build iteration.
+**References:** proof/compiler.lean audit ("Remaining (5)"), journal
+2026-08-21-regime-d3-spine.md, this file's obseq3-proof-closure entry.
