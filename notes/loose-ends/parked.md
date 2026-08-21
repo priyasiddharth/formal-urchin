@@ -313,8 +313,13 @@ field to "miri-verified".
 **References:** conformance/README.md (Local witnesses section),
 journal/2026-08/2026-08-21-deref-read.md.
 
-## sb_ref transport member (sb_ref_respects_PermSim) — WIP, 13 build errors
-**Status:** parked 2026-08-21 (usage-limit checkpoint, mid-iteration)
+## ~~sb_ref transport member (sb_ref_respects_PermSim)~~ — DONE 2026-08-21
+**Status:** CLOSED same day (commit d0d5719) — the WIP context below is
+kept for the build-error archaeology only; see
+journal/2026-08/2026-08-21-sb-ref-transport.md for the landed design
+and the Lean potholes distilled from those errors.
+**Original WIP context (superseded):** parked 2026-08-21
+(usage-limit checkpoint, mid-iteration)
 **Context:** The highest-leverage remaining obligation: unblocks 3 of the
 5 audited sorries (const_write_proj, const_write_deref_nonspine,
 CompilerInv_step_ref). Branch `worktree-sb-ref-transport` (worktree

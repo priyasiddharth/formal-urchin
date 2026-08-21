@@ -4,6 +4,29 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-21 — The sb_ref Transport: BRIDGE 3's Family Is Complete
+
+Twenty-sixth increment. `sb_ref_respects_PermSim` closes the last and only
+ρt-GROWING member of the transport family: a successful source retag is matched by
+the renamed target retag, with the two machines minting DIFFERENT fresh tags (their
+counters only satisfy ≤), so the results relate under ρt extended at the fresh pair.
+The honest price of growth is injectivity: the extension is only a valid rename map
+if nothing already maps to the target's fresh tag, so the lemma introduces
+`TagRenameBound` (every mapped pair strictly below both counters) — consumed at the
+current counters, returned re-established at the bumped ones, ready to be threaded
+as the CompilerInv conjunct leaf 5 needs. Mechanically the ref op is the family's
+worst case: `foldCellsIdx` rather than `foldCells` (the freeze mask indexes cells),
+four RefKind shapes including Miri's insert-above-granting placement for raws and
+masked cells, and protector-frame registration — handled by lifting the per-cell op
+to a content form (`refCellOp`/`refCellContent`), adding the forward fold
+characterization `foldCellsIdx_ok_of_cells`, and running the whole per-cell
+transport at the extended map up front so the fresh item's relation is definitional.
+Write/read/die/ref are now all theorems; obligations 2, 3, and 5 of the audit lost
+their transport blocker and are pure composition + invariant-threading work. Audit
+count unchanged at 5. Suite 77/117 pass, differential 77/0/0, build green.
+
+---
+
 ## 2026-08-21 — Regime D Spine-Complete: One Induction Replaces Three Theorems
 
 Twenty-fifth increment. `const_write_deref_spine_simulation` closes the constant

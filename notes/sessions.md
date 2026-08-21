@@ -117,3 +117,32 @@ runAll now derives from allTests (recorded in auto-memory conventions).
 (user-chosen scope; obseq2 proof inventory in hand).
 **Next-session pickup candidates:** CompilerInv-v3 skeleton plan (see
 plans file / upcoming journal), SwitchInt (parked), obseq2 sorries.
+
+## 2026-08-21 (later)
+**Session:** `sb-ref-transport` (background job, worktree branch
+`worktree-sb-ref-transport`)
+**Theme:** close the sb_ref transport — the ρt-growing BRIDGE 3 member
+and the highest-leverage remaining obligation (blocked 3 of 5 sorries).
+**Key outputs:** `sb_ref_respects_PermSim` + `TagRenameMap.extend` +
+`TagRenameBound` (common.lean) + `foldCellsIdx_ok_of_cells`
+(keystone.lean) + refCellOp/refCellContent content-form machinery and
+`insertAboveContent_transport` (permsim_transport.lean); compiler.lean
+audit updated (still 5 sorries, transport blocker gone from 2/3/5);
+journal/2026-08/2026-08-21-sb-ref-transport.md (incl. new Lean 4.28
+potholes: simp-only-vs-rw on matcher scrutinees, choose-terms poisoning
+rewrite motives, record-update line sensitivity); dev-log increment 26;
+parked WIP entry closed same day.
+**Critical corrections:** none from the user (mid-session usage-limit
+checkpoint forced a park/resume cycle — WIP commit + resume context in
+parked.md worked as designed). Session also loaded the better-than-fish
+plugin explicitly at user request.
+**Status:** complete — commit `d0d5719` on `worktree-sb-ref-transport`
+(NOT yet on main; worktree was cut from stale origin/main and reset to
+local main 8f73b13 — merge to main via fast-forward when convenient).
+Suite 77/117 pass, differential 77/0/0, build green.
+**Next-session pickup candidates:** audit obligation 5
+(`CompilerInv_step_ref`): add the `TagRenameBound` CompilerInv conjunct
+(holds at init, preserved by all four transports) then the ref leaf;
+or obligation 4 (copy: bidirectional memory relation + Memcpy lemma);
+or obligation 1 (fresh-local: lockstep-allocation conjunct + sb_own
+transport).
