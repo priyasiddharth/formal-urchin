@@ -161,7 +161,27 @@ does NOT build the proof libraries — only the `Core` default target.
 Use `lake build Obseq3Proof`. notes/CLAUDE.md's convention line was
 wrong and is fixed; any earlier "build green" from plain `lake build`
 was a statement about the non-proof code only.
-**Next-session pickup candidates:** ONE generalization now unblocks five
+**Fourth leg — the copy leaf (commits 61acdb8, f2b7bc8):** every
+statement kind in CoreProg now has a working core.
+`copy_local_local_simulation` closes `dl := sl` between bound locals; the
+genuine gap it exposed was the memory relation's missing direction, now
+carried as the `TargetAbsentSim` conjunct with `readWordSeq_sim` as its
+payoff. Copy was already the best-covered rvalue by tests (17/36
+differential, 5/20 unit, and nearly the whole Miri corpus), so the risk
+was in the invariant, not the semantics. See journal
+2026-08-21-copy-leaf.md and dev-log increment 29.
+**Critical correction (self-found):** the earlier "one generalization
+closes five regimes" claim was wrong — three distinct shapes are
+involved, and two of them need a READ-flavoured sibling of BRIDGE 1.
+Superseded in the regime-C journal entry and fixed in the audit.
+**Next-session pickup candidates:** the READ-flavoured keystone
+(`Borrow(Shared) ; Load ; Die` ≡ the parent read) unblocks
+`const_write_deref_nonspine` and COPY-NONLOCAL-SRC; `p = &x.f`
+(REF-NONLOCAL-SRC over a bound local) is a cheap extension of the ref
+core (Borrow ; RStore at a nonzero offset, no cleanup Die); the
+lockstep-allocation + `sb_own` work closes all four fresh-* regimes at
+once. Superseded pickup line below:
+**(superseded)** ONE generalization now unblocks five
 sorried regimes — restate the borrow composition over an OPAQUE base run
 (the way `loadSpine_lowering_sim` is stated): it closes PROJ-NESTED,
 PROJ-OVER-DEREF, `const_write_deref_nonspine`, and the ref leaf's
