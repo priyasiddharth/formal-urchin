@@ -10,6 +10,7 @@ supersede-never-delete.
 ```
 durable/    [FACT] — source/paper/design-grounded, time-invariant
 empirical/  [EMP]  — repeated observations, version-stamped
+            (first entry 2026-08-21: grind's `.eq_def` rule)
 journal/    [OBS] [HYP] — dated single events, YYYY-MM dirs
 weekly/ monthly/     — digests
 loose-ends/parked.md — parked work with resume context
