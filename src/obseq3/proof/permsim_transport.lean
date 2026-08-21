@@ -842,6 +842,590 @@ theorem sb_read_respects_PermSim
       (fun j h1 h2 => (h_pkg' j h2).2.2),
     h_prot, h_exp, h_next⟩
 
+/-! ## `sb_ref` in fold-characterizable form
+
+`sb_ref` is the ρt-GROWING member: it mints a fresh tag on each machine
+(the values differ — counters only satisfy `≤`), so its transport extends
+ρt at the fresh pair and needs `TagRenameBound` for injectivity. The
+per-cell operation depends on the `RefKind` and, for `Shared`/`Raw false`,
+on the freeze mask at the cell's index — hence the `foldCellsIdx`
+characterizations rather than the plain `foldCells` ones. -/
+
+/-- Stack-level content of `insertAboveCell` for a NON-wildcard acting tag
+    (the wildcard-resolution branch never fires for compiler-minted or
+    core-program tags). -/
+def insertAboveContent (a : Word) (tag : Tag) (item : Item)
+    (stack : BorrowStack) : Except String BorrowStack :=
+  match splitStack stack tag with
+  | none => .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {a}"
+  | some (_, .Disabled _, _) =>
+      .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {a} (disabled)"
+  | some (above, granting, below) =>
+      .ok (above ++ item :: granting :: below)
+
+/-- `sb_ref`'s per-cell operation, lifted to a top-level definition so the
+    fold characterizations can be stated about it (verbatim copy of the
+    `cellOp` local in `sb_ref`, with `newItem` inlined per kind). -/
+def refCellOp (tag newTag : Tag) (kind : RefKind) (mask : List Bool) :
+    AccessPerms → Word → Nat → Except String AccessPerms :=
+  match kind with
+  | .Mut => fun ap a _ => do pushCell (← writeCell ap a tag) a (.MutRef newTag)
+  | .Shared => fun ap a i =>
+      if mask.getD i false then
+        insertAboveCell ap a tag (.RawPtr true newTag)
+      else do
+        pushCell (← readCell ap a tag) a (.Ref newTag)
+  | .Raw false => fun ap a i =>
+      if mask.getD i false then
+        insertAboveCell ap a tag (.RawPtr true newTag)
+      else do
+        pushCell (← readCell ap a tag) a (.RawPtr false newTag)
+  | .Raw true => fun ap a _ => insertAboveCell ap a tag (.RawPtr true newTag)
+  | .TwoPhase => fun ap a _ =>
+      do insertAboveCell (← readCell ap a tag) a tag (.RawPtr true newTag)
+
+/-- The per-cell stack content of `refCellOp`, in the `Option`-consuming
+    shape `foldCellsIdx_ok_inv`/`_of_cells` eat. -/
+def refCellContent (P : List (List Tag)) (E : List Tag) (a : Word)
+    (tag newTag : Tag) (kind : RefKind) (mask : List Bool) (i : Nat) :
+    Option BorrowStack → Except String BorrowStack
+  | none =>
+      match kind with
+      | .Mut => .error s!"sb-write: no borrow stack at address {a}"
+      | .Shared =>
+          if mask.getD i false then
+            .error s!"sb-insert: no borrow stack at address {a}"
+          else
+            .error s!"sb-read: no borrow stack at address {a}"
+      | .Raw false =>
+          if mask.getD i false then
+            .error s!"sb-insert: no borrow stack at address {a}"
+          else
+            .error s!"sb-read: no borrow stack at address {a}"
+      | .Raw true => .error s!"sb-insert: no borrow stack at address {a}"
+      | .TwoPhase => .error s!"sb-read: no borrow stack at address {a}"
+  | some stack =>
+      match kind with
+      | .Mut =>
+          match writeCellContent P E a tag stack with
+          | .error e => .error e
+          | .ok v => .ok (.MutRef newTag :: v)
+      | .Shared =>
+          if mask.getD i false then
+            insertAboveContent a tag (.RawPtr true newTag) stack
+          else
+            match readCellContent P E a tag stack with
+            | .error e => .error e
+            | .ok v => .ok (.Ref newTag :: v)
+      | .Raw false =>
+          if mask.getD i false then
+            insertAboveContent a tag (.RawPtr true newTag) stack
+          else
+            match readCellContent P E a tag stack with
+            | .error e => .error e
+            | .ok v => .ok (.RawPtr false newTag :: v)
+      | .Raw true => insertAboveContent a tag (.RawPtr true newTag) stack
+      | .TwoPhase =>
+          match readCellContent P E a tag stack with
+          | .error e => .error e
+          | .ok v => insertAboveContent a tag (.RawPtr true newTag) v
+
+theorem refCellContent_none_error
+    {P : List (List Tag)} {E : List Tag} {a : Word} {tag newTag : Tag}
+    {kind : RefKind} {mask : List Bool} {i : Nat} {w : BorrowStack} :
+    refCellContent P E a tag newTag kind mask i none ≠ .ok w := by
+  intro h
+  cases kind with
+  | Mut => simp [refCellContent] at h
+  | Shared => cases hm : mask.getD i false <;> simp [refCellContent, hm] at h
+  | Raw m =>
+      cases m with
+      | false => cases hm : mask.getD i false <;> simp [refCellContent, hm] at h
+      | true => simp [refCellContent] at h
+  | TwoPhase => simp [refCellContent] at h
+
+/-- `sb_ref` unfolded to the `refCellOp` fold plus the protector-frame
+    registration (the shape the fold characterizations apply to). -/
+theorem sb_ref_unfold (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag)
+    (kind : RefKind) (prot : Bool) (mask : List Bool) :
+    sb_ref ap addr len tag kind prot mask =
+      match foldCellsIdx (refCellOp tag ap.NextTag kind mask)
+          { ap with NextTag := ap.NextTag + 1 } addr 0 len with
+      | .error e => .error e
+      | .ok apR =>
+          if prot then
+            match apR.protFrames with
+            | [] => .error "sb-ref: protected retag outside any protector frame"
+            | frame :: rest =>
+                .ok ({ apR with protFrames := (ap.NextTag :: frame) :: rest },
+                  ap.NextTag)
+          else .ok (apR, ap.NextTag) := by
+  have h_tail : ∀ (r : Except String AccessPerms),
+      (do
+        let apR ← r
+        if prot then
+          match apR.protFrames with
+          | [] =>
+              (.error "sb-ref: protected retag outside any protector frame" :
+                Except String (AccessPerms × Tag))
+          | frame :: rest =>
+              return ({ apR with protFrames := (ap.NextTag :: frame) :: rest },
+                ap.NextTag)
+        else
+          return (apR, ap.NextTag)) =
+      match r with
+      | .error e => .error e
+      | .ok apR =>
+          if prot then
+            match apR.protFrames with
+            | [] => .error "sb-ref: protected retag outside any protector frame"
+            | frame :: rest =>
+                .ok ({ apR with protFrames := (ap.NextTag :: frame) :: rest },
+                  ap.NextTag)
+          else .ok (apR, ap.NextTag) := by
+    intro r
+    cases r with
+    | error e => rfl
+    | ok apR =>
+        cases prot with
+        | false => rfl
+        | true => cases h : apR.protFrames <;> simp [bind, Except.bind, h]
+  cases kind with
+  | Mut =>
+      simp only [sb_ref, freshTag, RefKind.toItem, refCellOp]
+      exact h_tail _
+  | Shared =>
+      simp only [sb_ref, freshTag, RefKind.toItem, refCellOp]
+      exact h_tail _
+  | Raw m =>
+      cases m with
+      | false =>
+          simp only [sb_ref, freshTag, RefKind.toItem, refCellOp]
+          exact h_tail _
+      | true =>
+          simp only [sb_ref, freshTag, RefKind.toItem, refCellOp]
+          exact h_tail _
+  | TwoPhase =>
+      simp only [sb_ref, freshTag, RefKind.toItem, refCellOp]
+      exact h_tail _
+
+/-- `refCellOp` in the content-driven form the fold characterizations eat
+    (NON-wildcard acting tag; `NextTag` plays no role in the op). -/
+theorem refCellOp_content_form
+    {P : List (List Tag)} {E : List Tag} {addr : Word}
+    (tag newTag : Tag) (kind : RefKind) (mask : List Bool)
+    (h_ts : (tag == wildcardTag) = false) :
+    ∀ (ap : AccessPerms) (i : Nat), ap.protFrames = P → ap.exposed = E →
+      refCellOp tag newTag kind mask ap (addr + i) i =
+        match refCellContent P E (addr + i) tag newTag kind mask i
+            (SB.find? ap.StackMap (addr + i)) with
+        | .error e => .error e
+        | .ok v => .ok { ap with StackMap := SB.set ap.StackMap (addr + i) v } := by
+  intro ap i h_pf h_ex
+  have h_insert : ∀ (item : Item),
+      insertAboveCell ap (addr + i) tag item =
+        match SB.find? ap.StackMap (addr + i) with
+        | none => .error s!"sb-insert: no borrow stack at address {addr + i}"
+        | some stack =>
+          match insertAboveContent (addr + i) tag item stack with
+          | .error e => .error e
+          | .ok v => .ok { ap with StackMap := SB.set ap.StackMap (addr + i) v } := by
+    intro item
+    cases h_find : SB.find? ap.StackMap (addr + i) with
+    | none => simp only [insertAboveCell, h_find]
+    | some stack =>
+        simp only [insertAboveCell, h_find, h_ts, Bool.false_eq_true, if_false]
+        cases h_split : splitStack stack tag with
+        | none => simp [insertAboveContent, h_split]
+        | some triple =>
+            obtain ⟨ab, it, bl⟩ := triple
+            cases it <;> simp [insertAboveContent, h_split]
+  cases kind with
+  | Mut =>
+      cases h_find : SB.find? ap.StackMap (addr + i) with
+      | none =>
+          simp only [refCellOp, refCellContent, writeCell, h_find, bind, Except.bind]
+      | some stack =>
+          cases h_content : writeCellContent P E (addr + i) tag stack with
+          | error e =>
+              simp only [refCellOp, refCellContent, writeCell, h_pf, h_ex, h_find,
+                h_content, bind, Except.bind]
+          | ok v =>
+              simp only [refCellOp, refCellContent, writeCell, h_pf, h_ex, h_find,
+                h_content, bind, Except.bind, pushCell, SB.find?_set_self, SB.set_set]
+  | Shared =>
+      cases h_mask : mask.getD i false with
+      | true =>
+          simp only [refCellOp, refCellContent, h_mask, if_true]
+          rw [h_insert]
+          cases h_find : SB.find? ap.StackMap (addr + i) <;> rfl
+      | false =>
+          simp only [refCellOp, refCellContent, h_mask, Bool.false_eq_true, if_false]
+          cases h_find : SB.find? ap.StackMap (addr + i) with
+          | none =>
+              simp only [readCell, h_find, bind, Except.bind]
+          | some stack =>
+              cases h_content : readCellContent P E (addr + i) tag stack with
+              | error e =>
+                  simp only [readCell, h_pf, h_ex, h_find, h_content, bind, Except.bind]
+              | ok v =>
+                  simp only [readCell, h_pf, h_ex, h_find, h_content, bind, Except.bind,
+                    pushCell, SB.find?_set_self, SB.set_set]
+  | Raw m =>
+      cases m with
+      | false =>
+          cases h_mask : mask.getD i false with
+          | true =>
+              simp only [refCellOp, refCellContent, h_mask, if_true]
+              rw [h_insert]
+              cases h_find : SB.find? ap.StackMap (addr + i) <;> rfl
+          | false =>
+              simp only [refCellOp, refCellContent, h_mask, Bool.false_eq_true, if_false]
+              cases h_find : SB.find? ap.StackMap (addr + i) with
+              | none =>
+                  simp only [readCell, h_find, bind, Except.bind]
+              | some stack =>
+                  cases h_content : readCellContent P E (addr + i) tag stack with
+                  | error e =>
+                      simp only [readCell, h_pf, h_ex, h_find, h_content, bind,
+                        Except.bind]
+                  | ok v =>
+                      simp only [readCell, h_pf, h_ex, h_find, h_content, bind,
+                        Except.bind, pushCell, SB.find?_set_self, SB.set_set]
+      | true =>
+          simp only [refCellOp, refCellContent]
+          rw [h_insert]
+          cases h_find : SB.find? ap.StackMap (addr + i) <;> rfl
+  | TwoPhase =>
+      cases h_find : SB.find? ap.StackMap (addr + i) with
+      | none =>
+          simp only [refCellOp, refCellContent, readCell, h_find, bind, Except.bind]
+      | some stack =>
+          cases h_content : readCellContent P E (addr + i) tag stack with
+          | error e =>
+              simp only [refCellOp, refCellContent, readCell, h_pf, h_ex, h_find,
+                h_content, bind, Except.bind]
+          | ok v =>
+              simp only [refCellOp, refCellContent, readCell, h_pf, h_ex, h_find,
+                h_content, bind, Except.bind]
+              rw [show insertAboveCell { ap with StackMap := SB.set ap.StackMap (addr + i) v }
+                    (addr + i) tag (.RawPtr true newTag) =
+                  match SB.find? (SB.set ap.StackMap (addr + i) v) (addr + i) with
+                  | none => .error s!"sb-insert: no borrow stack at address {addr + i}"
+                  | some stack =>
+                    match insertAboveContent (addr + i) tag (.RawPtr true newTag) stack with
+                    | .error e => .error e
+                    | .ok u => .ok { ap with StackMap :=
+                        SB.set (SB.set ap.StackMap (addr + i) v) (addr + i) u }
+                  from by
+                    cases h_find' : SB.find? (SB.set ap.StackMap (addr + i) v) (addr + i) with
+                    | none => simp only [insertAboveCell, h_find']
+                    | some stack' =>
+                        simp only [insertAboveCell, h_find', h_ts, Bool.false_eq_true,
+                          if_false]
+                        cases h_split : splitStack stack' tag with
+                        | none => simp [insertAboveContent, h_split]
+                        | some triple =>
+                            obtain ⟨ab, it, bl⟩ := triple
+                            cases it <;> simp [insertAboveContent, h_split]]
+              rw [SB.find?_set_self]
+              cases h_ins : insertAboveContent (addr + i) tag (.RawPtr true newTag) v with
+              | error e => rfl
+              | ok u => simp only [SB.set_set]
+
+/-- `insertAboveContent` transport: the untouched stack parts stay related,
+    and the inserted items are related by hypothesis. -/
+theorem insertAboveContent_transport
+    {ρt : TagRenameMap} {a a' : Word} {tagS tagT : Tag}
+    {itemS itemT : Item} {v v' w : BorrowStack}
+    (h_wf : TagRenameWF ρt)
+    (h_t : ρt tagS = some tagT)
+    (h_item : ItemSim ρt itemS itemT)
+    (h_v : StackSim ρt v v')
+    (h_ok : insertAboveContent a tagS itemS v = .ok w) :
+    ∃ w', insertAboveContent a' tagT itemT v' = .ok w' ∧ StackSim ρt w w' := by
+  unfold insertAboveContent at h_ok ⊢
+  cases h_split : splitStack v tagS with
+  | none => simp [h_split] at h_ok
+  | some triple =>
+      obtain ⟨ab, it, bl⟩ := triple
+      obtain ⟨ab', it', bl', h_split', h_ab, h_it, h_bl⟩ :=
+        splitStack_some_transport h_wf h_t h_v h_split
+      simp only [h_split] at h_ok
+      simp only [h_split']
+      cases it with
+      | Disabled t => simp at h_ok
+      | Own t =>
+          cases it' <;> simp only [ItemSim] at h_it
+          simp only [Except.ok.injEq] at h_ok
+          refine ⟨_, rfl, ?_⟩
+          rw [← h_ok]
+          exact ListRel.append h_ab ⟨h_item, by simp [ItemSim]; exact h_it, h_bl⟩
+      | MutRef t =>
+          cases it' <;> simp only [ItemSim] at h_it
+          simp only [Except.ok.injEq] at h_ok
+          refine ⟨_, rfl, ?_⟩
+          rw [← h_ok]
+          exact ListRel.append h_ab ⟨h_item, by simp [ItemSim]; exact h_it, h_bl⟩
+      | Ref t =>
+          cases it' <;> simp only [ItemSim] at h_it
+          simp only [Except.ok.injEq] at h_ok
+          refine ⟨_, rfl, ?_⟩
+          rw [← h_ok]
+          exact ListRel.append h_ab ⟨h_item, by simp [ItemSim]; exact h_it, h_bl⟩
+      | RawPtr m t =>
+          cases it' <;> simp only [ItemSim] at h_it
+          rw [h_it.1]
+          simp only [Except.ok.injEq] at h_ok
+          refine ⟨_, rfl, ?_⟩
+          rw [← h_ok]
+          exact ListRel.append h_ab
+            ⟨h_item, by simp [ItemSim]; exact h_it.2, h_bl⟩
+
+/-- `refCellContent` transport: relates the per-cell results of the two
+    machines' retag folds. `h_new` is the fresh-pair mapping — callers
+    instantiate ρt with the EXTENDED rename map. -/
+theorem refCellContent_transport
+    {ρt : TagRenameMap} {pfS pfT : List (List Tag)} {exS exT : List Tag}
+    {a a' : Word} {tagS tagT newTagS newTagT : Tag}
+    {kind : RefKind} {mask : List Bool} {i : Nat}
+    {v v' w : BorrowStack}
+    (h_wf : TagRenameWF ρt)
+    (h_pf : ListRel (TagListSim ρt) pfS pfT)
+    (h_t : ρt tagS = some tagT)
+    (h_ts : (tagS == wildcardTag) = false)
+    (h_new : ρt newTagS = some newTagT)
+    (h_v : StackSim ρt v v')
+    (h_ok : refCellContent pfS exS a tagS newTagS kind mask i (some v) = .ok w) :
+    ∃ w', refCellContent pfT exT a' tagT newTagT kind mask i (some v') = .ok w' ∧
+      StackSim ρt w w' := by
+  cases kind with
+  | Mut =>
+      simp only [refCellContent] at h_ok ⊢
+      cases h_w : writeCellContent pfS exS a tagS v with
+      | error e => simp [h_w] at h_ok
+      | ok u =>
+          simp only [h_w, Except.ok.injEq] at h_ok
+          obtain ⟨u', h_w', h_u⟩ :=
+            writeCellContent_transport h_wf h_pf h_t h_ts h_v h_w
+          simp only [h_w']
+          refine ⟨_, rfl, ?_⟩
+          rw [← h_ok]
+          exact ⟨by simp [ItemSim]; exact h_new, h_u⟩
+  | Shared =>
+      cases h_mask : mask.getD i false with
+      | true =>
+          simp only [refCellContent, h_mask, if_true] at h_ok ⊢
+          exact insertAboveContent_transport h_wf h_t
+            (by simp [ItemSim]; exact h_new) h_v h_ok
+      | false =>
+          simp only [refCellContent, h_mask, Bool.false_eq_true, if_false] at h_ok ⊢
+          cases h_r : readCellContent pfS exS a tagS v with
+          | error e => simp [h_r] at h_ok
+          | ok u =>
+              simp only [h_r, Except.ok.injEq] at h_ok
+              obtain ⟨u', h_r', h_u⟩ :=
+                readCellContent_transport h_wf h_pf h_t h_ts h_v h_r
+              simp only [h_r']
+              refine ⟨_, rfl, ?_⟩
+              rw [← h_ok]
+              exact ⟨by simp [ItemSim]; exact h_new, h_u⟩
+  | Raw m =>
+      cases m with
+      | false =>
+          cases h_mask : mask.getD i false with
+          | true =>
+              simp only [refCellContent, h_mask, if_true] at h_ok ⊢
+              exact insertAboveContent_transport h_wf h_t
+                (by simp [ItemSim]; exact h_new) h_v h_ok
+          | false =>
+              simp only [refCellContent, h_mask, Bool.false_eq_true, if_false]
+                at h_ok ⊢
+              cases h_r : readCellContent pfS exS a tagS v with
+              | error e => simp [h_r] at h_ok
+              | ok u =>
+                  simp only [h_r, Except.ok.injEq] at h_ok
+                  obtain ⟨u', h_r', h_u⟩ :=
+                    readCellContent_transport h_wf h_pf h_t h_ts h_v h_r
+                  simp only [h_r']
+                  refine ⟨_, rfl, ?_⟩
+                  rw [← h_ok]
+                  exact ⟨by simp [ItemSim]; exact h_new, h_u⟩
+      | true =>
+          simp only [refCellContent] at h_ok ⊢
+          exact insertAboveContent_transport h_wf h_t
+            (by simp [ItemSim]; exact h_new) h_v h_ok
+  | TwoPhase =>
+      simp only [refCellContent] at h_ok ⊢
+      cases h_r : readCellContent pfS exS a tagS v with
+      | error e => simp [h_r] at h_ok
+      | ok u =>
+          simp only [h_r] at h_ok
+          obtain ⟨u', h_r', h_u⟩ :=
+            readCellContent_transport h_wf h_pf h_t h_ts h_v h_r
+          simp only [h_r']
+          exact insertAboveContent_transport h_wf h_t
+            (by simp [ItemSim]; exact h_new) h_u h_ok
+
+/-- BRIDGE 3 family, `sb_ref` member — the ρt-GROWING transport: a
+    successful source retag through `tagS` is matched by a target retag
+    through the renamed `tagT`. The fresh tags are the two counters (which
+    DIFFER), so the results are related under ρt extended at the fresh
+    pair; `TagRenameBound` makes the extension injective, and the lemma
+    returns the re-established bound at the bumped counters. Non-wildcard
+    acting tags only. -/
+theorem sb_ref_respects_PermSim
+    {ρt : TagRenameMap} {src tgt src' : AccessPerms}
+    {addr : Word} {len : Nat} {tagS tagT tS' : Tag}
+    {kind : RefKind} {prot : Bool} {mask : List Bool}
+    (h_sim : PermSim ρt src tgt)
+    (h_wf : TagRenameWF ρt)
+    (h_bound : TagRenameBound ρt src.NextTag tgt.NextTag)
+    (h_tag : ρt tagS = some tagT)
+    (h_ts : (tagS == wildcardTag) = false)
+    (h_src : sb_ref src addr len tagS kind prot mask = .ok (src', tS')) :
+    ∃ tgt',
+      sb_ref tgt addr len tagT kind prot mask = .ok (tgt', tgt.NextTag) ∧
+      tS' = src.NextTag ∧
+      src'.NextTag = src.NextTag + 1 ∧
+      tgt'.NextTag = tgt.NextTag + 1 ∧
+      PermSim (ρt.extend src.NextTag tgt.NextTag) src' tgt' ∧
+      TagRenameWF (ρt.extend src.NextTag tgt.NextTag) ∧
+      TagRenameIncr ρt (ρt.extend src.NextTag tgt.NextTag) ∧
+      TagRenameBound (ρt.extend src.NextTag tgt.NextTag)
+        (src.NextTag + 1) (tgt.NextTag + 1) := by
+  -- The extended rename map and its facts.
+  have h_incr : TagRenameIncr ρt (ρt.extend src.NextTag tgt.NextTag) :=
+    h_bound.extend_incr
+  have h_wf' : TagRenameWF (ρt.extend src.NextTag tgt.NextTag) :=
+    h_wf.extend h_bound
+  have h_bound' : TagRenameBound (ρt.extend src.NextTag tgt.NextTag)
+      (src.NextTag + 1) (tgt.NextTag + 1) := h_bound.extend
+  have h_tag' : ρt.extend src.NextTag tgt.NextTag tagS = some tagT := h_incr _ _ h_tag
+  have h_new' : ρt.extend src.NextTag tgt.NextTag src.NextTag = some tgt.NextTag :=
+    TagRenameMap.extend_self ρt _ _
+  obtain ⟨h_stacks', h_prot', h_exp', h_next⟩ := h_sim.rename_mono h_incr
+  -- Unfold the source retag and invert its fold.
+  rw [sb_ref_unfold] at h_src
+  cases h_goS : foldCellsIdx (refCellOp tagS src.NextTag kind mask)
+      { src with NextTag := src.NextTag + 1 } addr 0 len with
+  | error e =>
+      rw [h_goS] at h_src
+      simp at h_src
+  | ok apS =>
+      rw [h_goS] at h_src
+      simp only at h_src
+      obtain ⟨W, h_cellsS, h_apS⟩ :=
+        foldCellsIdx_ok_inv
+          (C := fun i v? => refCellContent src.protFrames src.exposed (addr + i)
+            tagS src.NextTag kind mask i v?)
+          (P := src.protFrames) (E := src.exposed) (N := src.NextTag + 1)
+          (fun ap i h_pf h_ex _ =>
+            refCellOp_content_form tagS src.NextTag kind mask h_ts ap i h_pf h_ex)
+          { src with NextTag := src.NextTag + 1 } apS rfl rfl rfl h_goS
+      rw [show ({ src with NextTag := src.NextTag + 1 } : AccessPerms).StackMap
+            = src.StackMap from rfl] at h_cellsS
+      -- Per-cell target packaging: source find? and content succeed, so the
+      -- target's do too, with `StackSim`-related results under the extension.
+      have h_pkg : ∀ j, ∃ vj, ∃ wj, j < len →
+          SB.find? tgt.StackMap (addr + j) = some vj ∧
+            refCellContent tgt.protFrames tgt.exposed (addr + j) tagT tgt.NextTag
+              kind mask j (some vj) = .ok wj ∧
+            StackSim (ρt.extend src.NextTag tgt.NextTag) (W j) wj := by
+        intro j
+        by_cases hj : j < len
+        · have hc := h_cellsS j (Nat.zero_le j) hj
+          cases h_find : SB.find? src.StackMap (addr + j) with
+          | none =>
+              rw [h_find] at hc
+              exact absurd hc refCellContent_none_error
+          | some vj =>
+              rw [h_find] at hc
+              obtain ⟨vj', h_find', h_vs⟩ := SB.find?_transport h_stacks' h_find
+              obtain ⟨wj', h_wj', h_ws⟩ :=
+                refCellContent_transport h_wf' h_prot' h_tag' h_ts h_new' h_vs hc
+              exact ⟨vj', wj', fun _ => ⟨h_find', h_wj', h_ws⟩⟩
+        · exact ⟨[], [], fun h => absurd h hj⟩
+      have h_pkg' : ∀ j, j < len →
+          SB.find? tgt.StackMap (addr + j) = some ((h_pkg j).choose) ∧
+            refCellContent tgt.protFrames tgt.exposed (addr + j) tagT tgt.NextTag
+              kind mask j (some ((h_pkg j).choose)) = .ok ((h_pkg j).choose_spec.choose) ∧
+            StackSim (ρt.extend src.NextTag tgt.NextTag) (W j)
+              ((h_pkg j).choose_spec.choose) :=
+        fun j hj => (h_pkg j).choose_spec.choose_spec hj
+      -- Run the target fold.
+      have h_goT : foldCellsIdx (refCellOp tagT tgt.NextTag kind mask)
+          { tgt with NextTag := tgt.NextTag + 1 } addr 0 len =
+          .ok { tgt with NextTag := tgt.NextTag + 1, StackMap :=
+            setChain tgt.StackMap
+              (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 len) } := by
+        have h_tt : (tagT == wildcardTag) = false := by
+          rw [h_wf.beq_eq h_tag h_wf.2]
+          exact h_ts
+        exact foldCellsIdx_ok_of_cells
+          (C := fun i v? => refCellContent tgt.protFrames tgt.exposed (addr + i)
+            tagT tgt.NextTag kind mask i v?)
+          (P := tgt.protFrames) (E := tgt.exposed) (N := tgt.NextTag + 1)
+          (fun ap i h_pf h_ex _ =>
+            refCellOp_content_form tagT tgt.NextTag kind mask h_tt ap i h_pf h_ex)
+          { tgt with NextTag := tgt.NextTag + 1 }
+          (fun j => (h_pkg j).choose_spec.choose)
+          rfl rfl rfl
+          (fun j h1 h2 => by
+            rw [show ({ tgt with NextTag := tgt.NextTag + 1 } : AccessPerms).StackMap
+                  = tgt.StackMap from rfl, (h_pkg' j h2).1]
+            exact (h_pkg' j h2).2.1)
+      -- The folded states are `PermSim`-related under the extension.
+      have h_stacksR : ListRel (CellSim (ρt.extend src.NextTag tgt.NextTag))
+          (setChain src.StackMap (chain W addr 0 len))
+          (setChain tgt.StackMap
+            (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 len)) :=
+        setChain_chain_respects h_stacks' (fun j h1 h2 => (h_pkg' j h2).2.2)
+      -- Discharge the protector-registration branch and assemble.
+      rw [sb_ref_unfold, h_goT]
+      subst h_apS
+      cases prot with
+      | false =>
+          simp only [Bool.false_eq_true, if_false, Except.ok.injEq, Prod.mk.injEq]
+            at h_src
+          obtain ⟨h_eq1, h_eq2⟩ := h_src
+          refine ⟨_, rfl, h_eq2.symm, ?_, rfl, ?_, h_wf', h_incr, h_bound'⟩
+          · rw [← h_eq1]
+          · rw [← h_eq1]
+            exact ⟨h_stacksR, h_prot', h_exp', Nat.succ_le_succ h_next⟩
+      | true =>
+          simp only [if_true] at h_src ⊢
+          cases h_pfS : src.protFrames with
+          | nil =>
+              rw [show ({ src with NextTag := src.NextTag + 1, StackMap :=
+                    setChain src.StackMap (chain W addr 0 len) }
+                  : AccessPerms).protFrames = src.protFrames from rfl, h_pfS] at h_src
+              simp at h_src
+          | cons frame rest =>
+              rw [show ({ src with NextTag := src.NextTag + 1, StackMap :=
+                    setChain src.StackMap (chain W addr 0 len) }
+                  : AccessPerms).protFrames = src.protFrames from rfl, h_pfS] at h_src
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h_src
+              obtain ⟨h_eq1, h_eq2⟩ := h_src
+              -- Target frames are nonempty and related.
+              rw [h_pfS] at h_prot'
+              cases h_pfT : tgt.protFrames with
+              | nil =>
+                  rw [h_pfT] at h_prot'
+                  simp [ListRel] at h_prot'
+              | cons frame' rest' =>
+                  rw [h_pfT] at h_prot'
+                  simp only [ListRel] at h_prot'
+                  rw [show ({ tgt with NextTag := tgt.NextTag + 1, StackMap :=
+                        setChain tgt.StackMap
+                          (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 len) }
+                      : AccessPerms).protFrames = tgt.protFrames from rfl, h_pfT]
+                  refine ⟨_, rfl, h_eq2.symm ▸ rfl, ?_, rfl, ?_, h_wf', h_incr, h_bound'⟩
+                  · rw [← h_eq1]
+                  · rw [← h_eq1]
+                    refine ⟨h_stacksR, ?_, h_exp', Nat.succ_le_succ h_next⟩
+                    exact ⟨⟨h_new', h_prot'.1⟩, h_prot'.2⟩
+
 /-- BRIDGE 3 family, `sb_die` member: a successful source die through
     `tagS` is matched by a target die through the renamed `tagT`, and the
     results stay `PermSim`-related. (No wildcard side condition: `die` is

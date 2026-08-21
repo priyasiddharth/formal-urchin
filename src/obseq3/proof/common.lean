@@ -536,6 +536,82 @@ def TagRenameWF (ρt : TagRenameMap) : Prop :=
   (∀ t1 t2 t', ρt t1 = some t' → ρt t2 = some t' → t1 = t2) ∧
   ρt wildcardTag = some wildcardTag
 
+/-- Extend a tag rename map at one fresh pair (the `sb_ref` transport's
+    growth step: source fresh tag ↦ target fresh tag). -/
+def TagRenameMap.extend (ρt : TagRenameMap) (tS tT : Tag) : TagRenameMap :=
+  fun t => if t == tS then some tT else ρt t
+
+theorem TagRenameMap.extend_self (ρt : TagRenameMap) (tS tT : Tag) :
+    ρt.extend tS tT tS = some tT := by
+  simp [TagRenameMap.extend]
+
+theorem TagRenameMap.extend_ne {ρt : TagRenameMap} {tS tT t : Tag}
+    (h : t ≠ tS) : ρt.extend tS tT t = ρt t := by
+  simp [TagRenameMap.extend, h]
+
+/-- Every mapped pair sits strictly below the two machines' tag counters.
+    This is what makes the `sb_ref` extension injective: the fresh pair
+    `(src.NextTag, tgt.NextTag)` cannot collide with anything mapped. -/
+def TagRenameBound (ρt : TagRenameMap) (nS nT : Tag) : Prop :=
+  ∀ t t', ρt t = some t' → t < nS ∧ t' < nT
+
+theorem TagRenameBound.not_dom {ρt : TagRenameMap} {nS nT : Tag}
+    (h_b : TagRenameBound ρt nS nT) : ρt nS = none := by
+  cases h : ρt nS with
+  | none => rfl
+  | some t' => exact absurd (h_b nS t' h).1 (Nat.lt_irrefl nS)
+
+theorem TagRenameBound.extend_incr {ρt : TagRenameMap} {nS nT : Tag}
+    (h_b : TagRenameBound ρt nS nT) :
+    TagRenameIncr ρt (ρt.extend nS nT) := by
+  intro t t' h
+  by_cases ht : t = nS
+  · subst ht
+    rw [h_b.not_dom] at h
+    cases h
+  · rw [TagRenameMap.extend_ne ht]
+    exact h
+
+theorem TagRenameWF.extend {ρt : TagRenameMap} {nS nT : Tag}
+    (h_wf : TagRenameWF ρt) (h_b : TagRenameBound ρt nS nT) :
+    TagRenameWF (ρt.extend nS nT) := by
+  constructor
+  · intro t1 t2 t' h1 h2
+    by_cases ht1 : t1 = nS <;> by_cases ht2 : t2 = nS
+    · rw [ht1, ht2]
+    · subst ht1
+      rw [TagRenameMap.extend_self] at h1
+      rw [TagRenameMap.extend_ne ht2] at h2
+      injection h1 with h1'
+      subst h1'
+      exact absurd (h_b t2 nT h2).2 (Nat.lt_irrefl nT)
+    · subst ht2
+      rw [TagRenameMap.extend_self] at h2
+      rw [TagRenameMap.extend_ne ht1] at h1
+      injection h2 with h2'
+      subst h2'
+      exact absurd (h_b t1 nT h1).2 (Nat.lt_irrefl nT)
+    · rw [TagRenameMap.extend_ne ht1] at h1
+      rw [TagRenameMap.extend_ne ht2] at h2
+      exact h_wf.1 t1 t2 t' h1 h2
+  · have h_ne : wildcardTag ≠ nS :=
+      Nat.ne_of_lt (h_b wildcardTag wildcardTag h_wf.2).1
+    rw [TagRenameMap.extend_ne h_ne]
+    exact h_wf.2
+
+theorem TagRenameBound.extend {ρt : TagRenameMap} {nS nT : Tag}
+    (h_b : TagRenameBound ρt nS nT) :
+    TagRenameBound (ρt.extend nS nT) (nS + 1) (nT + 1) := by
+  intro t t' h
+  by_cases ht : t = nS
+  · subst ht
+    rw [TagRenameMap.extend_self] at h
+    injection h with h'
+    subst h'
+    exact ⟨Nat.lt_succ_self _, Nat.lt_succ_self _⟩
+  · rw [TagRenameMap.extend_ne ht] at h
+    exact ⟨Nat.lt_succ_of_lt (h_b t t' h).1, Nat.lt_succ_of_lt (h_b t t' h).2⟩
+
 /-! ### PermSim — the corrected permission relation
 
 obseq2 asserted `s_osea.ap = s_mir.perms` verbatim. That is false as soon as
