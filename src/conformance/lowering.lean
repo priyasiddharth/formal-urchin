@@ -8,8 +8,10 @@ Passes (fused into one walk):
    local space; recursion/indirect calls rejected).
 2. **Linearize**: follow `goto`/call-target edges from bb0; a revisited
    block means a loop → unsupported. Unwind edges are never followed.
-3. **Drop** StorageLive/Dead, Borrowck/FakeRead, Nop, PlaceMention, and
-   unit-aggregate assignments (no memory access in Miri either).
+3. **Drop** StorageLive/Dead, Borrowck/FakeRead, Nop, PlaceMention.
+   Unit-aggregate assignments are kept as access-free `uninit` inits:
+   no memory access in Miri either, but the ZST destination still gets
+   allocated, so it can be borrowed.
 4. **Desugar** non-empty tuple aggregates into per-field assignments.
 5. **Seam retags**: reference-typed arguments and return values are
    re-tagged at inline seams (`arg := &mut *callerPtr`), mirroring Miri's
@@ -326,7 +328,14 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
                    with fnPtrs := (n, fid) :: st.fnPtrs }
       | _ => .error s!"unsupported: fn pointer stored into a projection (line {line})"
   | .aggregate none [] =>
-      return st  -- unit value: no memory access
+      -- unit value: no memory ACCESS (Miri performs none either), but the
+      -- assignment still binds/allocates its destination — a ZST local is
+      -- a real (zero-sized) allocation that can be borrowed. Lowered as an
+      -- access-free `uninit` init: a zero-length write is a no-op on both
+      -- machines, and `preparePlaceAssign` allocates the root. (Before
+      -- 2026-08-22 this was dropped outright, so `&mut z` for `z : ()`
+      -- failed at resolution — `local/zst_ref`.)
+      return pushOut st (.assign dst .uninit line)
   | .aggregate none ops => do
       let mut st := st
       for h : i in [0:ops.length] do

@@ -162,14 +162,20 @@ reached. Miri allocates ZST locals (zero-sized) and the retag is fine.
 **Why parked:** the ref L→L regime carries `0 < blockSize τ`
 (`ref_zst_residual` is the named sorry); both fixes are model/pipeline
 decisions.
-**To resume, in order:** (1) lower `x = ()` as an access-free init that
-allocates the root (e.g. `.assign dst .uninit`, whose `blockSize = 0`
-write is a no-op on both machines — but check the target's `CStore` of
-zero cells first); the witness flips to XPASS. (2) relax the target's
-`Rhs.Borrow` check for `len = 0`; the `--osea` differential goes
-77 → 78 matched and `ref_zst_residual` becomes provable by dropping the
-side condition. Re-validate after each (suite 77/118 + xfail 1 today).
-**Effort estimate:** ~1 h each including validation.
+**Gap (1) FIXED 2026-08-22:** unit-aggregate assignments are lowered as
+`.assign dst .uninit` (lowering.lean); the witness went XFAIL → XPASS →
+promoted to `supported`, suite pass 78 | fail 0 (118), 49 line-accurate
+tests unchanged through a change that touched 76/77 artifacts.
+**To resume (gap 2):** relax the target's `Rhs.Borrow` check for
+`len = 0` (oseair.lean `Rhs.Borrow`: `addr >= base + size` → skip or
+`addr > base + size` when `len = 0`); the `--osea` differential goes
+matched 77 | mismatch 1 → matched 78 | mismatch 0, and
+`ref_zst_residual` becomes provable by dropping `h_nz` from the L→L
+regime. The differential is LOUD (mismatch 1) until then, by design —
+there is no per-test expected-mismatch field, and adding one would hide
+exactly the signal the witness exists to give.
+**Effort estimate:** ~1 h including validation and the proof-side
+side-condition removal.
 **References:** journal/2026-08/2026-08-22-rstore-tyval-blocker.md.
 
 ## MASTER INVENTORY: everything unimplemented or approximated (obseq3 conformance)

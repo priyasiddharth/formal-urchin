@@ -154,16 +154,18 @@ but has NOT been verified against a real Miri run. Current entries:
   `&mut *(&raw mut p)`; motivated the 2026-08-21 mirlite change making
   deref resolution a real SB read (`resolvePlaceAcc`). Follow-up: run
   the pinned Miri on this file and upgrade the provenance.
-- `local/zst_ref` (`xfail-model`) — the ZST borrow witness: `&mut ()` is
-  a legal, access-free retag (expected `ok`). It currently XFAILs for a
-  LAYERED pair of gaps found 2026-08-22 while closing the ref leaf of the
-  compiler-correctness proof: (1) the loader drops unit-aggregate
-  assignments (step 3 of the lowering), which is right for accesses but
-  also drops the ZST local's *allocation*, so mirlite fails `&mut z` at
-  resolution; (2) behind that, the OSEA target's `Rhs.Borrow` bounds
-  check rejects `size = 0` while mirlite's `M.ref` accepts it —
-  source-ok/target-UB, and here Rust sides with the source. An XPASS on
-  this test means (1) is fixed; the `--osea` differential then exposes
-  (2). The three corpus ZST tests are UNSUPPORTED for unrelated reasons
-  (slices / alloc+int-to-ptr / closures), so this is the only ZST
-  coverage the suite has.
+- `local/zst_ref` — the ZST borrow witness: `&mut ()` is a legal,
+  access-free retag (expected `ok`, PASSES). Writing it surfaced a
+  loader gap, fixed 2026-08-22: unit-aggregate assignments used to be
+  dropped (right for accesses, but it also dropped the ZST local's
+  allocation, so mirlite failed `&mut z` at resolution); they are now
+  kept as access-free `uninit` inits. That change touched 76 of the 77
+  corpus artifacts (every `fn` returns `()` into `_0`) with no verdict or
+  line change. What the witness was written for is still open: the OSEA
+  target's `Rhs.Borrow` bounds check rejects `size = 0` while mirlite's
+  `M.ref` accepts it — source-ok/target-UB, Rust sides with the source —
+  so the `--osea` differential reports exactly one MISMATCH here by
+  design until that check is relaxed for empty ranges. The three corpus
+  ZST tests are UNSUPPORTED for unrelated reasons (slices /
+  alloc+int-to-ptr / closures), so this is the suite's only ZST
+  coverage.

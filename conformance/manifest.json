@@ -1693,13 +1693,12 @@
     {
       "id": "local/zst_ref",
       "artifact": "local/zst_ref.ullbc.json",
-      "status": "xfail-model",
+      "status": "supported",
       "expected": {
         "verdict": "ok"
       },
       "provenance": "local-model-reasoned; pending real-Miri verification",
-      "notes": "ZST borrow witness, found 2026-08-22 while closing the ref leaf (the closed regime carries 0 < blockSize). Expected verdict model-reasoned from Miri semantics (&mut () is a legal, access-free retag); pending real-Miri verification.",
-      "reason": "ZST gaps (2, layered): (1) the loader drops unit-aggregate assignments, so a ZST local is never ALLOCATED in mirlite and `&mut z` fails at resolution (ub@13 \"place root local not allocated\") -- Miri allocates it (zero-sized) and the retag is fine; (2) behind that, the OSEA target's Rhs.Borrow bounds check `addr >= base + size` rejects size 0 while mirlite's M.ref accepts it (source-ok/target-UB; Rust sides with the source). Fix (1) by lowering `x = ()` as an access-free init that allocates the root; fix (2) by relaxing the target check for len = 0. XPASS on this test means (1) is fixed; the --osea differential then exposes (2)."
+      "notes": "ZST borrow witness (2026-08-22): &mut () is a legal, access-free retag. Source OK since the loader keeps unit-aggregate assignments as access-free uninit inits (they allocate the ZST root). The --osea differential MISMATCHES here by design until the OSEA target relaxes its Rhs.Borrow bounds check for len = 0 (source-ok/target-UB; Rust sides with the source; proof-side the ref L->L regime carries 0 < blockSize and ref_zst_residual is the named sorry). Expected verdict model-reasoned; pending real-Miri verification."
     }
   ]
 }
