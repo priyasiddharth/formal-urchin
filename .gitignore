@@ -5,3 +5,6 @@
 *.c
 *.so
 .DS_Store
+
+# Claude Code worktree checkouts (machine-local, never shared)
+.claude/worktrees/
