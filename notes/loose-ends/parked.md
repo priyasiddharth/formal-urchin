@@ -132,6 +132,50 @@ restriction) and the Discriminant rvalue (read payload slot 0);
 "retag-rule frontier is done" boundary), conformance/README.md
 (remaining-exclusions list), durable/sb-conformance-claim.md
 
+## `RStore`'s `TyVal` guard is unprovable (blocks the ref leaf)
+**Status:** parked 2026-08-22 — BLOCKING, needs a user decision
+**Context:** `oseair.stepWith`'s `RStore` case guards on `srcTy != ty`,
+and `obseq.TyVal`'s DERIVED `BEq` is opaque to the logic:
+`(TyVal.PTy == TyVal.PTy) = true` is not provable by `rfl`/`decide`/
+`simp`/`with_unfolding_all`/`unseal`, and the instance is axiom-free, so
+the derived function for this nested inductive simply has no usable
+equations. Runtime is unaffected (suites green); only proofs are blocked.
+Consequence: no theorem can step over an `RStore`, which blocks
+`CompilerInv_step_ref` (fragment `Borrow; RStore`) and will block
+`alloc`/`exposeAddr`/`refSlice`.
+**Why parked:** the fix is a model change in `src/obseq/types.lean`,
+shared with v1 and v2 — the user's call, not the agent's.
+**To resume:** pick one —
+(1) hand-write a structural `BEq TyVal` in obseq/types.lean (precedent:
+    `layoutDecEq` in the same file); behaviour-identical, guard becomes
+    `rfl`. CHEAPEST.
+(2) drop the `srcTy != ty` guard (a compiler-bug check the compiler can
+    never trip).
+Then re-run the suite (expect pass 77 | fail 0 of 117) and the
+differential (77/0/0) before trusting it, and finish
+`ref_local_local_simulation` — every other piece is already in place.
+**Effort estimate:** ~30 min for the model fix + validation; ~half-day
+for the leaf afterwards.
+**References:** journal/2026-08/2026-08-22-rstore-tyval-blocker.md,
+proof/common.lean §F BLOCKER note, proof/ref.lean leaf docstring.
+
+
+## ZST retag divergence (target `Borrow` bounds check vs mirlite `M.ref`)
+**Status:** parked 2026-08-22
+**Context:** for `blockSize τ = 0` the target's `Rhs.Borrow` check
+`addr ≥ base + size` fires and errs, while mirlite's `M.ref` has no such
+check and succeeds. Source-ok/target-UB. Unlike the 2026-08-21 deref-read
+finding, here RUST sides with the source (`&()` is legal), so the target
+is the divergent machine. No corpus test has the shape — ZSTs are outside
+the conformance surface (`zst-field-retagging-terminates` is UNSUPPORTED).
+**Why parked:** the ref leaf is blocked on the `RStore` guard first, and
+the closed regime can carry `0 < blockSize τ` meanwhile.
+**To resume:** decide whether to make the target's check
+`addr > base + size`-style (or skip it for `len = 0`) and re-validate, or
+to keep ZSTs as a documented out-of-scope residual.
+**Effort estimate:** ~1 h including validation.
+**References:** journal/2026-08/2026-08-22-rstore-tyval-blocker.md.
+
 ## MASTER INVENTORY: everything unimplemented or approximated (obseq3 conformance)
 **Status:** living inventory, started 2026-08-15 — THE single place for
 this; update here, not in scattered journal entries. Per-test blockers

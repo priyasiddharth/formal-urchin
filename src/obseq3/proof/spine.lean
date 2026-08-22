@@ -125,7 +125,7 @@ theorem loadSpine_lowering_sim
       obtain ⟨h_r, h_p⟩ := h_res
       subst h_r
       subst h_p
-      obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw⟩ := h_lbs loc bind h_env
+      obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ := h_lbs loc bind h_env
       have h_base : base = bind.addr := (h_id_a _ _ h_ra).symm
       subst h_base
       obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=

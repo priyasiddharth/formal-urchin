@@ -97,95 +97,6 @@ theorem const_write_stmt_evidence
           }
           · simp [compileStmtChecked, compileRExprToChecked, h_dstOut, h_root]
 
-/-- Compute `ensureLocalRegE` on an already-mapped local: no compiler-state
-    change, and the returned pointer result is the mapped register. -/
-theorem ensureLocalRegE_existing
-    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
-    {reg : Register}
-    (h : getPlaceInfo cs loc.idx.1 = some (reg, τ)) :
-    CompilerM.run (ensureLocalRegE loc) cs = cs ∧
-    (CompilerM.value (ensureLocalRegE loc) cs).result = { reg := reg, cleanup := [] } := by
-  unfold CompilerM.run CompilerM.value ensureLocalRegE
-  split
-  · rename_i reg' layout' h'
-    rw [h'] at h
-    injection h with h2
-    have h_eq : reg' = reg := congrArg Prod.fst h2
-    subst h_eq
-    exact ⟨rfl, rfl⟩
-  · rename_i h'
-    rw [h'] at h
-    cases h
-
-/-- `setPlaceInfo` at the same index. -/
-theorem getPlaceInfo_setPlaceInfo_self (cs : CompilerState) (idx : Nat)
-    (info : PlaceInfo) :
-    getPlaceInfo (setPlaceInfo cs idx info) idx = some info := by
-  simp [setPlaceInfo, getPlaceInfo, List.lookup]
-
-/-- `setPlaceInfo` at a different index. -/
-theorem getPlaceInfo_setPlaceInfo_ne (cs : CompilerState) {idx idx' : Nat}
-    (h : idx' ≠ idx) (info : PlaceInfo) :
-    getPlaceInfo (setPlaceInfo cs idx info) idx' = getPlaceInfo cs idx' := by
-  have hb : (idx' == idx) = false := by
-    cases h_eq : idx' == idx
-    · rfl
-    · exact absurd (eq_of_beq h_eq) h
-  simp [setPlaceInfo, getPlaceInfo, List.lookup, hb]
-
-/-- `emit` touches only code and labels. -/
-theorem getPlaceInfo_emit (cs : CompilerState) (is : List Instr) (idx : Nat) :
-    getPlaceInfo (emit cs is) idx = getPlaceInfo cs idx := rfl
-
-/-- Compute `ensureLocalRegE` on an UNMAPPED local: a fresh register, an
-    emitted `Alloc`, and the register recorded in `placeRegMap`. -/
-theorem ensureLocalRegE_fresh
-    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
-    (h : getPlaceInfo cs loc.idx.1 = none) :
-    CompilerM.run (ensureLocalRegE loc) cs
-      = setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
-          loc.idx.1 (Register.R cs.nextReg, τ) ∧
-    (CompilerM.value (ensureLocalRegE loc) cs).result
-      = { reg := Register.R cs.nextReg, cleanup := [] } := by
-  unfold CompilerM.run CompilerM.value ensureLocalRegE
-  split
-  · rename_i reg layout h'
-    rw [h'] at h
-    exact absurd h (by simp)
-  · exact ⟨rfl, rfl⟩
-
-/-- The compiled fragment of a constant write to an UNMAPPED local is two
-    instructions: the root `Alloc` that `ensurePlaceRoot` emits (mirroring
-    mirlite's `preparePlaceAssign`) followed by the `CStore`. -/
-theorem compileStmt_local_fresh_run
-    {Γ : Ctx} {loc : Local Γ obseq.LayoutTy.NatL} {cs : CompilerState}
-    (v : Word)
-    (h : getPlaceInfo cs loc.idx.1 = none) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.local loc) (.constInit v))) cs
-      = emit
-          (setPlaceInfo
-            (emit { cs with nextReg := cs.nextReg + 1 }
-              [Instr.Assgn (Register.R cs.nextReg)
-                (Rhs.Alloc (layoutToTyVal obseq.LayoutTy.NatL))])
-            loc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.NatL))
-          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] (Register.R cs.nextReg)] := by
-  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
-  have h_pi : getPlaceInfo
-      (setPlaceInfo
-        (emit { cs with nextReg := cs.nextReg + 1 }
-          [Instr.Assgn (Register.R cs.nextReg)
-            (Rhs.Alloc (layoutToTyVal obseq.LayoutTy.NatL))])
-        loc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.NatL))
-      loc.idx.1 = some (Register.R cs.nextReg, obseq.LayoutTy.NatL) :=
-    getPlaceInfo_setPlaceInfo_self _ _ _
-  simp [compileStmtChecked, compileRExprToChecked, ensurePlaceRoot,
-    CompilerM.run_bind, CompilerM.run_pure, h_run, h_val,
-    placeToRegChecked, h_pi]
-  rfl
-
 /-- The compiled fragment of a constant write to an already-mapped local is
     exactly one `CStore` through the mapped register. -/
 theorem compileStmt_local_existing_run
@@ -223,7 +134,7 @@ theorem const_write_local_existing_simulation
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
   obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd, h_alloc, h_unmap, h_prb⟩ := h_inv
-  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw⟩ := h_lbs loc binding h_env
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ := h_lbs loc binding h_env
   have h_base : base = binding.addr := (h_id_a _ _ h_ra).symm
   subst h_base
   -- source permission step (a copy of h_write, destructured)
@@ -289,9 +200,9 @@ theorem const_write_local_existing_simulation
         simp [emit]
       · -- LocalBindingSim carries over
         intro τ' loc' binding' h_env'
-        obtain ⟨reg', base', tag', h_pi', h_entry'', h_ra', h_rt', h_nw'⟩ :=
+        obtain ⟨reg', base', tag', h_pi', h_entry'', h_ra', h_rt', h_nw', h_dom'⟩ :=
           h_lbs loc' binding' h_env'
-        refine ⟨reg', base', tag', ?_, h_entry'', h_ra', h_rt', h_nw'⟩
+        refine ⟨reg', base', tag', ?_, h_entry'', h_ra', h_rt', h_nw', h_dom'⟩
         rw [h_stmtRun]
         exact h_pi'
       · -- SourceMemSim
@@ -515,17 +426,22 @@ theorem const_write_fresh_local_simulation
                 grind [mirlite.Env.lookup, mirlite.Env.set]
               subst h_b
               refine ⟨Register.R csPrefix.nextReg, s_mir.mem.addrStart,
-                s_osea.perms.NextTag, ?_, ?_, h_ra_new, h_rt_new, h_nw⟩
+                s_osea.perms.NextTag, ?_, ?_, h_ra_new, h_rt_new, h_nw, ?_⟩
               · rw [h_stmtRun, getPlaceInfo_emit,
                   show loc'.idx.1 = loc.idx.1 from congrArg Fin.val h_idx]
                 exact getPlaceInfo_setPlaceInfo_self _ _ _
               · show oseair.RegMap.lookup _ _ = _
                 rw [← h_addr_eq, ← h_sz]
                 exact RegMap.lookup_insert_self _ _ _
+              · -- the new local's block is one cell wide, and ρa' maps it
+                intro k hk
+                simp only [blockSize, obseq.layoutSize, Nat.lt_one_iff] at hk
+                subst hk
+                exact ⟨s_mir.mem.addrStart, h_ra_new⟩
             · have h_env'' : mirlite.Env.lookup s_mir.env loc' = some binding' := by
                 simpa only [mirlite.Env.lookup, mirlite.Env.set, if_neg h_idx]
                   using h_env'
-              obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw'⟩ :=
+              obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
                 h_lbs loc' binding' h_env''
               have h_idxv : loc'.idx.1 ≠ loc.idx.1 := by grind [Fin.ext]
               have h_regne : reg' ≠ Register.R csPrefix.nextReg := by
@@ -534,7 +450,9 @@ theorem const_write_fresh_local_simulation
                     have h_lt := h_prb _ _ _ h_pi'
                     grind [RegisterBelow]
               refine ⟨reg', base', tag', ?_, ?_, h_incr_a _ _ h_ra',
-                h_incr_t _ _ h_rt', h_nw'⟩
+                h_incr_t _ _ h_rt', h_nw',
+                fun k hk => ⟨(h_dom' k hk).choose,
+                  h_incr_a _ _ (h_dom' k hk).choose_spec⟩⟩
               · rw [h_stmtRun, getPlaceInfo_emit,
                   getPlaceInfo_setPlaceInfo_ne _ h_idxv]
                 exact h_pi'

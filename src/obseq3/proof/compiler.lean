@@ -46,6 +46,11 @@ CLOSED:
   needs the indexed fold's `Option`-shaped characterizations, which the
   index-free `foldCells_ok_inv` does not provide.
 
+`LocalBindingSim` gained a referent-range conjunct 2026-08-22 (every
+bound local's WHOLE block is in ρa's domain, not just its base) —
+`MemValSim`'s own range obligation is what forces it, for a `&local`
+whose pointer is stored.
+
 Invariant extensions landed 2026-08-21 (with regime D1): the
 `PlaceRegMapBound` conjunct (mapped registers < nextReg — the register
 half of the once-planned strengthened `CompilerStateWF`; fresh temps
@@ -89,13 +94,19 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation:
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-4. `CompilerInv_step_ref` — fully unblocked as of 2026-08-22: the
-   `sb_ref` member extends ρt and hands back the extended
-   `TagRenameBounded`, which the invariant now carries. What remains is
-   the leaf's own work — the `Borrow` fragment's execution, the
-   `MemValSim` for the stored `ptrVal` under the extended ρt, and
-   BRIDGE 2 for the `RStore`. Its `Die` cleanup transport exists
-   (`sb_die_respects_PermSim`).
+4. `CompilerInv_step_ref` — BLOCKED AT THE MODEL LEVEL (2026-08-22).
+   Every SB-side and fragment-side piece now exists: the fragment is
+   `Borrow; RStore` with NO `Die` (a stored reference's cleanup is never
+   emitted, so this leaf does not need BRIDGE 1) via
+   `compileStmt_ref_local_local_run`, the retag transports via
+   `sb_ref_respects_PermSim`, the `Borrow` executes via
+   `runN_Assgn_Borrow_step`, and the stored pointer's `MemValSim` gets
+   its referent range from the strengthened `LocalBindingSim`. What
+   blocks it is the `RStore` step: `oseair.stepWith` guards on
+   `srcTy != ty` and `obseq.TyVal`'s derived `BEq` is opaque to the
+   logic — see the BLOCKER note in proof/common.lean §F. Also pending
+   and independent: the ZST divergence (`0 < blockSize τ` will be a
+   regime side condition).
 
 - ✔ REGIME B (fresh local) `const_write_fresh_local_simulation`
   (2026-08-22): the only regime that grows BOTH renames. The fragment is

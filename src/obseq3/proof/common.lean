@@ -737,7 +737,12 @@ def LocalBindingSim
       PtrRegisterEntry s_osea.reg reg base 0 (blockSize τ) tag ∧
       ρa binding.addr = some base ∧
       ρt binding.tag = some tag ∧
-      (binding.tag == wildcardTag) = false
+      (binding.tag == wildcardTag) = false ∧
+      -- the local's WHOLE block is in ρa's domain, not just its base.
+      -- Mirrors `MemValSim`'s referent-range conjunct, and is what a
+      -- `&local` supplies to `writeThroughPtr_sim` when the resulting
+      -- pointer is stored: the stored value's `MemValSim` needs the range.
+      (∀ k, k < blockSize τ → ∃ a', ρa (binding.addr + k) = some a')
 
 /-- The converse of `LocalBindingSim`'s mapping component: a local the
     source has not bound is not mapped by the compiler either.
@@ -1172,6 +1177,95 @@ theorem ensurePlaceRoot_maps_root
   | proj base path ih => exact ih
   | deref ptrPlace ih => exact ih
 
+/-- Compute `ensureLocalRegE` on an already-mapped local: no compiler-state
+    change, and the returned pointer result is the mapped register. -/
+theorem ensureLocalRegE_existing
+    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
+    {reg : Register}
+    (h : getPlaceInfo cs loc.idx.1 = some (reg, τ)) :
+    CompilerM.run (ensureLocalRegE loc) cs = cs ∧
+    (CompilerM.value (ensureLocalRegE loc) cs).result = { reg := reg, cleanup := [] } := by
+  unfold CompilerM.run CompilerM.value ensureLocalRegE
+  split
+  · rename_i reg' layout' h'
+    rw [h'] at h
+    injection h with h2
+    have h_eq : reg' = reg := congrArg Prod.fst h2
+    subst h_eq
+    exact ⟨rfl, rfl⟩
+  · rename_i h'
+    rw [h'] at h
+    cases h
+
+/-- `setPlaceInfo` at the same index. -/
+theorem getPlaceInfo_setPlaceInfo_self (cs : CompilerState) (idx : Nat)
+    (info : PlaceInfo) :
+    getPlaceInfo (setPlaceInfo cs idx info) idx = some info := by
+  simp [setPlaceInfo, getPlaceInfo, List.lookup]
+
+/-- `setPlaceInfo` at a different index. -/
+theorem getPlaceInfo_setPlaceInfo_ne (cs : CompilerState) {idx idx' : Nat}
+    (h : idx' ≠ idx) (info : PlaceInfo) :
+    getPlaceInfo (setPlaceInfo cs idx info) idx' = getPlaceInfo cs idx' := by
+  have hb : (idx' == idx) = false := by
+    cases h_eq : idx' == idx
+    · rfl
+    · exact absurd (eq_of_beq h_eq) h
+  simp [setPlaceInfo, getPlaceInfo, List.lookup, hb]
+
+/-- `emit` touches only code and labels. -/
+theorem getPlaceInfo_emit (cs : CompilerState) (is : List Instr) (idx : Nat) :
+    getPlaceInfo (emit cs is) idx = getPlaceInfo cs idx := rfl
+
+/-- Compute `ensureLocalRegE` on an UNMAPPED local: a fresh register, an
+    emitted `Alloc`, and the register recorded in `placeRegMap`. -/
+theorem ensureLocalRegE_fresh
+    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
+    (h : getPlaceInfo cs loc.idx.1 = none) :
+    CompilerM.run (ensureLocalRegE loc) cs
+      = setPlaceInfo
+          (emit { cs with nextReg := cs.nextReg + 1 }
+            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
+          loc.idx.1 (Register.R cs.nextReg, τ) ∧
+    (CompilerM.value (ensureLocalRegE loc) cs).result
+      = { reg := Register.R cs.nextReg, cleanup := [] } := by
+  unfold CompilerM.run CompilerM.value ensureLocalRegE
+  split
+  · rename_i reg layout h'
+    rw [h'] at h
+    exact absurd h (by simp)
+  · exact ⟨rfl, rfl⟩
+
+/-- The compiled fragment of a constant write to an UNMAPPED local is two
+    instructions: the root `Alloc` that `ensurePlaceRoot` emits (mirroring
+    mirlite's `preparePlaceAssign`) followed by the `CStore`. -/
+theorem compileStmt_local_fresh_run
+    {Γ : Ctx} {loc : Local Γ obseq.LayoutTy.NatL} {cs : CompilerState}
+    (v : Word)
+    (h : getPlaceInfo cs loc.idx.1 = none) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.local loc) (.constInit v))) cs
+      = emit
+          (setPlaceInfo
+            (emit { cs with nextReg := cs.nextReg + 1 }
+              [Instr.Assgn (Register.R cs.nextReg)
+                (Rhs.Alloc (layoutToTyVal obseq.LayoutTy.NatL))])
+            loc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.NatL))
+          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] (Register.R cs.nextReg)] := by
+  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
+  have h_pi : getPlaceInfo
+      (setPlaceInfo
+        (emit { cs with nextReg := cs.nextReg + 1 }
+          [Instr.Assgn (Register.R cs.nextReg)
+            (Rhs.Alloc (layoutToTyVal obseq.LayoutTy.NatL))])
+        loc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.NatL))
+      loc.idx.1 = some (Register.R cs.nextReg, obseq.LayoutTy.NatL) :=
+    getPlaceInfo_setPlaceInfo_self _ _ _
+  simp [compileStmtChecked, compileRExprToChecked, ensurePlaceRoot,
+    CompilerM.run_bind, CompilerM.run_pure, h_run, h_val,
+    placeToRegChecked, h_pi]
+  rfl
+
 /-! ## §E Fragment layout + emit-preserves-memory -/
 
 def FragmentInstalledAtLabel {α} (m : CompilerM α) (cs : CompilerState)
@@ -1442,6 +1536,20 @@ theorem RegMap.lookup_insert_ne (r : oseair.RegMap) {reg' reg : Register}
   rw [hb]
   exact lookup_filter_ne h r
 
+/-- `LocalBindingSim` transports along rename growth (renames appear only
+    positively). -/
+theorem LocalBindingSim.rename_mono
+    {Γ : Ctx} {ρa ρa' : AddrRenameMap} {ρt ρt' : TagRenameMap}
+    {env : mirlite.Env Γ} {s : oseair.State MSB} {cs : CompilerState}
+    (h_a : AddrRenameIncr ρa ρa') (h_t : TagRenameIncr ρt ρt')
+    (h_lbs : LocalBindingSim ρa ρt env s cs) :
+    LocalBindingSim ρa' ρt' env s cs := by
+  intro τ loc binding h_env
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ :=
+    h_lbs loc binding h_env
+  exact ⟨reg, base, tag, h_pi, h_entry, h_a _ _ h_ra, h_t _ _ h_rt, h_nw,
+    fun k hk => ⟨(h_dom k hk).choose, h_a _ _ (h_dom k hk).choose_spec⟩⟩
+
 /-- Inserting a value at a fresh register (index at or above the compiler's
     `nextReg`) preserves `LocalBindingSim`: no bound local can be mapped to
     it, by `PlaceRegMapBound`. Reused by every fragment that mints a temp
@@ -1456,8 +1564,8 @@ theorem LocalBindingSim.insert_fresh_reg
     (h_reg : s'.reg = oseair.RegMap.insert s.reg (Register.R n) val) :
     LocalBindingSim ρa ρt env s' cs := by
   intro τ loc binding h_env
-  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw⟩ := h_lbs loc binding h_env
-  refine ⟨reg, base, tag, h_pi, ?_, h_ra, h_rt, h_nw⟩
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ := h_lbs loc binding h_env
+  refine ⟨reg, base, tag, h_pi, ?_, h_ra, h_rt, h_nw, h_dom⟩
   have h_below := h_prb _ _ _ h_pi
   show oseair.RegMap.lookup s'.reg reg = _
   rw [h_reg]
@@ -1481,8 +1589,8 @@ theorem LocalBindingSim.placeRegMap_congr
     (h_lbs : LocalBindingSim ρa ρt env s cs) :
     LocalBindingSim ρa ρt env s cs' := by
   intro τ loc binding h_env
-  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw⟩ := h_lbs loc binding h_env
-  refine ⟨reg, base, tag, ?_, h_entry, h_ra, h_rt, h_nw⟩
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ := h_lbs loc binding h_env
+  refine ⟨reg, base, tag, ?_, h_entry, h_ra, h_rt, h_nw, h_dom⟩
   show cs'.placeRegMap.lookup loc.idx.1 = _
   rw [h_prm]
   exact h_pi
@@ -1569,6 +1677,60 @@ theorem compileStmt_emitted_in_compProg
     compProg q = some instr := by
   rw [compileProgFrom_code_eq_compileStmt cs0 prog compProg h_comp h_prefix h_get h_stmt h_lt]
   exact h_code
+
+/-! ### BLOCKER (2026-08-22): `RStore` cannot be executed in a proof
+
+`oseair.stepWith`'s `RStore` case guards on `if srcTy != ty then Err`, and
+`obseq.TyVal` derives `BEq` — whose generated `instBEqTyVal.beq` is OPAQUE
+to the logic. `(TyVal.PTy == TyVal.PTy) = true` is not provable by `rfl`,
+`decide`, `simp`, `unseal` or `with_unfolding_all` (it is axiom-free, so
+this is not an `opaque` axiom; the derived function simply has no
+equations). The compiled code evaluates it fine, which is why the
+differential suite is green — but no theorem can step over an `RStore`.
+
+This blocks `CompilerInv_step_ref` (its fragment is `Borrow; RStore`) and
+will block `alloc`/`exposeAddr`/`refSlice` when they arrive. The fix is at
+the model level and is the user's call — see
+loose-ends/parked.md → "RStore's TyVal guard is unprovable". Everything
+else the ref leaf needs (`runN_Assgn_Borrow_step`, the fragment lemmas in
+proof/ref.lean, `sb_ref_respects_PermSim`, the strengthened
+`LocalBindingSim`) is in place. -/
+
+/-- One-step execution of a `Borrow` assignment: the base register is read,
+    the retag through its tag succeeds, and the destination register
+    receives the child pointer (same block and size, offset shifted by the
+    projection offset). The retag's success is the caller's obligation —
+    that is where the `sb_ref` transport lives. -/
+theorem runN_Assgn_Borrow_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst baseReg : Register) (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (len : Nat) (offset : Word)
+    {b bo sz : Word} {t newTag : Tag} {p2 : AccessPerms}
+    (h_instr : compProg s.pc
+      = some (Instr.Assgn dst (Rhs.Borrow kind prot mask len baseReg offset)))
+    (h_entry : PtrRegisterEntry s.reg baseReg b bo sz t)
+    (h_lt : b + bo + offset < b + sz)
+    (h_ref : MSB.ref s.perms (b + bo + offset) len t kind prot mask
+      = .ok (p2, newTag)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p2,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr b (bo + offset) sz newTag]),
+               pc := s.pc + 1 } := by
+  have h_lookup : oseair.RegMap.lookup s.reg baseReg
+      = some (obseq.TyVal.PTy, [Val.Ptr b bo sz t]) := h_entry
+  have h_bounds : (b + bo + offset ≥ b + sz) = False := by
+    simp only [ge_iff_le, eq_iff_iff, iff_false, Nat.not_le]
+    exact h_lt
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p2,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr b (bo + offset) sz newTag]),
+               pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup]
+    rw [if_neg (by simp only [ge_iff_le, Nat.not_le]; exact h_lt)]
+    simp only [h_ref]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- One-step execution of an `Alloc` assignment: the bump allocator hands
     out `mem.addrStart`, `M.own` roots the range at a fresh tag, and the
