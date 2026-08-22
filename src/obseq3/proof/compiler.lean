@@ -47,23 +47,24 @@ cannot clobber bound locals' registers) and the strengthened `MemValSim`
 pointer case (stored tags are non-wildcard; the referent range is in
 ρa's domain). These also discharge part of regime C's blocker list.
 
-STILL TO WIRE (2026-08-22): `CompilerInv` does not yet carry
-`TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag`. Every
-consumer of the `sb_ref` member needs it as a hypothesis, so the next
-increment is adding it as an eighth conjunct and re-establishing it at
-each construction site — cheap for the closed regimes (`sb_write`/
-`sb_read` do not move `NextTag`), and supplied at the minting sites by
-the member's own `TagRenameBounded` conclusion.
+WIRED (2026-08-22): `CompilerInv` now carries
+`TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag` as an
+eighth conjunct — the hypothesis every consumer of the `sb_ref` member
+needs. Re-establishing it cost nothing at the closed sites: the three
+access ops leave `NextTag` alone (`sb_write_NextTag`/`sb_read_NextTag`/
+`sb_die_NextTag`), so regime A and the deref spine rewrite the bound
+through unchanged. `loadSpine_lowering_sim` gained two counter-framing
+conjuncts for the same reason (the spine only reads).
 
 Remaining (5): every remaining sorry is blocked on a NAMED obligation:
 1. `const_write_fresh_local_simulation` — needs the lockstep-allocation
    conjunct (`s_osea.mem.addrStart = s_mir.mem.addrStart`) so ρa extends
    at the equal fresh address, plus the `sb_own` transport member.
-2. `const_write_proj_simulation` — the `sb_ref` transport member for the
-   internal `Borrow` now EXISTS; what remains is composing it with
-   BRIDGE 1 and BRIDGE 3 and threading `TagRenameBounded` through
-   `CompilerInv` (the register-bound half of its blocker landed as
-   `PlaceRegMapBound`).
+2. `const_write_proj_simulation` — every SB-side obligation is now
+   available (`sb_ref` member + `TagRenameBounded` in the invariant +
+   `PlaceRegMapBound`); what remains is proof work, not machinery:
+   compose the member with BRIDGE 1 and BRIDGE 3 over the internal
+   `Borrow`, and execute the proj fragment.
 3. `const_write_deref_nonspine_simulation` — a projection somewhere in
    the dereferenced pointer place: its lowering emits a `Borrow` with
    cleanup — same position as regime C above, and unblocked by the same
@@ -74,10 +75,13 @@ Remaining (5): every remaining sorry is blocked on a NAMED obligation:
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-5. `CompilerInv_step_ref` — the `sb_ref` transport member and the
-   tag-bound fact it needs both landed 2026-08-22; the leaf now needs
-   only the `CompilerInv` wiring above plus its own fragment execution.
-   Its `Die` cleanup transport exists (`sb_die_respects_PermSim`).
+5. `CompilerInv_step_ref` — fully unblocked as of 2026-08-22: the
+   `sb_ref` member extends ρt and hands back the extended
+   `TagRenameBounded`, which the invariant now carries. What remains is
+   the leaf's own work — the `Borrow` fragment's execution, the
+   `MemValSim` for the stored `ptrVal` under the extended ρt, and
+   BRIDGE 2 for the `RStore`. Its `Die` cleanup transport exists
+   (`sb_die_respects_PermSim`).
 
 CLOSED in the leaf layer (2026-08-18):
 - ✔ `const_write_stmt_evidence` — total (fresh-root branch via

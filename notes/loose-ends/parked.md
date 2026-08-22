@@ -287,29 +287,28 @@ CLOSED 2026-08-18; regime A CLOSED 2026-08-18; regime D (all-deref
 spines, every depth) CLOSED 2026-08-21; the BRIDGE 3 transport family is
 COMPLETE as of 2026-08-22 (`sb_write`/`sb_read`/`sb_die`/`sb_ref`).
 Audit now 5 named sorries.
-NEXT INCREMENT — thread `TagRenameBounded` through `CompilerInv`: add
-`TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag` as an
-eighth conjunct and re-establish it at each construction site. Cheap for
-every closed regime (`sb_write`/`sb_read` do not move `NextTag`, so the
-bound is unchanged); at minting sites it is handed back by
-`sb_ref_respects_PermSim` itself. Without it the `sb_ref` member cannot
-be applied at a leaf — it is a hypothesis of the member. THEN the three
-sorries it unblocks: `CompilerInv_step_ref` (also needs its fragment
-execution), `const_write_proj_simulation`, and
-`const_write_deref_nonspine_simulation` (the last two compose the member
-with BRIDGE 1 and BRIDGE 3). Copy is independent: it still needs a
+`TagRenameBounded` WIRED into `CompilerInv` 2026-08-22 (eighth conjunct,
+plus `sb_*_NextTag` framing and two counter conjuncts on
+`loadSpine_lowering_sim`), so the `sb_ref` member is applicable at a leaf.
+NEXT INCREMENT — `CompilerInv_step_ref`: all its SB-side machinery now
+exists; what is left is the leaf's own work (the `Borrow` fragment's
+execution, `MemValSim` for the stored `ptrVal` under the extended ρt, and
+BRIDGE 2 for the `RStore`). Then `const_write_proj_simulation` and
+`const_write_deref_nonspine_simulation`, which compose the member with
+BRIDGE 1 and BRIDGE 3. Copy is independent: it still needs a
 bidirectional memory relation + the Memcpy execution lemma. The
 fresh-local sorry needs the lockstep-allocation conjunct
 (`s_osea.mem.addrStart = s_mir.mem.addrStart`) + the `sb_own` transport
 member (which will reuse the same `TagRenameBounded` extension lemmas —
 `sb_own` mints exactly as `sb_ref` does).
-**Effort estimate:** CompilerInv `TagRenameBounded` wiring ~1-2 h; ref
-leaf ~half-day once wired; proj/deref-nonspine ~half-day each; copy ~1-2
+**Effort estimate:** CompilerInv `TagRenameBounded` wiring DONE
+(~1 h actual); ref leaf ~half-day; proj/deref-nonspine ~half-day each; copy ~1-2
 days (bidirectional memory relation is the real work); fresh-local ~half-
 day after the `sb_own` member (~1 h, mirrors `sb_ref`).
 **References:** proof/compiler.lean (audit), journal/2026-08/
 2026-08-15-obseq3-proof-skeleton.md, journal/2026-08/
-2026-08-22-sb-ref-transport.md, obseq2 sorries superseded by this
+2026-08-22-sb-ref-transport.md, journal/2026-08/
+2026-08-22-tagrenamebounded-wired.md, obseq2 sorries superseded by this
 decomposition (obseq2/proof stays frozen).
 
 

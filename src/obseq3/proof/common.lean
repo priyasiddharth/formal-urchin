@@ -793,7 +793,16 @@ def SourceMemSim
     conjunct is `PermSim ρt` instead of literal equality; ρt is
     `TagRenameWF` instead of identity, and `LocalBindingSim` additionally
     records that bound locals carry non-wildcard tags (they are minted by
-    `sb_own`), which is what lets BRIDGE 3 fire on local writes. -/
+    `sb_own`), which is what lets BRIDGE 3 fire on local writes.
+    `TagRenameBounded` (2026-08-22) is the tag half of the same
+    strengthening: every mapped pair sits below both machines' `NextTag`.
+    It is what makes ρt EXTENSIBLE — the range bound keeps the extension
+    at a fresh pair injective, the domain bound makes it an extension
+    rather than an overwrite — and it is therefore a hypothesis of
+    `sb_ref_respects_PermSim` (and, when it lands, of the `sb_own`
+    member). Re-establishing it is free for every access-only step:
+    `sb_write`/`sb_read`/`sb_die` do not touch `NextTag`
+    (`sb_*_NextTag` in proof/permsim_transport.lean). -/
 def CompilerInv
   {Γ : Ctx}
   (cs0 : CompilerState)
@@ -809,6 +818,7 @@ def CompilerInv
     PermSim ρt s_mir.perms s_osea.perms ∧
     IdentityOnDomain ρa ∧
     TagRenameWF ρt ∧
+    TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag ∧
     PlaceRegMapBound csPrefix
 
 /-- Register `reg` holds a pointer to `resolved`, and the tag stored there

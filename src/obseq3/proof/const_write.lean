@@ -36,7 +36,7 @@ theorem const_write_stmt_evidence
       csAt cs0 prog s_mir.pc csPrefix ∧
       CheckedCompilerM.value (compileStmtChecked (.assign dst (.constInit v)))
         csPrefix = Except.ok stmtOut := by
-  obtain ⟨csPrefix, h_label, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_prb⟩ := h_inv
+  obtain ⟨csPrefix, h_label, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd, h_prb⟩ := h_inv
   rcases h_label with ⟨h_csAt, h_pc⟩
   cases dst with
   | «local» loc =>
@@ -153,7 +153,7 @@ theorem const_write_local_existing_simulation
     ∃ (s_osea' : oseair.State MSB) (n : Nat),
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
-  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_prb⟩ := h_inv
+  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd, h_prb⟩ := h_inv
   obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw⟩ := h_lbs loc binding h_env
   have h_base : base = binding.addr := (h_id_a _ _ h_ra).symm
   subst h_base
@@ -211,7 +211,8 @@ theorem const_write_local_existing_simulation
       refine ⟨_, 1, h_run, ?_⟩
       refine ⟨CheckedCompilerM.run
         (compileStmtChecked (Stmt.assign (.local loc) (.constInit v))) csPrefix,
-        ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, ?_, h_psim', h_id_a, h_wf_t, ?_⟩
+        ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, ?_, h_psim', h_id_a, h_wf_t,
+        ?_, ?_⟩
       · -- label agreement at pc+1
         rw [h_stmtRun]
         show s_osea.pc + 1 = (emit csPrefix _).nextLabel
@@ -226,6 +227,11 @@ theorem const_write_local_existing_simulation
         exact h_pi'
       · -- SourceMemSim
         exact h_sms'
+      · -- TagRenameBounded: a plain write mints on neither machine, so the
+        -- counters — and with them the bound — are literally unchanged
+        show TagRenameBounded ρt perms'.NextTag p2.NextTag
+        rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
+        exact h_tbd
       · -- PlaceRegMapBound: the fragment only emits code — `placeRegMap`
         -- and `nextReg` are untouched
         rw [h_stmtRun]
@@ -371,7 +377,7 @@ theorem const_write_deref_spine_simulation
     · simp [mirlite.allocateRoot] at h_prep
   obtain ⟨h_pre_eq, r0, h_resolved⟩ := h_pre
   rw [h_pre_eq] at h_res h_write
-  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_prb⟩ := h_inv
+  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd, h_prb⟩ := h_inv
   have h_mapped : PlaceInputsMapped csPrefix (Place.deref ptrPlace) :=
     placeInputsMapped_of_localBindingSim_resolvePlace h_lbs h_resolved
   have h_root := ensurePlaceRoot_run_eq_of_mapped h_mapped
@@ -466,8 +472,8 @@ theorem const_write_deref_spine_simulation
         exact h_code
     -- run the spine
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
-      h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow, h_pprm,
-      h_pregmono, h_plabmono⟩ :=
+      h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
+      h_pprm, h_pregmono, h_plabmono⟩ :=
       loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
         pRes permsP h_qres h_lbs h_prb h_sms h_psim h_pc h_instP
     have h_stmtRun := compileStmt_deref_run v h_root h_pval h_pclean
@@ -593,7 +599,7 @@ theorem const_write_deref_spine_simulation
         refine ⟨CheckedCompilerM.run
             (compileStmtChecked (Stmt.assign (.deref ptrPlace) (.constInit v))) csPrefix,
             ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
-            h_id_a, h_wf_t, ?_⟩
+            h_id_a, h_wf_t, ?_, ?_⟩
         · -- label agreement
           show s_mid.pc + 1 + 1 = _
           rw [h_ppc, h_stmtRun]
@@ -603,6 +609,12 @@ theorem const_write_deref_spine_simulation
             (LocalBindingSim.insert_fresh_reg h_plbs h_prb h_pregmono rfl)
           rw [h_stmtRun]
           exact h_pprm
+        · -- TagRenameBounded: the spine only READS and the store only WRITES,
+          -- so no counter moved anywhere along the fragment
+          show TagRenameBounded ρt perms'.NextTag p3.NextTag
+          rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt,
+            sb_read_NextTag h_qread, sb_read_NextTag h_read_tgt, h_pnt1, h_pnt2]
+          exact h_tbd
         · -- PlaceRegMapBound
           intro idx reg τ'' h_look
           rw [h_stmtRun] at h_look ⊢

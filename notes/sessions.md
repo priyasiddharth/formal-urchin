@@ -195,10 +195,20 @@ recording: `sb_ref_unfold` (a hand-written match equal to `sb_ref`'s
 `do`-block) was abandoned rather than forced — two textually identical
 matches are not defeq, and factoring the model dissolved the need for the
 lemma entirely.
-**Status:** complete. Audit stays at 5 sorries (this is machinery, not a
-leaf). Suite/differential/units all unchanged; no new axioms.
+- `TagRenameBounded` WIRED into `CompilerInv` as an eighth conjunct
+  (same session, follow-up): `sb_write_NextTag`/`sb_read_NextTag`/
+  `sb_die_NextTag` counter framing, two counter conjuncts on
+  `loadSpine_lowering_sim`, and the obligation discharged at both
+  `CompilerInv` construction sites (regime A, deref spine). The `sb_ref`
+  member is now applicable at a leaf. journal/2026-08/
+  2026-08-22-tagrenamebounded-wired.md; dev-log increment 27.
+**Status:** complete. Audit stays at 5 sorries — no leaf closed, but
+three of the five are now blocked on proof work rather than on missing
+machinery. Suite/differential/units unchanged throughout; closed leaves
+stay axiom-clean.
 **Next-session pickup:** loose-ends/parked.md → "obseq3 proof closure" →
-NEXT INCREMENT: thread `TagRenameBounded` through `CompilerInv` as an
-eighth conjunct (~1-2 h), which is what lets the new member be applied at
-a leaf. Also still open: W34 digest, and W33's proposed
+`CompilerInv_step_ref` (the leaf's own work: `Borrow` fragment execution,
+`MemValSim` for the stored `ptrVal` under the extended ρt, BRIDGE 2 for
+the `RStore`), then the two `Borrow`-emitting const_write regimes. Also
+still open: W34 digest, and W33's proposed
 `conformance-process-patterns.md` promotion.

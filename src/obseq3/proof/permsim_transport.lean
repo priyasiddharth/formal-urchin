@@ -1042,6 +1042,49 @@ theorem setChain_chain_respects {ρt : TagRenameMap}
     exact h_xy
   termination_by len - i
 
+/-! ## Counter framing: the non-minting ops leave `NextTag` alone
+
+`TagRenameBounded` is stated against the two machines' `NextTag`s, so every
+step that carries it has to know how those counters moved. For the three
+access ops the answer is "not at all" — they only rewrite stacks — which is
+what makes the bound free to re-establish across a write, a read or a die. -/
+
+theorem sb_write_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : sb_write ap addr len tag = .ok ap') :
+    ap'.NextTag = ap.NextTag := by
+  obtain ⟨V, W, -, h_ap'⟩ :=
+    foldCells_ok_inv
+      (C := fun a stack => writeCellContent ap.protFrames ap.exposed a tag stack)
+      (msgNone := fun a => s!"sb-write: no borrow stack at address {a}")
+      (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag)
+      (fun ap a h_pf h_ex _ => writeCell_content_form tag ap a h_pf h_ex)
+      len 0 ap ap' rfl rfl rfl h
+  rw [h_ap']
+
+theorem sb_read_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : sb_read ap addr len tag = .ok ap') :
+    ap'.NextTag = ap.NextTag := by
+  obtain ⟨V, W, -, h_ap'⟩ :=
+    foldCells_ok_inv
+      (C := fun a stack => readCellContent ap.protFrames ap.exposed a tag stack)
+      (msgNone := fun a => s!"sb-read: no borrow stack at address {a}")
+      (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag)
+      (fun ap a h_pf h_ex _ => readCell_content_form tag ap a h_pf h_ex)
+      len 0 ap ap' rfl rfl rfl h
+  rw [h_ap']
+
+theorem sb_die_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : sb_die ap addr len tag = .ok ap') :
+    ap'.NextTag = ap.NextTag := by
+  obtain ⟨V, W, -, h_ap'⟩ :=
+    foldCells_ok_inv
+      (C := fun _ stack => dieCellContent ap.protFrames tag stack)
+      (msgNone := fun a => s!"sb-die: no borrow stack at address {a}")
+      (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag)
+      (fun ap a h_pf h_ex _ => by simp only [h_pf]; rfl)
+      len 0 ap ap' rfl rfl rfl h
+  rw [h_ap']
+
 /-! ## BRIDGE 3 for `sb_write` -/
 
 /-- BRIDGE 3, CLOSED for the write: `sb_write` respects `PermSim` — a

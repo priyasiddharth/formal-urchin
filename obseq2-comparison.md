@@ -4,6 +4,41 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-22 (later) — The Bound Becomes an Invariant
+
+Twenty-seventh increment, and the short half of the previous one.
+`TagRenameBounded` is now an eighth conjunct of `CompilerInv`, which is what
+turns this morning's `sb_ref` transport member from a proved lemma into an
+applicable one: the member takes the bound as a hypothesis, so no leaf could
+have used it while the invariant did not carry it.
+
+The wiring was cheap for a reason worth naming. The bound only moves when a
+counter moves, and the three access ops do not move counters — `sb_write`,
+`sb_read` and `sb_die` rewrite stacks and nothing else, which falls straight
+out of the existing fold inversion (the result is `{ ap with StackMap := … }`,
+so `NextTag` is syntactically the old one). Both `CompilerInv` construction
+sites — regime A and the deref spine — discharge their new obligation by
+rewriting through those three equalities and handing the incoming bound back
+unchanged.
+
+The spine needed one genuine addition: `loadSpine_lowering_sim` now also
+reports that neither machine's `NextTag` moved. Without it a consumer cannot
+carry the bound across a spine of unknown depth, because the induction is
+exactly where the counters would otherwise go opaque. Both cases are cheap —
+two `rfl`s in the base, the IH composed with `sb_read_NextTag` in the step.
+
+Blast radius: four proof obligations and three destructuring patterns. Smaller
+than an eighth conjunct sounds, because `CompilerInv` is built in only two
+places today and the delegating theorems pass it through. The same should hold
+for the lockstep-allocation conjunct regime B still wants.
+
+Audit stays at 5, but the shape of the remaining list has changed: three of
+the five are now blocked on proof work rather than on missing machinery.
+Validation unchanged: units 15/15 + 38/38, suite pass 77 | fail 0 of 117,
+differential matched 77 | mismatch 0 | skipped 0.
+
+---
+
 ## 2026-08-22 — The Minting Transport: `sb_ref` Respects `PermSim`
 
 Twenty-sixth increment. `sb_ref_respects_PermSim` completes the BRIDGE 3

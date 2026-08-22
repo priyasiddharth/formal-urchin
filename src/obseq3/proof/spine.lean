@@ -71,7 +71,9 @@ theorem placeInputsMapped_of_resolveAcc
     the register entry, the resolved tag's rename and non-wildcardness,
     the resolved range's ρa-domain membership, `PermSim` of the threaded
     permission state, and framing (memory untouched, `LocalBindingSim`
-    intact, `placeRegMap` unchanged, counters monotone). -/
+    intact, `placeRegMap` unchanged, counters monotone). The spine only
+    READS, so it also reports that neither machine's `NextTag` moved —
+    which is what lets a consumer carry `TagRenameBounded` across it. -/
 theorem loadSpine_lowering_sim
     {Γ : Ctx}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -99,6 +101,8 @@ theorem loadSpine_lowering_sim
         s_osea'.pc = (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextLabel ∧
         s_osea'.mem = s_osea.mem ∧
         PermSim ρt permsD s_osea'.perms ∧
+        permsD.NextTag = s_mir.perms.NextTag ∧
+        s_osea'.perms.NextTag = s_osea.perms.NextTag ∧
         LocalBindingSim ρa ρt s_mir.env s_osea' cs ∧
         PtrRegisterEntry s_osea'.reg placeOut.result.reg resolved.allocBase
           (resolved.addr - resolved.allocBase) resolved.allocSize tres ∧
@@ -127,7 +131,7 @@ theorem loadSpine_lowering_sim
       obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
         placeToRegChecked_local_existing (kind := kind) h_pi
       refine ⟨placeOut, 0, s_osea, tag, h_pval, by rw [h_pres],
-        by simp [oseair.runN], ?_, rfl, h_psim, h_lbs, ?_, h_rt, h_nw,
+        by simp [oseair.runN], ?_, rfl, h_psim, rfl, rfl, h_lbs, ?_, h_rt, h_nw,
         Nat.le_refl _, ?_, ?_, ?_, ?_, ?_⟩
       · rw [h_prun]; exact h_pc
       · rw [h_pres, Nat.sub_self]
@@ -214,8 +218,8 @@ theorem loadSpine_lowering_sim
                 rw [h_incrQ.code_eq q' h_lt]
                 exact h_code
               obtain ⟨qOut, n1, s_mid, qtag, h_qval, h_qclean, h_qrun, h_qpc, h_qmem,
-                h_qpsim, h_qlbs, h_qentry, h_qrt, h_qnw, h_qle, h_qrange, h_qbelow,
-                h_qprm, h_qregmono, h_qlabmono⟩ :=
+                h_qpsim, h_qnt1, h_qnt2, h_qlbs, h_qentry, h_qrt, h_qnw, h_qle,
+                h_qrange, h_qbelow, h_qprm, h_qregmono, h_qlabmono⟩ :=
                 ih RefKind.Shared cs s_osea qRes permsQ h_qres h_lbs h_prb h_sms h_psim
                   h_pc h_instQ
               -- concrete run/value of this level
@@ -298,7 +302,7 @@ theorem loadSpine_lowering_sim
                 simp [oseair.readWordSeq, h_find_tgt]
               refine ⟨_, n1 + 1, _,  t2, h_valD, rfl,
                 (oseair_runN_add n1 1 s_osea compProg s_mid h_qrun).trans h_run1,
-                ?_, ?_, h_psim2, ?_, ?_, h_t, h_tnw, Nat.le_add_right b2 o2, ?_,
+                ?_, ?_, h_psim2, ?_, ?_, ?_, ?_, h_t, h_tnw, Nat.le_add_right b2 o2, ?_,
                 ?_, ?_, ?_, ?_⟩
               · -- pc
                 show s_mid.pc + 1 = _
@@ -307,6 +311,13 @@ theorem loadSpine_lowering_sim
               · -- mem
                 show s_mid.mem = s_osea.mem
                 exact h_qmem
+              · -- source counter: this level only READS through the pointer
+                rw [sb_read_NextTag h_qread]
+                exact h_qnt1
+              · -- target counter: the `Load`'s read mints nothing either
+                show p2.NextTag = s_osea.perms.NextTag
+                rw [sb_read_NextTag h_read_tgt]
+                exact h_qnt2
               · -- LocalBindingSim: fresh register insert
                 exact LocalBindingSim.insert_fresh_reg h_qlbs h_prb h_qregmono rfl
               · -- entry for the loaded register
