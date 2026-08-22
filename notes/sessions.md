@@ -215,17 +215,24 @@ lemma entirely.
   `AllocLockstep.allocate_eq`. The spine needed no change (it never
   touches memory). journal/2026-08/2026-08-22-alloclockstep-wired.md;
   dev-log increment 29.
-**Status:** complete. Audit stays at 5 sorries — no leaf closed, but for
-the first time NONE of the five is waiting on a missing lemma; every
-remaining sorry is leaf-local proof work. Suite/differential/units unchanged throughout; closed leaves
+- REGIME B CLOSED — `const_write_fresh_local_simulation` (same session,
+  fourth follow-up): the fresh-local constant write, `Alloc; CStore`,
+  growing BOTH renames. Added the tenth `CompilerInv` conjunct
+  `UnboundLocalsUnmapped` (LocalBindingSim's converse — without it
+  nothing says the fragment starts with the root `Alloc`) plus
+  `runN_Assgn_Alloc_step`, `ensureLocalRegE_fresh`,
+  `compileStmt_local_fresh_run`, `AddrRenameMap.extend`,
+  `SourceMemSim.rename_mono`. journal/2026-08/2026-08-22-regime-b-closed.md;
+  dev-log increment 30.
+**Status:** complete. Audit 5 → 4 — the first drop since the deref spine.
+All four remaining sorries are leaf-local proof work; the SB machinery is
+complete. Suite/differential/units unchanged throughout; closed leaves
 stay axiom-clean.
 **Next-session pickup:** loose-ends/parked.md → "obseq3 proof closure" →
 `CompilerInv_step_ref` (the leaf's own work: `Borrow` fragment execution,
 `MemValSim` for the stored `ptrVal` under the extended ρt, BRIDGE 2 for
 the `RStore`), then the two `Borrow`-emitting const_write regimes.
-Regime B is also open and fully unblocked (invert `allocateBase`, execute
-the `Alloc` fragment, extend `SourceMemSim`/`LocalBindingSim`); note it
-will be the third `CompilerInv` construction site, so wire any further
-conjunct BEFORE closing it if one is coming. Also
+Note `CompilerInv` now has THREE construction sites (regimes A, B and the
+deref spine), so wire any further conjunct before closing another leaf. Also
 still open: W34 digest, and W33's proposed
 `conformance-process-patterns.md` promotion.

@@ -296,26 +296,23 @@ execution, `MemValSim` for the stored `ptrVal` under the extended ρt, and
 BRIDGE 2 for the `RStore`). Then `const_write_proj_simulation` and
 `const_write_deref_nonspine_simulation`, which compose the member with
 BRIDGE 1 and BRIDGE 3. Copy is independent: it still needs a
-bidirectional memory relation + the Memcpy execution lemma. As of 2026-08-22 the
-fresh-local sorry (regime B) has NO machinery blockers: `sb_own` mints its
-root tag and extends ρt, and `AllocLockstep` (ninth `CompilerInv`
-conjunct) makes both machines allocate at the same address so ρa extends
-by `.refl`. Its remaining work is leaf-local — invert mirlite's
-`allocateBase`, execute the target's `Alloc` fragment, extend
-`SourceMemSim`/`LocalBindingSim` at the new cell. It will also be the
-THIRD `CompilerInv` construction site, which is what makes future
-conjuncts cost more than the two that landed today.
+bidirectional memory relation + the Memcpy execution lemma. Regime B CLOSED 2026-08-22 (audit
+5 → 4); it added the tenth `CompilerInv` conjunct
+(`UnboundLocalsUnmapped`) and a third construction site, so any future
+conjunct now costs three bullets rather than two — wire conjuncts BEFORE
+closing the leaf that adds a site.
 **Effort estimate:** CompilerInv `TagRenameBounded` wiring DONE
 (~1 h actual); ref leaf ~half-day; proj/deref-nonspine ~half-day each; copy ~1-2
 days (bidirectional memory relation is the real work); `sb_own` member DONE
 (~1 h actual, as predicted); lockstep-allocation conjunct DONE (~1 h);
-fresh-local ~half-day (leaf-local work only).
+fresh-local DONE (~2 h actual).
 **References:** proof/compiler.lean (audit), journal/2026-08/
 2026-08-15-obseq3-proof-skeleton.md, journal/2026-08/
 2026-08-22-sb-ref-transport.md, journal/2026-08/
 2026-08-22-tagrenamebounded-wired.md, journal/2026-08/
 2026-08-22-sb-own-member.md, journal/2026-08/
-2026-08-22-alloclockstep-wired.md, obseq2 sorries superseded by this
+2026-08-22-alloclockstep-wired.md, journal/2026-08/
+2026-08-22-regime-b-closed.md, obseq2 sorries superseded by this
 decomposition (obseq2/proof stays frozen).
 
 

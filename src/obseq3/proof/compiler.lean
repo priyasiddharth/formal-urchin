@@ -73,36 +73,44 @@ the two facts the minting members need.
   `AllocLockstep.allocate_eq` is the consumer-facing form: corresponding
   allocations agree, and the property survives them.
 
-Remaining (5): every remaining sorry is blocked on a NAMED obligation:
-1. `const_write_fresh_local_simulation` — FULLY UNBLOCKED as of
-   2026-08-22: the `sb_own` member mints the root tag and extends ρt,
-   and `AllocLockstep` (now a `CompilerInv` conjunct) makes the two
-   machines' fresh allocations land at the same address so ρa extends by
-   `.refl`. What remains is the leaf's own work: mirlite's
-   `allocateBase` inversion, the target `Alloc` fragment's execution, and
-   `SourceMemSim`/`LocalBindingSim` extension at the new cell.
-2. `const_write_proj_simulation` — every SB-side obligation is now
+Remaining (4): every remaining sorry is blocked on a NAMED obligation:
+1. `const_write_proj_simulation` — every SB-side obligation is now
    available (`sb_ref` member + `TagRenameBounded` in the invariant +
    `PlaceRegMapBound`); what remains is proof work, not machinery:
    compose the member with BRIDGE 1 and BRIDGE 3 over the internal
    `Borrow`, and execute the proj fragment.
-3. `const_write_deref_nonspine_simulation` — a projection somewhere in
+2. `const_write_deref_nonspine_simulation` — a projection somewhere in
    the dereferenced pointer place: its lowering emits a `Borrow` with
    cleanup — same position as regime C above, and unblocked by the same
    landed member (the former D2/D3 split is gone: all-deref spines of
    EVERY depth closed 2026-08-21 via `loadSpine_lowering_sim`).
-4. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS
+3. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS
    (`sb_read_respects_PermSim`, 2026-08-19); still needs a bidirectional
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-5. `CompilerInv_step_ref` — fully unblocked as of 2026-08-22: the
+4. `CompilerInv_step_ref` — fully unblocked as of 2026-08-22: the
    `sb_ref` member extends ρt and hands back the extended
    `TagRenameBounded`, which the invariant now carries. What remains is
    the leaf's own work — the `Borrow` fragment's execution, the
    `MemValSim` for the stored `ptrVal` under the extended ρt, and
    BRIDGE 2 for the `RStore`. Its `Die` cleanup transport exists
    (`sb_die_respects_PermSim`).
+
+- ✔ REGIME B (fresh local) `const_write_fresh_local_simulation`
+  (2026-08-22): the only regime that grows BOTH renames. The fragment is
+  two instructions — the root `Alloc` that `ensureLocalRegE` emits when
+  the local is unmapped, then the `CStore`. ρa extends by the IDENTITY
+  pair (`AllocLockstep` makes both allocators hand out the same address;
+  `AddrRenameIncr.extend_id` needs no freshness side condition, because
+  `IdentityOnDomain` already forces any prior mapping of that address to
+  be the identity one) and ρt extends at the fresh pair via
+  `sb_own_respects_PermSim`. Knowing the fragment BEGINS with the `Alloc`
+  is exactly what the `UnboundLocalsUnmapped` conjunct supplies. New
+  pieces: `runN_Assgn_Alloc_step`, `ensureLocalRegE_fresh`,
+  `compileStmt_local_fresh_run`, `getPlaceInfo_setPlaceInfo_self`/`_ne`,
+  `getPlaceInfo_emit`, `AddrRenameMap.extend` + its two lemmas,
+  `SourceMemSim.rename_mono`.
 
 CLOSED in the leaf layer (2026-08-18):
 - ✔ `const_write_stmt_evidence` — total (fresh-root branch via

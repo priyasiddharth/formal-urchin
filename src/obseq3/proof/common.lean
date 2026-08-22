@@ -739,6 +739,19 @@ def LocalBindingSim
       ρt binding.tag = some tag ∧
       (binding.tag == wildcardTag) = false
 
+/-- The converse of `LocalBindingSim`'s mapping component: a local the
+    source has not bound is not mapped by the compiler either.
+
+    Source `preparePlaceAssign` and target `ensurePlaceRoot` allocate the
+    root of an assignment destination at the same statement, so the two
+    notions of "exists yet" agree. Regime B needs exactly this direction:
+    it is what says the compiled fragment really does begin with the root
+    `Alloc`, rather than being the bare `CStore` of regime A. -/
+def UnboundLocalsUnmapped {Γ : Ctx}
+  (env : mirlite.Env Γ) (cs : CompilerState) : Prop :=
+  ∀ {τ : LayoutTy} (loc : Local Γ τ),
+    mirlite.Env.lookup env loc = none → getPlaceInfo cs loc.idx.1 = none
+
 /-- Pointwise simulation between a source `MemValue` and a target `Val`. -/
 def MemValSim
   (ρa : AddrRenameMap)
@@ -769,6 +782,36 @@ theorem MemValSim.rename_mono
   · rcases h_sim with ⟨h_base, h_off, h_size, h_tag_old, h_nw, h_dom⟩
     exact ⟨h_addr _ _ h_base, h_off, h_size, h_tag _ _ h_tag_old, h_nw,
       fun k hk => ⟨(h_dom k hk).choose, h_addr _ _ (h_dom k hk).choose_spec⟩⟩
+
+/-- Extend an address rename at one fresh address. Unlike ρt, ρa is
+    IDENTITY on its domain (lockstep bump allocation shares the address
+    namespace), so the only extension the simulation ever performs is
+    `a ↦ a`. -/
+def AddrRenameMap.extend (ρa : AddrRenameMap) (a b : Word) : AddrRenameMap :=
+  fun x => if x = a then some b else ρa x
+
+@[simp] theorem AddrRenameMap.extend_self (ρa : AddrRenameMap) (a b : Word) :
+    ρa.extend a b a = some b := by
+  simp [AddrRenameMap.extend]
+
+theorem AddrRenameMap.extend_ne {ρa : AddrRenameMap} {a b x : Word} (h : x ≠ a) :
+    ρa.extend a b x = ρa x := by
+  simp [AddrRenameMap.extend, h]
+
+/-- An identity extension is always a growth — no freshness side condition
+    needed, because if `a` were already mapped `IdentityOnDomain` forces it
+    to be mapped to `a`. -/
+theorem AddrRenameIncr.extend_id {ρa : AddrRenameMap}
+    (h_id : IdentityOnDomain ρa) (a : Word) :
+    AddrRenameIncr ρa (ρa.extend a a) := by
+  intro x x' hx
+  grind [AddrRenameMap.extend, IdentityOnDomain]
+
+theorem IdentityOnDomain.extend_id {ρa : AddrRenameMap}
+    (h_id : IdentityOnDomain ρa) (a : Word) :
+    IdentityOnDomain (ρa.extend a a) := by
+  intro x x' hx
+  grind [AddrRenameMap.extend, IdentityOnDomain]
 
 /-! ### Lockstep allocation
 
@@ -833,6 +876,17 @@ def SourceMemSim
       oseair.Mem.find? mem_osea addr' = some value' ∧
       MemValSim ρa ρt value value'
 
+/-- `SourceMemSim` transports along rename growth (renames appear only
+    positively). -/
+theorem SourceMemSim.rename_mono
+    {ρa ρa' : AddrRenameMap} {ρt ρt' : TagRenameMap}
+    {m : mirlite.Mem} {m' : oseair.Mem}
+    (h_a : AddrRenameIncr ρa ρa') (h_t : TagRenameIncr ρt ρt')
+    (h : SourceMemSim ρa ρt m m') : SourceMemSim ρa' ρt' m m' := by
+  intro addr value h_find
+  obtain ⟨addr', value', h_ra, h_find', h_mvs⟩ := h addr value h_find
+  exact ⟨addr', value', h_a _ _ h_ra, h_find', MemValSim.rename_mono h_a h_t h_mvs⟩
+
 /-- The main simulation invariant between a source mirlite state and a
     target OSEA state, both at `stackedBorrows`.
     vs obseq2: `TargetLocalsReady` (a `True` placeholder), `WellFormed`
@@ -859,7 +913,10 @@ def SourceMemSim
     ρa` could not survive a fresh local — the two machines would hand out
     different addresses for the same allocation. Re-establishing it is
     free for any fragment that only stores
-    (`AllocLockstep.writeWordSeq`). -/
+    (`AllocLockstep.writeWordSeq`).
+    `UnboundLocalsUnmapped` (2026-08-22) is `LocalBindingSim`'s converse on
+    the mapping component; regime B needs it to know its fragment starts
+    with the root `Alloc`. -/
 def CompilerInv
   {Γ : Ctx}
   (cs0 : CompilerState)
@@ -877,6 +934,7 @@ def CompilerInv
     TagRenameWF ρt ∧
     TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag ∧
     AllocLockstep s_mir.mem s_osea.mem ∧
+    UnboundLocalsUnmapped s_mir.env csPrefix ∧
     PlaceRegMapBound csPrefix
 
 /-- Register `reg` holds a pointer to `resolved`, and the tag stored there
@@ -1511,6 +1569,34 @@ theorem compileStmt_emitted_in_compProg
     compProg q = some instr := by
   rw [compileProgFrom_code_eq_compileStmt cs0 prog compProg h_comp h_prefix h_get h_stmt h_lt]
   exact h_code
+
+/-- One-step execution of an `Alloc` assignment: the bump allocator hands
+    out `mem.addrStart`, `M.own` roots the range at a fresh tag, and the
+    destination register receives the pointer to the new block. -/
+theorem runN_Assgn_Alloc_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst : Register) (ty : obseq.TyVal)
+    {perms2 : AccessPerms} {tag : Tag}
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.Alloc ty)))
+    (h_own : MSB.own s.perms s.mem.addrStart (obseq.typeSize ty)
+      = .ok (perms2, tag)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with
+        mem := (oseair.allocate s.mem (obseq.typeSize ty)).2,
+        perms := perms2,
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (obseq.typeSize ty) tag]),
+        pc := s.pc + 1 } := by
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with
+        mem := (oseair.allocate s.mem (obseq.typeSize ty)).2,
+        perms := perms2,
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (obseq.typeSize ty) tag]),
+        pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith,
+      oseair.bumpAllocator, oseair.allocate, h_own]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- A `CStore` whose value count matches the declared type size executes in
     exactly one `runN` step via `writeThroughPtr`. -/

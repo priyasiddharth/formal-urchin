@@ -4,6 +4,42 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-22 (night) — Regime B Closed: the Audit Moves Again
+
+Thirtieth increment, and the first time the audit count has dropped since the
+deref spine. `const_write_fresh_local_simulation` is proved: a constant write
+to an unbound local, where mirlite's prepare allocates it and the compiled
+fragment is `Alloc; CStore`. Five sorries become four.
+
+It is the only regime that grows *both* renames, and the asymmetry between them
+is the interesting part. ρt's extension is delicate — `TagRenameBounded` is
+load-bearing twice, once for injectivity and once to make the extension an
+extension rather than an overwrite. ρa's extension needs no side condition at
+all, because `IdentityOnDomain` already does both jobs: if the fresh address
+were somehow already mapped, it would already be mapped to itself. The identity
+discipline on ρa, chosen back when v3's rename maps were designed, pays for
+itself exactly here.
+
+The proof did need a tenth `CompilerInv` conjunct: `UnboundLocalsUnmapped`, the
+converse of `LocalBindingSim` on the mapping component. Without it nothing in
+the invariant says whether the fragment begins with the root `Alloc` or is the
+bare `CStore` of regime A — the two regimes are distinguished by a fact the
+invariant simply had not been asked to carry. Source `preparePlaceAssign` and
+target `ensureLocalRegE` allocate the root at the same statement, so the two
+notions of "exists yet" do agree; the invariant just had to say so.
+
+This also confirmed this afternoon's prediction. Regime B was the third
+`CompilerInv` construction site, and its conjunct cost three bullets instead of
+two. The sequencing lesson stands: wire conjuncts before closing the leaf that
+adds a site.
+
+Four sorries left — the two `Borrow`-emitting const_write regimes, copy, and
+the ref leaf — and all four are leaf-local proof work. The SB machinery is
+done. Validation unchanged: units 15/15 + 38/38, suite pass 77 | fail 0 of 117,
+differential matched 77 | mismatch 0 | skipped 0.
+
+---
+
 ## 2026-08-22 (end of day) — Lockstep Allocation, and Regime B Runs Out of Excuses
 
 Twenty-ninth increment. `CompilerInv` gains a ninth conjunct,
