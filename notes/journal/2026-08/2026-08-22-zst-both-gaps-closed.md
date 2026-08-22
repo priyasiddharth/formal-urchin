@@ -63,8 +63,22 @@ Promote if this recurs: *when a fix relaxes a predicate, add the witness
 that distinguishes the degenerate case from the general one, and verify
 by reverting.*
 
-Validation: suite pass 79 | fail 0 | unsupported 41 (120), differential
-matched 79 | mismatch 0 | skipped 0, units 15/15 + 38/38, all targets
+[OBS 2026-08-22] A third ZST witness, `local/zst_interior_field`, was
+added and its first version was WRONG about why it was worth having. The
+claim was that it "pins the third position an empty range can occupy";
+the teeth probe refuted that — an interior address is genuinely in
+bounds, so the old point check `addr ≥ base + size` accepts it too, and
+it mismatched under neither check. Only `zst_ref` and `zst_tail_field`
+are boundary regression tests. The witness was restructured to earn its
+place differently: because a ZST occupies no cell, `(u64, (), u64)` puts
+`s.1` and `s.2` at the SAME offset, so keeping a `&mut s.2` live across
+the `&mut s.1` retag catches a retag that wrongly used length 1 — a
+different bug class (wrong length) from the boundary one (wrong
+comparison). Lesson, and the reason the probe is worth running every
+time: *a test whose failure mode you cannot name is a passenger.*
+
+Validation: suite pass 80 | fail 0 | unsupported 41 (121), differential
+matched 80 | mismatch 0 | skipped 0, units 15/15 + 38/38, all targets
 build. `ref_local_local_simulation` axioms: propext / Classical.choice /
 Quot.sound.
 

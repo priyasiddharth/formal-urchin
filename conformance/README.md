@@ -171,6 +171,13 @@ but has NOT been verified against a real Miri run. Current entries:
   have teeth: restoring the pre-2026-08-22 point check
   `addr ≥ base + size` makes it mismatch on its own label, distinct from
   `zst_ref`'s.
+- `local/zst_interior_field` — a ZST field in the struct INTERIOR, kept
+  live alongside a `&mut` to the cell that follows it. In the model's
+  cell layout `(u64, (), u64)` puts `s.1` and `s.2` at the SAME offset
+  (the ZST occupies no cell), so a retag of `s.1` that wrongly used
+  length 1 would write-access exactly that neighbour and invalidate it.
+  NOT a boundary regression test — verified to pass under the older point
+  check too, since an interior address is genuinely in bounds.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

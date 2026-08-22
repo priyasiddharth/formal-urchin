@@ -1720,6 +1720,16 @@
       },
       "provenance": "local-model-reasoned; pending real-Miri verification",
       "notes": "ZST field at a struct TAIL: addr = base + size, len = 0 -- the non-degenerate one-past-the-end retag (base != addr, unlike local/zst_ref). Admitted by the range-form Rhs.Borrow check; rejected by the pre-2026-08-22 point check."
+    },
+    {
+      "id": "local/zst_interior_field",
+      "artifact": "local/zst_interior_field.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "notes": "ZST field in the INTERIOR of a struct. In the model's cell layout (u64,(),u64) puts s.1 and s.2 at the SAME offset 1 (the ZST occupies no cell), so a retag of s.1 that wrongly used length 1 would write-access exactly the cell `b` points at; the test keeps `b` live across the ZST retag to catch that. NOT a boundary regression test -- verified to pass under the older point check `addr >= base + size` too, since an interior address is genuinely in bounds; local/zst_ref and local/zst_tail_field are the boundary witnesses."
     }
   ]
 }
