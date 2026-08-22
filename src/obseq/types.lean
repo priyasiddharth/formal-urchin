@@ -6,7 +6,54 @@ inductive TyVal
 | NatTy
 | PTy
 | TupTy (tys : List TyVal)
-deriving Repr, BEq, Inhabited
+deriving Repr, Inhabited
+
+/-! `BEq TyVal` is hand-written rather than derived. `TyVal` is a NESTED
+inductive (`TupTy (tys : List TyVal)`), and the deriving handler cannot
+prove termination for it, so it falls back to `partial def` — which
+compiles to an `opaque` constant with no equations. That instance
+evaluates fine but is invisible to the logic: `(PTy == PTy) = true` was
+not provable by `rfl`/`decide`/`simp`, which blocked every
+compiler-correctness theorem that has to step over an instruction guarded
+by a `TyVal` comparison (`oseair`'s `RStore`). `DecidableEq` deriving
+refuses the type outright. The structural definition below has equations,
+and `LawfulBEq` makes the comparison usable on variables, not just
+constructor forms. (Same reason `obseq3.layoutDecEq` is hand-written.) -/
+mutual
+  def TyVal.beq : TyVal → TyVal → Bool
+  | .NatTy, .NatTy => true
+  | .PTy, .PTy => true
+  | .TupTy xs, .TupTy ys => TyVal.beqList xs ys
+  | _, _ => false
+  def TyVal.beqList : List TyVal → List TyVal → Bool
+  | [], [] => true
+  | x :: xs, y :: ys => TyVal.beq x y && TyVal.beqList xs ys
+  | _, _ => false
+end
+
+instance : BEq TyVal := ⟨TyVal.beq⟩
+
+mutual
+  theorem TyVal.beq_eq_true_iff : ∀ {a b : TyVal}, TyVal.beq a b = true ↔ a = b
+  | .NatTy, .NatTy => by simp [TyVal.beq]
+  | .PTy, .PTy => by simp [TyVal.beq]
+  | .TupTy xs, .TupTy ys => by
+      simp only [TyVal.beq, TyVal.TupTy.injEq]
+      exact TyVal.beqList_eq_true_iff
+  | .NatTy, .PTy | .NatTy, .TupTy _ | .PTy, .NatTy | .PTy, .TupTy _
+  | .TupTy _, .NatTy | .TupTy _, .PTy => by simp [TyVal.beq]
+  theorem TyVal.beqList_eq_true_iff :
+      ∀ {xs ys : List TyVal}, TyVal.beqList xs ys = true ↔ xs = ys
+  | [], [] => by simp [TyVal.beqList]
+  | x :: xs, y :: ys => by
+      simp only [TyVal.beqList, Bool.and_eq_true, List.cons.injEq]
+      exact and_congr TyVal.beq_eq_true_iff TyVal.beqList_eq_true_iff
+  | [], _ :: _ | _ :: _, [] => by simp [TyVal.beqList]
+end
+
+instance : LawfulBEq TyVal where
+  eq_of_beq h := TyVal.beq_eq_true_iff.mp h
+  rfl := TyVal.beq_eq_true_iff.mpr rfl
 
 inductive LayoutTy
 | NatL

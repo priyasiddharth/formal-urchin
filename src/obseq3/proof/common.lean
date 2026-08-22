@@ -1678,23 +1678,26 @@ theorem compileStmt_emitted_in_compProg
   rw [compileProgFrom_code_eq_compileStmt cs0 prog compProg h_comp h_prefix h_get h_stmt h_lt]
   exact h_code
 
-/-! ### BLOCKER (2026-08-22): `RStore` cannot be executed in a proof
-
-`oseair.stepWith`'s `RStore` case guards on `if srcTy != ty then Err`, and
-`obseq.TyVal` derives `BEq` — whose generated `instBEqTyVal.beq` is OPAQUE
-to the logic. `(TyVal.PTy == TyVal.PTy) = true` is not provable by `rfl`,
-`decide`, `simp`, `unseal` or `with_unfolding_all` (it is axiom-free, so
-this is not an `opaque` axiom; the derived function simply has no
-equations). The compiled code evaluates it fine, which is why the
-differential suite is green — but no theorem can step over an `RStore`.
-
-This blocks `CompilerInv_step_ref` (its fragment is `Borrow; RStore`) and
-will block `alloc`/`exposeAddr`/`refSlice` when they arrive. The fix is at
-the model level and is the user's call — see
-loose-ends/parked.md → "RStore's TyVal guard is unprovable". Everything
-else the ref leaf needs (`runN_Assgn_Borrow_step`, the fragment lemmas in
-proof/ref.lean, `sb_ref_respects_PermSim`, the strengthened
-`LocalBindingSim`) is in place. -/
+/-- One-step execution of an `RStore`: the source register's cells are
+    written through the destination pointer register. The instruction's
+    `srcTy != ty` guard is discharged by `LawfulBEq TyVal` — which is why
+    `BEq TyVal` is hand-written (see obseq/types.lean): the derived
+    instance was opaque and made this lemma unprovable (2026-08-22). -/
+theorem runN_RStore_step
+    (compProg : oseair.Prog) (s s' : oseair.State MSB)
+    (ty : obseq.TyVal) (src ptr : Register) (vals : List Val)
+    (x : obseq.TyVal × List Val)
+    (h_instr : compProg s.pc = some (Instr.RStore ty src ptr))
+    (h_src : oseair.RegMap.lookup s.reg src = some (ty, vals))
+    (h_ptr : oseair.RegMap.lookup s.reg ptr = some x)
+    (h_wtp : oseair.writeThroughPtr MSB s ptr vals "RStore Invalid Regs"
+      = oseair.Result.Ok s') :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok s' := by
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok s' := by
+    simp only [oseair.step, oseair.stepWith, h_instr, h_src, h_ptr, bne_self_eq_false,
+      Bool.false_eq_true, if_false]
+    exact h_wtp
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- One-step execution of a `Borrow` assignment: the base register is read,
     the retag through its tag succeeds, and the destination register
