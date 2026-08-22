@@ -53,21 +53,34 @@ cannot clobber bound locals' registers) and the strengthened `MemValSim`
 pointer case (stored tags are non-wildcard; the referent range is in
 ρa's domain). These also discharge part of regime C's blocker list.
 
-WIRED (2026-08-22): `CompilerInv` now carries
-`TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag` as an
-eighth conjunct — the hypothesis every consumer of the `sb_ref` member
-needs. Re-establishing it cost nothing at the closed sites: the three
-access ops leave `NextTag` alone (`sb_write_NextTag`/`sb_read_NextTag`/
-`sb_die_NextTag`), so regime A and the deref spine rewrite the bound
-through unchanged. `loadSpine_lowering_sim` gained two counter-framing
-conjuncts for the same reason (the spine only reads).
+WIRED (2026-08-22): `CompilerInv` grew from seven conjuncts to nine —
+the two facts the minting members need.
+
+- `TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag`
+  (eighth): the hypothesis every consumer of `sb_ref`/`sb_own` needs.
+  Free at the closed sites — the three access ops leave `NextTag` alone
+  (`sb_write_NextTag`/`sb_read_NextTag`/`sb_die_NextTag`), so regime A
+  and the deref spine rewrite the bound through unchanged.
+  `loadSpine_lowering_sim` gained two counter-framing conjuncts for the
+  same reason (the spine only reads).
+- `AllocLockstep s_mir.mem s_osea.mem` (ninth): the two bump allocators
+  sit at the same watermark, so corresponding fresh allocations return
+  the SAME base address — which is what lets ρa extend by `.refl` at a
+  fresh local without breaking `IdentityOnDomain`. Free at the closed
+  sites too: stores do not move a watermark
+  (`AllocLockstep.writeWordSeq`), and the spine needed NO change at all,
+  since it never touches memory on either machine.
+  `AllocLockstep.allocate_eq` is the consumer-facing form: corresponding
+  allocations agree, and the property survives them.
 
 Remaining (5): every remaining sorry is blocked on a NAMED obligation:
-1. `const_write_fresh_local_simulation` — the `sb_own` transport member
-   landed 2026-08-22, so the ONLY remaining machinery blocker is the
-   lockstep-allocation conjunct (`s_osea.mem.addrStart =
-   s_mir.mem.addrStart`, not yet in `CompilerInv`) so that ρa extends at
-   the equal fresh address.
+1. `const_write_fresh_local_simulation` — FULLY UNBLOCKED as of
+   2026-08-22: the `sb_own` member mints the root tag and extends ρt,
+   and `AllocLockstep` (now a `CompilerInv` conjunct) makes the two
+   machines' fresh allocations land at the same address so ρa extends by
+   `.refl`. What remains is the leaf's own work: mirlite's
+   `allocateBase` inversion, the target `Alloc` fragment's execution, and
+   `SourceMemSim`/`LocalBindingSim` extension at the new cell.
 2. `const_write_proj_simulation` — every SB-side obligation is now
    available (`sb_ref` member + `TagRenameBounded` in the invariant +
    `PlaceRegMapBound`); what remains is proof work, not machinery:

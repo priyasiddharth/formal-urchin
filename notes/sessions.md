@@ -209,15 +209,23 @@ lemma entirely.
   one new bridge, `foldCells_ok_iff_foldCellsIdx_ok`, because `ownCell`
   is the only cell op that succeeds on a MISSING stack. journal/2026-08/
   2026-08-22-sb-own-member.md; dev-log increment 28.
-**Status:** complete. Audit stays at 5 sorries — no leaf closed, but
-every remaining sorry is now blocked on proof work or on ONE named
-conjunct, not on missing SB machinery. Suite/differential/units unchanged throughout; closed leaves
+- `AllocLockstep` wired as the NINTH `CompilerInv` conjunct (same
+  session, third follow-up): `mirlite_writeWordSeq_addrStart` /
+  `oseair_writeWordSeq_addrStart` framing, `AllocLockstep.writeWordSeq`,
+  `AllocLockstep.allocate_eq`. The spine needed no change (it never
+  touches memory). journal/2026-08/2026-08-22-alloclockstep-wired.md;
+  dev-log increment 29.
+**Status:** complete. Audit stays at 5 sorries — no leaf closed, but for
+the first time NONE of the five is waiting on a missing lemma; every
+remaining sorry is leaf-local proof work. Suite/differential/units unchanged throughout; closed leaves
 stay axiom-clean.
 **Next-session pickup:** loose-ends/parked.md → "obseq3 proof closure" →
 `CompilerInv_step_ref` (the leaf's own work: `Borrow` fragment execution,
 `MemValSim` for the stored `ptrVal` under the extended ρt, BRIDGE 2 for
 the `RStore`), then the two `Borrow`-emitting const_write regimes.
-Regime B is one conjunct away: wire `s_osea.mem.addrStart =
-s_mir.mem.addrStart` into `CompilerInv` the way `TagRenameBounded` was. Also
+Regime B is also open and fully unblocked (invert `allocateBase`, execute
+the `Alloc` fragment, extend `SourceMemSim`/`LocalBindingSim`); note it
+will be the third `CompilerInv` construction site, so wire any further
+conjunct BEFORE closing it if one is coming. Also
 still open: W34 digest, and W33's proposed
 `conformance-process-patterns.md` promotion.

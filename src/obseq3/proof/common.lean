@@ -770,6 +770,56 @@ theorem MemValSim.rename_mono
     exact ⟨h_addr _ _ h_base, h_off, h_size, h_tag _ _ h_tag_old, h_nw,
       fun k hk => ⟨(h_dom k hk).choose, h_addr _ _ (h_dom k hk).choose_spec⟩⟩
 
+/-! ### Lockstep allocation
+
+Both machines allocate with the same bump allocator (`mirlite.allocate`
+and `oseair.allocate` are the same function on their own `Mem`), so as
+long as their watermarks agree, a fresh allocation on both sides returns the
+SAME base address. That is what lets ρa be extended by `.refl` at a fresh
+local — `IdentityOnDomain ρa` would be false the moment the two machines
+handed out different addresses for corresponding allocations. -/
+
+/-- The two allocators are at the same watermark. -/
+def AllocLockstep (mem_mir : mirlite.Mem) (mem_osea : oseair.Mem) : Prop :=
+  mem_osea.addrStart = mem_mir.addrStart
+
+/-- Stores do not move the watermark (source side). -/
+theorem mirlite_writeWordSeq_addrStart :
+    ∀ (values : List mirlite.MemValue) (m : mirlite.Mem) (addr : Word),
+      (mirlite.writeWordSeq m addr values).addrStart = m.addrStart
+  | [], _, _ => rfl
+  | v :: vs, m, addr => by
+      rw [mirlite.writeWordSeq, mirlite_writeWordSeq_addrStart vs]
+      rfl
+
+/-- Stores do not move the watermark (target side). -/
+theorem oseair_writeWordSeq_addrStart :
+    ∀ (vals : List Val) (m : oseair.Mem) (addr : Word),
+      (oseair.writeWordSeq m addr vals).addrStart = m.addrStart
+  | [], _, _ => rfl
+  | v :: vs, m, addr => by
+      rw [oseair.writeWordSeq, oseair_writeWordSeq_addrStart vs]
+      rfl
+
+/-- `AllocLockstep` survives a store on both machines. -/
+theorem AllocLockstep.writeWordSeq {m : mirlite.Mem} {m' : oseair.Mem}
+    (h : AllocLockstep m m') (addr addr' : Word)
+    (values : List mirlite.MemValue) (vals : List Val) :
+    AllocLockstep (mirlite.writeWordSeq m addr values)
+      (oseair.writeWordSeq m' addr' vals) := by
+  unfold AllocLockstep at h ⊢
+  rw [oseair_writeWordSeq_addrStart, mirlite_writeWordSeq_addrStart]
+  exact h
+
+/-- Lockstep allocation is exactly the statement that corresponding fresh
+    allocations agree — the fact ρa's extension needs. -/
+theorem AllocLockstep.allocate_eq {m : mirlite.Mem} {m' : oseair.Mem}
+    (h : AllocLockstep m m') (sz : Nat) :
+    (oseair.allocate m' sz).1 = (mirlite.allocate m sz).1 ∧
+      AllocLockstep (mirlite.allocate m sz).2 (oseair.allocate m' sz).2 := by
+  unfold AllocLockstep at h ⊢
+  exact ⟨h, by simp [mirlite.allocate, oseair.allocate, h]⟩
+
 /-- Forward memory simulation at renamed addresses. -/
 def SourceMemSim
   (ρa : AddrRenameMap)
@@ -802,7 +852,14 @@ def SourceMemSim
     `sb_ref_respects_PermSim` (and, when it lands, of the `sb_own`
     member). Re-establishing it is free for every access-only step:
     `sb_write`/`sb_read`/`sb_die` do not touch `NextTag`
-    (`sb_*_NextTag` in proof/permsim_transport.lean). -/
+    (`sb_*_NextTag` in proof/permsim_transport.lean).
+    `AllocLockstep` (2026-08-22) is the memory analogue: the two bump
+    allocators sit at the same watermark, so corresponding fresh
+    allocations return the SAME base address. Without it `IdentityOnDomain
+    ρa` could not survive a fresh local — the two machines would hand out
+    different addresses for the same allocation. Re-establishing it is
+    free for any fragment that only stores
+    (`AllocLockstep.writeWordSeq`). -/
 def CompilerInv
   {Γ : Ctx}
   (cs0 : CompilerState)
@@ -819,6 +876,7 @@ def CompilerInv
     IdentityOnDomain ρa ∧
     TagRenameWF ρt ∧
     TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag ∧
+    AllocLockstep s_mir.mem s_osea.mem ∧
     PlaceRegMapBound csPrefix
 
 /-- Register `reg` holds a pointer to `resolved`, and the tag stored there

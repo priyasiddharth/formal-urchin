@@ -4,6 +4,44 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-22 (end of day) — Lockstep Allocation, and Regime B Runs Out of Excuses
+
+Twenty-ninth increment. `CompilerInv` gains a ninth conjunct,
+`AllocLockstep s_mir.mem s_osea.mem` — the two bump allocators sit at the same
+watermark.
+
+The reason it belongs in the invariant rather than in a leaf is worth stating.
+`IdentityOnDomain ρa` is already a conjunct, and it is false the moment the two
+machines hand out different addresses for corresponding allocations. So a fresh
+local can extend ρa by `.refl` only if the allocators are in lockstep — and
+that is a property of the whole execution history, not of the statement being
+simulated. It has to be carried.
+
+Cheaper than this afternoon's `TagRenameBounded` wiring, which was already
+cheap. Two construction sites got one bullet each, since a store moves no
+watermark, and the load spine needed no change at all — it never touches memory
+on either machine.
+
+That is now two invariant conjuncts in an afternoon, both about an hour, both
+with the same shape: define the fact, prove that the operations the closed
+regimes actually perform leave it alone, add one bullet per construction site.
+The cheapness is structural rather than lucky: `CompilerInv` is *constructed*
+in exactly two places, and every other theorem either takes it as a hypothesis
+or passes it through a delegation. That will hold until a third construction
+site appears — which regime B will be.
+
+And regime B is now out of machinery excuses. `sb_own` mints its root tag and
+extends ρt; `AllocLockstep.allocate_eq` makes both machines allocate at the same
+address. What is left is leaf-local: invert mirlite's `allocateBase`, execute
+the target's `Alloc` fragment, extend `SourceMemSim` and `LocalBindingSim` at
+the new cell.
+
+Audit stays at 5, but for the first time none of the five is waiting on a
+missing lemma. Validation unchanged: units 15/15 + 38/38, suite pass 77 |
+fail 0 of 117, differential matched 77 | mismatch 0 | skipped 0.
+
+---
+
 ## 2026-08-22 (later still) — `sb_own` Closes the Transport Family
 
 Twenty-eighth increment. `sb_own_respects_PermSim` completes BRIDGE 3 over all

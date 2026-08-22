@@ -296,21 +296,26 @@ execution, `MemValSim` for the stored `ptrVal` under the extended ρt, and
 BRIDGE 2 for the `RStore`). Then `const_write_proj_simulation` and
 `const_write_deref_nonspine_simulation`, which compose the member with
 BRIDGE 1 and BRIDGE 3. Copy is independent: it still needs a
-bidirectional memory relation + the Memcpy execution lemma. The
-fresh-local sorry (regime B) needs ONLY the lockstep-allocation conjunct
-(`s_osea.mem.addrStart = s_mir.mem.addrStart`) as of 2026-08-22 — the
-`sb_own` member landed that day and the BRIDGE 3 family is complete over
-all five range ops.
+bidirectional memory relation + the Memcpy execution lemma. As of 2026-08-22 the
+fresh-local sorry (regime B) has NO machinery blockers: `sb_own` mints its
+root tag and extends ρt, and `AllocLockstep` (ninth `CompilerInv`
+conjunct) makes both machines allocate at the same address so ρa extends
+by `.refl`. Its remaining work is leaf-local — invert mirlite's
+`allocateBase`, execute the target's `Alloc` fragment, extend
+`SourceMemSim`/`LocalBindingSim` at the new cell. It will also be the
+THIRD `CompilerInv` construction site, which is what makes future
+conjuncts cost more than the two that landed today.
 **Effort estimate:** CompilerInv `TagRenameBounded` wiring DONE
 (~1 h actual); ref leaf ~half-day; proj/deref-nonspine ~half-day each; copy ~1-2
 days (bidirectional memory relation is the real work); `sb_own` member DONE
-(~1 h actual, as predicted); fresh-local ~half-day after the
-lockstep-allocation conjunct (~1 h, on the `TagRenameBounded` precedent).
+(~1 h actual, as predicted); lockstep-allocation conjunct DONE (~1 h);
+fresh-local ~half-day (leaf-local work only).
 **References:** proof/compiler.lean (audit), journal/2026-08/
 2026-08-15-obseq3-proof-skeleton.md, journal/2026-08/
 2026-08-22-sb-ref-transport.md, journal/2026-08/
 2026-08-22-tagrenamebounded-wired.md, journal/2026-08/
-2026-08-22-sb-own-member.md, obseq2 sorries superseded by this
+2026-08-22-sb-own-member.md, journal/2026-08/
+2026-08-22-alloclockstep-wired.md, obseq2 sorries superseded by this
 decomposition (obseq2/proof stays frozen).
 
 
