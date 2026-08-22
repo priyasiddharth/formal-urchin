@@ -4,6 +4,49 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-22 (late) — The Ref Leaf Opens: a Derived Instance Was the Wall
+
+Thirty-first increment. `ref_local_local_simulation` is proved — `dst := &src`
+with both locals bound — and it is the first leaf that grows ρt at a tag the
+*program* can see. Until now every fresh tag the simulation had to pair was a
+compiler-internal temp; here the source's reference tag and the target's are
+paired by `sb_ref_respects_PermSim` and then *stored*, so the extended ρt has to
+carry all the way into `MemValSim`.
+
+The day's real story is what blocked it first. `obseq.TyVal` is a nested
+inductive, and `deriving BEq` on a nested inductive produces a `partial def` —
+which compiles to an `opaque` constant with no equations. The instance
+evaluated perfectly (every suite was green) and was completely invisible to
+the logic: `(PTy == PTy) = true` was unprovable by any tactic. `oseair`'s
+`RStore` is guarded by exactly that comparison, so no theorem could step over
+an `RStore`, and the ref fragment is `Borrow; RStore`. `deriving DecidableEq`
+refuses the type outright, as the hand-written `layoutDecEq` in the same file
+had quietly been telling us.
+
+The fix is the one the file's own precedent suggested: a mutual structural
+`beq`, plus a `LawfulBEq` instance so the guard discharges over a *variable*
+type, not only on constructor forms. That last part matters more than this
+leaf — `alloc`, `exposeAddr` and `refSlice` all end in an `RStore` and now
+inherit `runN_RStore_step` unchanged. It cannot have broken existing proofs,
+because the old instance had nothing to depend on; behaviour is pinned by the
+lawfulness proof and by every suite coming back identical.
+
+Two smaller facts worth keeping. The ref fragment has no `Die` when the
+destination is a local — the borrow *is* the stored value — so this leaf never
+needed BRIDGE 1; the keystone enters `ref` only through a non-local
+destination. And the block-domain conjunct added to `LocalBindingSim` this
+afternoon is precisely what the stored pointer's `MemValSim` consumes.
+
+A second divergence surfaced and is parked: for a zero-sized referent the
+target's `Borrow` bounds check fires while mirlite's retag does not, and here
+Rust sides with the *source*. The closed regime carries `0 < blockSize τ`.
+
+Audit 4 → 6 by the same accounting as the D1 split: the ref leaf is now a
+dispatcher over one closed regime and three named residuals. Validation
+unchanged across all suites.
+
+---
+
 ## 2026-08-22 (night) — Regime B Closed: the Audit Moves Again
 
 Thirtieth increment, and the first time the audit count has dropped since the

@@ -224,14 +224,29 @@ lemma entirely.
   `compileStmt_local_fresh_run`, `AddrRenameMap.extend`,
   `SourceMemSim.rename_mono`. journal/2026-08/2026-08-22-regime-b-closed.md;
   dev-log increment 30.
-**Status:** complete. Audit 5 → 4 — the first drop since the deref spine.
-All four remaining sorries are leaf-local proof work; the SB machinery is
-complete. Suite/differential/units unchanged throughout; closed leaves
+- REF REGIME L→L CLOSED — `ref_local_local_simulation` (same session,
+  fifth follow-up), after a model-level wall: `obseq.TyVal`'s derived
+  `BEq` was an opaque `partial def`, making every `RStore` step
+  unprovable. User chose the hand-written structural `BEq` + `LawfulBEq`
+  (obseq/types.lean, `f9a9228`); `deriving DecidableEq` refuses nested
+  inductives. Also: `LocalBindingSim` block-domain conjunct,
+  `runN_Assgn_Borrow_step`, `runN_RStore_step`, and the finding that the
+  ref fragment has NO `Die` for a local destination (no BRIDGE 1 needed).
+  journal/2026-08/2026-08-22-rstore-tyval-blocker.md and
+  2026-08-22-ref-ll-closed.md; dev-log increment 31.
+**Status:** complete. Audit 5 → 4 → 6 (ref leaf split into one closed
+regime + three named residuals, D1-split accounting). All remaining
+sorries are leaf-local proof work except the ZST residual, which is a
+model decision; the SB machinery is complete.
+**Critical corrections (user):** none — but two decisions were the
+user's and were made explicitly: the `BEq` fix (option 1 of 3) and,
+implicitly, that the ZST divergence stays parked rather than being
+patched into the target. Suite/differential/units unchanged throughout; closed leaves
 stay axiom-clean.
 **Next-session pickup:** loose-ends/parked.md → "obseq3 proof closure" →
-`CompilerInv_step_ref` (the leaf's own work: `Borrow` fragment execution,
-`MemValSim` for the stored `ptrVal` under the extended ρt, BRIDGE 2 for
-the `RStore`), then the two `Borrow`-emitting const_write regimes.
+`ref_fresh_dst_residual` (regime B ∘ L→L, all pieces exist), then the two
+`Borrow`-emitting const_write regimes, then `ref_place_residual`. The
+ZST residual (parked.md → "ZST retag divergence") needs a model decision.
 Note `CompilerInv` now has THREE construction sites (regimes A, B and the
 deref spine), so wire any further conjunct before closing another leaf. Also
 still open: W34 digest, and W33's proposed

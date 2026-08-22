@@ -78,7 +78,10 @@ the two facts the minting members need.
   `AllocLockstep.allocate_eq` is the consumer-facing form: corresponding
   allocations agree, and the property survives them.
 
-Remaining (4): every remaining sorry is blocked on a NAMED obligation:
+Remaining (6): every remaining sorry is blocked on a NAMED obligation.
+(4 → 6 on 2026-08-22 because the ref leaf split into a CLOSED regime and
+three named residuals — the same accounting as the D1 split on 08-21:
+strictly more is proved, and the frontier is sharper.)
 1. `const_write_proj_simulation` — every SB-side obligation is now
    available (`sb_ref` member + `TagRenameBounded` in the invariant +
    `PlaceRegMapBound`); what remains is proof work, not machinery:
@@ -94,19 +97,30 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation:
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-4. `CompilerInv_step_ref` — BLOCKED AT THE MODEL LEVEL (2026-08-22).
-   Every SB-side and fragment-side piece now exists: the fragment is
-   `Borrow; RStore` with NO `Die` (a stored reference's cleanup is never
-   emitted, so this leaf does not need BRIDGE 1) via
-   `compileStmt_ref_local_local_run`, the retag transports via
-   `sb_ref_respects_PermSim`, the `Borrow` executes via
-   `runN_Assgn_Borrow_step`, and the stored pointer's `MemValSim` gets
-   its referent range from the strengthened `LocalBindingSim`. What
-   blocks it is the `RStore` step: `oseair.stepWith` guards on
-   `srcTy != ty` and `obseq.TyVal`'s derived `BEq` is opaque to the
-   logic — see the BLOCKER note in proof/common.lean §F. Also pending
-   and independent: the ZST divergence (`0 < blockSize τ` will be a
-   regime side condition).
+4. `ref_zst_residual` — zero-sized referent: the target's `Rhs.Borrow`
+   bounds check (`addr ≥ base + size`) rejects `size = 0` while mirlite's
+   `M.ref` accepts it. A genuine TARGET divergence (Rust permits `&()`),
+   outside the conformance surface. Model decision, parked.
+5. `ref_fresh_dst_residual` — `&src` into an UNBOUND local: the ref
+   analogue of const_write's regime B (root `Alloc` first, both renames
+   grow, ρt twice). Every piece exists; the composition is owed.
+6. `ref_place_residual` — a proj/deref place on either side of a ref: a
+   proj source offsets the `Borrow` (regime C's shape), a deref source
+   loads through the spine first, and a non-local destination lowers with
+   a `Die` cleanup — which is where BRIDGE 1 finally enters for `ref`.
+
+- ✔ REGIME L→L of `ref` — `ref_local_local_simulation` (proof/ref.lean,
+  2026-08-22): `dstLocal := &srcLocal`, both bound, non-ZST referent.
+  The fragment is `Borrow; RStore` with NO `Die` (a stored reference's
+  cleanup is never emitted), so the ref leaf does not need BRIDGE 1.
+  First leaf to grow ρt at a USER-visible tag: the two machines' fresh
+  reference tags are paired by `sb_ref_respects_PermSim`, and the stored
+  pointer's `MemValSim` holds under the extension with its referent
+  range from `LocalBindingSim`'s block-domain conjunct. Executes via
+  `runN_Assgn_Borrow_step` + `runN_RStore_step`; the latter was
+  UNPROVABLE until `BEq TyVal` was hand-written (obseq/types.lean,
+  2026-08-22 — the derived instance for the nested inductive was an
+  opaque `partial def`, invisible to the logic).
 
 - ✔ REGIME B (fresh local) `const_write_fresh_local_simulation`
   (2026-08-22): the only regime that grows BOTH renames. The fragment is

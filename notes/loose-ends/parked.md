@@ -133,31 +133,15 @@ restriction) and the Discriminant rvalue (read payload slot 0);
 (remaining-exclusions list), durable/sb-conformance-claim.md
 
 ## `RStore`'s `TyVal` guard is unprovable (blocks the ref leaf)
-**Status:** parked 2026-08-22 — BLOCKING, needs a user decision
-**Context:** `oseair.stepWith`'s `RStore` case guards on `srcTy != ty`,
-and `obseq.TyVal`'s DERIVED `BEq` is opaque to the logic:
-`(TyVal.PTy == TyVal.PTy) = true` is not provable by `rfl`/`decide`/
-`simp`/`with_unfolding_all`/`unseal`, and the instance is axiom-free, so
-the derived function for this nested inductive simply has no usable
-equations. Runtime is unaffected (suites green); only proofs are blocked.
-Consequence: no theorem can step over an `RStore`, which blocks
-`CompilerInv_step_ref` (fragment `Borrow; RStore`) and will block
-`alloc`/`exposeAddr`/`refSlice`.
-**Why parked:** the fix is a model change in `src/obseq/types.lean`,
-shared with v1 and v2 — the user's call, not the agent's.
-**To resume:** pick one —
-(1) hand-write a structural `BEq TyVal` in obseq/types.lean (precedent:
-    `layoutDecEq` in the same file); behaviour-identical, guard becomes
-    `rfl`. CHEAPEST.
-(2) drop the `srcTy != ty` guard (a compiler-bug check the compiler can
-    never trip).
-Then re-run the suite (expect pass 77 | fail 0 of 117) and the
-differential (77/0/0) before trusting it, and finish
-`ref_local_local_simulation` — every other piece is already in place.
-**Effort estimate:** ~30 min for the model fix + validation; ~half-day
-for the leaf afterwards.
+**Status:** RESOLVED 2026-08-22 (same day) — user chose option (1).
+**Resolution:** hand-written mutual structural `TyVal.beq`/`beqList` +
+`LawfulBEq TyVal` in obseq/types.lean (commit `f9a9228`). `deriving
+DecidableEq` was tried first and refuses nested inductives. The root cause
+was the derived instance being a `partial def` ⇒ `opaque`. With
+`LawfulBEq`, `runN_RStore_step` holds over a variable `ty`, so every
+future `RStore`-shaped leaf inherits it. Suites unchanged.
 **References:** journal/2026-08/2026-08-22-rstore-tyval-blocker.md,
-proof/common.lean §F BLOCKER note, proof/ref.lean leaf docstring.
+2026-08-22-ref-ll-closed.md.
 
 
 ## ZST retag divergence (target `Borrow` bounds check vs mirlite `M.ref`)
@@ -334,19 +318,22 @@ Audit now 5 named sorries.
 `TagRenameBounded` WIRED into `CompilerInv` 2026-08-22 (eighth conjunct,
 plus `sb_*_NextTag` framing and two counter conjuncts on
 `loadSpine_lowering_sim`), so the `sb_ref` member is applicable at a leaf.
-NEXT INCREMENT — `CompilerInv_step_ref`: all its SB-side machinery now
-exists; what is left is the leaf's own work (the `Borrow` fragment's
-execution, `MemValSim` for the stored `ptrVal` under the extended ρt, and
-BRIDGE 2 for the `RStore`). Then `const_write_proj_simulation` and
-`const_write_deref_nonspine_simulation`, which compose the member with
-BRIDGE 1 and BRIDGE 3. Copy is independent: it still needs a
+Ref regime L→L CLOSED 2026-08-22
+(`ref_local_local_simulation`; `CompilerInv_step_ref` is now a dispatcher
+with three named residuals: ZST, fresh-dst, proj/deref — audit 4 → 6 by
+the D1-split accounting). NEXT: `ref_fresh_dst_residual` (regime B
+composed with L→L, all pieces exist, ~half-day), then
+`const_write_proj_simulation` and `const_write_deref_nonspine_simulation`
+(compose the `sb_ref` member with BRIDGE 1 and BRIDGE 3), then
+`ref_place_residual` (reuses whichever of those lands first). Copy is independent: it still needs a
 bidirectional memory relation + the Memcpy execution lemma. Regime B CLOSED 2026-08-22 (audit
 5 → 4); it added the tenth `CompilerInv` conjunct
 (`UnboundLocalsUnmapped`) and a third construction site, so any future
 conjunct now costs three bullets rather than two — wire conjuncts BEFORE
 closing the leaf that adds a site.
 **Effort estimate:** CompilerInv `TagRenameBounded` wiring DONE
-(~1 h actual); ref leaf ~half-day; proj/deref-nonspine ~half-day each; copy ~1-2
+(~1 h actual); ref L→L DONE (~3 h incl. the `BEq` detour); ref fresh-dst
+~half-day; proj/deref-nonspine ~half-day each; copy ~1-2
 days (bidirectional memory relation is the real work); `sb_own` member DONE
 (~1 h actual, as predicted); lockstep-allocation conjunct DONE (~1 h);
 fresh-local DONE (~2 h actual).
@@ -356,7 +343,8 @@ fresh-local DONE (~2 h actual).
 2026-08-22-tagrenamebounded-wired.md, journal/2026-08/
 2026-08-22-sb-own-member.md, journal/2026-08/
 2026-08-22-alloclockstep-wired.md, journal/2026-08/
-2026-08-22-regime-b-closed.md, obseq2 sorries superseded by this
+2026-08-22-regime-b-closed.md, journal/2026-08/
+2026-08-22-ref-ll-closed.md, obseq2 sorries superseded by this
 decomposition (obseq2/proof stays frozen).
 
 
