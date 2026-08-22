@@ -32,9 +32,8 @@ theorem compileStmt_ref_local_local_run
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
   obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
     placeToRegChecked_local_existing (kind := kind) h_src
-  have h_run' : (ensureLocalRegE dstLoc cs).snd.val = cs := h_run
   simp [compileStmtChecked, compileRExprToChecked, placeToBorrowRegChecked,
-    h_run, h_run', h_val, h_prun, h_pval, h_pres]
+    h_run, h_val, h_prun, h_pval, h_pres]
   simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
 
 /-- The statement lowers (its checked value is `ok`) in this regime. -/
@@ -52,12 +51,11 @@ theorem compileStmt_ref_local_local_value
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
   obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
     placeToRegChecked_local_existing (kind := kind) h_src
-  have h_run' : (ensureLocalRegE dstLoc cs).snd.val = cs := h_run
   simp only [compileStmtChecked, compileRExprToChecked, placeToBorrowRegChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
-    h_run, h_run', h_pval]
+    h_run, h_pval]
   exact ⟨_, rfl⟩
 
 /-! ## Regime L→L: `dstLocal := &srcLocal`, both bound -/
@@ -160,13 +158,7 @@ theorem ref_local_local_simulation
           simp only [emit, List.length_cons, List.length_nil]
           omega
         · rw [h_stmtRun]
-          have h := emit_code_at_new
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)])
-            [Instr.RStore obseq.TyVal.PTy (Register.R csPrefix.nextReg) dstReg]
-            (k := 0) (by simp)
-          simpa [emit] using h
+          simp [emit]
       -- §4 execute the Borrow
       have h_ref_tgt' : MSB.ref s_osea.perms (bS.addr + 0 + 0) (blockSize τ) tagS kind prot mask
           = .ok (tgtPerms, s_osea.perms.NextTag) := by
