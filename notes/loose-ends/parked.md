@@ -152,12 +152,24 @@ check and succeeds. Source-ok/target-UB. Unlike the 2026-08-21 deref-read
 finding, here RUST sides with the source (`&()` is legal), so the target
 is the divergent machine. No corpus test has the shape — ZSTs are outside
 the conformance surface (`zst-field-retagging-terminates` is UNSUPPORTED).
-**Why parked:** the ref leaf is blocked on the `RStore` guard first, and
-the closed regime can carry `0 < blockSize τ` meanwhile.
-**To resume:** decide whether to make the target's check
-`addr > base + size`-style (or skip it for `len = 0`) and re-validate, or
-to keep ZSTs as a documented out-of-scope residual.
-**Effort estimate:** ~1 h including validation.
+**Witness:** `conformance/local/zst_ref.rs`, manifest `local/zst_ref`,
+status `xfail-model` (added 2026-08-22). Running it surfaced a SECOND,
+upstream gap: the loader drops unit-aggregate assignments
+(lowering.lean step 3, `.aggregate none [] => return st`), so a ZST local
+is never ALLOCATED in mirlite and `&mut z` fails at resolution with
+"place root local not allocated" — before the `Borrow` check is even
+reached. Miri allocates ZST locals (zero-sized) and the retag is fine.
+**Why parked:** the ref L→L regime carries `0 < blockSize τ`
+(`ref_zst_residual` is the named sorry); both fixes are model/pipeline
+decisions.
+**To resume, in order:** (1) lower `x = ()` as an access-free init that
+allocates the root (e.g. `.assign dst .uninit`, whose `blockSize = 0`
+write is a no-op on both machines — but check the target's `CStore` of
+zero cells first); the witness flips to XPASS. (2) relax the target's
+`Rhs.Borrow` check for `len = 0`; the `--osea` differential goes
+77 → 78 matched and `ref_zst_residual` becomes provable by dropping the
+side condition. Re-validate after each (suite 77/118 + xfail 1 today).
+**Effort estimate:** ~1 h each including validation.
 **References:** journal/2026-08/2026-08-22-rstore-tyval-blocker.md.
 
 ## MASTER INVENTORY: everything unimplemented or approximated (obseq3 conformance)
