@@ -155,17 +155,20 @@ but has NOT been verified against a real Miri run. Current entries:
   deref resolution a real SB read (`resolvePlaceAcc`). Follow-up: run
   the pinned Miri on this file and upgrade the provenance.
 - `local/zst_ref` — the ZST borrow witness: `&mut ()` is a legal,
-  access-free retag (expected `ok`, PASSES). Writing it surfaced a
-  loader gap, fixed 2026-08-22: unit-aggregate assignments used to be
-  dropped (right for accesses, but it also dropped the ZST local's
-  allocation, so mirlite failed `&mut z` at resolution); they are now
-  kept as access-free `uninit` inits. That change touched 76 of the 77
-  corpus artifacts (every `fn` returns `()` into `_0`) with no verdict or
-  line change. What the witness was written for is still open: the OSEA
-  target's `Rhs.Borrow` bounds check rejects `size = 0` while mirlite's
-  `M.ref` accepts it — source-ok/target-UB, Rust sides with the source —
-  so the `--osea` differential reports exactly one MISMATCH here by
-  design until that check is relaxed for empty ranges. The three corpus
-  ZST tests are UNSUPPORTED for unrelated reasons (slices /
-  alloc+int-to-ptr / closures), so this is the suite's only ZST
+  access-free retag (expected `ok`, PASSES end to end, differential
+  matched). Writing it found and closed TWO gaps on 2026-08-22: the
+  loader dropped unit-aggregate assignments (right for accesses, wrong
+  for allocation — now kept as access-free `uninit` inits), and the OSEA
+  target's `Rhs.Borrow` bounds check was `addr ≥ base + size`, rejecting
+  every zero-sized retag (now the range form `addr + len > base + size`,
+  Miri's dereferenceable-for-`len`). The three corpus ZST tests are
+  UNSUPPORTED for unrelated reasons, so this is the suite's only ZST
   coverage.
+- `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
+  whether a local can be borrowed before it is ever written (the lowering
+  drops `StorageLive/Dead` and allocates at first assignment). rustc
+  rejects the direct form (E0381), so the only legal form goes through
+  `MaybeUninit`, a union — outside the surface. The refusal is the
+  answer for the union-free fragment: the borrow checker guarantees
+  every local is written before it is borrowed. Registered so it lights
+  up if unions ever land.

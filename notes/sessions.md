@@ -234,10 +234,16 @@ lemma entirely.
   ref fragment has NO `Die` for a local destination (no BRIDGE 1 needed).
   journal/2026-08/2026-08-22-rstore-tyval-blocker.md and
   2026-08-22-ref-ll-closed.md; dev-log increment 31.
-**Status:** complete. Audit 5 → 4 → 6 (ref leaf split into one closed
-regime + three named residuals, D1-split accounting). All remaining
-sorries are leaf-local proof work except the ZST residual, which is a
-model decision; the SB machinery is complete.
+- ZST, both gaps CLOSED (sixth follow-up): loader keeps unit assignments
+  as `uninit` inits (`a36f0a3`); target `Rhs.Borrow` check is now the
+  range form; `ref_zst_residual` deleted (audit 6 → 5);
+  `local/zst_ref` PASSES, differential 78/0/0. The StorageLive [HYP] was
+  REFUTED by rustc (E0381) for the union-free fragment; probe registered
+  `unsupported: unions`. journal/2026-08/2026-08-22-zst-loader-gap-fixed.md,
+  2026-08-22-zst-both-gaps-closed.md; dev-log increments 31–32.
+**Status:** complete. Audit 5 → 4 → 6 → 5. All remaining sorries are
+leaf-local proof work; the SB machinery is complete and every known
+model divergence is closed.
 **Critical corrections (user):** none — but two decisions were the
 user's and were made explicitly: the `BEq` fix (option 1 of 3) and,
 implicitly, that the ZST divergence stays parked rather than being
@@ -245,8 +251,7 @@ patched into the target. Suite/differential/units unchanged throughout; closed l
 stay axiom-clean.
 **Next-session pickup:** loose-ends/parked.md → "obseq3 proof closure" →
 `ref_fresh_dst_residual` (regime B ∘ L→L, all pieces exist), then the two
-`Borrow`-emitting const_write regimes, then `ref_place_residual`. The
-ZST residual (parked.md → "ZST retag divergence") needs a model decision.
+`Borrow`-emitting const_write regimes, then `ref_place_residual`.
 Note `CompilerInv` now has THREE construction sites (regimes A, B and the
 deref spine), so wire any further conjunct before closing another leaf. Also
 still open: W34 digest, and W33's proposed

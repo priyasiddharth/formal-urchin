@@ -288,7 +288,13 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
      match state.reg.lookup baseReg with
      | some (_, [Val.Ptr base baseOff size tag]) =>
        let addr := base + baseOff + offset
-       if addr >= base + size then RhsResult.Err "OOB"
+       -- the retagged RANGE must be dereferenceable (Miri's requirement),
+       -- which for `len = 0` admits a one-past-the-end address: a ZST
+       -- borrow is legal Rust and performs no access. Same form as
+       -- `writeThroughPtr`'s check. (Until 2026-08-22 this was
+       -- `addr >= base + size`, which rejected every zero-sized retag —
+       -- `local/zst_ref`.)
+       if addr + len > base + size then RhsResult.Err "OOB"
        else
          match M.ref state.perms addr len tag kind prot mask with
          | .ok (perms2, newTag) =>

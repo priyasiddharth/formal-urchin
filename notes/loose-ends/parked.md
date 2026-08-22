@@ -145,38 +145,34 @@ future `RStore`-shaped leaf inherits it. Suites unchanged.
 
 
 ## ZST retag divergence (target `Borrow` bounds check vs mirlite `M.ref`)
-**Status:** parked 2026-08-22
-**Context:** for `blockSize τ = 0` the target's `Rhs.Borrow` check
-`addr ≥ base + size` fires and errs, while mirlite's `M.ref` has no such
-check and succeeds. Source-ok/target-UB. Unlike the 2026-08-21 deref-read
-finding, here RUST sides with the source (`&()` is legal), so the target
-is the divergent machine. No corpus test has the shape — ZSTs are outside
-the conformance surface (`zst-field-retagging-terminates` is UNSUPPORTED).
-**Witness:** `conformance/local/zst_ref.rs`, manifest `local/zst_ref`,
-status `xfail-model` (added 2026-08-22). Running it surfaced a SECOND,
-upstream gap: the loader drops unit-aggregate assignments
-(lowering.lean step 3, `.aggregate none [] => return st`), so a ZST local
-is never ALLOCATED in mirlite and `&mut z` fails at resolution with
-"place root local not allocated" — before the `Borrow` check is even
-reached. Miri allocates ZST locals (zero-sized) and the retag is fine.
-**Why parked:** the ref L→L regime carries `0 < blockSize τ`
-(`ref_zst_residual` is the named sorry); both fixes are model/pipeline
-decisions.
-**Gap (1) FIXED 2026-08-22:** unit-aggregate assignments are lowered as
-`.assign dst .uninit` (lowering.lean); the witness went XFAIL → XPASS →
-promoted to `supported`, suite pass 78 | fail 0 (118), 49 line-accurate
-tests unchanged through a change that touched 76/77 artifacts.
-**To resume (gap 2):** relax the target's `Rhs.Borrow` check for
-`len = 0` (oseair.lean `Rhs.Borrow`: `addr >= base + size` → skip or
-`addr > base + size` when `len = 0`); the `--osea` differential goes
-matched 77 | mismatch 1 → matched 78 | mismatch 0, and
-`ref_zst_residual` becomes provable by dropping `h_nz` from the L→L
-regime. The differential is LOUD (mismatch 1) until then, by design —
-there is no per-test expected-mismatch field, and adding one would hide
-exactly the signal the witness exists to give.
-**Effort estimate:** ~1 h including validation and the proof-side
-side-condition removal.
-**References:** journal/2026-08/2026-08-22-rstore-tyval-blocker.md.
+**Status:** RESOLVED 2026-08-22, both gaps, same day.
+**Resolution:** (1) loader keeps unit assignments as access-free `uninit`
+inits (`a36f0a3`); (2) target `Rhs.Borrow` check is now the range form
+`addr + len > base + size` (Miri's dereferenceable-for-`len`; admits
+one-past-the-end for `len = 0`; same form as `writeThroughPtr`). Stricter
+for multi-cell retags, and the differential did not move: matched 78 |
+mismatch 0. Proof side: `runN_Assgn_Borrow_step` takes the range bound,
+`ref_local_local_simulation` lost `h_nz`, `ref_zst_residual` deleted
+(audit 6 → 5). Witness `local/zst_ref` PASSES.
+**References:** journal/2026-08/2026-08-22-zst-both-gaps-closed.md.
+
+
+## StorageLive-vs-first-assignment probe (`local/unassigned_local_addr`)
+**Status:** parked 2026-08-22 as UNSUPPORTED (unions)
+**Context:** the lowering drops `StorageLive`/`StorageDead` and allocates
+locals at first assignment. HYP was that a local borrowed before any write
+would expose this. rustc rejects `let x: u64; &raw const x` (E0381); the
+only legal form is `MaybeUninit::uninit()`, a bodyless call on a union
+type, and unions are outside the surface.
+**Why parked:** the refusal is itself the answer for the supported
+fragment — without unions, the borrow checker guarantees every local is
+written before it is borrowed, so first-assignment allocation is sound
+BY CONSTRUCTION. The witness is registered `unsupported: unions` so it
+lights up if unions ever land.
+**To resume:** only if unions land: shim `MaybeUninit::uninit` →
+`.assign dst .uninit`, give `MaybeUninit<T>` the layout of `T`.
+**Effort estimate:** n/a until unions.
+**References:** conformance/local/unassigned_local_addr.rs.
 
 ## MASTER INVENTORY: everything unimplemented or approximated (obseq3 conformance)
 **Status:** living inventory, started 2026-08-15 — THE single place for

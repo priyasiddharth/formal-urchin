@@ -4,6 +4,44 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-22 (last) — A Witness Closes Two Gaps, and rustc Refutes a Third
+
+Thirty-second increment, and a short one on the proof side: `ref_zst_residual`
+is gone, audit 6 → 5, and it was closed by removing its cause rather than by
+proving it. The OSEA target's `Rhs.Borrow` bounds check was
+`addr ≥ base + size`, which rejects every zero-sized retag; it is now the range
+form `addr + len > base + size` — Miri's actual requirement, the same form
+`writeThroughPtr` already used, and one that admits the one-past-the-end
+address a ZST borrow legitimately has. It is *stricter* for multi-cell retags,
+and the differential did not move. The L→L regime dropped its
+`0 < blockSize τ` side condition the same hour.
+
+That is the second time today a proof obligation was discharged by aligning a
+machine with Miri instead of by a proof — the first was the opaque `BEq`. Both
+were found by attempting a leaf, which is becoming the pattern: the proofs are
+now a sharper conformance oracle than the suite for anything the corpus does
+not exercise.
+
+The home-grown witness `local/zst_ref` did all of this. It was written to probe
+one claim — the target's ZST check — and found a loader gap standing in front
+of it (unit assignments dropped, so ZST locals were never allocated), then,
+once that was fixed, exposed the target check as the differential's single
+mismatch, then passed end to end. Three signals, in order, from one
+twelve-line program.
+
+The follow-up probe went the other way. I had hypothesised that dropping
+`StorageLive/Dead` and allocating at first assignment could be exposed by a
+borrow-before-write. rustc refuses to compile that program (E0381); the only
+legal form is `MaybeUninit`, a union, outside the surface. So for the union-free
+fragment the borrow checker *guarantees* the property the lowering relies on.
+The hypothesis is superseded, and the probe is registered `unsupported: unions`
+so it lights up if that ever changes.
+
+Suite pass 78 | fail 0 of 119, differential matched 78 | mismatch 0, units and
+all targets green.
+
+---
+
 ## 2026-08-22 (late) — The Ref Leaf Opens: a Derived Instance Was the Wall
 
 Thirty-first increment. `ref_local_local_simulation` is proved — `dst := &src`

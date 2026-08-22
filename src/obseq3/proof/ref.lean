@@ -71,11 +71,13 @@ theorem compileStmt_ref_local_local_value
     under that extension with its referent range supplied by the source
     local's `LocalBindingSim` block-domain conjunct. ρa does not grow.
 
-    `h_nz`: the target's `Rhs.Borrow` bounds check (`addr ≥ base + size`)
-    rejects a zero-sized referent while mirlite's `M.ref` accepts it. Rust
-    sides with mirlite (`&()` is legal), so this is a TARGET divergence,
-    parked as the ZST residual; the closed regime carries the side
-    condition. -/
+    No size side condition: zero-sized referents are fine. (Until
+    2026-08-22 the target's `Rhs.Borrow` bounds check was
+    `addr ≥ base + size`, which rejected them while mirlite's `M.ref`
+    accepted them — Rust sides with mirlite, `&()` is legal — and this
+    regime carried `0 < blockSize τ`. The check is now the range form
+    `addr + len > base + size`, the same as `writeThroughPtr`'s, and the
+    residual is gone.) -/
 theorem ref_local_local_simulation
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -86,7 +88,6 @@ theorem ref_local_local_simulation
     {bD bS : mirlite.Binding}
     (kind : RefKind) (prot : Bool) (mask : List Bool)
     (compProg : oseair.Prog)
-    (h_nz : 0 < blockSize τ)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     (h_stmt : prog.get? s_mir.pc
@@ -173,9 +174,9 @@ theorem ref_local_local_simulation
       have h_run1 := runN_Assgn_Borrow_step compProg s_osea
         (Register.R csPrefix.nextReg) srcReg kind prot mask (blockSize τ) 0
         h_code1 h_entryS (by
-          show bS.addr + 0 + 0 < bS.addr + blockSize τ
+          show bS.addr + 0 + 0 + blockSize τ ≤ bS.addr + blockSize τ
           simp only [Nat.add_zero]
-          exact Nat.lt_add_of_pos_right h_nz) h_ref_tgt'
+          exact Nat.le_refl _) h_ref_tgt'
       -- §5 the pointer write: source side destructured, target via BRIDGE 2
       have h_w := h_step
       simp only [mirlite.writeResolvedPlace] at h_w
@@ -270,36 +271,6 @@ theorem ref_local_local_simulation
             omega
         · simp at h_w
 
-/-- RESIDUAL (sorried): zero-sized referent. The target's `Rhs.Borrow`
-    bounds check (`addr ≥ base + size`) fires for `size = 0` while
-    mirlite's `M.ref` succeeds — a genuine TARGET divergence (Rust permits
-    `&()`), outside the conformance surface
-    (`zst-field-retagging-terminates` is UNSUPPORTED). Closing it is a
-    model decision: relax the target check for `len = 0`, or keep ZSTs
-    out of scope. See loose-ends/parked.md. -/
-theorem ref_zst_residual
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
-    {τ : LayoutTy}
-    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)} {srcLoc : Local Γ τ}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (compProg : oseair.Prog)
-    (h_z : blockSize τ = 0)
-    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
-    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc
-      = some (.assign (.local dstLoc) (.ref kind prot mask (.local srcLoc))))
-    (h_step : mirlite.stepStmt MSB s_mir
-      (.assign (.local dstLoc) (.ref kind prot mask (.local srcLoc))) = .ok s_mir') :
-    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
-      AddrRenameIncr ρa ρa' ∧
-      TagRenameIncr ρt ρt' ∧
-      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
-  sorry
-
 /-- RESIDUAL (sorried): `&src` stored into an UNBOUND local — the
     ref analogue of const_write's regime B. Same shape: mirlite's prepare
     allocates the destination and the fragment gains a leading root
@@ -356,7 +327,7 @@ theorem ref_place_residual
 
 /-- LEAF 3 (the dispatcher): per-statement simulation for
     `.assign dst (.ref kind prot mask src)`, decomposed by the shapes of
-    the two places. Regime L→L (both bound locals, non-ZST referent) is
+    the two places. Regime L→L (both bound locals, any referent size) is
     CLOSED by `ref_local_local_simulation`; the residuals are named. -/
 theorem CompilerInv_step_ref
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
@@ -385,13 +356,10 @@ theorem CompilerInv_step_ref
           | some bD =>
               cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
               | some bS =>
-                  by_cases h_nz : 0 < blockSize τ
-                  · obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-                      ref_local_local_simulation kind prot mask compProg h_nz h_comp h_inv
-                        h_stmt h_envD h_envS h_step
-                    exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
-                  · exact ref_zst_residual kind prot mask compProg
-                      (Nat.eq_zero_of_not_pos h_nz) h_comp h_inv h_stmt h_step
+                  obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+                    ref_local_local_simulation kind prot mask compProg h_comp h_inv
+                      h_stmt h_envD h_envS h_step
+                  exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
               | none =>
                   -- `&src` of an unbound local: the source errs at resolution
                   exfalso

@@ -29,7 +29,7 @@ leaf found; it is now isolated as the differential's single mismatch
 relaxed. Layered gaps want layered signals; `xfail-model` + the
 differential gave exactly that.
 
-[HYP] The same "access vs allocation" confusion may lurk in the other
+[SUPERSEDED → 2026-08-22-zst-both-gaps-closed.md: refuted by rustc E0381 for the union-free fragment] [HYP] The same "access vs allocation" confusion may lurk in the other
 dropped statement kinds — `StorageLive`/`StorageDead` in particular are
 Miri's allocation events for locals, and the lowering currently relies on
 first-assignment for allocation instead. That is fine while every local

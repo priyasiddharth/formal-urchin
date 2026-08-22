@@ -78,10 +78,11 @@ the two facts the minting members need.
   `AllocLockstep.allocate_eq` is the consumer-facing form: corresponding
   allocations agree, and the property survives them.
 
-Remaining (6): every remaining sorry is blocked on a NAMED obligation.
-(4 → 6 on 2026-08-22 because the ref leaf split into a CLOSED regime and
-three named residuals — the same accounting as the D1 split on 08-21:
-strictly more is proved, and the frontier is sharper.)
+Remaining (5): every remaining sorry is blocked on a NAMED obligation.
+(4 → 6 → 5 on 2026-08-22: the ref leaf split into a CLOSED regime and
+three named residuals, then the ZST residual was closed by removing its
+cause — the target's `Rhs.Borrow` check is now the range form — rather
+than by proving it.)
 1. `const_write_proj_simulation` — every SB-side obligation is now
    available (`sb_ref` member + `TagRenameBounded` in the invariant +
    `PlaceRegMapBound`); what remains is proof work, not machinery:
@@ -97,20 +98,19 @@ strictly more is proved, and the frontier is sharper.)
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-4. `ref_zst_residual` — zero-sized referent: the target's `Rhs.Borrow`
-   bounds check (`addr ≥ base + size`) rejects `size = 0` while mirlite's
-   `M.ref` accepts it. A genuine TARGET divergence (Rust permits `&()`),
-   outside the conformance surface. Model decision, parked.
-5. `ref_fresh_dst_residual` — `&src` into an UNBOUND local: the ref
+4. `ref_fresh_dst_residual` — `&src` into an UNBOUND local: the ref
    analogue of const_write's regime B (root `Alloc` first, both renames
    grow, ρt twice). Every piece exists; the composition is owed.
-6. `ref_place_residual` — a proj/deref place on either side of a ref: a
+5. `ref_place_residual` — a proj/deref place on either side of a ref: a
    proj source offsets the `Borrow` (regime C's shape), a deref source
    loads through the spine first, and a non-local destination lowers with
    a `Die` cleanup — which is where BRIDGE 1 finally enters for `ref`.
 
 - ✔ REGIME L→L of `ref` — `ref_local_local_simulation` (proof/ref.lean,
-  2026-08-22): `dstLocal := &srcLocal`, both bound, non-ZST referent.
+  2026-08-22): `dstLocal := &srcLocal`, both bound, ANY referent size
+  (the `0 < blockSize τ` side condition and its `ref_zst_residual` went
+  away the same day when the target's `Rhs.Borrow` bounds check became
+  the range form `addr + len > base + size` — `local/zst_ref`).
   The fragment is `Borrow; RStore` with NO `Die` (a stored reference's
   cleanup is never emitted), so the ref leaf does not need BRIDGE 1.
   First leaf to grow ρt at a USER-visible tag: the two machines' fresh

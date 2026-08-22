@@ -1712,7 +1712,7 @@ theorem runN_Assgn_Borrow_step
     (h_instr : compProg s.pc
       = some (Instr.Assgn dst (Rhs.Borrow kind prot mask len baseReg offset)))
     (h_entry : PtrRegisterEntry s.reg baseReg b bo sz t)
-    (h_lt : b + bo + offset < b + sz)
+    (h_le : b + bo + offset + len ≤ b + sz)
     (h_ref : MSB.ref s.perms (b + bo + offset) len t kind prot mask
       = .ok (p2, newTag)) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
@@ -1722,16 +1722,13 @@ theorem runN_Assgn_Borrow_step
                pc := s.pc + 1 } := by
   have h_lookup : oseair.RegMap.lookup s.reg baseReg
       = some (obseq.TyVal.PTy, [Val.Ptr b bo sz t]) := h_entry
-  have h_bounds : (b + bo + offset ≥ b + sz) = False := by
-    simp only [ge_iff_le, eq_iff_iff, iff_false, Nat.not_le]
-    exact h_lt
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with perms := p2,
                reg := oseair.RegMap.insert s.reg dst
                  (obseq.TyVal.PTy, [Val.Ptr b (bo + offset) sz newTag]),
                pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup]
-    rw [if_neg (by simp only [ge_iff_le, Nat.not_le]; exact h_lt)]
+    rw [if_neg (Nat.not_lt.mpr h_le)]
     simp only [h_ref]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 

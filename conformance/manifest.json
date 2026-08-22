@@ -1699,6 +1699,17 @@
       },
       "provenance": "local-model-reasoned; pending real-Miri verification",
       "notes": "ZST borrow witness (2026-08-22): &mut () is a legal, access-free retag. Source OK since the loader keeps unit-aggregate assignments as access-free uninit inits (they allocate the ZST root). The --osea differential MISMATCHES here by design until the OSEA target relaxes its Rhs.Borrow bounds check for len = 0 (source-ok/target-UB; Rust sides with the source; proof-side the ref L->L regime carries 0 < blockSize and ref_zst_residual is the named sorry). Expected verdict model-reasoned; pending real-Miri verification."
+    },
+    {
+      "id": "local/unassigned_local_addr",
+      "artifact": "local/unassigned_local_addr.ullbc.json",
+      "status": "unsupported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "notes": "StorageLive-vs-first-assignment probe. rustc rejects `let x: u64; &raw const x` (E0381), so in the union-free fragment every local IS written before it is borrowed -- the first-assignment allocation strategy is sound there BY CONSTRUCTION of the borrow checker. Lights up if unions ever land.",
+      "reason": "unions (MaybeUninit); the only legal Rust form of the probe"
     }
   ]
 }
