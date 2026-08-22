@@ -33,6 +33,19 @@ regime B was indeed the THIRD `CompilerInv` construction site, and the
 conjunct it needed cost three bullets instead of two. Sequencing lesson
 confirmed: wire conjuncts BEFORE closing the leaf that adds a site.
 
+[EMP] (Lean 4.28) `grind` closes every side goal of this leaf that is not
+about rewriting a compiler-state closed form: the wildcard fact from the
+tag bound, register distinctness through `RegisterBelow`, `Fin.val`
+injectivity, the `nextReg` arithmetic under `emit`/`setPlaceInfo`, and
+all four `Env.set` case splits (given `[mirlite.Env.lookup,
+mirlite.Env.set]`). Ten uses replaced fifteen lines of
+`simp`/`omega`/`injection`/`Fin.ext` plumbing, and each was a drop-in.
+Where `grind` does NOT help is the fragment algebra — locating the two
+instructions, `compileStmt_local_fresh_run`, the `getPlaceInfo`/`emit`
+rewrites — which is rewriting toward a specific closed form rather than
+discharging a goal. That split is the useful rule: `grind` for the
+side conditions, explicit rewriting for the compiler-state normal forms.
+
 [EMP] (Lean 4.28) potholes:
 - An implicit state argument that appears only under a PROJECTION
   (`s_pre.mem` in `writeThroughPtr_sim`'s `h_sms`) cannot be solved by

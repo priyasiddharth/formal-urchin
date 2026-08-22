@@ -389,8 +389,7 @@ theorem const_write_fresh_local_simulation
           s_mir.perms.NextTag = some s_osea.perms.NextTag :=
         TagRenameMap.extend_self _ _ _
       have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
-      have h_ne : s_mir.perms.NextTag ≠ wildcardTag := Ne.symm (Nat.ne_of_lt h0)
-      have h_nw : (s_mir.perms.NextTag == wildcardTag) = false := by simp [h_ne]
+      have h_nw : (s_mir.perms.NextTag == wildcardTag) = false := by grind
       -- §4 the compiled fragment: `Alloc` then `CStore`
       have h_stmtRun := compileStmt_local_fresh_run (cs := csPrefix) v h_pi_none
       obtain ⟨stmtOut, h_stmtOut⟩ :
@@ -513,8 +512,7 @@ theorem const_write_fresh_local_simulation
               subst h_ty
               have h_b : binding' = { addr := s_mir.mem.addrStart,
                                       tag := s_mir.perms.NextTag } := by
-                simp [mirlite.Env.lookup, mirlite.Env.set, h_idx] at h_env'
-                exact h_env'.symm
+                grind [mirlite.Env.lookup, mirlite.Env.set]
               subst h_b
               refine ⟨Register.R csPrefix.nextReg, s_mir.mem.addrStart,
                 s_osea.perms.NextTag, ?_, ?_, h_ra_new, h_rt_new, h_nw⟩
@@ -529,16 +527,12 @@ theorem const_write_fresh_local_simulation
                   using h_env'
               obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw'⟩ :=
                 h_lbs loc' binding' h_env''
-              have h_idxv : loc'.idx.1 ≠ loc.idx.1 :=
-                fun h => h_idx (Fin.ext h)
+              have h_idxv : loc'.idx.1 ≠ loc.idx.1 := by grind [Fin.ext]
               have h_regne : reg' ≠ Register.R csPrefix.nextReg := by
                 cases reg' with
                 | R n =>
                     have h_lt := h_prb _ _ _ h_pi'
-                    simp only [RegisterBelow] at h_lt
-                    intro hc
-                    injection hc with hc'
-                    omega
+                    grind [RegisterBelow]
               refine ⟨reg', base', tag', ?_, ?_, h_incr_a _ _ h_ra',
                 h_incr_t _ _ h_rt', h_nw'⟩
               · rw [h_stmtRun, getPlaceInfo_emit,
@@ -559,11 +553,10 @@ theorem const_write_fresh_local_simulation
             intro τ' loc' h_none
             by_cases h_idx : loc'.idx = loc.idx
             · exfalso
-              simp [mirlite.Env.lookup, mirlite.Env.set, h_idx] at h_none
+              grind [mirlite.Env.lookup, mirlite.Env.set]
             · have h_idxv : loc'.idx.1 ≠ loc.idx.1 := fun h => h_idx (Fin.ext h)
               have h_none' : mirlite.Env.lookup s_mir.env loc' = none := by
-                simpa only [mirlite.Env.lookup, mirlite.Env.set, if_neg h_idx]
-                  using h_none
+                grind [mirlite.Env.lookup, mirlite.Env.set]
               rw [h_stmtRun, getPlaceInfo_emit,
                 getPlaceInfo_setPlaceInfo_ne _ h_idxv]
               exact h_unmap loc' h_none'
@@ -579,12 +572,12 @@ theorem const_write_fresh_local_simulation
               subst this
               show csPrefix.nextReg < _
               simp only [emit, setPlaceInfo]
-              omega
+              grind
             · rw [getPlaceInfo_setPlaceInfo_ne _ h_i] at h_look
               have := h_prb _ _ _ h_look
               refine RegisterBelow.mono ?_ this
               simp only [emit, setPlaceInfo]
-              omega
+              grind
         · simp at h_w
 
 /-- RESIDUAL REGIME C (sorried): constant write to a projected
