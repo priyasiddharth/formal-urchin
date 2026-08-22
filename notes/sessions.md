@@ -202,13 +202,22 @@ lemma entirely.
   `CompilerInv` construction sites (regime A, deref spine). The `sb_ref`
   member is now applicable at a leaf. journal/2026-08/
   2026-08-22-tagrenamebounded-wired.md; dev-log increment 27.
+- `sb_own_respects_PermSim` (same session, second follow-up) — BRIDGE 3
+  now COMPLETE over all five range ops. Reused the `sb_ref` extension
+  algebra verbatim and compiled first try, confirming the same-day [HYP];
+  needed no model factoring (`ownCell` was already a named cell op) and
+  one new bridge, `foldCells_ok_iff_foldCellsIdx_ok`, because `ownCell`
+  is the only cell op that succeeds on a MISSING stack. journal/2026-08/
+  2026-08-22-sb-own-member.md; dev-log increment 28.
 **Status:** complete. Audit stays at 5 sorries — no leaf closed, but
-three of the five are now blocked on proof work rather than on missing
-machinery. Suite/differential/units unchanged throughout; closed leaves
+every remaining sorry is now blocked on proof work or on ONE named
+conjunct, not on missing SB machinery. Suite/differential/units unchanged throughout; closed leaves
 stay axiom-clean.
 **Next-session pickup:** loose-ends/parked.md → "obseq3 proof closure" →
 `CompilerInv_step_ref` (the leaf's own work: `Borrow` fragment execution,
 `MemValSim` for the stored `ptrVal` under the extended ρt, BRIDGE 2 for
-the `RStore`), then the two `Borrow`-emitting const_write regimes. Also
+the `RStore`), then the two `Borrow`-emitting const_write regimes.
+Regime B is one conjunct away: wire `s_osea.mem.addrStart =
+s_mir.mem.addrStart` into `CompilerInv` the way `TagRenameBounded` was. Also
 still open: W34 digest, and W33's proposed
 `conformance-process-patterns.md` promotion.

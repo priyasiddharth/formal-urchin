@@ -298,6 +298,37 @@ theorem foldCellsIdx_ok_inv
     rfl
   termination_by i len => len - i
 
+/-- The two folds agree on success. They differ only in how they DECORATE
+    errors (`foldCells` names the failing address, `foldCellsIdx` the
+    offset), so they are not equal as functions — but a successful run of
+    one is a successful run of the other with the same result. This is what
+    lets the index-free ops (`sb_own`, `sb_write`, …) reuse the indexed
+    fold's `Option`-shaped characterizations, which — unlike
+    `foldCells_ok_inv` — allow a cell op to SUCCEED on a missing stack.
+    `sb_own` is exactly that: it creates the cell. -/
+theorem foldCells_ok_iff_foldCellsIdx_ok
+    (op : AccessPerms → Word → Except String AccessPerms) (addr : Word) :
+    ∀ (len i : Nat) (ap ap' : AccessPerms),
+      (foldCells op ap (addr + i) len = .ok ap' ↔
+        foldCellsIdx (fun ap a _ => op ap a) ap addr i (i + len) = .ok ap') := by
+  intro len
+  induction len with
+  | zero =>
+      intro i ap ap'
+      rw [foldCells, foldCellsIdx.eq_def, if_neg (by omega)]
+  | succ n ih =>
+      intro i ap ap'
+      rw [foldCells, foldCellsIdx.eq_def, if_pos (by omega)]
+      cases h_op : op ap (addr + i) with
+      | error e =>
+          constructor
+          · intro h; simp at h
+          · intro h; simp at h
+      | ok ap2 =>
+          rw [show addr + i + 1 = addr + (i + 1) from rfl,
+              show i + (n + 1) = (i + 1) + n from by omega]
+          exact ih (i + 1) ap2 ap'
+
 /-- Construction counterpart of `foldCellsIdx_ok_inv`: if every cell's
     content computation succeeds against the INITIAL map (the cells are
     pairwise distinct, so earlier writes do not disturb later lookups),

@@ -4,6 +4,43 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-22 (later still) — `sb_own` Closes the Transport Family
+
+Twenty-eighth increment. `sb_own_respects_PermSim` completes BRIDGE 3 over all
+five range ops. Nothing in the proof core's SB surface is now without a
+transport.
+
+This one is worth recording mostly as a confirmed prediction. The morning's
+note said `sb_own` would reuse the `sb_ref` increment wholesale and cost a
+fraction of it; it did, and it compiled on the first attempt. Every piece of
+the ρt-extension algebra applied verbatim. The difference in cost — a morning
+versus a day — traces to one thing: `ownCell` was already a named top-level
+cell op, whereas `sb_ref`'s per-cell action was an inline `match` that had to
+be factored out of the model before anything could be said about it under a
+`RefKind` variable. That is a lesson about how to write the model, not about
+the proof.
+
+The one genuine wrinkle: `ownCell` is the only cell op that *succeeds* on a
+missing stack — creating the cell is its whole job — so it does not fit
+`foldCells_ok_inv`, whose per-cell function hard-codes failure on absence. The
+indexed fold's characterizations already take an `Option`, so the fix was a
+bridge rather than a duplicate: `foldCells_ok_iff_foldCellsIdx_ok`. The two
+folds are not equal as functions, because they decorate errors differently —
+one names the failing address, the other the offset — but they agree on
+success, which is all any consumer needs. Stating the iff rather than an
+equality kept it to a 20-line induction.
+
+Regime B now has exactly one machinery blocker left: the lockstep-allocation
+conjunct, `s_osea.mem.addrStart = s_mir.mem.addrStart`, which is what lets ρa
+extend at the *equal* fresh address. On the evidence of this afternoon's
+`TagRenameBounded` wiring, that should be cheap.
+
+Audit stays at 5. Proof layer only — no model changes. Validation unchanged:
+units 15/15 + 38/38, suite pass 77 | fail 0 of 117, differential matched 77 |
+mismatch 0 | skipped 0.
+
+---
+
 ## 2026-08-22 (later) — The Bound Becomes an Invariant
 
 Twenty-seventh increment, and the short half of the previous one.

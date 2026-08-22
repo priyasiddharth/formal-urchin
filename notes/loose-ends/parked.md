@@ -297,18 +297,20 @@ BRIDGE 2 for the `RStore`). Then `const_write_proj_simulation` and
 `const_write_deref_nonspine_simulation`, which compose the member with
 BRIDGE 1 and BRIDGE 3. Copy is independent: it still needs a
 bidirectional memory relation + the Memcpy execution lemma. The
-fresh-local sorry needs the lockstep-allocation conjunct
-(`s_osea.mem.addrStart = s_mir.mem.addrStart`) + the `sb_own` transport
-member (which will reuse the same `TagRenameBounded` extension lemmas —
-`sb_own` mints exactly as `sb_ref` does).
+fresh-local sorry (regime B) needs ONLY the lockstep-allocation conjunct
+(`s_osea.mem.addrStart = s_mir.mem.addrStart`) as of 2026-08-22 — the
+`sb_own` member landed that day and the BRIDGE 3 family is complete over
+all five range ops.
 **Effort estimate:** CompilerInv `TagRenameBounded` wiring DONE
 (~1 h actual); ref leaf ~half-day; proj/deref-nonspine ~half-day each; copy ~1-2
-days (bidirectional memory relation is the real work); fresh-local ~half-
-day after the `sb_own` member (~1 h, mirrors `sb_ref`).
+days (bidirectional memory relation is the real work); `sb_own` member DONE
+(~1 h actual, as predicted); fresh-local ~half-day after the
+lockstep-allocation conjunct (~1 h, on the `TagRenameBounded` precedent).
 **References:** proof/compiler.lean (audit), journal/2026-08/
 2026-08-15-obseq3-proof-skeleton.md, journal/2026-08/
 2026-08-22-sb-ref-transport.md, journal/2026-08/
-2026-08-22-tagrenamebounded-wired.md, obseq2 sorries superseded by this
+2026-08-22-tagrenamebounded-wired.md, journal/2026-08/
+2026-08-22-sb-own-member.md, obseq2 sorries superseded by this
 decomposition (obseq2/proof stays frozen).
 
 

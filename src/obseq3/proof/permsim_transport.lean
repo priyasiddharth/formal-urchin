@@ -2,21 +2,35 @@ import obseq3.proof.common
 import obseq3.proof.keystone
 
 /-!
-BRIDGE 3 — SB operations respect `PermSim`, CLOSED for `sb_write`:
-renamed-equal states with a renamed acting tag produce renamed-equal
-results. The proof is the transport family sketched in the refactor
-assessment (journal 2026-08-18): generic `ListRel` transports, tag/beq
-transport under `TagRenameWF`, `splitStack`/`firstProtectedIn`/
-`writeCellContent` transports, and the `setChain` machinery from the
-keystone re-run relationally.
+BRIDGE 3 — SB operations respect `PermSim`: renamed-equal states with a
+renamed acting tag produce renamed-equal results. The proof is the
+transport family sketched in the refactor assessment (journal
+2026-08-18): generic `ListRel` transports, tag/beq transport under
+`TagRenameWF`, `splitStack`/`firstProtectedIn`/`writeCellContent`
+transports, and the `setChain` machinery from the keystone re-run
+relationally.
+
+The family is COMPLETE — all five range ops:
+- non-minting (ρt fixed): `sb_write` (2026-08-18), `sb_read` and
+  `sb_die` (2026-08-19). These also leave `NextTag` alone, which is what
+  makes `TagRenameBounded` free to re-establish across them
+  (`sb_*_NextTag`).
+- minting (ρt GROWS at the fresh pair): `sb_ref` and `sb_own`
+  (2026-08-22). Both conclude for `ρt.extend srcFresh tgtFresh` and both
+  need `TagRenameBounded` to keep that extension well-formed. `sb_ref`
+  carries the retag-kind analysis (`refCellContent`/`refCellStep`);
+  `sb_own` is the easy sibling — one cell op, no kind, no mask, no
+  protector tail — but it is the only op whose cell action SUCCEEDS on a
+  missing stack, so it reaches the fold characterizations through
+  `foldCells_ok_iff_foldCellsIdx_ok`.
 
 Scope note: the acting tag is assumed non-wildcard
 (`(tagS == wildcardTag) = false`). Wildcard resolution transport
 (`resolveWildcardIn` over the renamed exposed set) is deliberately out of
 scope: proof-core programs cannot mint wildcard pointers (`fromExposed`
-is not a core rvalue), so no core acting tag is ever the wildcard. The
-`sb_read`/`sb_die`/`sb_ref` members of the family reuse this file's
-lemma stack and are stated when their consumers (leaves 2–3) close.
+is not a core rvalue), so no core acting tag is ever the wildcard. The non-core
+constructs that DO mint wildcards (`fromExposed`) are out of the proof
+core, so their `resolveWildcardIn` transport is deferred with them.
 -/
 
 namespace obseq3.proof
@@ -1042,6 +1056,94 @@ theorem setChain_chain_respects {ρt : TagRenameMap}
     exact h_xy
   termination_by len - i
 
+/-! ## `sb_own`'s per-cell op
+
+`ownCell` is the one cell op that SUCCEEDS on a missing stack — it is what
+creates the cell. That is why `sb_own` cannot go through
+`foldCells_ok_inv` (whose `C` never sees the `none` case) and instead
+reaches the indexed fold's `Option`-shaped characterizations via
+`foldCells_ok_iff_foldCellsIdx_ok`. -/
+
+/-- The stack-level content of an allocation at one cell: a fresh or empty
+    cell becomes the singleton root stack; anything else is UB. -/
+def ownCellStep (a : Word) (tag : Tag) :
+    Option BorrowStack → Except String BorrowStack
+  | none => .ok [Item.Own tag]
+  | some [] => .ok [Item.Own tag]
+  | some (_ :: _) => .error s!"sb-own: borrow stack at {a} is not empty"
+
+theorem ownCell_content_form (t : Tag) (ap : AccessPerms) (a : Word) :
+    ownCell ap a t =
+      match ownCellStep a t (SB.find? ap.StackMap a) with
+      | .error e => .error e
+      | .ok v => .ok { ap with StackMap := SB.set ap.StackMap a v } := by
+  cases h_find : SB.find? ap.StackMap a with
+  | none => simp only [ownCell, ownCellStep, h_find]
+  | some stack =>
+      cases stack with
+      | nil => simp only [ownCell, ownCellStep, h_find]
+      | cons k rest => simp only [ownCell, ownCellStep, h_find]
+
+/-- Absence of a cell transports too — the stack maps are related
+    positionally, so they have the same keys in the same order. -/
+theorem SB.find?_none_transport {ρt : TagRenameMap} :
+    ∀ {x y : SB}, ListRel (CellSim ρt) x y →
+      ∀ {a : Word}, SB.find? x a = none → SB.find? y a = none := by
+  intro x
+  induction x with
+  | nil =>
+      intro y h a _
+      cases y with
+      | nil => rfl
+      | cons e y => simp [ListRel] at h
+  | cons e x ih =>
+      obtain ⟨k, st⟩ := e
+      intro y h a hf
+      cases y with
+      | nil => simp [ListRel] at h
+      | cons e' y' =>
+          obtain ⟨k', st'⟩ := e'
+          simp only [ListRel, CellSim] at h
+          obtain ⟨⟨h_key, -⟩, h_tail⟩ := h
+          simp only [SB.find?] at hf ⊢
+          rw [h_key]
+          cases hk : k == a with
+          | true => rw [hk] at hf; simp at hf
+          | false =>
+              simp only [hk, Bool.false_eq_true, if_false] at hf ⊢
+              exact ih h_tail hf
+
+/-- Transport for one cell of an allocation. Both machines end with the
+    singleton root stack carrying their own fresh tag; the source's success
+    forces the cell to be absent-or-empty, and that property transports. -/
+theorem ownCellStep_transport {ρt : TagRenameMap} {a a' : Word}
+    {newS newT : Tag} {x y : SB} {b : Word} {w : BorrowStack}
+    (h_xy : ListRel (CellSim ρt) x y)
+    (h_new : ρt newS = some newT)
+    (h_ok : ownCellStep a newS (SB.find? x b) = .ok w) :
+    ownCellStep a' newT (SB.find? y b) = .ok [Item.Own newT] ∧
+      StackSim ρt w [Item.Own newT] := by
+  cases h_find : SB.find? x b with
+  | none =>
+      rw [h_find] at h_ok
+      rw [SB.find?_none_transport h_xy h_find]
+      simp only [ownCellStep, Except.ok.injEq] at h_ok ⊢
+      subst h_ok
+      exact ⟨trivial, h_new, trivial⟩
+  | some s =>
+      rw [h_find] at h_ok
+      cases s with
+      | cons k rest => simp only [ownCellStep] at h_ok; simp at h_ok
+      | nil =>
+          obtain ⟨s', h_find', h_ss⟩ := SB.find?_transport h_xy h_find
+          cases s' with
+          | cons k' rest' => simp [StackSim, ListRel] at h_ss
+          | nil =>
+              rw [h_find']
+              simp only [ownCellStep, Except.ok.injEq] at h_ok ⊢
+              subst h_ok
+              exact ⟨trivial, h_new, trivial⟩
+
 /-! ## Counter framing: the non-minting ops leave `NextTag` alone
 
 `TagRenameBounded` is stated against the two machines' `NextTag`s, so every
@@ -1438,5 +1540,113 @@ theorem sb_ref_respects_PermSim
           · simpa [h_apR_pf] using h_prot
           · simpa [h_apR_ex] using h_exp
           · simpa [h_apR_nt] using Nat.succ_le_succ h_next
+
+/-- BRIDGE 3 family, `sb_own` member — the second and last minting op.
+
+    Structurally the easy sibling of `sb_ref`: one fresh tag, one cell op
+    with no kind analysis, no freeze mask and no protector tail. It reuses
+    the same ρt-extension algebra, and its only real difference is that
+    `ownCell` succeeds on a MISSING cell (it creates one), which is why the
+    fold is characterized through `foldCells_ok_iff_foldCellsIdx_ok` rather
+    than `foldCells_ok_inv`. -/
+theorem sb_own_respects_PermSim
+    {ρt : TagRenameMap} {src tgt src' : AccessPerms}
+    {addr : Word} {len : Nat} {newTagS : Tag}
+    (h_sim : PermSim ρt src tgt)
+    (h_wf : TagRenameWF ρt)
+    (h_bd : TagRenameBounded ρt src.NextTag tgt.NextTag)
+    (h_src : sb_own src addr len = .ok (src', newTagS)) :
+    ∃ tgt',
+      sb_own tgt addr len = .ok (tgt', tgt.NextTag) ∧
+      newTagS = src.NextTag ∧
+      TagRenameIncr ρt (ρt.extend src.NextTag tgt.NextTag) ∧
+      TagRenameWF (ρt.extend src.NextTag tgt.NextTag) ∧
+      TagRenameBounded (ρt.extend src.NextTag tgt.NextTag) src'.NextTag tgt'.NextTag ∧
+      PermSim (ρt.extend src.NextTag tgt.NextTag) src' tgt' := by
+  have h_incr : TagRenameIncr ρt (ρt.extend src.NextTag tgt.NextTag) :=
+    TagRenameIncr.extend h_bd (Nat.le_refl _)
+  have h_wf' : TagRenameWF (ρt.extend src.NextTag tgt.NextTag) :=
+    TagRenameWF.extend h_wf h_bd (Nat.le_refl _) (Nat.le_refl _)
+  have h_newpair : (ρt.extend src.NextTag tgt.NextTag) src.NextTag
+      = some tgt.NextTag := TagRenameMap.extend_self ρt src.NextTag tgt.NextTag
+  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := PermSim.rename_mono h_incr h_sim
+  simp only [sb_own, freshTag] at h_src
+  cases h_go : foldCells (fun ap a => ownCell ap a src.NextTag)
+      { src with NextTag := src.NextTag + 1 } addr len with
+  | error e =>
+      rw [h_go] at h_src
+      simp [bind, Except.bind] at h_src
+  | ok apR =>
+      rw [h_go] at h_src
+      simp only [bind, Except.bind, pure, Except.pure, Except.ok.injEq,
+        Prod.mk.injEq] at h_src
+      obtain ⟨h_src'_eq, h_newTag_eq⟩ := h_src
+      -- move to the indexed fold, whose characterizations see the `none` case
+      have h_goI : foldCellsIdx (fun ap a _ => ownCell ap a src.NextTag)
+          { src with NextTag := src.NextTag + 1 } addr 0 (0 + len) = .ok apR :=
+        (foldCells_ok_iff_foldCellsIdx_ok (fun ap a => ownCell ap a src.NextTag) addr
+          len 0 { src with NextTag := src.NextTag + 1 } apR).mp h_go
+      rw [show (0 : Nat) + len = len from Nat.zero_add len] at h_goI
+      obtain ⟨W, h_cells, h_apR⟩ :=
+        foldCellsIdx_ok_inv
+          (op := fun ap a _ => ownCell ap a src.NextTag)
+          (C := fun j v? => ownCellStep (addr + j) src.NextTag v?)
+          (P := src.protFrames) (E := src.exposed) (N := src.NextTag + 1)
+          (fun ap _ _ _ _ => ownCell_content_form src.NextTag ap _)
+          { src with NextTag := src.NextTag + 1 } apR rfl rfl rfl h_goI
+      rw [show ({ src with NextTag := src.NextTag + 1 } : AccessPerms).StackMap
+            = src.StackMap from rfl] at h_cells
+      have h_apR_pf : apR.protFrames = src.protFrames := by rw [h_apR]
+      have h_apR_ex : apR.exposed = src.exposed := by rw [h_apR]
+      have h_apR_nt : apR.NextTag = src.NextTag + 1 := by rw [h_apR]
+      have h_apR_sm : apR.StackMap = setChain src.StackMap (chain W addr 0 len) := by
+        rw [h_apR]
+      -- every cell ends as the singleton root stack, on both machines
+      have h_pkg : ∀ j, j < len →
+          ownCellStep (addr + j) tgt.NextTag (SB.find? tgt.StackMap (addr + j))
+              = .ok [Item.Own tgt.NextTag] ∧
+            StackSim (ρt.extend src.NextTag tgt.NextTag) (W j)
+              [Item.Own tgt.NextTag] :=
+        fun j hj =>
+          ownCellStep_transport h_stacks h_newpair (h_cells j (Nat.zero_le j) hj)
+      have h_goTI :=
+        foldCellsIdx_ok_of_cells
+          (op := fun ap a _ => ownCell ap a tgt.NextTag)
+          (C := fun j v? => ownCellStep (addr + j) tgt.NextTag v?)
+          (P := tgt.protFrames) (E := tgt.exposed) (N := tgt.NextTag + 1)
+          (fun ap _ _ _ _ => ownCell_content_form tgt.NextTag ap _)
+          (i := 0) (len := len)
+          { tgt with NextTag := tgt.NextTag + 1 }
+          (fun _ => [Item.Own tgt.NextTag])
+          rfl rfl rfl
+          (fun j _ h2 => (h_pkg j h2).1)
+      have h_goT : foldCells (fun ap a => ownCell ap a tgt.NextTag)
+          { tgt with NextTag := tgt.NextTag + 1 } addr len
+          = .ok { { tgt with NextTag := tgt.NextTag + 1 } with
+                  StackMap := setChain tgt.StackMap
+                    (chain (fun _ => [Item.Own tgt.NextTag]) addr 0 len) } := by
+        refine (foldCells_ok_iff_foldCellsIdx_ok
+          (fun ap a => ownCell ap a tgt.NextTag) addr len 0
+          { tgt with NextTag := tgt.NextTag + 1 } _).mpr ?_
+        rw [show (0 : Nat) + len = len from Nat.zero_add len]
+        exact h_goTI
+      refine ⟨{ StackMap := setChain tgt.StackMap
+                  (chain (fun _ => [Item.Own tgt.NextTag]) addr 0 len),
+                NextTag := tgt.NextTag + 1,
+                protFrames := tgt.protFrames,
+                exposed := tgt.exposed },
+              ?_, h_newTag_eq.symm, h_incr, h_wf', ?_, ?_⟩
+      · simp only [sb_own, freshTag, h_goT, bind, Except.bind, pure, Except.pure]
+      · rw [← h_src'_eq]
+        simpa [h_apR_nt] using
+          (TagRenameBounded.extend h_bd (Nat.le_succ _) (Nat.le_succ _)
+            (Nat.lt_succ_self _) (Nat.lt_succ_self _))
+      · rw [← h_src'_eq]
+        refine ⟨?_, ?_, ?_, ?_⟩
+        · simpa [h_apR_sm] using
+            setChain_chain_respects h_stacks (fun j _ h2 => (h_pkg j h2).2)
+        · simpa [h_apR_pf] using h_prot
+        · simpa [h_apR_ex] using h_exp
+        · simpa [h_apR_nt] using Nat.succ_le_succ h_next
 
 end obseq3.proof

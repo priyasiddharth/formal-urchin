@@ -24,9 +24,10 @@ CLOSED:
   non-core constructs).
 - ✔ `placeToRegChecked_emits_preserves_mem` (common.lean §E, 2026-08-18).
 
-- ✔ BRIDGE 3 family COMPLETE for the minting side: `sb_ref_respects_PermSim`
-  (proof/permsim_transport.lean, 2026-08-22) — the one op that GROWS ρt.
-  Both machines mint at their own counter, so the statement concludes for
+- ✔ BRIDGE 3 family COMPLETE — all five range ops. The minting side is
+  `sb_ref_respects_PermSim` and `sb_own_respects_PermSim`
+  (proof/permsim_transport.lean, 2026-08-22): the two ops that GROW ρt.
+  Both machines mint at their own counter, so the statements conclude for
   `ρt.extend srcFresh tgtFresh`; well-formedness of that extension is
   exactly `TagRenameBounded` (common.lean), the tag half of the
   strengthened WF this audit has been naming: the range bound puts the
@@ -39,6 +40,11 @@ CLOSED:
   retag variant to one stack rewrite, `insertAboveContent_transport`,
   `refCellContent_transport`, and `foldCellsIdx_ok_of_cells` (the
   construction counterpart of `foldCellsIdx_ok_inv`, in keystone.lean).
+  `sb_own` reuses all of the ρt-extension algebra and adds only
+  `ownCellStep` + `foldCells_ok_iff_foldCellsIdx_ok` (keystone.lean):
+  `ownCell` is the one cell op that succeeds on a MISSING stack, so it
+  needs the indexed fold's `Option`-shaped characterizations, which the
+  index-free `foldCells_ok_inv` does not provide.
 
 Invariant extensions landed 2026-08-21 (with regime D1): the
 `PlaceRegMapBound` conjunct (mapped registers < nextReg — the register
@@ -57,9 +63,11 @@ through unchanged. `loadSpine_lowering_sim` gained two counter-framing
 conjuncts for the same reason (the spine only reads).
 
 Remaining (5): every remaining sorry is blocked on a NAMED obligation:
-1. `const_write_fresh_local_simulation` — needs the lockstep-allocation
-   conjunct (`s_osea.mem.addrStart = s_mir.mem.addrStart`) so ρa extends
-   at the equal fresh address, plus the `sb_own` transport member.
+1. `const_write_fresh_local_simulation` — the `sb_own` transport member
+   landed 2026-08-22, so the ONLY remaining machinery blocker is the
+   lockstep-allocation conjunct (`s_osea.mem.addrStart =
+   s_mir.mem.addrStart`, not yet in `CompilerInv`) so that ρa extends at
+   the equal fresh address.
 2. `const_write_proj_simulation` — every SB-side obligation is now
    available (`sb_ref` member + `TagRenameBounded` in the invariant +
    `PlaceRegMapBound`); what remains is proof work, not machinery:
