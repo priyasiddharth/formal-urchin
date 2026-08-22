@@ -536,6 +536,72 @@ def TagRenameWF (ρt : TagRenameMap) : Prop :=
   (∀ t1 t2 t', ρt t1 = some t' → ρt t2 = some t' → t1 = t2) ∧
   ρt wildcardTag = some wildcardTag
 
+/-! ### The tag bound — what makes ρt EXTENSIBLE
+
+`TagRenameWF` alone is not enough for the one case that grows ρt (`ref`):
+extending an injective map at a fresh pair stays injective only if the new
+target tag is outside the map's range. Both machines mint at their own
+`NextTag`, so the range bound below is exactly the fact that discharges it
+(and the domain bound gives `ρt srcFresh = none`, i.e. the extension really
+is an extension). It is the tag half of the strengthened WF the audit named;
+`PlaceRegMapBound` (in `CompilerInv`) is the register half. -/
+def TagRenameBounded (ρt : TagRenameMap) (nS nT : Tag) : Prop :=
+  ∀ t t', ρt t = some t' → t < nS ∧ t' < nT
+
+/-- Extend a rename map at one fresh pair. -/
+def TagRenameMap.extend (ρt : TagRenameMap) (s t : Tag) : TagRenameMap :=
+  fun x => if x = s then some t else ρt x
+
+@[simp] theorem TagRenameMap.extend_self (ρt : TagRenameMap) (s t : Tag) :
+    ρt.extend s t s = some t := by
+  simp [TagRenameMap.extend]
+
+theorem TagRenameMap.extend_ne {ρt : TagRenameMap} {s t x : Tag} (h : x ≠ s) :
+    ρt.extend s t x = ρt x := by
+  simp [TagRenameMap.extend, h]
+
+/-- Above the domain bound the map is undefined — so the fresh source tag
+    is genuinely unmapped. -/
+theorem TagRenameBounded.eq_none {ρt : TagRenameMap} {nS nT s : Tag}
+    (h_bd : TagRenameBounded ρt nS nT) (h_s : nS ≤ s) : ρt s = none := by
+  cases h : ρt s with
+  | none => rfl
+  | some t' => grind [TagRenameBounded]
+
+/-- Extending at a pair beyond both bounds is a growth of the map. -/
+theorem TagRenameIncr.extend {ρt : TagRenameMap} {nS nT s t : Tag}
+    (h_bd : TagRenameBounded ρt nS nT) (h_s : nS ≤ s) :
+    TagRenameIncr ρt (ρt.extend s t) := by
+  intro x x' hx
+  grind [TagRenameMap.extend, TagRenameBounded]
+
+/-- `TagRenameWF` survives the fresh-pair extension: injectivity because the
+    new target is outside the old range (the range bound), and the wildcard
+    mapping because `wildcardTag = 0 < nS ≤ s`. -/
+theorem TagRenameWF.extend {ρt : TagRenameMap} {nS nT s t : Tag}
+    (h_wf : TagRenameWF ρt) (h_bd : TagRenameBounded ρt nS nT)
+    (h_s : nS ≤ s) (h_t : nT ≤ t) :
+    TagRenameWF (ρt.extend s t) := by
+  obtain ⟨h_inj, h_wc⟩ := h_wf
+  constructor
+  · intro t1 t2 t' h1 h2
+    grind [TagRenameMap.extend, TagRenameBounded]
+  · grind [TagRenameMap.extend, TagRenameBounded]
+
+/-- The bound itself grows with the counters. -/
+theorem TagRenameBounded.extend {ρt : TagRenameMap} {nS nT nS' nT' s t : Tag}
+    (h_bd : TagRenameBounded ρt nS nT)
+    (h_le : nS ≤ nS') (h_le' : nT ≤ nT') (h_s : s < nS') (h_t : t < nT') :
+    TagRenameBounded (ρt.extend s t) nS' nT' := by
+  intro x x' hx
+  grind [TagRenameMap.extend, TagRenameBounded]
+
+/-- The bound is monotone in the counters (both machines only ever mint). -/
+theorem TagRenameBounded.mono {ρt : TagRenameMap} {nS nT nS' nT' : Tag}
+    (h_bd : TagRenameBounded ρt nS nT) (h_le : nS ≤ nS') (h_le' : nT ≤ nT') :
+    TagRenameBounded ρt nS' nT' := by
+  grind [TagRenameBounded]
+
 /-! ### PermSim — the corrected permission relation
 
 obseq2 asserted `s_osea.ap = s_mir.perms` verbatim. That is false as soon as

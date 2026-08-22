@@ -4,6 +4,48 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-22 — The Minting Transport: `sb_ref` Respects `PermSim`
+
+Twenty-sixth increment. `sb_ref_respects_PermSim` completes the BRIDGE 3
+transport family. The three non-minting ops landed on 08-18 and 08-19; this is
+the fourth and structurally different one — `sb_ref` creates a fresh tag, and
+the two machines mint at their own counters, so the theorem cannot conclude for
+the ρt it was given. It concludes for `ρt` extended at the fresh pair.
+
+That extension is only legitimate under a fact the audit has been naming since
+regime C without having it: `TagRenameBounded ρt nS nT`, every mapped pair below
+both counters. It earns its keep twice over. The *range* bound puts the target's
+fresh tag outside ρt's range, which is exactly what keeps the extended map
+injective. The *domain* bound gives `ρt srcFresh = none`, which is what makes
+the operation an extension rather than a silent overwrite. Miss either and
+`TagRenameWF` does not survive the step. This is the tag half of the
+strengthened well-formedness condition whose register half landed the day before
+as `PlaceRegMapBound`.
+
+Two model factorings preceded the proof, both behavior-preserving and both in
+the tradition of `readCellContent`: `insertAboveContent` out of
+`insertAboveCell`, and `refCellOp` out of `sb_ref`. The second matters more than
+it looks. `sb_ref`'s per-cell action was an inline `match kind with ...`
+producing lambdas — a shape that cannot be reasoned about under a `RefKind`
+variable without case-splitting the entire proof five ways. Naming it lets the
+proof side collapse all five retag variants into one stack-to-stack function, so
+the same `foldCellsIdx` inversion/construction pair the other family members use
+applies unchanged, and the kind analysis is confined to two small lemmas. The
+construction half of that pair, `foldCellsIdx_ok_of_cells`, did not exist before
+today; the indexed fold had only its inversion.
+
+The member unblocks three of the five remaining sorries — the `ref` leaf and
+both `Borrow`-emitting `const_write` regimes. It does not close them: `CompilerInv`
+does not yet carry `TagRenameBounded`, and every consumer needs it as a
+hypothesis. Adding it as an eighth conjunct is the next increment, and a cheap
+one — the closed regimes transport permissions with `sb_write`/`sb_read`, which
+do not move `NextTag`, so their bound is literally unchanged.
+
+Audit stays at 5. Validation unchanged throughout: units 15/15 + 38/38, suite
+pass 77 | fail 0 of 117, differential matched 77 | mismatch 0 | skipped 0.
+
+---
+
 ## 2026-08-21 — Regime D Spine-Complete: One Induction Replaces Three Theorems
 
 Twenty-fifth increment. `const_write_deref_spine_simulation` closes the constant

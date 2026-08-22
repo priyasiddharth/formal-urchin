@@ -298,6 +298,44 @@ theorem foldCellsIdx_ok_inv
     rfl
   termination_by i len => len - i
 
+/-- Construction counterpart of `foldCellsIdx_ok_inv`: if every cell's
+    content computation succeeds against the INITIAL map (the cells are
+    pairwise distinct, so earlier writes do not disturb later lookups),
+    the indexed fold succeeds with the corresponding `setChain`. -/
+theorem foldCellsIdx_ok_of_cells
+    {op : AccessPerms → Word → Nat → Except String AccessPerms}
+    {C : Nat → Option BorrowStack → Except String BorrowStack}
+    {P : List (List Tag)} {E : List Tag} {N : Tag} {addr : Word}
+    (h_op : ∀ ap i, ap.protFrames = P → ap.exposed = E → ap.NextTag = N →
+      op ap (addr + i) i =
+        match C i (SB.find? ap.StackMap (addr + i)) with
+        | .error e => .error e
+        | .ok v => .ok { ap with StackMap := SB.set ap.StackMap (addr + i) v }) :
+    ∀ {i len : Nat} (ap : AccessPerms) (W : Nat → BorrowStack),
+      ap.protFrames = P → ap.exposed = E → ap.NextTag = N →
+      (∀ j, i ≤ j → j < len → C j (SB.find? ap.StackMap (addr + j)) = .ok (W j)) →
+      foldCellsIdx op ap addr i len
+        = .ok { ap with StackMap := setChain ap.StackMap (chain W addr i len) } := by
+  intro i len ap W h_pf h_ex h_nt h_cells
+  by_cases h : i < len
+  · rw [foldCellsIdx.eq_def, if_pos h, h_op ap i h_pf h_ex h_nt,
+        h_cells i (Nat.le_refl i) h]
+    simp only
+    rw [foldCellsIdx_ok_of_cells h_op (i := i + 1)
+      { ap with StackMap := SB.set ap.StackMap (addr + i) (W i) } W h_pf h_ex h_nt
+      (fun j h1 h2 => by
+        have h_ne : addr + j ≠ addr + i := fun hc => by
+          have := Nat.add_left_cancel hc
+          omega
+        rw [show ({ ap with StackMap := SB.set ap.StackMap (addr + i) (W i) }
+              : AccessPerms).StackMap = SB.set ap.StackMap (addr + i) (W i) from rfl,
+            SB.find?_set_ne _ h_ne]
+        exact h_cells j (by omega) h2)]
+    rw [chain_step h, setChain]
+  · rw [foldCellsIdx.eq_def, if_neg h, chain_stop h]
+    rfl
+  termination_by i len => len - i
+
 /-- Construction for `foldCells` whose per-cell op is a content-driven
     rewrite: if every cell's stack is known and every content computation
     succeeds, the fold succeeds with the corresponding `setChain`. -/
@@ -481,7 +519,7 @@ theorem sb_ref_use_die_cancels
       s3.protFrames = sAcc.protFrames ∧
       sAcc.NextTag ≤ s3.NextTag := by
   -- Unpack sb_ref: mint, run the per-cell fold, no protector registration.
-  simp only [sb_ref, freshTag, RefKind.toItem] at h_ref
+  simp only [sb_ref, freshTag, refCellOp, RefKind.toItem] at h_ref
   cases h_go : foldCellsIdx
       (fun ap a _ => do pushCell (← writeCell ap a tag) a (Item.MutRef s.NextTag))
       { s with NextTag := s.NextTag + 1 } addr 0 len with

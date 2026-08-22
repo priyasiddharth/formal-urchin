@@ -24,6 +24,22 @@ CLOSED:
   non-core constructs).
 - ✔ `placeToRegChecked_emits_preserves_mem` (common.lean §E, 2026-08-18).
 
+- ✔ BRIDGE 3 family COMPLETE for the minting side: `sb_ref_respects_PermSim`
+  (proof/permsim_transport.lean, 2026-08-22) — the one op that GROWS ρt.
+  Both machines mint at their own counter, so the statement concludes for
+  `ρt.extend srcFresh tgtFresh`; well-formedness of that extension is
+  exactly `TagRenameBounded` (common.lean), the tag half of the
+  strengthened WF this audit has been naming: the range bound puts the
+  target's fresh tag outside ρt's range (injectivity) and the domain
+  bound puts the source's outside its domain (so the extension is a
+  growth). Supporting machinery: `insertAboveContent` factored out of
+  `insertAboveCell` and `refCellOp` factored out of `sb_ref` (both in
+  sb.lean, behavior-preserving — suite 77/117, differential 77/0/0, units
+  15/15 + 38/38 unchanged), `refCellContent`/`refCellStep` collapsing each
+  retag variant to one stack rewrite, `insertAboveContent_transport`,
+  `refCellContent_transport`, and `foldCellsIdx_ok_of_cells` (the
+  construction counterpart of `foldCellsIdx_ok_inv`, in keystone.lean).
+
 Invariant extensions landed 2026-08-21 (with regime D1): the
 `PlaceRegMapBound` conjunct (mapped registers < nextReg — the register
 half of the once-planned strengthened `CompilerStateWF`; fresh temps
@@ -31,27 +47,37 @@ cannot clobber bound locals' registers) and the strengthened `MemValSim`
 pointer case (stored tags are non-wildcard; the referent range is in
 ρa's domain). These also discharge part of regime C's blocker list.
 
+STILL TO WIRE (2026-08-22): `CompilerInv` does not yet carry
+`TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag`. Every
+consumer of the `sb_ref` member needs it as a hypothesis, so the next
+increment is adding it as an eighth conjunct and re-establishing it at
+each construction site — cheap for the closed regimes (`sb_write`/
+`sb_read` do not move `NextTag`), and supplied at the minting sites by
+the member's own `TagRenameBounded` conclusion.
+
 Remaining (5): every remaining sorry is blocked on a NAMED obligation:
 1. `const_write_fresh_local_simulation` — needs the lockstep-allocation
    conjunct (`s_osea.mem.addrStart = s_mir.mem.addrStart`) so ρa extends
    at the equal fresh address, plus the `sb_own` transport member.
-2. `const_write_proj_simulation` — needs the `sb_ref` transport member
-   for the internal `Borrow`, composed with BRIDGE 1 and BRIDGE 3 (the
-   register-bound half of its blocker landed as `PlaceRegMapBound`).
+2. `const_write_proj_simulation` — the `sb_ref` transport member for the
+   internal `Borrow` now EXISTS; what remains is composing it with
+   BRIDGE 1 and BRIDGE 3 and threading `TagRenameBounded` through
+   `CompilerInv` (the register-bound half of its blocker landed as
+   `PlaceRegMapBound`).
 3. `const_write_deref_nonspine_simulation` — a projection somewhere in
    the dereferenced pointer place: its lowering emits a `Borrow` with
-   cleanup — same `sb_ref`-transport blocker as regime C (the former
-   D2/D3 split is gone: all-deref spines of EVERY depth closed
-   2026-08-21 via `loadSpine_lowering_sim`).
+   cleanup — same position as regime C above, and unblocked by the same
+   landed member (the former D2/D3 split is gone: all-deref spines of
+   EVERY depth closed 2026-08-21 via `loadSpine_lowering_sim`).
 4. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS
    (`sb_read_respects_PermSim`, 2026-08-19); still needs a bidirectional
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-5. `CompilerInv_step_ref` — needs the `sb_ref` transport member (extends
-   ρt at the fresh pair) and the tag-bound WF fact (mapped and stack
-   tags < NextTag on both machines) for injectivity of the extension;
-   its `Die` cleanup transport now exists (`sb_die_respects_PermSim`).
+5. `CompilerInv_step_ref` — the `sb_ref` transport member and the
+   tag-bound fact it needs both landed 2026-08-22; the leaf now needs
+   only the `CompilerInv` wiring above plus its own fragment execution.
+   Its `Die` cleanup transport exists (`sb_die_respects_PermSim`).
 
 CLOSED in the leaf layer (2026-08-18):
 - ✔ `const_write_stmt_evidence` — total (fresh-root branch via

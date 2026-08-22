@@ -117,3 +117,88 @@ runAll now derives from allTests (recorded in auto-memory conventions).
 (user-chosen scope; obseq2 proof inventory in hand).
 **Next-session pickup candidates:** CompilerInv-v3 skeleton plan (see
 plans file / upcoming journal), SwitchInt (parked), obseq2 sorries.
+
+## 2026-08-18 → 2026-08-21
+**Session:** (terminal, multi-leg) — obseq3 compiler-correctness proof arc
+**Theme:** drove the obseq3 proof audit from 7 named sorries to 5, with
+every closed shape end-to-end: the ρt-transport family, regime A, the
+mirlite deref-read alignment, and all of regime D.
+**Key outputs:**
+- `proof/permsim_transport.lean` — the ρt-transport family: BRIDGE 3
+  `sb_write_respects_PermSim` (2026-08-18), then
+  `sb_read_respects_PermSim` + `sb_die_respects_PermSim` (2026-08-19).
+  Covers exactly the three SB ops that do NOT mint tags; generic
+  `ListRel` transports + `TagRenameWF.beq_eq` are the workhorses.
+- BRIDGE 2 `writeThroughPtr_sim` + `SourceMemSim.writeWordSeq_extend`
+  (common.lean §G) and `placeToRegChecked_emits_preserves_mem` (§E) —
+  all common.lean sorries closed (`c6f413e`).
+- REGIME A `const_write_local_existing_simulation` (`17f3ee9`) — the
+  first end-to-end statement simulation, and obseq2's long-parked
+  "Step 4 regime-A milestone", now against the corrected `PermSim ρt`
+  invariant rather than obseq2's false perms equality.
+- mirlite `resolvePlaceAcc` (`33cfbbd`) — deref resolution performs the
+  SB read, closing the plan's risk item (a); new `conformance/local/`
+  for project-authored witnesses.
+- REGIME D complete (`dc835e4`, `8f73b13`): `const_write_deref_local_
+  simulation` then the subsuming `const_write_deref_spine_simulation`
+  via `loadSpine_lowering_sim` (new `proof/spine.lean`) — every
+  all-deref pointer chain of every depth.
+- Invariant extensions: `PlaceRegMapBound` conjunct and the
+  strengthened `MemValSim` pointer case (non-wildcard stored tags,
+  referent range in ρa's domain).
+- 8 journal entries (2026-08-18 ×3, 08-19, 08-21 ×3 incl. the keystone
+  refactor assessment); dev-log entries 2026-08-18 ×2, 2026-08-21 ×3.
+**Critical corrections:**
+- The deref divergence was REAL, not a proof artifact: `q := &mut p;
+  *p := v; use **q` was source-ok/target-UB, and Miri sides with the
+  target. Fixed at the SOURCE (mirlite now reads) rather than weakening
+  the theorem — no corpus test had the shape.
+- D1's morning claim "existing machinery only, no invariant changes"
+  was over-optimistic; two extensions were needed (above), caught in
+  the audit rather than by a failure.
+- mirlite's deref read was unbounds-checked while the target `Load`
+  bounds-checks: unprovable as stated, so the read-side mirror of
+  `writeResolvedPlace`'s check went into `resolvePlaceAcc` (Miri's
+  dereferenceable requirement). Found by attempting the induction.
+**Status:** complete for the shapes claimed; audit at 5 sorries.
+Validation each leg: units 14/14 + 37/37, suite pass 77 | fail 0 (117),
+differential matched 77 | mismatch 0 | skipped 0, obseq2 green.
+**Next-session pickup candidates:** the `sb_ref` transport member — the
+single blocker on 3 of the 5 remaining sorries
+(`const_write_proj_simulation`, `const_write_deref_nonspine_simulation`,
+`CompilerInv_step_ref`); needs the tag-bound WF fact (mapped and stack
+tags < `NextTag` on both machines) for injectivity of the ρt extension,
+its register-bound half having landed as `PlaceRegMapBound`. Then copy
+(bidirectional memory relation + Memcpy exec lemma) and the fresh-local
+lockstep-allocation conjunct + `sb_own` transport. Notebook debt: no
+W34 digest; W33's proposed `conformance-process-patterns.md` promotion
+is still unacted.
+
+## 2026-08-22
+**Session:** (terminal) — btf notebook catch-up + the `sb_ref` transport
+member
+**Theme:** cleared notebook debt (this log was 6 days stale), then landed
+the single blocker on 3 of the audit's 5 remaining sorries.
+**Key outputs:**
+- `sb_ref_respects_PermSim` (`0585823`) — BRIDGE 3 family complete;
+  `TagRenameBounded` + its extension lemmas (`TagRenameWF.extend`,
+  `TagRenameIncr.extend`, `TagRenameBounded.extend`/`.mono`);
+  `insertAboveContent` and `refCellOp` factored in sb.lean;
+  `refCellContent`/`refCellStep` + their transports;
+  `foldCellsIdx_ok_of_cells`.
+- journal/2026-08/2026-08-22-sb-ref-transport.md; dev-log increment 26;
+  audit and parked-backlog entries rewritten around the new frontier.
+- The Aug 18→21 catch-up entry above (bridges, regime A, deref-read,
+  regime D), which had never been logged.
+**Critical corrections:** none this leg. The one design judgement worth
+recording: `sb_ref_unfold` (a hand-written match equal to `sb_ref`'s
+`do`-block) was abandoned rather than forced — two textually identical
+matches are not defeq, and factoring the model dissolved the need for the
+lemma entirely.
+**Status:** complete. Audit stays at 5 sorries (this is machinery, not a
+leaf). Suite/differential/units all unchanged; no new axioms.
+**Next-session pickup:** loose-ends/parked.md → "obseq3 proof closure" →
+NEXT INCREMENT: thread `TagRenameBounded` through `CompilerInv` as an
+eighth conjunct (~1-2 h), which is what lets the new member be applied at
+a leaf. Also still open: W34 digest, and W33's proposed
+`conformance-process-patterns.md` promotion.

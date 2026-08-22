@@ -318,6 +318,26 @@ def pushCell (ap : AccessPerms) (addr : Word) (item : Item) : Except String Acce
   | none => .error s!"sb-push: no borrow stack at address {addr}"
   | some stack => .ok { ap with StackMap := ap.StackMap.set addr (item :: stack) }
 
+/-- The stack-level content of an insert-above retag (factored out of
+    `insertAboveCell` for the compiler-correctness proofs, mirroring
+    `readCellContent`/`writeCellContent`): resolve the granting tag, then
+    splice `item` in directly above it. No access is performed. -/
+def insertAboveContent (ex : List Tag) (addr : Word) (tag : Tag) (item : Item)
+    (stack : BorrowStack) : Except String BorrowStack :=
+  match (if tag == wildcardTag
+         then (resolveWildcardIn ex stack false).elim
+                (Except.error s!"retag using <wildcard>: no exposed tags have suitable permission in the borrow stack at {addr}")
+                Except.ok
+         else .ok tag) with
+  | .error e => .error e
+  | .ok tag =>
+  match splitStack stack tag with
+  | none => .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {addr}"
+  | some (_, .Disabled _, _) =>
+      .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {addr} (disabled)"
+  | some (above, granting, below) =>
+      .ok (above ++ item :: granting :: below)
+
 /-- Insert a new item directly above the granting item (Miri's placement
     for SharedReadWrite: adjacent to the parent, not on top — this is what
     makes sibling raw pointers coexist). No access is performed. -/
@@ -326,19 +346,9 @@ def insertAboveCell (ap : AccessPerms) (addr : Word) (tag : Tag) (item : Item) :
   match ap.StackMap.find? addr with
   | none => .error s!"sb-insert: no borrow stack at address {addr}"
   | some stack =>
-    match (if tag == wildcardTag
-           then (resolveWildcard ap stack false).elim
-                  (Except.error s!"retag using <wildcard>: no exposed tags have suitable permission in the borrow stack at {addr}")
-                  Except.ok
-           else .ok tag) with
+    match insertAboveContent ap.exposed addr tag item stack with
     | .error e => .error e
-    | .ok tag =>
-    match splitStack stack tag with
-    | none => .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {addr}"
-    | some (_, .Disabled _, _) =>
-        .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {addr} (disabled)"
-    | some (above, granting, below) =>
-        .ok { ap with StackMap := ap.StackMap.set addr (above ++ item :: granting :: below) }
+    | .ok v => .ok { ap with StackMap := ap.StackMap.set addr v }
 
 /-- Fold an `Except`-producing per-cell operation over `[addr, addr+len)`,
     decorating errors with the failing offset. -/
@@ -381,6 +391,26 @@ def sb_write (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
     Except String AccessPerms :=
   foldCells (fun ap a => writeCell ap a tag) ap addr len
 
+/-- The per-cell action of a retag (factored out of `sb_ref` so the
+    compiler-correctness proofs can apply the `foldCellsIdx` lemmas without
+    unfolding `sb_ref` under a `RefKind` variable). `newTag` is the fresh
+    child tag, `mask` marks the `UnsafeCell` cells, and the `Nat` argument is
+    the cell's offset into the range (what `mask` is indexed by). See
+    `sb_ref` for the rule each variant implements. -/
+def refCellOp (tag : Tag) (kind : RefKind) (newTag : Tag) (mask : List Bool) :
+    AccessPerms → Word → Nat → Except String AccessPerms :=
+  match kind with
+  | .Mut => fun ap a _ => do pushCell (← writeCell ap a tag) a (Item.MutRef newTag)
+  | .Shared => fun ap a i =>
+      if mask.getD i false then insertAboveCell ap a tag (.RawPtr true newTag)
+      else do pushCell (← readCell ap a tag) a (Item.Ref newTag)
+  | .Raw false => fun ap a i =>
+      if mask.getD i false then insertAboveCell ap a tag (.RawPtr true newTag)
+      else do pushCell (← readCell ap a tag) a (Item.RawPtr false newTag)
+  | .Raw true => fun ap a _ => insertAboveCell ap a tag (.RawPtr true newTag)
+  | .TwoPhase => fun ap a _ =>
+      do insertAboveCell (← readCell ap a tag) a tag (.RawPtr true newTag)
+
 /-- Retag: create a child reference of `kind` from parent `tag` over a range.
     One fresh child tag. Per cell, following Miri's SB:
     - `Mut`: write access via the parent, push the Unique item on top;
@@ -399,18 +429,7 @@ def sb_ref (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) (kind : RefK
     (prot : Bool := false) (mask : List Bool := []) :
     Except String (AccessPerms × Tag) := do
   let (newTag, ap) := freshTag ap
-  let newItem := kind.toItem newTag
-  let cellOp : AccessPerms → Word → Nat → Except String AccessPerms :=
-    match kind with
-    | .Mut => fun ap a _ => do pushCell (← writeCell ap a tag) a newItem
-    | .Shared | .Raw false => fun ap a i =>
-        if mask.getD i false then
-          insertAboveCell ap a tag (.RawPtr true newTag)
-        else do
-          pushCell (← readCell ap a tag) a newItem
-    | .Raw true => fun ap a _ => insertAboveCell ap a tag newItem
-    | .TwoPhase => fun ap a _ => do insertAboveCell (← readCell ap a tag) a tag newItem
-  let ap ← foldCellsIdx cellOp ap addr 0 len
+  let ap ← foldCellsIdx (refCellOp tag kind newTag mask) ap addr 0 len
   if prot then
     match ap.protFrames with
     | [] => .error "sb-ref: protected retag outside any protector frame"
