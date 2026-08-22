@@ -50,8 +50,21 @@ Promote to durable when it recurs once more: *a witness is worth writing
 even when the hypothesis is wrong, because the pipeline answers a
 different question than the one asked.*
 
-Validation: suite pass 78 | fail 0 | unsupported 41 (119), differential
-matched 78 | mismatch 0 | skipped 0, units 15/15 + 38/38, all targets
+[FACT] Second ZST witness added the same day, `local/zst_tail_field`:
+a ZST field at a struct tail, where `addr = base + size` with
+`base ≠ addr` and `size = 1`. `zst_ref` alone was NOT enough coverage for
+the check change — there the ZST stands alone, so `base = addr` and
+`size = 0` and one-past-the-end holds degenerately; only the tail-field
+case exercises the boundary at a nonzero offset. Both witnesses were
+shown to have teeth by restoring the old point check and observing two
+INDEPENDENT mismatches (labels 5 and 6): a passing test proves nothing
+about a check change unless it is also shown to fail without it.
+Promote if this recurs: *when a fix relaxes a predicate, add the witness
+that distinguishes the degenerate case from the general one, and verify
+by reverting.*
+
+Validation: suite pass 79 | fail 0 | unsupported 41 (120), differential
+matched 79 | mismatch 0 | skipped 0, units 15/15 + 38/38, all targets
 build. `ref_local_local_simulation` axioms: propext / Classical.choice /
 Quot.sound.
 

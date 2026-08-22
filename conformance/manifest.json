@@ -1710,6 +1710,16 @@
       "provenance": "local-model-reasoned; pending real-Miri verification",
       "notes": "StorageLive-vs-first-assignment probe. rustc rejects `let x: u64; &raw const x` (E0381), so in the union-free fragment every local IS written before it is borrowed -- the first-assignment allocation strategy is sound there BY CONSTRUCTION of the borrow checker. Lights up if unions ever land.",
       "reason": "unions (MaybeUninit); the only legal Rust form of the probe"
+    },
+    {
+      "id": "local/zst_tail_field",
+      "artifact": "local/zst_tail_field.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "notes": "ZST field at a struct TAIL: addr = base + size, len = 0 -- the non-degenerate one-past-the-end retag (base != addr, unlike local/zst_ref). Admitted by the range-form Rhs.Borrow check; rejected by the pre-2026-08-22 point check."
     }
   ]
 }

@@ -164,6 +164,13 @@ but has NOT been verified against a real Miri run. Current entries:
   Miri's dereferenceable-for-`len`). The three corpus ZST tests are
   UNSUPPORTED for unrelated reasons, so this is the suite's only ZST
   coverage.
+- `local/zst_tail_field` — a ZST field at a struct TAIL: its address is
+  one-past-the-end of the enclosing block (`addr = base + size`,
+  `len = 0`), the NON-degenerate boundary case (`base ≠ addr`, unlike
+  `local/zst_ref` where the ZST stands alone and `size = 0`). Verified to
+  have teeth: restoring the pre-2026-08-22 point check
+  `addr ≥ base + size` makes it mismatch on its own label, distinct from
+  `zst_ref`'s.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc
