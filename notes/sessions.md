@@ -360,3 +360,24 @@ copy, ref-place); suite 82/123, differential 82/0/0, units 15/15+42/42.
 patterns, or copy (bidirectional memory relation + Memcpy lemmas). The
 deep-chain residual wants the pending-cleanup spine generalization.
 
+## 2026-08-27 (late night)
+**Session:** (terminal, continued) — ref regime P→L
+**Theme:** `dst := &kind s.f` closed; two distinct blockers identified
+and recorded for what remains of `ref_place_residual`.
+**Key outputs:**
+- `PathTo.offset_add_size_le` (syntax.lean) — the field-fits-its-layout
+  typing bound; the only closed regime whose `Borrow` bounds obligation
+  has NO semantic source.
+- `compileStmt_ref_proj_local_run`/`_value`,
+  `ref_proj_local_simulation`; dispatcher wired.
+- Findings: (a) deref sources blocked on mirlite lacking Miri's
+  retag-dereferenceable check (own parked entry — model decision);
+  (b) non-local destinations need an interleaved-keystone commutation
+  argument.
+- journal 2026-08-27-ref-proj-closed.md.
+**Critical corrections:** none.
+**Status:** complete. Audit at 4; suite 82/123, differential 82/0/0,
+units 15/15 + 42/42.
+**Next-session pickup:** `CompilerInv_step_copy` (bidirectional memory
+relation + Memcpy lemmas), or the mirlite retag check if approved.
+

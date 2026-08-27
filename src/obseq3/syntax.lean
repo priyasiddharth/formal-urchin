@@ -35,6 +35,40 @@ def append : PathTo src mid → PathTo mid dst → PathTo src dst
   | nil => simp [append, offset]
   | field idx tail ih => simp [append, offset, ih]; omega
 
+/-- A field's range fits inside its layout: the path's offset plus the
+    target's size stays within the source's size. This is the TYPING fact
+    that discharges the target `Borrow`'s bounds check when a reference to
+    a projected field is minted — the source's `sb_ref` has no bounds
+    check of its own, so nothing semantic supplies it. -/
+theorem offset_add_size_le : (p : PathTo src dst) →
+    offset p + layoutSize dst ≤ layoutSize src
+  | .nil => by simp [offset]
+  | .field (tys := tys) idx tail => by
+      have ih := offset_add_size_le tail
+      have h_split : layoutSizeList (tys.take idx.1) + layoutSize (tys.get idx)
+          ≤ layoutSizeList tys := by
+        clear ih tail
+        obtain ⟨i, h_i⟩ := idx
+        induction tys generalizing i with
+        | nil => cases h_i
+        | cons ty rest ihs =>
+            cases i with
+            | zero => simp [layoutSizeList, obseq.layoutSizeList]
+            | succ j =>
+                have h_j : j < rest.length := Nat.lt_of_succ_lt_succ h_i
+                have := ihs j h_j
+                simp only [List.take_succ_cons, List.get_cons_succ]
+                show layoutSizeList (ty :: rest.take j) + _ ≤ layoutSizeList (ty :: rest)
+                simp only [layoutSizeList, obseq.layoutSizeList] at this ⊢
+                omega
+      calc offset (.field idx tail) + layoutSize dst
+          = layoutSizeList (tys.take idx.1) + (offset tail + layoutSize dst) := by
+            simp [offset, Nat.add_assoc]
+        _ ≤ layoutSizeList (tys.take idx.1) + layoutSize (tys.get idx) :=
+            Nat.add_le_add_left ih _
+        _ ≤ layoutSizeList tys := h_split
+        _ = layoutSize (obseq.LayoutTy.TupL tys) := rfl
+
 end PathTo
 
 /-- A place of layout type `τ` in context `Γ` (as in obseq2: local, field

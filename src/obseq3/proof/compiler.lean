@@ -92,9 +92,29 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
 3. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS;
    still needs a bidirectional memory relation plus the Memcpy execution
    lemma (and, by the C1 pattern, a Memcpy-succeeds-when lemma).
-4. `ref_place_residual` — proj/deref places on either side of a ref;
-   reuses the const_write regime patterns above.
+4. `ref_place_residual` — NARROWED 2026-08-27: regime P→L
+   (`dst := &kind s.f`) is CLOSED by `ref_proj_local_simulation` — the
+   L→L fragment with the offset moved, its `Borrow` bounds check
+   discharged by pure TYPING (`PathTo.offset_add_size_le`). Remaining:
+   (a) DEREF sources (`&kind *p`) — blocked on a MODEL GAP: the target's
+   `Borrow` check needs `offset + blockSize τ ≤ size` for the loaded
+   pointer, `MemValSim` carries no pointee-size fact, and mirlite's
+   `.ref` has no bounds check to transport; Miri requires a retag's range
+   to be dereferenceable, so the likely fix is the deref-read pattern
+   (add the check to mirlite — user decision, see loose-ends);
+   (b) non-local destinations — the dst `Borrow;…;Die` interleaves with
+   the src retag, so BRIDGE 1 needs a commutation argument (new
+   pattern); (c) proj-of-proj sources / fresh roots.
 
+- ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
+  `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound
+  locals. Two instructions, as L→L, with the field's offset in the
+  `Borrow`. The bounds check comes from TYPING alone
+  (`PathTo.offset_add_size_le`: a field's range fits its layout) — the
+  source's `sb_ref` checks nothing, so nothing semantic could supply it.
+  The stored pointer covers the WHOLE base allocation (mirlite stores
+  `allocBase/allocSize`), which is what `LocalBindingSim`'s block-domain
+  conjunct was made for.
 - ✔ REGIME C-deref of const_write — `const_write_proj_deref_simulation`
   (2026-08-27): `(*p).f := v` over ANY load spine, nonzero offset. Spine
   mother lemma for the prelude; then the C1 endgame with the parent tag

@@ -198,6 +198,26 @@ manifest.
 **References:** src/obseq3/proof/permsim_transport.lean (ListRel
 docstring), paper.md.
 
+## mirlite `.ref` lacks Miri's retag-dereferenceable check
+**Status:** parked 2026-08-27 — BLOCKS the deref-source ref regime
+**Context:** Miri requires a retag's whole range to be dereferenceable;
+mirlite's `evalRExpr .ref` performs `sb_ref` with NO bounds check. For
+`L := &kind *p` the target `Borrow` checks `offset + blockSize τ ≤ size`
+against the LOADED pointer and nothing on the source side implies it
+(`MemValSim` is untyped — no pointee-size fact is even statable there).
+Same finding-shape as the 2026-08-21 deref-read gap: a check Miri has,
+mirlite lacks, discovered by attempting the proof.
+**Why parked:** model change — user's call.
+**To resume:** add `resolved.addr + blockSize τ > resolved.allocBase +
+resolved.allocSize → err` to mirlite's `.ref` (mirror of
+`writeResolvedPlace`'s check; consider `.refSlice` too), re-run suite +
+differential (expect unchanged: corpus pointers are all well-sized),
+then close the deref-source regime — source success then implies the
+target check via MemValSim's `o' = o ∧ s' = s`.
+**Effort estimate:** ~1 h model+validation; ~half-day for the regime.
+**References:** journal/2026-08/2026-08-27-ref-proj-closed.md,
+proof/ref.lean (`ref_place_residual` docstring).
+
 ## MASTER INVENTORY: everything unimplemented or approximated (obseq3 conformance)
 **Status:** living inventory, started 2026-08-15 — THE single place for
 this; update here, not in scattered journal entries. Per-test blockers
@@ -373,8 +393,13 @@ local, via BRIDGE 1S (`sb_ref_read_die_cancels`) and its supplier.
 `const_write_deref_nonspine_simulation` is now a proved dispatcher. What
 remains is `const_write_deref_deep_residual` (a proj segment BELOW a
 deref, zero-offset pointer fields, fresh roots) — the pending-cleanup
-generalization of `loadSpine_lowering_sim`. NEXT: `ref_place_residual`
-(reuses the closed regime patterns), or `CompilerInv_step_copy`.
+generalization of `loadSpine_lowering_sim`. Ref P→L CLOSED 2026-08-27
+(`dst := &kind s.f`, bounds by `PathTo.offset_add_size_le`);
+`ref_place_residual` narrowed to deref sources (blocked on the mirlite
+retag-check model gap, see its own parked entry), non-local destinations
+(interleaved-keystone commutation — new pattern), and
+proj-of-proj/fresh-root compositions. NEXT: `CompilerInv_step_copy`, or
+the mirlite retag check if the user approves it.
 Then `ref_place_residual` reuses that, and `CompilerInv_step_copy` last
 (the only remaining sorry needing NEW machinery: a bidirectional memory
 relation + the Memcpy execution lemma, plus — by the pattern established
