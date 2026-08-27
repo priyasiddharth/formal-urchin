@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "lean-lsp": {
+      "type": "stdio",
+      "command": "/home/siddharth/.local/share/lean-lsp-mcp-venv/bin/lean-lsp-mcp",
+      "args": [
+        "--lean-project-path",
+        "/home/siddharth/formal-urchin"
+      ],
+      "env": {}
+    }
+  }
+}
