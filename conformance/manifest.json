@@ -1740,6 +1740,16 @@
       },
       "provenance": "local-model-reasoned; pending real-Miri verification",
       "notes": "Nested-projection witness, FIXED 2026-08-27: the compiler now REASSOCIATES proj chains (.proj (.proj b q) p -> .proj b (q++p)) so a nested projection emits ONE field-sized Borrow anchored at the chain root instead of retagging every intermediate place -- writing s.1.1 no longer invalidates a live &mut s.1.0. Differential matched; also pinned in-repo as compile_tests d26 (teeth verified: reverting the reassociation arms makes d26 fail with target ub 5 / source ok). Expected verdict model-reasoned; pending real-Miri verification."
+    },
+    {
+      "id": "local/split_field_borrows",
+      "artifact": "local/split_field_borrows.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "notes": "Split borrows: all three fields of (u64,u64,u64) mutably borrowed simultaneously, writes interleaved. Falls out of per-cell stacks (disjoint ranges, disjoint stacks); no other suite coverage of borrow COEXISTENCE. Companion Lean-level scenarios pinned as compile_tests d27-d29 (parent-write cell-wise kill is not expressible in safe Rust -- borrowck rejects it, which is the point)."
     }
   ]
 }

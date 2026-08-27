@@ -190,6 +190,15 @@ but has NOT been verified against a real Miri run. Current entries:
   the accessed field. Differential matched; pinned in-repo as
   `compile_tests` d26 (teeth verified by reverting the arms). Found by
   attempting the proof, not by testing.
+- `local/split_field_borrows` — Rust's split borrows: all three fields of
+  a struct mutably borrowed AT ONCE, writes interleaved. Legal Rust and
+  OK under SB with no special case — retags are per cell, so disjoint
+  field ranges give disjoint stacks. The only suite coverage of borrow
+  COEXISTENCE (the corpus aliasing tests all exercise conflicts).
+  Companion boundary scenarios are `compile_tests` d28/d29 (a parent
+  write is cell-wise: kills only the child covering the written cells) —
+  not expressible in safe Rust, since borrowck rejects using a borrow
+  across a parent write.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

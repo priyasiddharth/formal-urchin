@@ -654,6 +654,60 @@ def d26_nested_proj_sibling : IO Unit :=
      .assign tH (.copy s11H)]
     .ok "d26 nested proj write keeps sibling borrow alive"
 
+/-! d27–d29: split borrows (`local/split_field_borrows`) and its cell-wise
+    boundary. d27: all three fields of a 3-tuple mutably borrowed AT ONCE,
+    writes interleaved — Rust's split-borrow idiom, OK because retags are
+    per cell (disjoint ranges, disjoint stacks). d28/d29: a parent write
+    through the root is ALSO cell-wise — it kills only the child covering
+    the written cells (d29: using that child is UB) and leaves siblings
+    alive (d28). d28/d29 are not expressible in safe Rust (borrowck
+    rejects using the borrow across the parent write), so they live only
+    here. -/
+def ΓY : Ctx :=
+  [obseq.LayoutTy.TupL [natL, natL, natL], ptrNat, ptrNat, ptrNat, natL]
+def sY : Place ΓY (obseq.LayoutTy.TupL [natL, natL, natL]) :=
+  .local ⟨⟨0, by decide⟩, rfl⟩
+def p0Y : Place ΓY ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def p1Y : Place ΓY ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def p2Y : Place ΓY ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+def tY : Place ΓY natL := .local ⟨⟨4, by decide⟩, rfl⟩
+def f0Y : Place ΓY natL := .proj sY (.field (tys := [natL, natL, natL]) ⟨0, by decide⟩ .nil)
+def f1Y : Place ΓY natL := .proj sY (.field (tys := [natL, natL, natL]) ⟨1, by decide⟩ .nil)
+def f2Y : Place ΓY natL := .proj sY (.field (tys := [natL, natL, natL]) ⟨2, by decide⟩ .nil)
+
+def d27_split_field_borrows : IO Unit :=
+  expectDiff ΓY
+    [.assign f0Y (.constInit 1),
+     .assign f1Y (.constInit 2),
+     .assign f2Y (.constInit 3),
+     .assign p0Y (.ref .Mut false [] f0Y),
+     .assign p1Y (.ref .Mut false [] f1Y),
+     .assign p2Y (.ref .Mut false [] f2Y),
+     .assign (.deref p1Y) (.constInit 20),
+     .assign (.deref p0Y) (.constInit 10),
+     .assign (.deref p2Y) (.constInit 30),
+     .assign (.deref p1Y) (.constInit 21),
+     .assign tY (.copy (.deref p2Y))]
+    .ok "d27 three simultaneous &mut field borrows, interleaved mutation"
+
+def d28_parent_write_cellwise : IO Unit :=
+  expectDiff ΓY
+    [.assign f0Y (.constInit 1),
+     .assign f1Y (.constInit 2),
+     .assign p0Y (.ref .Mut false [] f0Y),
+     .assign p1Y (.ref .Mut false [] f1Y),
+     .assign f0Y (.constInit 7),
+     .assign (.deref p1Y) (.constInit 20)]
+    .ok "d28 parent write to s.0 leaves &mut s.1 alive"
+
+def d29_parent_write_kills_overlap : IO Unit :=
+  expectDiff ΓY
+    [.assign f0Y (.constInit 1),
+     .assign p0Y (.ref .Mut false [] f0Y),
+     .assign f0Y (.constInit 7),
+     .assign (.deref p0Y) (.constInit 10)]
+    (.ub 3) "d29 the parent write invalidated p0 itself"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -693,7 +747,10 @@ def allTests : List (IO Unit) := [
   d23_ref_slice_pops,
   d24_deref_read_alignment,
   d25_deref_oob_alignment,
-  d26_nested_proj_sibling]
+  d26_nested_proj_sibling,
+  d27_split_field_borrows,
+  d28_parent_write_cellwise,
+  d29_parent_write_kills_overlap]
 
 def runAll : IO Unit := do
   allTests.forM id
