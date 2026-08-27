@@ -1780,6 +1780,23 @@ theorem runN_CStore_step
     · exact h_wtp
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
+/-- One-step execution of a `Die`: the register's pointer is read and the
+    tag killed over `len` cells. Memory and registers are untouched. -/
+theorem runN_Die_step
+    (compProg : oseair.Prog) (s : oseair.State MSB) (r : Register) (len : Nat)
+    {b o sz : Word} {t : Tag} {p2 : AccessPerms}
+    (h_instr : compProg s.pc = some (Instr.Die r len))
+    (h_entry : PtrRegisterEntry s.reg r b o sz t)
+    (h_die : MSB.die s.perms (b + o) len t = .ok p2) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p2, pc := s.pc + 1 } := by
+  have h_lookup : oseair.RegMap.lookup s.reg r
+      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p2, pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, h_lookup, h_die]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
 /-- A single `Die` step leaves the register file unchanged. -/
 theorem step_Die_preserves_reg
     {s s' : oseair.State MSB} {prog : oseair.Prog} {r : Register} {len : Nat}

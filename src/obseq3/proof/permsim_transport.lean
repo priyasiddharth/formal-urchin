@@ -1187,6 +1187,96 @@ theorem sb_die_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
       len 0 ap ap' rfl rfl rfl h
   rw [h_ap']
 
+/-- Every element on the right of a `ListRel` has a related partner on
+    the left. -/
+theorem ListRel.mem_right {α β} {R : α → β → Prop} :
+    ∀ {as : List α} {bs : List β}, ListRel R as bs →
+      ∀ {b : β}, b ∈ bs → ∃ a, a ∈ as ∧ R a b := by
+  intro as
+  induction as with
+  | nil =>
+      intro bs h b hb
+      cases bs with
+      | nil => simp at hb
+      | cons x xs => simp [ListRel] at h
+  | cons a as ih =>
+      intro bs h b hb
+      cases bs with
+      | nil => simp at hb
+      | cons x xs =>
+          simp only [ListRel] at h
+          rcases List.mem_cons.mp hb with h_eq | h_tail
+          · exact ⟨a, List.mem_cons_self, h_eq ▸ h.1⟩
+          · obtain ⟨a', h_mem', h_rel'⟩ := ih h.2 h_tail
+            exact ⟨a', List.mem_cons_of_mem _ h_mem', h_rel'⟩
+
+/-- A tag appearing in a target protector frame came through ρt. -/
+theorem TagListSim.mem_range {ρt : TagRenameMap} :
+    ∀ {fs ft : List Tag}, TagListSim ρt fs ft →
+      ∀ {t : Tag}, t ∈ ft → ∃ ts, ρt ts = some t := by
+  intro fs ft h t h_mem
+  obtain ⟨a, -, h_rel⟩ := ListRel.mem_right h h_mem
+  exact ⟨a, h_rel⟩
+
+/-- The target's NEXT tag is not protected: every tag in its protector
+    frames came through ρt, and `TagRenameBounded` puts ρt's whole range
+    strictly below the counter. This is BRIDGE 1's `h_unprot` hypothesis,
+    and it is DERIVABLE rather than assumed — the payoff for carrying the
+    bound in the invariant. -/
+theorem freshTag_not_protected {ρt : TagRenameMap} {src tgt : AccessPerms}
+    (h_sim : PermSim ρt src tgt)
+    (h_bd : TagRenameBounded ρt src.NextTag tgt.NextTag) :
+    isProtectedIn tgt.protFrames tgt.NextTag = false := by
+  obtain ⟨-, h_prot, -, -⟩ := h_sim
+  simp only [isProtectedIn, List.any_eq_false]
+  intro f h_mem_f h_c
+  have h_mem_t : tgt.NextTag ∈ f := by simpa using h_c
+  obtain ⟨fs, -, h_fsim⟩ := ListRel.mem_right h_prot h_mem_f
+  obtain ⟨ts, h_ts⟩ := TagListSim.mem_range h_fsim h_mem_t
+  exact absurd (h_bd _ _ h_ts).2 (Nat.lt_irrefl _)
+
+/-- A mutable retag succeeds wherever the corresponding WRITE succeeds:
+    `sb_ref … .Mut` is per cell `writeCell` followed by `pushCell`, and a
+    push onto a stack the write just produced cannot fail. BRIDGE 1 takes
+    the retag's success as a hypothesis; on the target side nothing else
+    supplies it, because the SOURCE performs a bare write and there is no
+    retag to transport. -/
+theorem sb_ref_Mut_ok_of_sb_write_ok {ap ap' : AccessPerms}
+    {addr : Word} {len : Nat} {tag : Tag}
+    (h : sb_write ap addr len tag = .ok ap') :
+    ∃ ap'' , sb_ref ap addr len tag .Mut false [] = .ok (ap'', ap.NextTag) := by
+  have h0 : foldCells (fun ap a => writeCell ap a tag) ap (addr + 0) len = .ok ap' := h
+  obtain ⟨V, W, h_cells, -⟩ :=
+    foldCells_ok_inv
+      (C := fun a stack => writeCellContent ap.protFrames ap.exposed a tag stack)
+      (msgNone := fun a => s!"sb-write: no borrow stack at address {a}")
+      (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag)
+      (fun ap a h_pf h_ex _ => writeCell_content_form tag ap a h_pf h_ex)
+      len 0 ap ap' rfl rfl rfl h0
+  have h_fold := foldCellsIdx_ok_of_cells
+    (op := refCellOp tag .Mut ap.NextTag [])
+    (C := fun j v? => refCellStep ap.protFrames ap.exposed (addr + j) tag
+                        .Mut ap.NextTag [] j v?)
+    (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag + 1)
+    (refCellOp_content_form (addr := addr) tag .Mut ap.NextTag [])
+    (i := 0) (len := len)
+    { ap with NextTag := ap.NextTag + 1 }
+    (fun j => Item.MutRef ap.NextTag :: W j)
+    rfl rfl rfl
+    (fun j _ h2 => by
+      have hc := h_cells j (Nat.zero_le j) (by omega)
+      show refCellStep ap.protFrames ap.exposed (addr + j) tag .Mut ap.NextTag [] j
+        (SB.find? ap.StackMap (addr + j)) = _
+      rw [hc.1]
+      simp only [refCellStep, refCellContent, hc.2])
+  refine ⟨{ StackMap := setChain ap.StackMap
+              (chain (fun j => Item.MutRef ap.NextTag :: W j) addr 0 len),
+            NextTag := ap.NextTag + 1,
+            protFrames := ap.protFrames,
+            exposed := ap.exposed }, ?_⟩
+  simp only [sb_ref, freshTag, bind, Except.bind, pure, Except.pure, h_fold,
+    Bool.false_eq_true, if_false, Except.ok.injEq, Prod.mk.injEq, and_true]
+
 /-! ## BRIDGE 3 for `sb_write` -/
 
 /-- BRIDGE 3, CLOSED for the write: `sb_write` respects `PermSim` — a
