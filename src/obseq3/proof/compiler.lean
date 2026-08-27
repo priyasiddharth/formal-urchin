@@ -82,11 +82,13 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
 (4 → 6 → 5 → 4 on 2026-08-22/23: the ref leaf split into closed regimes
 and named residuals, then the ZST residual was closed by removing its
 cause, then the fresh-destination regime closed.)
-1. `const_write_proj_simulation` — every SB-side obligation is now
-   available (`sb_ref` member + `TagRenameBounded` in the invariant +
-   `PlaceRegMapBound`); what remains is proof work, not machinery:
-   compose the member with BRIDGE 1 and BRIDGE 3 over the internal
-   `Borrow`, and execute the proj fragment.
+1. `const_write_proj_nonlocal_residual` — a projected destination whose
+   BASE is itself a projection or a dereference. The base's own lowering
+   emits code and carries its own cleanup, so the fragment is no longer
+   three instructions and the `Die` sequence is a LIST
+   (`runN_cleanupInstrs` is the piece for that); composing it with
+   BRIDGE 1 per level is the work owed. A deref base additionally needs
+   the load spine.
 2. `const_write_deref_nonspine_simulation` — a projection somewhere in
    the dereferenced pointer place: its lowering emits a `Borrow` with
    cleanup — same position as regime C above, and unblocked by the same
@@ -102,6 +104,21 @@ cause, then the fresh-destination regime closed.)
    loads through the spine first, and a non-local destination lowers with
    a `Die` cleanup — which is where BRIDGE 1 finally enters for `ref`.
 
+- ✔ REGIME C of const_write — `const_write_proj_simulation`
+  (2026-08-27), split by the projection's OFFSET, which is what decides
+  the lowering's shape. C0 (offset zero) is `const_write_proj_zero_run`'s
+  bare `CStore`: regime A with a wider `allocSize`, since a projected
+  place's bounds come from the BASE's layout. C1 (nonzero) is
+  `Borrow(Mut); CStore; Die` — the FIRST closed regime that mints a tag,
+  uses it and kills it, and therefore the first consumer of BRIDGE 1
+  (`sb_ref_use_die_cancels`), which says that triple equals the bare
+  parent write on the stacks. Both of BRIDGE 1's side conditions are
+  DERIVED, not assumed: `sb_ref_Mut_ok_of_sb_write_ok` (a mutable retag
+  succeeds wherever the write does — per cell `writeCell` then
+  `pushCell`) supplies the retag's success, which the source cannot
+  provide since it performs a bare write; and `freshTag_not_protected`
+  supplies `h_unprot` from `TagRenameBounded` + `PermSim`. New
+  execution lemma: `runN_Die_step`.
 - ✔ REGIME F→L of `ref` — `ref_fresh_dst_simulation` (proof/ref.lean,
   2026-08-23): `&src` into an UNBOUND local. Fragment `Alloc; Borrow;
   RStore`; the only statement so far in which ρt extends TWICE (`sb_own`

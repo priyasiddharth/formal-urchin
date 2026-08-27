@@ -335,14 +335,17 @@ plus `sb_*_NextTag` framing and two counter conjuncts on
 Ref regimes L→L and F→L both CLOSED
 (2026-08-22/23); the ZST residual was closed by fixing the target check.
 `CompilerInv_step_ref` now has ONE residual, `ref_place_residual`.
-Audit 4 → 6 → 5 → 4. NEXT: `const_write_proj_simulation` and
-`const_write_deref_nonspine_simulation` — both compose the `sb_ref`
-member with BRIDGE 1 (the keystone, still unused by any closed leaf) and
-BRIDGE 3 over an internal `Borrow` WITH a `Die` cleanup, which is the
-shape none of the closed regimes has yet. Then `ref_place_residual`
-reuses whichever lands first, and `CompilerInv_step_copy` last (it is the
-only remaining sorry needing NEW machinery: a bidirectional memory
-relation + the Memcpy execution lemma). Copy is independent: it still needs a
+Audit 4 → 6 → 5 → 4. Regime C CLOSED 2026-08-27 for a
+bound-local base (C0 bare `CStore`, C1 `Borrow; CStore; Die` — the first
+and so far only consumer of BRIDGE 1). NEXT:
+`const_write_deref_nonspine_simulation` and
+`const_write_proj_nonlocal_residual` are now the SAME shape — a base
+whose own lowering emits code and carries a cleanup LIST, so
+`runN_cleanupInstrs` composed with BRIDGE 1 per level; do them together.
+Then `ref_place_residual` reuses that, and `CompilerInv_step_copy` last
+(the only remaining sorry needing NEW machinery: a bidirectional memory
+relation + the Memcpy execution lemma, plus — by the pattern established
+in C1 — a `Memcpy`-succeeds-when lemma on the target side). Copy is independent: it still needs a
 bidirectional memory relation + the Memcpy execution lemma. Regime B CLOSED 2026-08-22 (audit
 5 → 4); it added the tenth `CompilerInv` conjunct
 (`UnboundLocalsUnmapped`) and a third construction site, so any future
@@ -362,6 +365,7 @@ fresh-local DONE (~2 h actual).
 2026-08-22-alloclockstep-wired.md, journal/2026-08/
 2026-08-22-regime-b-closed.md, journal/2026-08/
 2026-08-23-ref-fresh-dst-closed.md, journal/2026-08/
+2026-08-27-regime-c-closed.md, journal/2026-08/
 2026-08-22-ref-ll-closed.md, obseq2 sorries superseded by this
 decomposition (obseq2/proof stays frozen).
 

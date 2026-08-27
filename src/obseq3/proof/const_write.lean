@@ -498,35 +498,6 @@ theorem const_write_fresh_local_simulation
               grind
         · simp at h_w
 
-/-- RESIDUAL REGIME C (sorried): constant write to a projected
-    destination. The fragment is `[root Alloc?] Borrow(Mut) CStore Die`;
-    needs BRIDGE 1 (`sb_ref_use_die_cancels`) composed with BRIDGE 3, and
-    the strengthened `CompilerStateWF` (placeRegMap register bound) so the
-    fresh temp register cannot collide with stored local registers. -/
-theorem const_write_proj_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_pre s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
-    {σ : LayoutTy} {base : Place Γ σ} {path : PathTo σ obseq.LayoutTy.NatL}
-    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
-    (compProg : oseair.Prog)
-    (v : Word)
-    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
-    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc = some (.assign (.proj base path) (.constInit v)))
-    (h_prep : mirlite.preparePlaceAssign MSB s_mir (.proj base path) = .ok s_pre)
-    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.proj base path) = .ok (resolved, permsD))
-    (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
-                 MSB { s_pre with perms := permsD } resolved
-                 [mirlite.MemValue.word v] rfl = .ok s_mir') :
-    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
-      AddrRenameIncr ρa ρa' ∧
-      TagRenameIncr ρt ρt' ∧
-      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
-  sorry
-
 /-- The compiled fragment of a constant write through a dereferenced spine
     place is the spine's `Load`s followed by one more `Load` (of the final
     pointer) and a `CStore` through it — stated over an opaque spine run,
@@ -794,6 +765,253 @@ theorem const_write_proj_zero_simulation
         rw [h_stmtRun] at h_look ⊢
         rw [getPlaceInfo_emit] at h_look
         exact h_prb _ _ _ h_look
+    · simp at h_w
+
+/-- REGIME C1, CLOSED: constant write to a NONZERO-offset projection off
+    a bound local. The fragment is `Borrow(Mut); CStore; Die` — the first
+    closed regime whose target mints a tag, uses it, and then kills it,
+    which is exactly the shape BRIDGE 1 (`sb_ref_use_die_cancels`) was
+    proved for: that three-op sequence is equivalent, on the stacks, to
+    the bare parent write the source performs.
+
+    Two side conditions BRIDGE 1 needs are DERIVED rather than assumed:
+    the retag succeeds because the corresponding write does
+    (`sb_ref_Mut_ok_of_sb_write_ok`), and the fresh tag is unprotected
+    because ρt's range lies below the counter
+    (`freshTag_not_protected`). -/
+theorem const_write_proj_offset_simulation
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {σ : LayoutTy} {loc : Local Γ σ} {path : PathTo σ obseq.LayoutTy.NatL}
+    {binding : mirlite.Binding}
+    (compProg : oseair.Prog)
+    (v : Word)
+    (h_off : pathOffset path ≠ 0)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    (h_stmt : prog.get? s_mir.pc
+      = some (.assign (.proj (.local loc) path) (.constInit v)))
+    (h_env : mirlite.Env.lookup s_mir.env loc = some binding)
+    (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL) MSB s_mir
+        { addr := binding.addr + pathOffset path, tag := binding.tag,
+          allocBase := binding.addr, allocSize := blockSize σ }
+        [mirlite.MemValue.word v] rfl = .ok s_mir') :
+    ∃ (s_osea' : oseair.State MSB) (n : Nat),
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
+  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
+    h_alloc, h_unmap, h_prb⟩ := h_inv
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ :=
+    h_lbs loc binding h_env
+  have h_base : base = binding.addr := (h_id_a _ _ h_ra).symm
+  subst h_base
+  have h_w := h_write
+  simp only [mirlite.writeResolvedPlace] at h_w
+  split at h_w
+  · simp at h_w
+  · rename_i h_nb
+    split at h_w
+    · rename_i perms' h_useMut_src
+      cases h_w
+      -- the target's DIRECT write (what BRIDGE 1 says the triple equals)
+      obtain ⟨qAcc, h_useMut_tgt, h_psim'⟩ :=
+        sb_write_respects_PermSim h_psim h_wf_t h_rt h_nw h_useMut_src
+      -- the target's retag succeeds, and its fresh tag is usable
+      obtain ⟨q1, h_ref_tgt⟩ :=
+        sb_ref_Mut_ok_of_sb_write_ok h_useMut_tgt
+      have h_unprot := freshTag_not_protected h_psim h_tbd
+      have h0 : wildcardTag < s_osea.perms.NextTag := (h_tbd _ _ h_wf_t.2).2
+      have h_nt : (s_osea.perms.NextTag == wildcardTag) = false := by grind
+      obtain ⟨q2, q3, qAcc', h_wr1, h_die1, h_wr2, h_sm, h_ex, h_pf, h_ntle⟩ :=
+        sb_ref_use_die_cancels h_nt h_unprot h_ref_tgt
+      -- BRIDGE 1's own direct write is the one BRIDGE 3 produced
+      have h_qAcc : qAcc' = qAcc := by
+        rw [h_useMut_tgt] at h_wr2
+        injection h_wr2 with h_e
+        exact h_e.symm
+      subst h_qAcc
+      -- the fragment: Borrow; CStore; Die
+      have h_mapped : PlaceInputsMapped csPrefix (Place.proj (Place.local loc) path) :=
+        ⟨reg, σ, h_pi⟩
+      have h_root := ensurePlaceRoot_run_eq_of_mapped
+        (p := Place.proj (Place.local loc) path) h_mapped
+      obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
+        placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
+      have h_stmtRun := compileStmt_proj_offset_run (cs := csPrefix) (baseOut := baseOut)
+        v h_off h_root h_brun h_bval h_bres
+      obtain ⟨stmtOut, h_stmtOut⟩ :
+          ∃ so, CheckedCompilerM.value
+            (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v)))
+            csPrefix = Except.ok so := by
+        obtain ⟨dstOut, h_dstOut⟩ :=
+          placeToRegChecked_ok_of_placeInputsMapped (cs := csPrefix)
+            (kind := RefKind.Mut) (p := Place.proj (Place.local loc) path) h_mapped
+        exact ⟨{ result := (),
+                 evidence := StmtEvidence.assignPlace (.proj (.local loc) path)
+                   (.constInit v) dstOut.result dstOut.evidence
+                   (RExprToEvidence.constInit v) },
+               by simp [compileStmtChecked, compileRExprToChecked, h_dstOut, h_root]⟩
+      have h_len3 : ((emit (emit (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+          [Instr.Assgn (Register.R csPrefix.nextReg)
+            (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL) reg (pathOffset path))])
+          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] (Register.R csPrefix.nextReg)])
+          [Instr.Die (Register.R csPrefix.nextReg) (blockSize obseq.LayoutTy.NatL)])).nextLabel
+          = csPrefix.nextLabel + 3 := by
+        simp only [emit, List.length_cons, List.length_nil]
+      have h_code1 : compProg s_osea.pc
+          = some (Instr.Assgn (Register.R csPrefix.nextReg)
+              (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL) reg (pathOffset path))) := by
+        rw [h_pc]
+        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+        · rw [h_stmtRun, h_len3]; omega
+        · rw [h_stmtRun]
+          rw [emit_code_lt_nextLabel _ _ (by
+            simp only [emit, List.length_cons, List.length_nil]; omega)]
+          rw [emit_code_lt_nextLabel _ _ (by
+            simp only [emit, List.length_cons, List.length_nil]; omega)]
+          have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg)
+              (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL) reg (pathOffset path))]
+            (k := 0) (by simp)
+          simpa using h
+      have h_code2 : compProg (s_osea.pc + 1)
+          = some (Instr.CStore obseq.TyVal.NatTy [Val.Dat v]
+              (Register.R csPrefix.nextReg)) := by
+        rw [h_pc]
+        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+        · rw [h_stmtRun, h_len3]; omega
+        · rw [h_stmtRun]
+          rw [emit_code_lt_nextLabel _ _ (by
+            simp only [emit, List.length_cons, List.length_nil]; omega)]
+          have h := emit_code_at_new
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg)
+                (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL) reg (pathOffset path))])
+            [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] (Register.R csPrefix.nextReg)]
+            (k := 0) (by simp)
+          simpa [emit] using h
+      have h_code3 : compProg (s_osea.pc + 1 + 1)
+          = some (Instr.Die (Register.R csPrefix.nextReg)
+              (blockSize obseq.LayoutTy.NatL)) := by
+        rw [h_pc]
+        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+        · rw [h_stmtRun, h_len3]; omega
+        · rw [h_stmtRun]
+          have h := emit_code_at_new
+            (emit (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg)
+                (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL) reg (pathOffset path))])
+              [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] (Register.R csPrefix.nextReg)])
+            [Instr.Die (Register.R csPrefix.nextReg) (blockSize obseq.LayoutTy.NatL)]
+            (k := 0) (by simp)
+          simpa [emit] using h
+      -- §execute: Borrow, then the store through the fresh tag, then Die
+      have h_ref_tgt' : MSB.ref s_osea.perms (binding.addr + 0 + pathOffset path)
+          (blockSize obseq.LayoutTy.NatL) tag RefKind.Mut false []
+          = .ok (q1, s_osea.perms.NextTag) := by
+        simpa using h_ref_tgt
+      have h_off_lt : pathOffset path < blockSize σ := by
+        have h1 := Nat.not_lt.mp h_nb
+        simp only [List.length_cons, List.length_nil, Nat.add_assoc] at h1
+        exact Nat.le_of_add_le_add_left h1
+      have h_le1 : binding.addr + 0 + pathOffset path + blockSize obseq.LayoutTy.NatL
+          ≤ binding.addr + blockSize σ := by
+        simp only [Nat.add_zero]
+        simpa [blockSize] using Nat.not_lt.mp h_nb
+      have h_run1 := runN_Assgn_Borrow_step compProg s_osea
+        (Register.R csPrefix.nextReg) reg RefKind.Mut false []
+        (blockSize obseq.LayoutTy.NatL) (pathOffset path)
+        h_code1 h_entry h_le1 h_ref_tgt'
+      have h_off_eq : binding.addr + pathOffset path - binding.addr
+          = 0 + pathOffset path := by
+        simp
+      have h_entry1 : PtrRegisterEntry
+          (oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
+            (obseq.TyVal.PTy, [Val.Ptr binding.addr (0 + pathOffset path) (blockSize σ)
+              s_osea.perms.NextTag]))
+          (Register.R csPrefix.nextReg) binding.addr
+          (binding.addr + pathOffset path - binding.addr) (blockSize σ)
+          s_osea.perms.NextTag := by
+        rw [h_off_eq]
+        exact RegMap.lookup_insert_self _ _ _
+      obtain ⟨h_wtp, h_sms'⟩ :=
+        writeThroughPtr_sim (τ := obseq.LayoutTy.NatL)
+          (s_osea :=
+            { s_osea with
+                perms := q1,
+                reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
+                  (obseq.TyVal.PTy,
+                    [Val.Ptr binding.addr (0 + pathOffset path) (blockSize σ)
+                      s_osea.perms.NextTag]),
+                pc := s_osea.pc + 1 })
+          (resolved := { addr := binding.addr + pathOffset path, tag := binding.tag,
+                         allocBase := binding.addr, allocSize := blockSize σ })
+          "CStore Invalid Ptr" [mirlite.MemValue.word v] [Val.Dat v] rfl
+          ⟨rfl, trivial⟩ h_id_a h_entry1 (by simpa using h_wr1) h_sms
+          (by simp)
+          (fun k hk => by
+            have hk0 : k = 0 := by simpa using hk
+            subst hk0
+            obtain ⟨a', ha'⟩ := h_dom (pathOffset path) h_off_lt
+            have h_id := h_id_a _ _ ha'
+            rw [h_id] at ha'
+            rw [Nat.add_zero, h_id]
+            exact ha')
+          h_write
+      have h_run2 := runN_CStore_step compProg _ _
+        obseq.TyVal.NatTy [Val.Dat v] (Register.R csPrefix.nextReg) h_code2 rfl h_wtp
+      have h_run3 := runN_Die_step compProg
+        { s_osea with
+            perms := q2,
+            reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
+              (obseq.TyVal.PTy,
+                [Val.Ptr binding.addr (0 + pathOffset path) (blockSize σ)
+                  s_osea.perms.NextTag]),
+            mem := oseair.writeWordSeq s_osea.mem (binding.addr + pathOffset path)
+              [Val.Dat v],
+            pc := s_osea.pc + 1 + 1 }
+        (Register.R csPrefix.nextReg) (blockSize obseq.LayoutTy.NatL)
+        h_code3 (RegMap.lookup_insert_self _ _ _) (by simpa using h_die1)
+      have h_run :=
+        (oseair_runN_add (1 + 1) 1 s_osea compProg _
+          ((oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2)).trans h_run3
+      refine ⟨_, 1 + 1 + 1, h_run, ?_⟩
+      -- PermSim across the triple: BRIDGE 1 says the net stack effect is
+      -- the bare parent write, which BRIDGE 3 already related
+      have h_psim3 : PermSim ρt perms' q3 := by
+        obtain ⟨hs, hp, he, hn⟩ := h_psim'
+        exact ⟨by rw [h_sm]; exact hs, by rw [h_pf]; exact hp,
+               by rw [h_ex]; exact he, Nat.le_trans hn h_ntle⟩
+      refine ⟨CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v))) csPrefix,
+        ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
+        h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
+      · show s_osea.pc + 1 + 1 + 1 = _
+        rw [h_pc, h_stmtRun, h_len3]
+      · refine LocalBindingSim.placeRegMap_congr ?_
+          (LocalBindingSim.insert_fresh_reg h_lbs h_prb (Nat.le_refl _) rfl)
+        rw [h_stmtRun]
+        simp [emit]
+      · show TagRenameBounded ρt perms'.NextTag q3.NextTag
+        rw [sb_write_NextTag h_useMut_src]
+        exact TagRenameBounded.mono h_tbd (Nat.le_refl _)
+          (Nat.le_trans (Nat.le_of_eq (sb_write_NextTag h_useMut_tgt).symm) h_ntle)
+      · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
+          oseair_writeWordSeq_addrStart]
+        exact h_alloc
+      · intro τ' loc' h_none
+        rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_emit,
+          getPlaceInfo_setNextReg]
+        exact h_unmap loc' h_none
+      · intro idx reg'' τ'' h_look
+        rw [h_stmtRun] at h_look ⊢
+        rw [getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_emit,
+          getPlaceInfo_setNextReg] at h_look
+        refine RegisterBelow.mono ?_ (h_prb _ _ _ h_look)
+        simp only [emit]
+        omega
     · simp at h_w
 
 /-- REGIME D (spine), CLOSED: constant write through a dereferenced load
@@ -1123,6 +1341,102 @@ theorem const_write_deref_nonspine_simulation
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   sorry
+
+/-- RESIDUAL (sorried): a projected destination whose BASE is itself a
+    projection or a dereference. The base's own lowering may emit code and
+    carry its own cleanup (`baseRes.cleanup ++ [(tmpReg, …)]`), so the
+    fragment is no longer three instructions and the `Die` sequence is a
+    list rather than one instruction — `runN_cleanupInstrs` is the piece
+    that handles that, and composing it with BRIDGE 1 per level is the
+    work owed. A deref base additionally needs the load spine. -/
+theorem const_write_proj_nonlocal_residual
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_pre s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {σ : LayoutTy} {base : Place Γ σ} {path : PathTo σ obseq.LayoutTy.NatL}
+    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
+    (compProg : oseair.Prog)
+    (v : Word)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    (h_stmt : prog.get? s_mir.pc = some (.assign (.proj base path) (.constInit v)))
+    (h_prep : mirlite.preparePlaceAssign MSB s_mir (.proj base path) = .ok s_pre)
+    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.proj base path) = .ok (resolved, permsD))
+    (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
+                 MSB { s_pre with perms := permsD } resolved
+                 [mirlite.MemValue.word v] rfl = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
+  sorry
+
+/-- REGIME C (dispatcher): constant write to a projected destination,
+    split by the projection's OFFSET, which is what decides the shape of
+    the lowering. Off a bound local both halves are CLOSED — zero offset
+    by `const_write_proj_zero_simulation` (bare `CStore`), nonzero by
+    `const_write_proj_offset_simulation` (`Borrow; CStore; Die`, BRIDGE 1).
+    A non-local base is the named residual. -/
+theorem const_write_proj_simulation
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_pre s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {σ : LayoutTy} {base : Place Γ σ} {path : PathTo σ obseq.LayoutTy.NatL}
+    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
+    (compProg : oseair.Prog)
+    (v : Word)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    (h_stmt : prog.get? s_mir.pc = some (.assign (.proj base path) (.constInit v)))
+    (h_prep : mirlite.preparePlaceAssign MSB s_mir (.proj base path) = .ok s_pre)
+    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.proj base path) = .ok (resolved, permsD))
+    (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
+                 MSB { s_pre with perms := permsD } resolved
+                 [mirlite.MemValue.word v] rfl = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
+  cases base with
+  | «local» loc =>
+      cases h_env : mirlite.Env.lookup s_mir.env loc with
+      | none =>
+          exact const_write_proj_nonlocal_residual compProg v h_comp h_inv h_stmt
+            h_prep h_res h_write
+      | some binding =>
+          -- the destination root is bound, so prepare is a no-op and the
+          -- projected place resolves to base + offset
+          have h_pre : s_pre = s_mir := by
+            simp only [mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_env] at h_prep
+            cases h_prep
+            rfl
+          subst h_pre
+          simp only [mirlite.resolvePlaceAcc, h_env, Except.ok.injEq,
+            Prod.mk.injEq] at h_res
+          obtain ⟨h_r1, h_r2⟩ := h_res
+          subst h_r1
+          subst h_r2
+          by_cases h_off : pathOffset path = 0
+          · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
+              const_write_proj_zero_simulation compProg v h_off h_comp h_inv h_stmt
+                h_env h_write
+            exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
+              h_run, h_inv'⟩
+          · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
+              const_write_proj_offset_simulation compProg v h_off h_comp h_inv h_stmt
+                h_env h_write
+            exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
+              h_run, h_inv'⟩
+  | proj b p =>
+      exact const_write_proj_nonlocal_residual compProg v h_comp h_inv h_stmt
+        h_prep h_res h_write
+  | deref pp =>
+      exact const_write_proj_nonlocal_residual compProg v h_comp h_inv h_stmt
+        h_prep h_res h_write
 
 /-- Regime D, decomposed by the pointer place: load spines (all-deref
     chains over a local — every depth) are CLOSED via

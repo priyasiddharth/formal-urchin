@@ -281,3 +281,28 @@ BRIDGE 1 (an internal `Borrow` WITH a `Die` cleanup), a shape no closed
 regime has yet. Then `ref_place_residual`, then `CompilerInv_step_copy`
 (the only remaining sorry needing new machinery).
 
+## 2026-08-27
+**Session:** (terminal, continued) — regime C, and BRIDGE 1's first use
+**Theme:** closed the projected-destination leaf for a bound-local base;
+the keystone finally carries weight.
+**Key outputs:**
+- `const_write_proj_simulation` split by OFFSET: C0
+  (`const_write_proj_zero_simulation`, bare `CStore`) and C1
+  (`const_write_proj_offset_simulation`, `Borrow; CStore; Die`) — the
+  first consumer of BRIDGE 1, twelve days after it was proved.
+- `sb_ref_Mut_ok_of_sb_write_ok` and `freshTag_not_protected`: BRIDGE 1's
+  two side conditions, both DERIVED from the invariant rather than
+  assumed. Plus `runN_Die_step`, `ListRel.mem_right`,
+  `TagListSim.mem_range`, `compileStmt_proj_zero_run`/`_offset_run`.
+- journal/2026-08/2026-08-27-regime-c-closed.md; dev-log increment 34.
+**Critical corrections:** none from the user. Self-caught: twice placed
+new theorems BEFORE the lemmas they call (the file is order-sensitive and
+the errors read as "unknown identifier", not as a placement problem).
+**Status:** complete. Audit stays at 4; the C residual narrowed to a
+non-local base.
+**Next-session pickup:** `const_write_deref_nonspine_simulation` and
+`const_write_proj_nonlocal_residual` are now the SAME shape (base
+lowering emits code + a cleanup LIST) — do them together via
+`runN_cleanupInstrs` ∘ BRIDGE 1. Then `ref_place_residual`, then
+`CompilerInv_step_copy`.
+

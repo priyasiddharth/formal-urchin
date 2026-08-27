@@ -4,6 +4,49 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-27 — The Keystone Earns Its Name
+
+Thirty-fourth increment. `const_write_proj_simulation` closes for a bound-local
+base, split by the projection's *offset* — which, it turns out, is what decides
+the shape of the lowering. At offset zero `placeToRegChecked` hands back the
+base's own register and the fragment is a bare `CStore`; the proof is regime A
+with a wider `allocSize`, since a projected place's bounds come from the base's
+layout rather than from the field's. At a nonzero offset the compiler mints an
+internal `Borrow(Mut)` into a temp and records a `Die` that the assign arm
+emits after the store.
+
+That second shape is the first one in this development whose target mints a
+tag, uses it, and then kills it — and so, twelve days and eleven closed regimes
+after it was proved, BRIDGE 1 finally carries weight. `sb_ref_use_die_cancels`
+says exactly what is needed: the triple's net effect on the borrow stacks is
+the bare parent write the source performs, so `PermSim` transfers from
+BRIDGE 3's result by rewriting three component equalities.
+
+The more interesting result is that both of BRIDGE 1's side conditions turned
+out to be *derivable* from the invariant rather than assumable. It takes the
+retag's success as a hypothesis, and on the target nothing supplies it — the
+source performs a bare write, so there is no retag to transport. But a mutable
+retag is per cell a write followed by a push, and a push onto the stack the
+write just produced cannot fail; write-success implies retag-success, proved by
+feeding one existing lemma's output straight into another's input. And the
+"fresh tag is unprotected" condition falls out of `TagRenameBounded` plus
+`PermSim`: every tag in a target protector frame came through ρt, whose range
+lies strictly below the counter, so the tag being minted *at* the counter
+cannot already be protected. That is the third time the bound has paid for
+itself beyond the case it was introduced for.
+
+A pattern worth naming, since it has now recurred: every bridge needs a
+companion *"…succeeds when…"* lemma on the target side, because the bridges are
+stated as transports of a successful source event, and the target sometimes
+performs an event the source does not. Copy's `Memcpy` will want the same.
+
+The residual narrowed rather than vanished — a base that is itself a projection
+or a dereference emits its own code and carries its own cleanup, so the `Die`
+becomes a list rather than an instruction. Audit stays at 4. Suite pass 80 |
+fail 0 of 121, differential 80/0/0.
+
+---
+
 ## 2026-08-23 — Two Fresh Tags in One Statement
 
 Thirty-third increment. `ref_fresh_dst_simulation` closes the
