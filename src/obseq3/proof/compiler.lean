@@ -78,11 +78,10 @@ the two facts the minting members need.
   `AllocLockstep.allocate_eq` is the consumer-facing form: corresponding
   allocations agree, and the property survives them.
 
-Remaining (5): every remaining sorry is blocked on a NAMED obligation.
-(4 → 6 → 5 on 2026-08-22: the ref leaf split into a CLOSED regime and
-three named residuals, then the ZST residual was closed by removing its
-cause — the target's `Rhs.Borrow` check is now the range form — rather
-than by proving it.)
+Remaining (4): every remaining sorry is blocked on a NAMED obligation.
+(4 → 6 → 5 → 4 on 2026-08-22/23: the ref leaf split into closed regimes
+and named residuals, then the ZST residual was closed by removing its
+cause, then the fresh-destination regime closed.)
 1. `const_write_proj_simulation` — every SB-side obligation is now
    available (`sb_ref` member + `TagRenameBounded` in the invariant +
    `PlaceRegMapBound`); what remains is proof work, not machinery:
@@ -98,14 +97,25 @@ than by proving it.)
    memory relation (source-absent cells read as undef; one-directional
    `SourceMemSim` does not constrain the target there) plus the Memcpy
    execution lemma.
-4. `ref_fresh_dst_residual` — `&src` into an UNBOUND local: the ref
-   analogue of const_write's regime B (root `Alloc` first, both renames
-   grow, ρt twice). Every piece exists; the composition is owed.
-5. `ref_place_residual` — a proj/deref place on either side of a ref: a
+4. `ref_place_residual` — a proj/deref place on either side of a ref: a
    proj source offsets the `Borrow` (regime C's shape), a deref source
    loads through the spine first, and a non-local destination lowers with
    a `Die` cleanup — which is where BRIDGE 1 finally enters for `ref`.
 
+- ✔ REGIME F→L of `ref` — `ref_fresh_dst_simulation` (proof/ref.lean,
+  2026-08-23): `&src` into an UNBOUND local. Fragment `Alloc; Borrow;
+  RStore`; the only statement so far in which ρt extends TWICE (`sb_own`
+  for the destination's root tag, then `sb_ref` for the reference), which
+  works because each minting member returns the `TagRenameBounded` at the
+  intermediate counters that the next one takes as hypothesis — the
+  payoff for making that an invariant rather than a per-leaf side
+  condition. ρa extends once, at the identity pair. New pieces:
+  `compileStmt_ref_fresh_local_run`/`_value`, `prepare_lookup_ne`
+  (preparing one local leaves other bindings alone — needed because
+  `doAssign` resolves the SOURCE against the post-allocation state),
+  `layout_ne_ptrL`/`ref_dst_src_idx_ne` (a `PtrL τ` destination and a `τ`
+  source are necessarily distinct locals, since `Local` carries its type
+  proof), `getPlaceInfo_setNextReg`.
 - ✔ REGIME L→L of `ref` — `ref_local_local_simulation` (proof/ref.lean,
   2026-08-22): `dstLocal := &srcLocal`, both bound, ANY referent size
   (the `0 < blockSize τ` side condition and its `ref_zst_residual` went

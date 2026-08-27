@@ -1213,6 +1213,10 @@ theorem getPlaceInfo_setPlaceInfo_ne (cs : CompilerState) {idx idx' : Nat}
     · exact absurd (eq_of_beq h_eq) h
   simp [setPlaceInfo, getPlaceInfo, List.lookup, hb]
 
+/-- A `nextReg` bump touches only the register counter. -/
+theorem getPlaceInfo_setNextReg (cs : CompilerState) (n idx : Nat) :
+    getPlaceInfo { cs with nextReg := n } idx = getPlaceInfo cs idx := rfl
+
 /-- `emit` touches only code and labels. -/
 theorem getPlaceInfo_emit (cs : CompilerState) (is : List Instr) (idx : Nat) :
     getPlaceInfo (emit cs is) idx = getPlaceInfo cs idx := rfl

@@ -256,3 +256,28 @@ Note `CompilerInv` now has THREE construction sites (regimes A, B and the
 deref spine), so wire any further conjunct before closing another leaf. Also
 still open: W34 digest, and W33's proposed
 `conformance-process-patterns.md` promotion.
+
+## 2026-08-23
+**Session:** (terminal, continued) — ref fresh-destination regime
+**Theme:** closed the last non-place ref regime; first statement whose
+ρt extends twice.
+**Key outputs:**
+- `ref_fresh_dst_simulation` — `&src` into an UNBOUND local, fragment
+  `Alloc; Borrow; RStore`, both renames growing (ρt TWICE via `sb_own`
+  then `sb_ref`). Audit 5 → 4.
+- `compileStmt_ref_fresh_local_run`/`_value`, `prepare_lookup_ne`,
+  `layout_ne_ptrL`/`ref_dst_src_idx_ne`, `getPlaceInfo_setNextReg`.
+- journal/2026-08/2026-08-23-ref-fresh-dst-closed.md; dev-log
+  increment 33.
+**Critical corrections:** none from the user. Self-caught: the fragment
+closed form omitted the `nextReg` bump `freshRegM` performs between the
+`Alloc` and the `Borrow` — the signature was a final `simp` leaving
+`⊢ False` rather than a rewrite failure.
+**Status:** complete. `CompilerInv_step_ref` has one residual left
+(`ref_place_residual`); audit at 4.
+**Next-session pickup:** `const_write_proj_simulation` /
+`const_write_deref_nonspine_simulation` — the first leaves to need
+BRIDGE 1 (an internal `Borrow` WITH a `Die` cleanup), a shape no closed
+regime has yet. Then `ref_place_residual`, then `CompilerInv_step_copy`
+(the only remaining sorry needing new machinery).
+

@@ -4,6 +4,43 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-23 — Two Fresh Tags in One Statement
+
+Thirty-third increment. `ref_fresh_dst_simulation` closes the
+fresh-destination ref regime: `&src` stored into a local the source has not
+yet bound, so mirlite's prepare allocates it and the fragment is three
+instructions, `Alloc; Borrow; RStore`. Audit 5 → 4, and `CompilerInv_step_ref`
+is down to a single residual.
+
+What makes it worth an entry is that it is the first statement in which ρt
+extends *twice* — `sb_own` mints the destination's root tag, then `sb_ref`
+mints the reference tag. That composed with no new machinery, and the reason
+is a decision made yesterday for an unrelated purpose: each minting member
+*returns* the `TagRenameBounded` at the intermediate counters that the next one
+*takes* as a hypothesis. Had the bound stayed a per-leaf side condition, the
+second extension would have had nothing to stand on. It is the clearest
+argument so far for putting facts in the invariant rather than in the
+statement that first needs them.
+
+ρa also grows, once, at the identity pair. The wrinkle relative to regime B is
+that here the extension has to be transported into facts established *before*
+it: `doAssign` resolves the source against the post-allocation state, so the
+source local's address facts — including the block-domain conjunct added for
+the L→L regime — cross the destination's allocation. That is mechanical, but
+it is the first place two renames and an ordering constraint interact.
+
+Two structural lemmas fell out, both reusable. `prepare_lookup_ne` says
+preparing one local leaves other bindings alone. And a small dependent-typing
+fact that had to be proved rather than assumed: a `PtrL τ` destination and a
+`τ` source are necessarily *distinct* locals, because `Local` carries its type
+proof and equal indices would force `τ = PtrL τ`. `grind` cannot see that —
+its congruence closure happily puts `τ` and `τ.PtrL` in one equivalence class
+— but `congrArg sizeOf` plus `simp` kills it in a line.
+
+Suite pass 80 | fail 0 of 121, differential 80/0/0, units green.
+
+---
+
 ## 2026-08-22 (last) — A Witness Closes Two Gaps, and rustc Refutes a Third
 
 Thirty-second increment, and a short one on the proof side: `ref_zst_residual`

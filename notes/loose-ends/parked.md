@@ -332,14 +332,17 @@ Audit now 5 named sorries.
 `TagRenameBounded` WIRED into `CompilerInv` 2026-08-22 (eighth conjunct,
 plus `sb_*_NextTag` framing and two counter conjuncts on
 `loadSpine_lowering_sim`), so the `sb_ref` member is applicable at a leaf.
-Ref regime L→L CLOSED 2026-08-22
-(`ref_local_local_simulation`; `CompilerInv_step_ref` is now a dispatcher
-with three named residuals: ZST, fresh-dst, proj/deref — audit 4 → 6 by
-the D1-split accounting). NEXT: `ref_fresh_dst_residual` (regime B
-composed with L→L, all pieces exist, ~half-day), then
-`const_write_proj_simulation` and `const_write_deref_nonspine_simulation`
-(compose the `sb_ref` member with BRIDGE 1 and BRIDGE 3), then
-`ref_place_residual` (reuses whichever of those lands first). Copy is independent: it still needs a
+Ref regimes L→L and F→L both CLOSED
+(2026-08-22/23); the ZST residual was closed by fixing the target check.
+`CompilerInv_step_ref` now has ONE residual, `ref_place_residual`.
+Audit 4 → 6 → 5 → 4. NEXT: `const_write_proj_simulation` and
+`const_write_deref_nonspine_simulation` — both compose the `sb_ref`
+member with BRIDGE 1 (the keystone, still unused by any closed leaf) and
+BRIDGE 3 over an internal `Borrow` WITH a `Die` cleanup, which is the
+shape none of the closed regimes has yet. Then `ref_place_residual`
+reuses whichever lands first, and `CompilerInv_step_copy` last (it is the
+only remaining sorry needing NEW machinery: a bidirectional memory
+relation + the Memcpy execution lemma). Copy is independent: it still needs a
 bidirectional memory relation + the Memcpy execution lemma. Regime B CLOSED 2026-08-22 (audit
 5 → 4); it added the tenth `CompilerInv` conjunct
 (`UnboundLocalsUnmapped`) and a third construction site, so any future
@@ -347,7 +350,7 @@ conjunct now costs three bullets rather than two — wire conjuncts BEFORE
 closing the leaf that adds a site.
 **Effort estimate:** CompilerInv `TagRenameBounded` wiring DONE
 (~1 h actual); ref L→L DONE (~3 h incl. the `BEq` detour); ref fresh-dst
-~half-day; proj/deref-nonspine ~half-day each; copy ~1-2
+DONE (~2 h); proj/deref-nonspine ~half-day each; copy ~1-2
 days (bidirectional memory relation is the real work); `sb_own` member DONE
 (~1 h actual, as predicted); lockstep-allocation conjunct DONE (~1 h);
 fresh-local DONE (~2 h actual).
@@ -358,6 +361,7 @@ fresh-local DONE (~2 h actual).
 2026-08-22-sb-own-member.md, journal/2026-08/
 2026-08-22-alloclockstep-wired.md, journal/2026-08/
 2026-08-22-regime-b-closed.md, journal/2026-08/
+2026-08-23-ref-fresh-dst-closed.md, journal/2026-08/
 2026-08-22-ref-ll-closed.md, obseq2 sorries superseded by this
 decomposition (obseq2/proof stays frozen).
 
