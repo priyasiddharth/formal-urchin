@@ -521,6 +521,14 @@ theorem writeCellContent_top_mutref
     writeCellContent pf ex a t (.MutRef t :: rest) = .ok (.MutRef t :: rest) := by
   simp [writeCellContent, h_t, splitStack, Item.tag, Item.grantsWrite, firstProtectedIn]
 
+/-- A read through a fresh `Ref` sitting on top of the stack is a no-op:
+    nothing is above it to disable. (BRIDGE 1S's phase-2 content.) -/
+theorem readCellContent_top_ref
+    {pf : List (List Tag)} {ex : List Tag} {a : Word} {t : Tag}
+    (h_t : (t == wildcardTag) = false) (rest : BorrowStack) :
+    readCellContent pf ex a t (.Ref t :: rest) = .ok (.Ref t :: rest) := by
+  simp [readCellContent, h_t, splitStack, Item.tag, firstProtectedIn]
+
 theorem dieCellContent_top
     {pf : List (List Tag)} {t : Tag}
     (h_np : isProtectedIn pf t = false) (rest : BorrowStack) :
@@ -685,6 +693,217 @@ theorem sb_ref_use_die_cancels
             simp only [Nat.zero_add] at h2
             rw [h_W₁ j h2]
             exact writeCellContent_top_mutref h_nt (W j))
+        rw [show addr + 0 = addr from rfl] at this
+        rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
+        exact this
+      -- PHASE 3: sb_die pops the fresh item at each cell.
+      have h_phase3 : sb_die { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 len) }
+            addr len s.NextTag =
+          .ok { apR with StackMap := setChain (setChain apR.StackMap (chain W₁ addr 0 len)) (chain W addr 0 len) } := by
+        show foldCells _ _ addr len = _
+        have := foldCells_ok_of_cells
+          (op := fun ap a =>
+            match ap.StackMap.find? a with
+            | none => .error s!"sb-die: no borrow stack at address {a}"
+            | some stack =>
+                match dieCellContent ap.protFrames s.NextTag stack with
+                | .error e => .error e
+                | .ok below => .ok { ap with StackMap := SB.set ap.StackMap a below })
+          (C := fun _ stack => dieCellContent s.protFrames s.NextTag stack)
+          (msgNone := fun a => s!"sb-die: no borrow stack at address {a}")
+          (P := s.protFrames) (E := s.exposed) (N := s.NextTag + 1)
+          (fun ap a h_pf h_ex _ => by
+            cases h_find : SB.find? ap.StackMap a with
+            | none => simp only [h_find]
+            | some stack =>
+                cases h_content : dieCellContent s.protFrames s.NextTag stack with
+                | error e => simp only [h_pf, h_find, h_content]
+                | ok below => simp only [h_pf, h_find, h_content])
+          len 0 { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 len) }
+          W₁ W
+          h_apR_pf h_apR_ex h_apR_nt
+          (fun j h1 h2 => by
+            simp only [Nat.zero_add] at h2
+            exact setChain_chain_find? apR.StackMap j (Nat.zero_le j) h2)
+          (fun j h1 h2 => by
+            simp only [Nat.zero_add] at h2
+            rw [h_W₁ j h2]
+            exact dieCellContent_top h_unprot (W j))
+        rw [show addr + 0 = addr from rfl] at this
+        rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
+        exact this
+      -- Assemble.
+      refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_⟩
+      · -- StackMap: collapse the three chains onto the source's one.
+        show setChain (setChain apR.StackMap (chain W₁ addr 0 len))
+            (chain W addr 0 len)
+          = setChain s.StackMap (chain W addr 0 len)
+        rw [h_apR_sm]
+        rw [setChain_override (keysOf_chain_eq) nodup_keysOf_chain,
+            setChain_override (keysOf_chain_eq) nodup_keysOf_chain]
+      · exact h_apR_ex
+      · exact h_apR_pf
+      · rw [h_apR_nt]
+        exact Nat.le_succ s.NextTag
+
+/-- BRIDGE 1S (the read-side keystone): the compiled pointer-place pattern
+    `Borrow(Shared) ; read via the fresh tag ; Die` has exactly the stack
+    effect of the source's bare read via the parent tag, up to the tag
+    counter. The phase-2 read is a no-op on the stacks (the fresh `Ref`
+    sits on top with nothing above it), so the net effect is the parent
+    read the retag itself performed — which is the read mirlite's
+    `resolvePlaceAcc` does when it dereferences a projected pointer place.
+    Same hypotheses as BRIDGE 1. -/
+theorem sb_ref_read_die_cancels
+    {s s1 : AccessPerms} {addr : Word} {len : Nat} {tag t' : Tag}
+    (h_nt : (s.NextTag == wildcardTag) = false)
+    (h_unprot : isProtectedIn s.protFrames s.NextTag = false)
+    (h_ref : sb_ref s addr len tag .Shared false [] = .ok (s1, t')) :
+    ∃ s2 s3 sAcc,
+      sb_read s1 addr len t' = .ok s2 ∧
+      sb_die s2 addr len t' = .ok s3 ∧
+      sb_read s addr len tag = .ok sAcc ∧
+      s3.StackMap = sAcc.StackMap ∧
+      s3.exposed = sAcc.exposed ∧
+      s3.protFrames = sAcc.protFrames ∧
+      sAcc.NextTag ≤ s3.NextTag := by
+  -- Unpack sb_ref: mint, run the per-cell fold, no protector registration.
+  simp only [sb_ref, freshTag, refCellOp, RefKind.toItem] at h_ref
+  cases h_go : foldCellsIdx
+      (fun ap a i => if ([] : List Bool).getD i false then insertAboveCell ap a tag (.RawPtr true s.NextTag) else do pushCell (← readCell ap a tag) a (Item.Ref s.NextTag))
+      { s with NextTag := s.NextTag + 1 } addr 0 len with
+  | error e =>
+      rw [h_go] at h_ref
+      simp [Functor.map, Except.map] at h_ref
+  | ok apR =>
+      rw [h_go] at h_ref
+      simp [Functor.map, Except.map] at h_ref
+      obtain ⟨h_eq1, h_eq2⟩ := h_ref
+      subst h_eq1
+      subst h_eq2
+      -- Now apR = apR and t' = s.NextTag.
+      -- Phase 1 inversion: characterize the ref fold as a setChain.
+      obtain ⟨W₁, h_cells₁, h_apR⟩ :=
+        foldCellsIdx_ok_inv
+          (op := fun ap a i => if ([] : List Bool).getD i false then insertAboveCell ap a tag (.RawPtr true s.NextTag) else do pushCell (← readCell ap a tag) a (Item.Ref s.NextTag))
+          (C := fun i v? =>
+            match v? with
+            | none => .error s!"sb-read: no borrow stack at address {addr + i}"
+            | some stack =>
+              match readCellContent s.protFrames s.exposed (addr + i) tag stack with
+              | .error e => .error e
+              | .ok v => .ok (.Ref s.NextTag :: v))
+          (P := s.protFrames) (E := s.exposed) (N := s.NextTag + 1)
+          (fun ap i h_pf h_ex h_nt' => by
+            simp only [List.getD_nil, Bool.false_eq_true, if_false]
+            cases h_find : SB.find? ap.StackMap (addr + i) with
+            | none =>
+                simp only [readCell, h_pf, h_ex, h_find, bind, Except.bind]
+            | some stack =>
+                cases h_content : readCellContent s.protFrames s.exposed
+                    (addr + i) tag stack with
+                | error e =>
+                    simp only [readCell, h_pf, h_ex, h_find, h_content, bind, Except.bind]
+                | ok v =>
+                    simp only [readCell, h_pf, h_ex, h_find, h_content, bind, Except.bind,
+                      pushCell, SB.find?_set_self, SB.set_set])
+          { s with NextTag := s.NextTag + 1 } apR rfl rfl rfl h_go
+      rw [show ({ s with NextTag := s.NextTag + 1 } : AccessPerms).StackMap
+            = s.StackMap from rfl] at h_cells₁
+      -- Extract per-cell source stacks and write contents (total functions).
+      have h_split : ∀ j, ∃ vj, ∃ wj, j < len →
+          SB.find? s.StackMap (addr + j) = some vj ∧
+            readCellContent s.protFrames s.exposed (addr + j) tag vj = .ok wj ∧
+            W₁ j = .Ref s.NextTag :: wj := by
+        intro j
+        by_cases hj : j < len
+        · have h := h_cells₁ j (Nat.zero_le j) hj
+          cases h_find : SB.find? s.StackMap (addr + j) with
+          | none =>
+              simp [h_find] at h
+          | some vj =>
+              simp only [h_find] at h
+              cases h_content : readCellContent s.protFrames s.exposed (addr + j) tag vj with
+              | error e =>
+                  simp [h_content] at h
+              | ok wj =>
+                  simp only [h_content, Except.ok.injEq] at h
+                  exact ⟨vj, wj, fun _ => ⟨rfl, h_content, h.symm⟩⟩
+        · exact ⟨[], [], fun h => absurd h hj⟩
+      let V : Nat → BorrowStack := fun j => (h_split j).choose
+      let W : Nat → BorrowStack := fun j => (h_split j).choose_spec.choose
+      have h_VW : ∀ j, j < len →
+          SB.find? s.StackMap (addr + j) = some (V j) ∧
+            readCellContent s.protFrames s.exposed (addr + j) tag (V j) = .ok (W j) ∧
+            W₁ j = .Ref s.NextTag :: W j :=
+        fun j hj => (h_split j).choose_spec.choose_spec hj
+      have h_V : ∀ j, j < len → SB.find? s.StackMap (addr + j) = some (V j) :=
+        fun j hj => (h_VW j hj).1
+      have h_W : ∀ j, j < len →
+          readCellContent s.protFrames s.exposed (addr + j) tag (V j) = .ok (W j) :=
+        fun j hj => (h_VW j hj).2.1
+      have h_W₁ : ∀ j, j < len → W₁ j = .Ref s.NextTag :: W j :=
+        fun j hj => (h_VW j hj).2.2
+      -- h_op for the plain write fold (shared by source and phase 2).
+      have h_op_write : ∀ (t : Tag) (ap : AccessPerms) (a : Word),
+          ap.protFrames = s.protFrames → ap.exposed = s.exposed →
+          readCell ap a t =
+            match SB.find? ap.StackMap a with
+            | none => .error s!"sb-read: no borrow stack at address {a}"
+            | some stack =>
+              match readCellContent s.protFrames s.exposed a t stack with
+              | .error e => .error e
+              | .ok v => .ok { ap with StackMap := SB.set ap.StackMap a v } := by
+        intro t ap a h_pf h_ex
+        cases h_find : SB.find? ap.StackMap a with
+        | none => simp only [readCell, h_find]
+        | some stack =>
+            cases h_content : readCellContent s.protFrames s.exposed a t stack with
+            | error e =>
+                simp only [readCell, h_pf, h_ex, h_find, h_content]
+            | ok v =>
+                simp only [readCell, h_pf, h_ex, h_find, h_content]
+      -- SOURCE: sb_write s tag succeeds with contents W.
+      have h_src : sb_read s addr len tag =
+          .ok { s with StackMap := setChain s.StackMap (chain W addr 0 len) } := by
+        show foldCells (fun ap a => readCell ap a tag) s addr len = _
+        have := foldCells_ok_of_cells
+          (C := fun a stack => readCellContent s.protFrames s.exposed a tag stack)
+          (msgNone := fun a => s!"sb-read: no borrow stack at address {a}")
+          (P := s.protFrames) (E := s.exposed) (N := s.NextTag)
+          (fun ap a h_pf h_ex _ => h_op_write tag ap a h_pf h_ex)
+          len 0 s V W
+          rfl rfl rfl
+          (fun j h1 h2 => by simp only [Nat.zero_add] at h2; exact h_V j h2)
+          (fun j h1 h2 => by simp only [Nat.zero_add] at h2; exact h_W j h2)
+        rw [show addr + 0 = addr from rfl] at this
+        rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
+        rw [this]
+      -- Fields of apR.
+      have h_apR_pf : apR.protFrames = s.protFrames := by rw [h_apR]
+      have h_apR_ex : apR.exposed = s.exposed := by rw [h_apR]
+      have h_apR_nt : apR.NextTag = s.NextTag + 1 := by rw [h_apR]
+      have h_apR_sm : apR.StackMap = setChain s.StackMap (chain W₁ addr 0 len) := by
+        rw [h_apR]
+      -- PHASE 2: sb_write apR t' rewrites each cell to itself.
+      have h_phase2 : sb_read apR addr len s.NextTag =
+          .ok { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 len) } := by
+        show foldCells (fun ap a => readCell ap a s.NextTag) apR addr len = _
+        have := foldCells_ok_of_cells
+          (C := fun a stack => readCellContent s.protFrames s.exposed a s.NextTag stack)
+          (msgNone := fun a => s!"sb-read: no borrow stack at address {a}")
+          (P := s.protFrames) (E := s.exposed) (N := s.NextTag + 1)
+          (fun ap a h_pf h_ex _ => h_op_write s.NextTag ap a h_pf h_ex)
+          len 0 apR W₁ W₁
+          h_apR_pf h_apR_ex h_apR_nt
+          (fun j h1 h2 => by
+            simp only [Nat.zero_add] at h2
+            rw [h_apR_sm]
+            exact setChain_chain_find? s.StackMap j (Nat.zero_le j) h2)
+          (fun j h1 h2 => by
+            simp only [Nat.zero_add] at h2
+            rw [h_W₁ j h2]
+            exact readCellContent_top_ref h_nt (W j))
         rw [show addr + 0 = addr from rfl] at this
         rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
         exact this

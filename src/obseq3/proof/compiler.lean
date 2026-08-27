@@ -79,34 +79,36 @@ the two facts the minting members need.
   allocations agree, and the property survives them.
 
 Remaining (4): every remaining sorry is blocked on a NAMED obligation.
-(4 → 6 → 5 → 4 on 2026-08-22/23: the ref leaf split into closed regimes
-and named residuals, then the ZST residual was closed by removing its
-cause, then the fresh-destination regime closed.)
-1. `const_write_proj_nonlocal_residual` — since the reassociating
-   lowering (2026-08-27), nested-proj bases NO LONGER REACH the general
-   arm: `.proj (.proj b q) p` compiles as `.proj b (q.append p)`, so the
-   only base shape left here is a DEREF root (`(*p).1 := v`), whose
-   fragment is the load spine followed by the narrow `Borrow; CStore;
-   Die`. The statement is TRUE again (it was FALSE before the
-   reassociation — `local/nested_proj_borrow` / d26 was the refuting
-   witness) and provable by composing `loadSpine_lowering_sim` with the
-   C1 pattern; the reassociation cases discharge by
-   `placeToRegChecked_proj_assoc_eq` + a mirlite resolution-composition
-   lemma (`resolvePlaceAcc` offsets add).
-2. `const_write_deref_nonspine_simulation` — a projection somewhere in
-   the dereferenced pointer place: its lowering emits a `Borrow` with
-   cleanup — same position as regime C above, and unblocked by the same
-   landed member (the former D2/D3 split is gone: all-deref spines of
-   EVERY depth closed 2026-08-21 via `loadSpine_lowering_sim`).
-3. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS
-   (`sb_read_respects_PermSim`, 2026-08-19); still needs a bidirectional
-   memory relation (source-absent cells read as undef; one-directional
-   `SourceMemSim` does not constrain the target there) plus the Memcpy
-   execution lemma.
-4. `ref_place_residual` — a proj/deref place on either side of a ref: a
-   proj source offsets the `Borrow` (regime C's shape), a deref source
-   loads through the spine first, and a non-local destination lowers with
-   a `Die` cleanup — which is where BRIDGE 1 finally enters for `ref`.
+1. `const_write_deref_deep_residual` — DEEP pointer chains: a proj
+   segment below another deref, proj-of-proj pointer places pending the
+   flattening-transfer, zero-offset pointer fields, or a fresh root. The
+   general chain needs the pending-cleanup generalization of
+   `loadSpine_lowering_sim` (keystone refactor assessment).
+2. `const_write_proj_nonlocal_residual` — NARROWED 2026-08-27 (second
+   pass): the deref-base SPINE case with nonzero offset is CLOSED
+   (`const_write_proj_deref_simulation`); what remains is a nonspine or
+   zero-offset deref base, a proj base (assoc transfer), or an unbound
+   root.
+3. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS;
+   still needs a bidirectional memory relation plus the Memcpy execution
+   lemma (and, by the C1 pattern, a Memcpy-succeeds-when lemma).
+4. `ref_place_residual` — proj/deref places on either side of a ref;
+   reuses the const_write regime patterns above.
+
+- ✔ REGIME C-deref of const_write — `const_write_proj_deref_simulation`
+  (2026-08-27): `(*p).f := v` over ANY load spine, nonzero offset. Spine
+  mother lemma for the prelude; then the C1 endgame with the parent tag
+  coming from the LOADED pointer via `MemValSim` instead of a local
+  binding. Fragment `[spine; Load; Borrow(Mut); CStore; Die]`.
+- ✔ REGIME D-proj of const_write — `const_write_deref_proj_simulation`
+  (2026-08-27): `*(s.f) := v`, the pointer FIELD of a bound tuple local.
+  Fragment `[Borrow(Shared); Load; Die; CStore]` — the first consumer of
+  BRIDGE 1S (`sb_ref_read_die_cancels`, keystone.lean): the Shared
+  triple's net stack effect is exactly the parent read mirlite's
+  `resolvePlaceAcc` performs at the deref. Its success supplier is
+  `sb_ref_Shared_ok_of_sb_read_ok` (a shared retag with an empty mask
+  succeeds wherever the read does). `const_write_deref_nonspine_simulation`
+  is now a PROVED dispatcher over this and the deep residual.
 
 - ✔ REGIME C of const_write — `const_write_proj_simulation`
   (2026-08-27), split by the projection's OFFSET, which is what decides

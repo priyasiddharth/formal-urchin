@@ -1618,6 +1618,19 @@ theorem LocalBindingSim.rename_mono
   exact ⟨reg, base, tag, h_pi, h_entry, h_a _ _ h_ra, h_t _ _ h_rt, h_nw,
     fun k hk => ⟨(h_dom k hk).choose, h_a _ _ (h_dom k hk).choose_spec⟩⟩
 
+/-- `LocalBindingSim` reads the target state only through its register
+    file. -/
+theorem LocalBindingSim.reg_congr
+    {Γ : Ctx} {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {env : mirlite.Env Γ} {s s' : oseair.State MSB} {cs : CompilerState}
+    (h_reg : s'.reg = s.reg)
+    (h : LocalBindingSim ρa ρt env s cs) :
+    LocalBindingSim ρa ρt env s' cs := by
+  intro τ loc binding h_env
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ := h loc binding h_env
+  exact ⟨reg, base, tag, h_pi, by rw [show s'.reg = s.reg from h_reg]; exact h_entry,
+    h_ra, h_rt, h_nw, h_dom⟩
+
 /-- Inserting a value at a fresh register (index at or above the compiler's
     `nextReg`) preserves `LocalBindingSim`: no bound local can be mapped to
     it, by `PlaceRegMapBound`. Reused by every fragment that mints a temp

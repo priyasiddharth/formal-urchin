@@ -174,6 +174,30 @@ lights up if unions ever land.
 **Effort estimate:** n/a until unions.
 **References:** conformance/local/unassigned_local_addr.rs.
 
+## Cslib/Mathlib adoption (paper-facing repackaging + Forall₂ dedup)
+**Status:** parked 2026-08-27
+**Context:** leanprover/cslib (Foundations/Semantics: LTS + behavioral
+equivalences; Relation utilities) could state `compile_correct` as a
+standard simulation between two LTSs — comparable, citable vocabulary for
+paper.md. It HARD-REQUIRES Mathlib; this repo is deliberately
+dependency-free (`ListRel` is a local stand-in for `List.Forall₂` by
+design). If Mathlib ever comes in anyway: ~200 lines of `ListRel`
+transports collapse into `Forall₂` lemmas, and the `set`-is-Mathlib-only /
+omega-helper potholes disappear. Note: lake-manifest.json STALELY declares
+mathlib (no `require` in the lakefile, `.lake/packages` absent) — clean
+that up whenever this is decided either way.
+**Why parked:** mid-proof it is churn with zero leaf-closing payoff; the
+effort lives in the specific diagram (CompilerInv, bridges, folds), which
+no generic framework shrinks.
+**To resume:** after the audit hits zero, when packaging for the paper:
+(1) decide the Mathlib policy; (2) if yes, restate compile_correct over
+cslib LTSs + swap ListRel for Forall₂; (3) either way, fix the stale
+manifest.
+**Effort estimate:** policy decision n/a; restatement ~1 day; Forall₂ swap
+~half-day.
+**References:** src/obseq3/proof/permsim_transport.lean (ListRel
+docstring), paper.md.
+
 ## MASTER INVENTORY: everything unimplemented or approximated (obseq3 conformance)
 **Status:** living inventory, started 2026-08-15 — THE single place for
 this; update here, not in scattered journal entries. Per-test blockers
@@ -343,7 +367,14 @@ d26): the lowering now reassociates proj chains, so those two residuals
 — briefly FALSE — are true again and NARROWER: only deref-rooted bases
 remain (`(*p).1 := v` and kin), provable by `loadSpine_lowering_sim` ∘
 the C1 pattern + a `resolvePlaceAcc`-offsets-add lemma for the
-reassociation cases. NEXT: do exactly that, together.
+reassociation cases. DONE 2026-08-27 for the canonical
+shapes: `(*p).f := v` over any spine + `*(s.f) := v` over a bound tuple
+local, via BRIDGE 1S (`sb_ref_read_die_cancels`) and its supplier.
+`const_write_deref_nonspine_simulation` is now a proved dispatcher. What
+remains is `const_write_deref_deep_residual` (a proj segment BELOW a
+deref, zero-offset pointer fields, fresh roots) — the pending-cleanup
+generalization of `loadSpine_lowering_sim`. NEXT: `ref_place_residual`
+(reuses the closed regime patterns), or `CompilerInv_step_copy`.
 Then `ref_place_residual` reuses that, and `CompilerInv_step_copy` last
 (the only remaining sorry needing NEW machinery: a bidirectional memory
 relation + the Memcpy execution lemma, plus — by the pattern established

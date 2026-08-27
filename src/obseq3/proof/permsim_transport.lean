@@ -1277,6 +1277,48 @@ theorem sb_ref_Mut_ok_of_sb_write_ok {ap ap' : AccessPerms}
   simp only [sb_ref, freshTag, bind, Except.bind, pure, Except.pure, h_fold,
     Bool.false_eq_true, if_false, Except.ok.injEq, Prod.mk.injEq, and_true]
 
+/-- A shared retag (empty mask) succeeds wherever the corresponding READ
+    succeeds — the Shared sibling of `sb_ref_Mut_ok_of_sb_write_ok`, and
+    BRIDGE 1S's success supplier: the source's pointer-cell read is
+    performed by `resolvePlaceAcc`, and this converts its success into the
+    target's retag succeeding. -/
+theorem sb_ref_Shared_ok_of_sb_read_ok {ap ap' : AccessPerms}
+    {addr : Word} {len : Nat} {tag : Tag}
+    (h : sb_read ap addr len tag = .ok ap') :
+    ∃ ap'' , sb_ref ap addr len tag .Shared false [] = .ok (ap'', ap.NextTag) := by
+  have h0 : foldCells (fun ap a => readCell ap a tag) ap (addr + 0) len = .ok ap' := h
+  obtain ⟨V, W, h_cells, -⟩ :=
+    foldCells_ok_inv
+      (C := fun a stack => readCellContent ap.protFrames ap.exposed a tag stack)
+      (msgNone := fun a => s!"sb-read: no borrow stack at address {a}")
+      (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag)
+      (fun ap a h_pf h_ex _ => readCell_content_form tag ap a h_pf h_ex)
+      len 0 ap ap' rfl rfl rfl h0
+  have h_fold := foldCellsIdx_ok_of_cells
+    (op := refCellOp tag .Shared ap.NextTag [])
+    (C := fun j v? => refCellStep ap.protFrames ap.exposed (addr + j) tag
+                        .Shared ap.NextTag [] j v?)
+    (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag + 1)
+    (refCellOp_content_form (addr := addr) tag .Shared ap.NextTag [])
+    (i := 0) (len := len)
+    { ap with NextTag := ap.NextTag + 1 }
+    (fun j => Item.Ref ap.NextTag :: W j)
+    rfl rfl rfl
+    (fun j _ h2 => by
+      have hc := h_cells j (Nat.zero_le j) (by omega)
+      show refCellStep ap.protFrames ap.exposed (addr + j) tag .Shared ap.NextTag [] j
+        (SB.find? ap.StackMap (addr + j)) = _
+      rw [hc.1]
+      simp only [refCellStep, refCellContent, hc.2, List.getD_nil,
+        Bool.false_eq_true, if_false])
+  refine ⟨{ StackMap := setChain ap.StackMap
+              (chain (fun j => Item.Ref ap.NextTag :: W j) addr 0 len),
+            NextTag := ap.NextTag + 1,
+            protFrames := ap.protFrames,
+            exposed := ap.exposed }, ?_⟩
+  simp only [sb_ref, freshTag, bind, Except.bind, pure, Except.pure, h_fold,
+    Bool.false_eq_true, if_false, Except.ok.injEq, Prod.mk.injEq, and_true]
+
 /-! ## BRIDGE 3 for `sb_write` -/
 
 /-- BRIDGE 3, CLOSED for the write: `sb_write` respects `PermSim` — a
