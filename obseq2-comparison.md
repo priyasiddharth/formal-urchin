@@ -4,6 +4,41 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-27 (later) — GEP Stays a Borrow, of Exactly the Field
+
+Thirty-fifth increment. The nested-projection divergence is fixed at its root,
+per the design call that offset computation should remain a borrow: the two
+place-lowering functions now *reassociate* projection chains —
+`.proj (.proj b q) p` compiles as `.proj b (q.append p)` — so any projection,
+however deep, emits one `Borrow` anchored at the chain root, at the composed
+offset, with the final field's length. The retag spans exactly the accessed
+field; intermediate places are never retagged. `PathTo` was already a
+cons-chain, so composition is twelve lines and its offset is additive by
+construction.
+
+The interesting cost was not semantic but *proof-mechanical*: reassociation
+recurses on a non-subterm, so both functions went from structural to
+well-founded, and a well-founded definition stops unfolding definitionally.
+Every `:= rfl` closed-form broke (six), the generic-projection equation became
+conditional on "the base is not itself a projection", and two structural
+inductions had to become functional inductions — whose generated principle
+hands each case exactly the side condition the conditional equation needs.
+None of it was deep; all of it was the predictable tax of changing a
+definition eleven proofs deep, and the whole stack was green again within the
+session.
+
+The witness went from mismatch to matched with the corpus untouched, and is
+now also pinned in-repo as differential test d26 — teeth verified by reverting
+the arms and watching it fail with the exact divergence. And the two residual
+theorems that were refuted this morning are true again, narrower than before:
+nested-local-rooted bases no longer reach the general lowering arm at all, so
+only deref-rooted shapes remain, provable with machinery that already exists.
+
+Suite pass 81 | fail 0 of 122, differential matched 81 | mismatch 0, units
+15/15 + 39/39.
+
+---
+
 ## 2026-08-27 — The Keystone Earns Its Name
 
 Thirty-fourth increment. `const_write_proj_simulation` closes for a bound-local

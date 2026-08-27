@@ -529,7 +529,7 @@ theorem compileStmt_deref_run
           pure {
             result := { reg := loadedReg, cleanup := [] },
             evidence := PlaceToRegEvidence.deref P ptrRes loadedReg ptrOut.evidence
-          }) := rfl
+          }) := by simp only [placeToRegChecked]
   simp only [compileStmtChecked, h_deref_eq, compileRExprToChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
@@ -555,6 +555,8 @@ theorem compileStmt_proj_zero_run
     {path : PathTo σ obseq.LayoutTy.NatL} {cs : CompilerState}
     {baseOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut base)}
     {reg : Register}
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      base = b.proj q → False)
     (v : Word)
     (h_off : pathOffset path = 0)
     (h_root : CompilerM.run (ensurePlaceRoot (Place.proj base path)) cs = cs)
@@ -586,7 +588,7 @@ theorem compileStmt_proj_zero_run
                           cleanup := baseRes.cleanup ++ [(tmpReg, blockSize obseq.LayoutTy.NatL)] },
               evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
                 baseOut.evidence h_offset
-            }) := rfl
+            }) := placeToRegChecked_proj_root_eq path h_np
   simp only [compileStmtChecked, h_proj_eq, compileRExprToChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
@@ -602,6 +604,8 @@ theorem compileStmt_proj_offset_run
     {path : PathTo σ obseq.LayoutTy.NatL} {cs : CompilerState}
     {baseOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut base)}
     {reg : Register}
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      base = b.proj q → False)
     (v : Word)
     (h_off : pathOffset path ≠ 0)
     (h_root : CompilerM.run (ensurePlaceRoot (Place.proj base path)) cs = cs)
@@ -637,7 +641,7 @@ theorem compileStmt_proj_offset_run
                           cleanup := baseRes.cleanup ++ [(tmpReg, blockSize obseq.LayoutTy.NatL)] },
               evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
                 baseOut.evidence h_offset
-            }) := rfl
+            }) := placeToRegChecked_proj_root_eq path h_np
   simp only [compileStmtChecked, h_proj_eq, compileRExprToChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
@@ -698,7 +702,7 @@ theorem const_write_proj_zero_simulation
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
         placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
       have h_stmtRun := compileStmt_proj_zero_run (cs := csPrefix) (baseOut := baseOut)
-        v h_off h_root h_brun h_bval h_bres
+        (fun _ _ _ h => by cases h) v h_off h_root h_brun h_bval h_bres
       obtain ⟨stmtOut, h_stmtOut⟩ :
           ∃ so, CheckedCompilerM.value
             (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v)))
@@ -840,7 +844,7 @@ theorem const_write_proj_offset_simulation
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
         placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
       have h_stmtRun := compileStmt_proj_offset_run (cs := csPrefix) (baseOut := baseOut)
-        v h_off h_root h_brun h_bval h_bres
+        (fun _ _ _ h => by cases h) v h_off h_root h_brun h_bval h_bres
       obtain ⟨stmtOut, h_stmtOut⟩ :
           ∃ so, CheckedCompilerM.value
             (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v)))
@@ -1105,7 +1109,7 @@ theorem const_write_deref_spine_simulation
             pure {
               result := { reg := loadedReg, cleanup := [] },
               evidence := PlaceToRegEvidence.deref ptrPlace ptrRes loadedReg ptrOut.evidence
-            }) := rfl
+            }) := by simp only [placeToRegChecked]
     have h_stmt_bind : compileStmtChecked (Stmt.assign (.deref ptrPlace) (.constInit v))
         = (do
             let _ ← CheckedCompilerM.lift (ensurePlaceRoot (Place.deref ptrPlace))

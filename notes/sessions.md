@@ -306,3 +306,33 @@ lowering emits code + a cleanup LIST) — do them together via
 `runN_cleanupInstrs` ∘ BRIDGE 1. Then `ref_place_residual`, then
 `CompilerInv_step_copy`.
 
+## 2026-08-27 (later)
+**Session:** (terminal, continued) — the nested-projection divergence,
+found by proof and fixed by design
+**Theme:** attempting the two nested residuals refuted them; the user
+chose the fix (GEP stays a borrow, narrowed to the field); implemented as
+proj-chain REASSOCIATION in both lowering functions.
+**Key outputs:**
+- witness `local/nested_proj_borrow` (`2711f06`) — target UB where the
+  source (and Rust) are fine; refuted both nested residual theorems.
+- the fix: `PathTo.append` + reassociating arms in
+  `placeToRegChecked`/`placeToBorrowRegChecked`, `Place.depth` as the WF
+  measure; `projAssoc` evidence constructors.
+- proof-stack repair for the structural→WF transition: 6 `:= rfl` →
+  equation lemmas, `placeToRegChecked_proj_root_eq`/`_proj_assoc_eq`
+  (the conditional/unconditional arm equations), two structural
+  inductions → `placeToRegChecked.induct`.
+- d26 in compile_tests (teeth verified by reverting the arms).
+- journal 2026-08-27-regime-c-closed.md and
+  2026-08-27-nested-proj-reassoc.md; dev-log increments 34–35.
+**Critical corrections (user):** keep GEP as a borrow — do NOT add an
+access-free FieldPtr instruction; narrow the borrow to the field instead.
+Implemented via reassociation, which achieves the narrowing with no new
+instruction.
+**Status:** complete. Audit at 4; the two nested residuals are TRUE
+again and narrower (deref-rooted only). Suite 81/122, differential
+81/0/0, units 15/15 + 39/39.
+**Next-session pickup:** the deref-rooted residuals together
+(`loadSpine_lowering_sim` ∘ C1 pattern + resolvePlaceAcc-offsets-add),
+then `ref_place_residual`, then `CompilerInv_step_copy`.
+

@@ -1013,28 +1013,80 @@ theorem placeToRegChecked_local_existing
       rw [h'] at h
       cases h
 
+/-- The general-projection arm's equation, for a base that is NOT itself a
+    projection (the reassociation arm handles those). `placeToRegChecked`
+    is well-founded since the reassociation arm landed (2026-08-27), so
+    this is proved from the equation lemmas per root constructor rather
+    than by `rfl`. -/
+theorem placeToRegChecked_proj_root_eq
+    {Γ : Ctx} {σ τ : LayoutTy}
+    {kind : RefKind} {base : Place Γ σ} (path : PathTo σ τ)
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      base = b.proj q → False) :
+    placeToRegChecked kind (.proj base path)
+      = (do
+          let baseOut ← placeToRegChecked kind base
+          let baseRes := baseOut.result
+          let offset := pathOffset path
+          if h_offset : offset = 0 then
+            pure {
+              result := baseRes,
+              evidence := PlaceToRegEvidence.projZero base path baseRes
+                baseOut.evidence h_offset
+            }
+          else
+            let tmpReg ← CheckedCompilerM.lift freshRegM
+            let _ ← CheckedCompilerM.lift
+              (emitM [Instr.Assgn tmpReg (borrowRhs kind (blockSize τ) baseRes.reg offset)])
+            pure {
+              result := { reg := tmpReg,
+                          cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)] },
+              evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
+                baseOut.evidence h_offset
+            }) := by
+  cases base with
+  | «local» loc => simp only [placeToRegChecked]
+  | proj b q => exact absurd rfl (h_np _ b q)
+  | deref pp => simp only [placeToRegChecked]
+
+/-- The reassociation arm's equation. -/
+theorem placeToRegChecked_proj_assoc_eq
+    {Γ : Ctx} {ρ σ τ : LayoutTy}
+    {kind : RefKind} {b : Place Γ ρ} (q : PathTo ρ σ) (p : PathTo σ τ) :
+    placeToRegChecked kind (.proj (.proj b q) p)
+      = (do
+          let out ← placeToRegChecked kind (.proj b (q.append p))
+          pure {
+            result := out.result,
+            evidence := PlaceToRegEvidence.projAssoc b q p out.result out.evidence
+          }) := by
+  simp only [placeToRegChecked]
+
 theorem placeToRegChecked_proj_ok_of_baseOk
     {Γ : Ctx} {σ τ : LayoutTy}
     {kind : RefKind} {cs : CompilerState}
     {base : Place Γ σ} {path : PathTo σ τ}
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      base = b.proj q → False)
     (baseOut : ResultWithEvidence PtrResult (PlaceToRegEvidence kind base))
     (h_baseOut : CheckedCompilerM.value (placeToRegChecked kind base) cs = Except.ok baseOut) :
     ∃ placeOut,
       CheckedCompilerM.value (placeToRegChecked kind (.proj base path)) cs = Except.ok placeOut := by
+  rw [placeToRegChecked_proj_root_eq path h_np]
   by_cases h_offset : pathOffset path = 0
   · let baseRes := baseOut.result
     refine ⟨{
       result := baseRes,
       evidence := PlaceToRegEvidence.projZero base path baseRes baseOut.evidence h_offset
     }, ?_⟩
-    simp [placeToRegChecked, h_baseOut, h_offset, baseRes]
+    simp [h_baseOut, h_offset, baseRes]
   · let tmpReg := CompilerM.value freshRegM (CheckedCompilerM.run (placeToRegChecked kind base) cs)
     refine ⟨{
       result := { reg := tmpReg, cleanup := baseOut.result.cleanup ++ [(tmpReg, blockSize τ)] },
       evidence := PlaceToRegEvidence.projOffset base path baseOut.result tmpReg
         baseOut.evidence h_offset
     }, ?_⟩
-    simp [placeToRegChecked, h_baseOut, h_offset, tmpReg]
+    simp [h_baseOut, h_offset, tmpReg]
 
 theorem placeToRegChecked_deref_ok_of_ptrOk
     {Γ : Ctx} {σ : LayoutTy}
@@ -1060,17 +1112,23 @@ theorem placeToRegChecked_ok_of_placeInputsMapped
     (h_mapped : PlaceInputsMapped cs p) :
     ∃ placeOut,
       CheckedCompilerM.value (placeToRegChecked kind p) cs = Except.ok placeOut := by
-  induction p generalizing kind with
-  | «local» loc =>
+  induction τ, kind, p using placeToRegChecked.induct with
+  | case1 kind τ loc =>
       rcases h_mapped with ⟨reg, layout, h_lookup⟩
       exact placeToRegChecked_local_ok_of_getPlaceInfo
         (kind := kind) (loc := loc) (cs := cs) (reg := reg) (layout := layout) h_lookup
-  | proj base path ih =>
-      rcases ih (kind := kind) h_mapped with ⟨baseOut, h_baseOut⟩
+  | case2 kind τ σ ρ b q path ih =>
+      rcases ih h_mapped with ⟨out, h_out⟩
+      refine ⟨{ result := out.result,
+                evidence := PlaceToRegEvidence.projAssoc b q path out.result out.evidence }, ?_⟩
+      rw [placeToRegChecked_proj_assoc_eq]
+      simp [CheckedCompilerM.value_bind, h_out, CheckedCompilerM.value_pure]
+  | case3 kind τ σ base path h_np ih =>
+      rcases ih h_mapped with ⟨baseOut, h_baseOut⟩
       exact placeToRegChecked_proj_ok_of_baseOk (kind := kind) (cs := cs)
-        (base := base) (path := path) baseOut h_baseOut
-  | deref ptrPlace ih =>
-      rcases ih (kind := RefKind.Shared) h_mapped with ⟨ptrOut, h_ptrOut⟩
+        (base := base) (path := path) h_np baseOut h_baseOut
+  | case4 kind τ ptrPlace ih =>
+      rcases ih h_mapped with ⟨ptrOut, h_ptrOut⟩
       exact placeToRegChecked_deref_ok_of_ptrOk (kind := kind) (cs := cs)
         (ptrPlace := ptrPlace) ptrOut h_ptrOut
 
@@ -1428,8 +1486,8 @@ theorem placeToRegChecked_emits_preserves_mem
     {Γ : Ctx} {τ : LayoutTy}
     (kind : RefKind) (p : Place Γ τ) :
     EmitsPreservesMem (placeToRegChecked kind p).toCompilerM := by
-  induction p generalizing kind with
-  | «local» loc =>
+  induction τ, kind, p using placeToRegChecked.induct with
+  | case1 kind τ loc =>
       intro cs label h_lo h_hi instr h_code
       have h_next :
           (CompilerM.run (placeToRegChecked kind (.local loc)).toCompilerM cs).nextLabel
@@ -1440,10 +1498,16 @@ theorem placeToRegChecked_emits_preserves_mem
         split <;> rfl
       rw [h_next] at h_hi
       exact False.elim ((Nat.not_lt_of_ge h_lo) h_hi)
-  | proj base path ih =>
+  | case2 kind τ σ ρ b q path ih =>
+      -- reassociated nested projection: bind of the recursion + pure
+      simp only [placeToRegChecked]
+      exact checkedEmitsPreservesMem_bind
+        (m := placeToRegChecked kind (.proj b (q.append path))) ih
+        (fun _ => checkedEmitsPreservesMem_pure _)
+  | case3 kind τ σ base path h_np ih =>
       simp only [placeToRegChecked]
       refine checkedEmitsPreservesMem_bind (m := placeToRegChecked kind base)
-        (ih kind) (fun baseOut => ?_)
+        ih (fun baseOut => ?_)
       by_cases hoff : pathOffset path = 0
       · simp only [hoff, dite_true]
         exact checkedEmitsPreservesMem_pure _
@@ -1457,10 +1521,10 @@ theorem placeToRegChecked_emits_preserves_mem
               _ (pathOffset path)))
           (fun _ => ?_)
         exact checkedEmitsPreservesMem_pure _
-  | deref ptrPlace ih =>
+  | case4 kind τ ptrPlace ih =>
       simp only [placeToRegChecked]
       refine checkedEmitsPreservesMem_bind (m := placeToRegChecked RefKind.Shared ptrPlace)
-        (ih RefKind.Shared) (fun ptrOut => ?_)
+        ih (fun ptrOut => ?_)
       refine checkedEmitsPreservesMem_bind
         (checkedEmitsPreservesMem_lift freshRegM_emits_preserves_mem)
         (fun loadedReg => ?_)

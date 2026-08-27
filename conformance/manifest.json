@@ -1739,7 +1739,7 @@
         "verdict": "ok"
       },
       "provenance": "local-model-reasoned; pending real-Miri verification",
-      "notes": "NESTED-PROJECTION DIVERGENCE (found 2026-08-27 while attempting const_write_proj_nonlocal_residual). Source ok -- mirlite writes exactly the one cell s.1.1 and `q = &mut s.1.0` survives, which is legal Rust (disjoint field borrows). Target UB -- the compiler lowers a nonzero-offset projection to an internal Borrow(Mut) over the WHOLE intermediate place (`s.1`, 2 cells) whose write access via the parent tag invalidates q. The --osea differential MISMATCHES here by design until the lowering stops retagging intermediate projections. NOT closable in the proof: const_write_proj_nonlocal_residual and const_write_deref_nonspine_simulation are FALSE as the compiler stands."
+      "notes": "Nested-projection witness, FIXED 2026-08-27: the compiler now REASSOCIATES proj chains (.proj (.proj b q) p -> .proj b (q++p)) so a nested projection emits ONE field-sized Borrow anchored at the chain root instead of retagging every intermediate place -- writing s.1.1 no longer invalidates a live &mut s.1.0. Differential matched; also pinned in-repo as compile_tests d26 (teeth verified: reverting the reassociation arms makes d26 fail with target ub 5 / source ok). Expected verdict model-reasoned; pending real-Miri verification."
     }
   ]
 }

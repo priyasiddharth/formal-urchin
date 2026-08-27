@@ -625,6 +625,35 @@ def d25_deref_oob_alignment : IO Unit :=
      .assign tG (.copy (.deref (.deref qG)))]
     (.ub 4) "d25 deref oob alignment"
 
+/-! d26: the nested-projection witness (`local/nested_proj_borrow`), as an
+    in-repo differential test. Writing `s.1.1` must not invalidate a live
+    `&mut s.1.0` — disjoint field borrows, legal Rust. Before the
+    reassociating lowering (2026-08-27) the compiler retagged the whole
+    intermediate place `s.1` and the target reported spurious UB here. -/
+def ΓH : Ctx :=
+  [obseq.LayoutTy.TupL [natL, obseq.LayoutTy.TupL [natL, natL]], ptrNat, natL]
+def sH : Place ΓH (obseq.LayoutTy.TupL [natL, obseq.LayoutTy.TupL [natL, natL]]) :=
+  .local ⟨⟨0, by decide⟩, rfl⟩
+def qH : Place ΓH ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def tH : Place ΓH natL := .local ⟨⟨2, by decide⟩, rfl⟩
+/-- `s.1.0` as nested projections (the elaborator's shape). -/
+def s10H : Place ΓH natL :=
+  .proj (.proj sH (.field ⟨1, by decide⟩ .nil)) (.field ⟨0, by decide⟩ .nil)
+/-- `s.1.1` as nested projections. -/
+def s11H : Place ΓH natL :=
+  .proj (.proj sH (.field ⟨1, by decide⟩ .nil)) (.field ⟨1, by decide⟩ .nil)
+
+def d26_nested_proj_sibling : IO Unit :=
+  expectDiff ΓH
+    [.assign (.proj sH (.field ⟨0, by decide⟩ .nil)) (.constInit 1),
+     .assign s10H (.constInit 2),
+     .assign s11H (.constInit 3),
+     .assign qH (.ref .Mut false [] s10H),
+     .assign s11H (.constInit 9),
+     .assign (.deref qH) (.constInit 8),
+     .assign tH (.copy s11H)]
+    .ok "d26 nested proj write keeps sibling borrow alive"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -663,7 +692,8 @@ def allTests : List (IO Unit) := [
   d22_ref_slice_write,
   d23_ref_slice_pops,
   d24_deref_read_alignment,
-  d25_deref_oob_alignment]
+  d25_deref_oob_alignment,
+  d26_nested_proj_sibling]
 
 def runAll : IO Unit := do
   allTests.forM id

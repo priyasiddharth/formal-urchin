@@ -199,7 +199,7 @@ theorem loadSpine_lowering_sim
                       pure {
                         result := { reg := loadedReg, cleanup := [] },
                         evidence := PlaceToRegEvidence.deref q ptrRes loadedReg ptrOut.evidence
-                      }) := rfl
+                      }) := by simp only [placeToRegChecked]
               -- this level's run only grows q's run, so q's fragment is installed
               have h_incrQ : StateIncr
                   (CheckedCompilerM.run (placeToRegChecked RefKind.Shared q) cs)

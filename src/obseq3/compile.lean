@@ -338,6 +338,11 @@ inductive PlaceToRegEvidence {Γ : Ctx} :
       (reg : Register) (layout : LayoutTy)
       (h_lookup : getPlaceInfo cs loc.idx.1 = some (reg, layout)) :
       PlaceToRegEvidence kind (.local loc) { reg := reg, cleanup := [] }
+  | projAssoc
+      {ρ σ τ : LayoutTy} (b : Place Γ ρ) (q : PathTo ρ σ) (p : PathTo σ τ)
+      (res : PtrResult)
+      (ev : PlaceToRegEvidence kind (.proj b (q.append p)) res) :
+      PlaceToRegEvidence kind (.proj (.proj b q) p) res
   | projZero
       {σ τ : LayoutTy} (base : Place Γ σ) (path : PathTo σ τ)
       (baseRes : PtrResult)
@@ -365,6 +370,11 @@ inductive PlaceToBorrowRegEvidence {Γ : Ctx} :
       (baseEv : PlaceToRegEvidence kind (.local loc) baseRes) :
       PlaceToBorrowRegEvidence kind (.local loc)
         { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] }
+  | projAssoc
+      {ρ σ τ : LayoutTy} (b : Place Γ ρ) (q : PathTo ρ σ) (p : PathTo σ τ)
+      (res : PtrResult)
+      (ev : PlaceToBorrowRegEvidence kind (.proj b (q.append p)) res) :
+      PlaceToBorrowRegEvidence kind (.proj (.proj b q) p) res
   | proj
       {σ τ : LayoutTy} (base : Place Γ σ) (path : PathTo σ τ)
       (baseRes : PtrResult) (tmpReg : Register)
@@ -393,6 +403,18 @@ def placeToRegChecked {Γ : Ctx} {τ : LayoutTy}
             (Except.error (.missingLocal loc.idx.1),
               ⟨cs, StateIncr.refl cs⟩)
       ⟩
+  -- REASSOCIATE nested projections: `s.1.1` must retag exactly its own
+  -- field, not the whole intermediate place `s.1` — a wide intermediate
+  -- Borrow(Mut) invalidates live borrows of sibling fields, which is
+  -- legal Rust (the nested-projection divergence,
+  -- `local/nested_proj_borrow`, 2026-08-27). One borrow, anchored at the
+  -- chain root, at the composed offset, with the FINAL field's length.
+  | .proj (.proj b q) p => do
+      let out ← placeToRegChecked kind (.proj b (q.append p))
+      pure {
+        result := out.result,
+        evidence := PlaceToRegEvidence.projAssoc b q p out.result out.evidence
+      }
   | .proj (τ := τ) base path => do
       let baseOut ← placeToRegChecked kind base
       let baseRes := baseOut.result
@@ -421,6 +443,8 @@ def placeToRegChecked {Γ : Ctx} {τ : LayoutTy}
         result := { reg := loadedReg, cleanup := [] },
         evidence := PlaceToRegEvidence.deref ptrPlace ptrRes loadedReg ptrOut.evidence
       }
+  termination_by p => p.depth
+  decreasing_by all_goals (simp [Place.depth]; try omega)
 
 def placeToBorrowRegChecked {Γ : Ctx} {τ : LayoutTy}
     (kind : RefKind) (prot : Bool) (mask : List Bool) :
@@ -434,6 +458,14 @@ def placeToBorrowRegChecked {Γ : Ctx} {τ : LayoutTy}
       pure {
         result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
         evidence := PlaceToBorrowRegEvidence.local loc baseRes tmpReg baseOut.evidence
+      }
+  -- REASSOCIATE nested projections (same divergence as `placeToRegChecked`:
+  -- `&mut s.1.0` must not route through a wide Mut borrow of `s.1`).
+  | .proj (.proj b q) p => do
+      let out ← placeToBorrowRegChecked kind prot mask (.proj b (q.append p))
+      pure {
+        result := out.result,
+        evidence := PlaceToBorrowRegEvidence.projAssoc b q p out.result out.evidence
       }
   | .proj (τ := τ) base path => do
       let baseOut ← placeToRegChecked kind base
@@ -460,6 +492,8 @@ def placeToBorrowRegChecked {Γ : Ctx} {τ : LayoutTy}
         result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
         evidence := PlaceToBorrowRegEvidence.deref ptrPlace ptrRes loadedReg tmpReg ptrOut.evidence
       }
+  termination_by p => p.depth
+  decreasing_by all_goals (simp [Place.depth]; try omega)
 
 inductive RExprToEvidence {Γ : Ctx}
     (dstPtr : Register) : {τ : LayoutTy} → RExpr Γ τ → Type where

@@ -337,11 +337,13 @@ Ref regimes L→L and F→L both CLOSED
 `CompilerInv_step_ref` now has ONE residual, `ref_place_residual`.
 Audit 4 → 6 → 5 → 4. Regime C CLOSED 2026-08-27 for a
 bound-local base (C0 bare `CStore`, C1 `Borrow; CStore; Die` — the first
-and so far only consumer of BRIDGE 1). NEXT:
-`const_write_deref_nonspine_simulation` and
-`const_write_proj_nonlocal_residual` are now the SAME shape — a base
-whose own lowering emits code and carries a cleanup LIST, so
-`runN_cleanupInstrs` composed with BRIDGE 1 per level; do them together.
+and so far only consumer of BRIDGE 1). The nested-projection
+divergence (found and FIXED 2026-08-27, `local/nested_proj_borrow` +
+d26): the lowering now reassociates proj chains, so those two residuals
+— briefly FALSE — are true again and NARROWER: only deref-rooted bases
+remain (`(*p).1 := v` and kin), provable by `loadSpine_lowering_sim` ∘
+the C1 pattern + a `resolvePlaceAcc`-offsets-add lemma for the
+reassociation cases. NEXT: do exactly that, together.
 Then `ref_place_residual` reuses that, and `CompilerInv_step_copy` last
 (the only remaining sorry needing NEW machinery: a bidirectional memory
 relation + the Memcpy execution lemma, plus — by the pattern established

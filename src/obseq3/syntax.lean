@@ -20,6 +20,21 @@ def offset : PathTo src dst → Nat
   | .field (tys := tys) idx tail =>
       layoutSizeList (tys.take idx.1) + offset tail
 
+/-- Path composition. `PathTo` is a cons-chain, so `s.1.1`'s two
+    single-field paths compose into one — which is what lets the compiler
+    flatten nested projections into a SINGLE field-sized borrow instead of
+    retagging every intermediate place (the nested-projection divergence,
+    `local/nested_proj_borrow`, 2026-08-27). -/
+def append : PathTo src mid → PathTo mid dst → PathTo src dst
+  | .nil, p => p
+  | .field idx tail, p => .field idx (append tail p)
+
+@[simp] theorem offset_append (q : PathTo src mid) (p : PathTo mid dst) :
+    offset (append q p) = offset q + offset p := by
+  induction q with
+  | nil => simp [append, offset]
+  | field idx tail ih => simp [append, offset, ih]; omega
+
 end PathTo
 
 /-- A place of layout type `τ` in context `Γ` (as in obseq2: local, field
@@ -28,6 +43,15 @@ inductive Place (Γ : Ctx) : LayoutTy → Type where
 | local : Local Γ τ → Place Γ τ
 | proj  : Place Γ σ → PathTo σ τ → Place Γ τ
 | deref : Place Γ (obseq.LayoutTy.PtrL τ) → Place Γ τ
+
+/-- Constructor count — the termination measure for place lowering, which
+    reassociates `.proj (.proj b q) p` to `.proj b (q.append p)`:
+    reassociation shortens the place by one constructor whatever the
+    paths' sizes, which `sizeOf` does not see cleanly. -/
+def Place.depth : Place Γ τ → Nat
+  | .local _ => 1
+  | .proj b _ => b.depth + 1
+  | .deref p => p.depth + 1
 
 /-- A right-hand-side expression of layout type `τ` in context `Γ`.
     `ref`'s `Bool` marks a *protected* (function-entry) retag and its

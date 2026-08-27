@@ -82,13 +82,17 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
 (4 → 6 → 5 → 4 on 2026-08-22/23: the ref leaf split into closed regimes
 and named residuals, then the ZST residual was closed by removing its
 cause, then the fresh-destination regime closed.)
-1. `const_write_proj_nonlocal_residual` — a projected destination whose
-   BASE is itself a projection or a dereference. The base's own lowering
-   emits code and carries its own cleanup, so the fragment is no longer
-   three instructions and the `Die` sequence is a LIST
-   (`runN_cleanupInstrs` is the piece for that); composing it with
-   BRIDGE 1 per level is the work owed. A deref base additionally needs
-   the load spine.
+1. `const_write_proj_nonlocal_residual` — since the reassociating
+   lowering (2026-08-27), nested-proj bases NO LONGER REACH the general
+   arm: `.proj (.proj b q) p` compiles as `.proj b (q.append p)`, so the
+   only base shape left here is a DEREF root (`(*p).1 := v`), whose
+   fragment is the load spine followed by the narrow `Borrow; CStore;
+   Die`. The statement is TRUE again (it was FALSE before the
+   reassociation — `local/nested_proj_borrow` / d26 was the refuting
+   witness) and provable by composing `loadSpine_lowering_sim` with the
+   C1 pattern; the reassociation cases discharge by
+   `placeToRegChecked_proj_assoc_eq` + a mirlite resolution-composition
+   lemma (`resolvePlaceAcc` offsets add).
 2. `const_write_deref_nonspine_simulation` — a projection somewhere in
    the dereferenced pointer place: its lowering emits a `Borrow` with
    cleanup — same position as regime C above, and unblocked by the same

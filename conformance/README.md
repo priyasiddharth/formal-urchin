@@ -178,16 +178,18 @@ but has NOT been verified against a real Miri run. Current entries:
   length 1 would write-access exactly that neighbour and invalidate it.
   NOT a boundary regression test — verified to pass under the older point
   check too, since an interior address is genuinely in bounds.
-- `local/nested_proj_borrow` — the nested-projection divergence. Writing
-  `s.1.1` must not invalidate a live `&mut s.1.0`; that is legal Rust and
-  mirlite agrees, writing exactly one cell. The compiler lowers a
-  nonzero-offset projection to an internal `Borrow(Mut)` over the WHOLE
-  intermediate place, and for a NESTED projection that retag's write
-  access is wider than the source's write, invalidating the sibling
-  borrow. The suite PASSES (the source verdict is `ok` as expected) while
-  the `--osea` differential reports exactly one MISMATCH — the honest
-  state for a known target defect. Found 2026-08-27 by attempting the
-  proof, not by testing.
+- `local/nested_proj_borrow` — the nested-projection witness (FIXED
+  2026-08-27, same day it was found). Writing `s.1.1` must not invalidate
+  a live `&mut s.1.0`; the compiler used to lower a nonzero-offset
+  projection by retagging the WHOLE intermediate place, so a nested
+  projection's inner step took a write access wider than the source's
+  write. The lowering now REASSOCIATES projection chains
+  (`.proj (.proj b q) p → .proj b (q.append p)`): one field-sized
+  `Borrow`, anchored at the chain root, at the composed offset. GEP
+  remains a borrow — BRIDGE 1 still justifies it — it just spans exactly
+  the accessed field. Differential matched; pinned in-repo as
+  `compile_tests` d26 (teeth verified by reverting the arms). Found by
+  attempting the proof, not by testing.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc
