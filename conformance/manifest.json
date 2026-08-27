@@ -1730,6 +1730,16 @@
       },
       "provenance": "local-model-reasoned; pending real-Miri verification",
       "notes": "ZST field in the INTERIOR of a struct. In the model's cell layout (u64,(),u64) puts s.1 and s.2 at the SAME offset 1 (the ZST occupies no cell), so a retag of s.1 that wrongly used length 1 would write-access exactly the cell `b` points at; the test keeps `b` live across the ZST retag to catch that. NOT a boundary regression test -- verified to pass under the older point check `addr >= base + size` too, since an interior address is genuinely in bounds; local/zst_ref and local/zst_tail_field are the boundary witnesses."
+    },
+    {
+      "id": "local/nested_proj_borrow",
+      "artifact": "local/nested_proj_borrow.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "notes": "NESTED-PROJECTION DIVERGENCE (found 2026-08-27 while attempting const_write_proj_nonlocal_residual). Source ok -- mirlite writes exactly the one cell s.1.1 and `q = &mut s.1.0` survives, which is legal Rust (disjoint field borrows). Target UB -- the compiler lowers a nonzero-offset projection to an internal Borrow(Mut) over the WHOLE intermediate place (`s.1`, 2 cells) whose write access via the parent tag invalidates q. The --osea differential MISMATCHES here by design until the lowering stops retagging intermediate projections. NOT closable in the proof: const_write_proj_nonlocal_residual and const_write_deref_nonspine_simulation are FALSE as the compiler stands."
     }
   ]
 }
