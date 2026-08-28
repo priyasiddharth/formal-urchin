@@ -90,114 +90,122 @@ theorem copy_local_local_simulation
   have h_baseS : baseS = bS.addr := (h_id_a _ _ h_raS).symm
   subst h_baseS
   -- §1 invert the source: read the src range, then write the dst range
-  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.preparePlaceAssign,
+  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont, mirlite.preparePlaceAssign,
     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc, h_envS,
     mirlite.evalRExpr] at h_step
-  cases h_read_src : MSB.read s_mir.perms bS.addr (blockSize τ) bS.tag with
-  | error e => rw [h_read_src] at h_step; simp at h_step
-  | ok perms' =>
-  rw [h_read_src] at h_step
-  simp only at h_step
-  -- §2 both events transported (BRIDGE 3 read + write members)
-  obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
-    sb_read_respects_PermSim h_psim h_wf_t h_rtS h_nwS h_read_src
-  have h_w := h_step
-  simp only [mirlite.writeResolvedPlace] at h_w
-  split at h_w
-  · simp at h_w
-  · rename_i h_nb
+  -- the overlapping-assignment check: source success supplies the
+  -- DISJOINTNESS the target Memcpy's nonoverlapping check needs
+  by_cases h_ov : bS.addr < bD.addr + blockSize τ ∧
+      bD.addr < bS.addr + blockSize τ
+  · rw [if_pos h_ov] at h_step
+    simp at h_step
+  · rw [if_neg h_ov] at h_step
+    cases h_read_src : MSB.read s_mir.perms bS.addr (blockSize τ) bS.tag with
+    | error e => rw [h_read_src] at h_step; simp at h_step
+    | ok perms' =>
+    rw [h_read_src] at h_step
+    simp only at h_step
+    -- §2 both events transported (BRIDGE 3 read + write members)
+    obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
+      sb_read_respects_PermSim h_psim h_wf_t h_rtS h_nwS h_read_src
+    have h_w := h_step
+    simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
-    · rename_i perms'' h_useMut_src
-      cases h_w
-      have h_useMut_src' : MSB.useMut perms' bD.addr (blockSize τ) bD.tag
-          = .ok perms'' := by
-        grind
-      obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
-        sb_write_respects_PermSim h_psim2 h_wf_t h_rtD h_nwD h_useMut_src'
-      -- §3 the fragment and the Memcpy step
-      have h_stmtRun := compileStmt_copy_local_local_run (cs := csPrefix)
-        h_piD h_piS
-      obtain ⟨stmtOut, h_stmtOut⟩ :=
-        compileStmt_copy_local_local_value (cs := csPrefix) h_piD h_piS
-      have h_code1 : compProg s_osea.pc
-          = some (Instr.Memcpy dstReg srcReg (obseq.layoutToTyVal τ)) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · rw [h_stmtRun]
-          simp only [emit, List.length_cons, List.length_nil]
-          omega
-        · rw [h_stmtRun]
-          have h := emit_code_at_new csPrefix
-            [Instr.Memcpy dstReg srcReg (obseq.layoutToTyVal τ)] (k := 0) (by simp)
-          simpa using h
-      have h_ts : obseq.typeSize (obseq.layoutToTyVal τ) = blockSize τ := by
-        simp [blockSize]
-      have h_read_tgt' : MSB.read s_osea.perms (bS.addr + 0)
-          (obseq.typeSize (obseq.layoutToTyVal τ)) tagS = .ok p2 := by
-        rw [h_ts, Nat.add_zero]
-        exact h_read_tgt
-      have h_useMut_tgt' : MSB.useMut p2 (bD.addr + 0)
-          (obseq.typeSize (obseq.layoutToTyVal τ)) tagD = .ok p3 := by
-        rw [h_ts, Nat.add_zero]
-        exact h_useMut_tgt
-      have h_run1 := runN_Memcpy_step compProg s_osea dstReg srcReg
-        (obseq.layoutToTyVal τ)
-        h_code1 h_entryD h_entryS
-        (by rw [h_ts, Nat.add_zero]; exact Nat.le_refl _)
-        (by rw [h_ts, Nat.add_zero]; exact Nat.le_refl _)
-        h_read_tgt' h_useMut_tgt'
-      rw [h_ts] at h_run1
-      simp only [Nat.add_zero] at h_run1
-      -- §4 the copied values are pointwise related; memory sim rebuilt
-      have h_rel : ListRel (MemValSim ρa ρt)
-          (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ))
-          (oseair.readWordSeq s_osea.mem bS.addr (blockSize τ)) :=
-        readWordSeq_sim h_id_a h_sms (blockSize τ) bS.addr
-      have h_dom : ∀ k,
-          k < (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ)).length →
-          ρa (bD.addr + k) = some (bD.addr + k) := by
-        intro k hk
-        obtain ⟨a', ha'⟩ := h_domD k (by simpa using hk)
-        grind [IdentityOnDomain]
-      have h_sms' : SourceMemSim ρa ρt
-          (mirlite.writeWordSeq s_mir.mem bD.addr
-            (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ)))
-          (oseair.writeWordSeq s_osea.mem bD.addr
-            (oseair.readWordSeq s_osea.mem bS.addr (blockSize τ))) :=
-        SourceMemSim.writeWordSeq_extend h_id_a _ _ _ _ _ h_rel h_dom h_sms
-      -- §5 rebuild the invariant (no rename growth, no register writes)
-      refine ⟨_, 1, h_run1, ?_⟩
-      refine ⟨CheckedCompilerM.run
-        (compileStmtChecked
-          (Stmt.assign (.local dstLoc) (.copy (.local srcLoc)))) csPrefix,
-        ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
-        h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
-      · show s_osea.pc + 1 = _
-        rw [h_pc, h_stmtRun]
-        simp [emit]
-      · intro τ' loc' binding' h_env'
-        obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
-          h_lbs loc' binding' h_env'
-        refine ⟨reg', base', tag', ?_, h_entry', h_ra', h_rt', h_nw', h_dom'⟩
-        rw [h_stmtRun, getPlaceInfo_emit]
-        exact h_pi'
-      · show TagRenameBounded ρt perms''.NextTag p3.NextTag
-        rw [sb_write_NextTag h_useMut_src', sb_read_NextTag h_read_src,
-          sb_write_NextTag h_useMut_tgt, sb_read_NextTag h_read_tgt]
-        exact h_tbd
-      · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-          oseair_writeWordSeq_addrStart]
-        exact h_alloc
-      · intro τ' loc' h_none
-        rw [h_stmtRun, getPlaceInfo_emit]
-        exact h_unmap loc' h_none
-      · intro idx reg'' τ'' h_look
-        rw [h_stmtRun] at h_look ⊢
-        rw [getPlaceInfo_emit] at h_look
-        refine RegisterBelow.mono ?_ (h_prb _ _ _ h_look)
-        simp only [emit]
-        exact Nat.le_refl _
     · simp at h_w
+    · rename_i h_nb
+      split at h_w
+      · rename_i perms'' h_useMut_src
+        cases h_w
+        have h_useMut_src' : MSB.useMut perms' bD.addr (blockSize τ) bD.tag
+            = .ok perms'' := by
+          grind
+        obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
+          sb_write_respects_PermSim h_psim2 h_wf_t h_rtD h_nwD h_useMut_src'
+        -- §3 the fragment and the Memcpy step
+        have h_stmtRun := compileStmt_copy_local_local_run (cs := csPrefix)
+          h_piD h_piS
+        obtain ⟨stmtOut, h_stmtOut⟩ :=
+          compileStmt_copy_local_local_value (cs := csPrefix) h_piD h_piS
+        have h_code1 : compProg s_osea.pc
+            = some (Instr.Memcpy dstReg srcReg (obseq.layoutToTyVal τ)) := by
+          rw [h_pc]
+          refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+          · rw [h_stmtRun]
+            simp only [emit, List.length_cons, List.length_nil]
+            omega
+          · rw [h_stmtRun]
+            have h := emit_code_at_new csPrefix
+              [Instr.Memcpy dstReg srcReg (obseq.layoutToTyVal τ)] (k := 0) (by simp)
+            simpa using h
+        have h_ts : obseq.typeSize (obseq.layoutToTyVal τ) = blockSize τ := by
+          simp [blockSize]
+        have h_read_tgt' : MSB.read s_osea.perms (bS.addr + 0)
+            (obseq.typeSize (obseq.layoutToTyVal τ)) tagS = .ok p2 := by
+          rw [h_ts, Nat.add_zero]
+          exact h_read_tgt
+        have h_useMut_tgt' : MSB.useMut p2 (bD.addr + 0)
+            (obseq.typeSize (obseq.layoutToTyVal τ)) tagD = .ok p3 := by
+          rw [h_ts, Nat.add_zero]
+          exact h_useMut_tgt
+        have h_run1 := runN_Memcpy_step compProg s_osea dstReg srcReg
+          (obseq.layoutToTyVal τ)
+          h_code1 h_entryD h_entryS
+          (by rw [h_ts, Nat.add_zero]; exact Nat.le_refl _)
+          (by rw [h_ts, Nat.add_zero]; exact Nat.le_refl _)
+          (by rw [h_ts]; simp only [Nat.add_zero]; grind)
+          h_read_tgt' h_useMut_tgt'
+        rw [h_ts] at h_run1
+        simp only [Nat.add_zero] at h_run1
+        -- §4 the copied values are pointwise related; memory sim rebuilt
+        have h_rel : ListRel (MemValSim ρa ρt)
+            (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ))
+            (oseair.readWordSeq s_osea.mem bS.addr (blockSize τ)) :=
+          readWordSeq_sim h_id_a h_sms (blockSize τ) bS.addr
+        have h_dom : ∀ k,
+            k < (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ)).length →
+            ρa (bD.addr + k) = some (bD.addr + k) := by
+          intro k hk
+          obtain ⟨a', ha'⟩ := h_domD k (by simpa using hk)
+          grind [IdentityOnDomain]
+        have h_sms' : SourceMemSim ρa ρt
+            (mirlite.writeWordSeq s_mir.mem bD.addr
+              (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ)))
+            (oseair.writeWordSeq s_osea.mem bD.addr
+              (oseair.readWordSeq s_osea.mem bS.addr (blockSize τ))) :=
+          SourceMemSim.writeWordSeq_extend h_id_a _ _ _ _ _ h_rel h_dom h_sms
+        -- §5 rebuild the invariant (no rename growth, no register writes)
+        refine ⟨_, 1, h_run1, ?_⟩
+        refine ⟨CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.local dstLoc) (.copy (.local srcLoc)))) csPrefix,
+          ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
+          h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
+        · show s_osea.pc + 1 = _
+          rw [h_pc, h_stmtRun]
+          simp [emit]
+        · intro τ' loc' binding' h_env'
+          obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
+            h_lbs loc' binding' h_env'
+          refine ⟨reg', base', tag', ?_, h_entry', h_ra', h_rt', h_nw', h_dom'⟩
+          rw [h_stmtRun, getPlaceInfo_emit]
+          exact h_pi'
+        · show TagRenameBounded ρt perms''.NextTag p3.NextTag
+          rw [sb_write_NextTag h_useMut_src', sb_read_NextTag h_read_src,
+            sb_write_NextTag h_useMut_tgt, sb_read_NextTag h_read_tgt]
+          exact h_tbd
+        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
+            oseair_writeWordSeq_addrStart]
+          exact h_alloc
+        · intro τ' loc' h_none
+          rw [h_stmtRun, getPlaceInfo_emit]
+          exact h_unmap loc' h_none
+        · intro idx reg'' τ'' h_look
+          rw [h_stmtRun] at h_look ⊢
+          rw [getPlaceInfo_emit] at h_look
+          refine RegisterBelow.mono ?_ (h_prb _ _ _ h_look)
+          simp only [emit]
+          exact Nat.le_refl _
+      · simp at h_w
 
 /-- The fragment of `dst := copy src.f` at ZERO offset, both roots
     mapped locals: still a single `Memcpy` — `placeToRegChecked` returns
@@ -297,142 +305,144 @@ theorem copy_proj_zero_simulation
   have h_baseS : baseS = bS.addr := (h_id_a _ _ h_raS).symm
   subst h_baseS
   -- §1 invert the source: read the FIELD range, then write the dst range
-  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.preparePlaceAssign,
+  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont, mirlite.preparePlaceAssign,
     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc, h_envS,
     mirlite.evalRExpr, h_off] at h_step
-  cases h_read_src : MSB.read s_mir.perms (bS.addr + 0) (blockSize τ) bS.tag with
-  | error e => rw [h_read_src] at h_step; simp at h_step
-  | ok perms' =>
-  rw [h_read_src] at h_step
-  simp only at h_step
-  -- §2 both events transported (BRIDGE 3 read + write members)
-  obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
-    sb_read_respects_PermSim h_psim h_wf_t h_rtS h_nwS h_read_src
-  have h_w := h_step
-  simp only [mirlite.writeResolvedPlace] at h_w
-  split at h_w
-  · simp at h_w
-  · rename_i h_nb
+  by_cases h_ov : bS.addr + 0 < bD.addr + blockSize τ ∧
+      bD.addr < bS.addr + 0 + blockSize τ
+  · rw [if_pos h_ov] at h_step
+    simp at h_step
+  · rw [if_neg h_ov] at h_step
+    cases h_read_src : MSB.read s_mir.perms (bS.addr + 0) (blockSize τ) bS.tag with
+    | error e => rw [h_read_src] at h_step; simp at h_step
+    | ok perms' =>
+    rw [h_read_src] at h_step
+    simp only at h_step
+    -- §2 both events transported (BRIDGE 3 read + write members)
+    obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
+      sb_read_respects_PermSim h_psim h_wf_t h_rtS h_nwS h_read_src
+    have h_w := h_step
+    simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
-    · rename_i perms'' h_useMut_src
-      cases h_w
-      have h_useMut_src' : MSB.useMut perms' bD.addr (blockSize τ) bD.tag
-          = .ok perms'' := by
-        grind
-      obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
-        sb_write_respects_PermSim h_psim2 h_wf_t h_rtD h_nwD h_useMut_src'
-      -- §3 the fragment and the Memcpy step
-      have h_stmtRun := compileStmt_copy_proj_zero_run (cs := csPrefix)
-        h_off h_piD h_piS
-      obtain ⟨stmtOut, h_stmtOut⟩ :=
-        compileStmt_copy_proj_zero_value (cs := csPrefix) h_off h_piD h_piS
-      have h_code1 : compProg s_osea.pc
-          = some (Instr.Memcpy dstReg srcReg (obseq.layoutToTyVal τ)) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · rw [h_stmtRun]
-          simp only [emit, List.length_cons, List.length_nil]
-          omega
-        · rw [h_stmtRun]
-          have h := emit_code_at_new csPrefix
-            [Instr.Memcpy dstReg srcReg (obseq.layoutToTyVal τ)] (k := 0) (by simp)
-          simpa using h
-      have h_ts : obseq.typeSize (obseq.layoutToTyVal τ) = blockSize τ := by
-        simp [blockSize]
-      have h_fit : blockSize τ ≤ blockSize σb := by
-        have h := PathTo.offset_add_size_le f
-        show layoutSize τ ≤ layoutSize σb
-        grind
-      have h_read_tgt' : MSB.read s_osea.perms (bS.addr + 0)
-          (obseq.typeSize (obseq.layoutToTyVal τ)) tagS = .ok p2 := by
-        rw [h_ts]
-        exact h_read_tgt
-      have h_useMut_tgt' : MSB.useMut p2 (bD.addr + 0)
-          (obseq.typeSize (obseq.layoutToTyVal τ)) tagD = .ok p3 := by
-        rw [h_ts, Nat.add_zero]
-        exact h_useMut_tgt
-      have h_run1 := runN_Memcpy_step compProg s_osea dstReg srcReg
-        (obseq.layoutToTyVal τ)
-        h_code1 h_entryD h_entryS
-        (by rw [h_ts, Nat.add_zero]; exact Nat.le_refl _)
-        (by rw [h_ts]; simpa using Nat.add_le_add_left h_fit bS.addr)
-        h_read_tgt' h_useMut_tgt'
-      rw [h_ts] at h_run1
-      simp only [Nat.add_zero] at h_run1
-      -- §4 the copied values are pointwise related; memory sim rebuilt
-      have h_rel : ListRel (MemValSim ρa ρt)
-          (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ))
-          (oseair.readWordSeq s_osea.mem bS.addr (blockSize τ)) :=
-        readWordSeq_sim h_id_a h_sms (blockSize τ) bS.addr
-      have h_dom : ∀ k,
-          k < (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ)).length →
-          ρa (bD.addr + k) = some (bD.addr + k) := by
-        intro k hk
-        obtain ⟨a', ha'⟩ := h_domD k (by simpa using hk)
-        grind [IdentityOnDomain]
-      have h_sms' : SourceMemSim ρa ρt
-          (mirlite.writeWordSeq s_mir.mem bD.addr
-            (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ)))
-          (oseair.writeWordSeq s_osea.mem bD.addr
-            (oseair.readWordSeq s_osea.mem bS.addr (blockSize τ))) :=
-        SourceMemSim.writeWordSeq_extend h_id_a _ _ _ _ _ h_rel h_dom h_sms
-      -- §5 rebuild the invariant (no rename growth, no register writes)
-      refine ⟨_, 1, h_run1, ?_⟩
-      refine ⟨CheckedCompilerM.run
-        (compileStmtChecked
-          (Stmt.assign (.local dstLoc)
-            (.copy (.proj (.local srcLoc) f)))) csPrefix,
-        ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
-        h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
-      · show s_osea.pc + 1 = _
-        rw [h_pc, h_stmtRun]
-        simp [emit]
-      · intro τ' loc' binding' h_env'
-        obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
-          h_lbs loc' binding' h_env'
-        refine ⟨reg', base', tag', ?_, h_entry', h_ra', h_rt', h_nw', h_dom'⟩
-        rw [h_stmtRun, getPlaceInfo_emit]
-        exact h_pi'
-      · show TagRenameBounded ρt perms''.NextTag p3.NextTag
-        rw [sb_write_NextTag h_useMut_src', sb_read_NextTag h_read_src,
-          sb_write_NextTag h_useMut_tgt, sb_read_NextTag h_read_tgt]
-        exact h_tbd
-      · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-          oseair_writeWordSeq_addrStart]
-        exact h_alloc
-      · intro τ' loc' h_none
-        rw [h_stmtRun, getPlaceInfo_emit]
-        exact h_unmap loc' h_none
-      · intro idx reg'' τ'' h_look
-        rw [h_stmtRun] at h_look ⊢
-        rw [getPlaceInfo_emit] at h_look
-        refine RegisterBelow.mono ?_ (h_prb _ _ _ h_look)
-        simp only [emit]
-        exact Nat.le_refl _
     · simp at h_w
+    · rename_i h_nb
+      split at h_w
+      · rename_i perms'' h_useMut_src
+        cases h_w
+        have h_useMut_src' : MSB.useMut perms' bD.addr (blockSize τ) bD.tag
+            = .ok perms'' := by
+          grind
+        obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
+          sb_write_respects_PermSim h_psim2 h_wf_t h_rtD h_nwD h_useMut_src'
+        -- §3 the fragment and the Memcpy step
+        have h_stmtRun := compileStmt_copy_proj_zero_run (cs := csPrefix)
+          h_off h_piD h_piS
+        obtain ⟨stmtOut, h_stmtOut⟩ :=
+          compileStmt_copy_proj_zero_value (cs := csPrefix) h_off h_piD h_piS
+        have h_code1 : compProg s_osea.pc
+            = some (Instr.Memcpy dstReg srcReg (obseq.layoutToTyVal τ)) := by
+          rw [h_pc]
+          refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+          · rw [h_stmtRun]
+            simp only [emit, List.length_cons, List.length_nil]
+            omega
+          · rw [h_stmtRun]
+            have h := emit_code_at_new csPrefix
+              [Instr.Memcpy dstReg srcReg (obseq.layoutToTyVal τ)] (k := 0) (by simp)
+            simpa using h
+        have h_ts : obseq.typeSize (obseq.layoutToTyVal τ) = blockSize τ := by
+          simp [blockSize]
+        have h_fit : blockSize τ ≤ blockSize σb := by
+          have h := PathTo.offset_add_size_le f
+          show layoutSize τ ≤ layoutSize σb
+          grind
+        have h_read_tgt' : MSB.read s_osea.perms (bS.addr + 0)
+            (obseq.typeSize (obseq.layoutToTyVal τ)) tagS = .ok p2 := by
+          rw [h_ts]
+          exact h_read_tgt
+        have h_useMut_tgt' : MSB.useMut p2 (bD.addr + 0)
+            (obseq.typeSize (obseq.layoutToTyVal τ)) tagD = .ok p3 := by
+          rw [h_ts, Nat.add_zero]
+          exact h_useMut_tgt
+        have h_run1 := runN_Memcpy_step compProg s_osea dstReg srcReg
+          (obseq.layoutToTyVal τ)
+          h_code1 h_entryD h_entryS
+          (by rw [h_ts, Nat.add_zero]; exact Nat.le_refl _)
+          (by rw [h_ts]; simpa using Nat.add_le_add_left h_fit bS.addr)
+          (by rw [h_ts]; simp only [Nat.add_zero]; grind)
+          h_read_tgt' h_useMut_tgt'
+        rw [h_ts] at h_run1
+        simp only [Nat.add_zero] at h_run1
+        -- §4 the copied values are pointwise related; memory sim rebuilt
+        have h_rel : ListRel (MemValSim ρa ρt)
+            (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ))
+            (oseair.readWordSeq s_osea.mem bS.addr (blockSize τ)) :=
+          readWordSeq_sim h_id_a h_sms (blockSize τ) bS.addr
+        have h_dom : ∀ k,
+            k < (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ)).length →
+            ρa (bD.addr + k) = some (bD.addr + k) := by
+          intro k hk
+          obtain ⟨a', ha'⟩ := h_domD k (by simpa using hk)
+          grind [IdentityOnDomain]
+        have h_sms' : SourceMemSim ρa ρt
+            (mirlite.writeWordSeq s_mir.mem bD.addr
+              (mirlite.readWordSeq s_mir.mem bS.addr (blockSize τ)))
+            (oseair.writeWordSeq s_osea.mem bD.addr
+              (oseair.readWordSeq s_osea.mem bS.addr (blockSize τ))) :=
+          SourceMemSim.writeWordSeq_extend h_id_a _ _ _ _ _ h_rel h_dom h_sms
+        -- §5 rebuild the invariant (no rename growth, no register writes)
+        refine ⟨_, 1, h_run1, ?_⟩
+        refine ⟨CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.local dstLoc)
+              (.copy (.proj (.local srcLoc) f)))) csPrefix,
+          ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
+          h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
+        · show s_osea.pc + 1 = _
+          rw [h_pc, h_stmtRun]
+          simp [emit]
+        · intro τ' loc' binding' h_env'
+          obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
+            h_lbs loc' binding' h_env'
+          refine ⟨reg', base', tag', ?_, h_entry', h_ra', h_rt', h_nw', h_dom'⟩
+          rw [h_stmtRun, getPlaceInfo_emit]
+          exact h_pi'
+        · show TagRenameBounded ρt perms''.NextTag p3.NextTag
+          rw [sb_write_NextTag h_useMut_src', sb_read_NextTag h_read_src,
+            sb_write_NextTag h_useMut_tgt, sb_read_NextTag h_read_tgt]
+          exact h_tbd
+        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
+            oseair_writeWordSeq_addrStart]
+          exact h_alloc
+        · intro τ' loc' h_none
+          rw [h_stmtRun, getPlaceInfo_emit]
+          exact h_unmap loc' h_none
+        · intro idx reg'' τ'' h_look
+          rw [h_stmtRun] at h_look ⊢
+          rw [getPlaceInfo_emit] at h_look
+          refine RegisterBelow.mono ?_ (h_prb _ _ _ h_look)
+          simp only [emit]
+          exact Nat.le_refl _
+      · simp at h_w
 
-/-- RESIDUAL (sorried), NARROWED 2026-08-28 (evening): what remains of
-    the copy leaf after L→L and P0→L (zero-offset proj src) closed.
-    - NONZERO-offset proj src: the fragment is
-      `[Borrow(Shared); Memcpy; Die]`, and the `Memcpy` atomically does
-      read-through-the-fresh-tag THEN the dst `useMut` — so the foreign
-      dst op sits BETWEEN the BRIDGE-1S phases and the keystone does not
-      apply as-is. This is not merely a missing proof pattern: in an
-      invariant-JUNK state where two distinct locals' blocks overlap
-      (`CompilerInv` carries no separation conjunct), a src-range stack
-      `[.. tagD .. tagS(top)]` lets the source's read+useMut succeed
-      while the target's dst `useMut` pops the fresh Shared before its
-      `Die` (which demands the tag exactly on top) — target errs, leaf
-      FALSE as stated. Closing it needs a SEPARATION invariant (distinct
-      bound locals occupy disjoint blocks — a user/model decision; it
-      would also unlock the non-local-dst commutations here and in
-      ref/const_write), after which die↔useMut commute by cell
-      disjointness and BRIDGE 1S applies.
-    - deref src: spine composition (as D→L) plus the same interleaving
-      for the trailing cleanup.
-    - NON-LOCAL or UNBOUND dst: interleaved-keystone commutation /
-      regime-B fresh-root composition (`dst = src` aliasing only in the
-      unbound-dst branch, via `allocateRoot` rebinding). -/
+/-- RESIDUAL (sorried), NARROWED again 2026-08-28 (night): what remains
+    of the copy leaf after L→L and P0→L closed — and after the
+    overlapping-assignment check UNBLOCKED the rest.
+    - NONZERO-offset proj src (`[Borrow(Shared); Memcpy; Die]`): was
+      FALSE as stated (the d33 overlap countermodel — the Memcpy's dst
+      `useMut` sat between the BRIDGE-1S phases and could pop the fresh
+      tag). Now PROVABLE: source success at the overlap guard supplies
+      src-range/dst-range DISJOINTNESS, the target `Memcpy`'s own
+      nonoverlapping check discharges from it, and the trailing `Die`
+      commutes past the dst `useMut` by cell disjointness. Still to
+      build: the disjoint-range commutation lemma (foldCells locality)
+      + BRIDGE 1S composition.
+    - deref src: the D→L spine composition on top of the same pieces.
+    - UNBOUND dst: the regime-B fresh-root composition (`allocateRoot`
+      rebinding; `dst = src` aliasing lands in the overlap guard).
+    - NON-LOCAL dst: post-lowering-order-fix there is NO interleaving
+      left — the dst `Borrow(Mut); store; Die` is contiguous (BRIDGE 1
+      shape); what remains is composition work, not a blocker. -/
 theorem copy_place_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -489,7 +499,7 @@ theorem CompilerInv_step_copy
               | none =>
                   -- copy of an unbound local: the source errs at resolution
                   exfalso
-                  simp [mirlite.stepStmt, mirlite.doAssign,
+                  simp [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont,
                     mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_envD,
                     mirlite.resolvePlaceAcc, h_envS, mirlite.evalRExpr] at h_step
           | none =>
@@ -511,7 +521,7 @@ theorem CompilerInv_step_copy
                           TagRenameIncr.refl ρt, h_run, h_inv'⟩
                     | none =>
                         exfalso
-                        simp [mirlite.stepStmt, mirlite.doAssign,
+                        simp [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont,
                           mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_envD,
                           mirlite.resolvePlaceAcc, h_envS,
                           mirlite.evalRExpr] at h_step

@@ -516,3 +516,22 @@ audit wrapper caught the breakage were vacuous (default-target trap).
 47/47; axiom audit exact; audit at 4.
 **Next-session pickup:** copy overlap event check (b) and/or the
 separation conjunct (c) — the remaining unlocks for the residuals.
+
+## 2026-08-28 (night, cont. 3)
+**Session:** (terminal, continued) — the copy overlap event check
+**Theme:** overlapping assignment is UB on both machines; d33 retired,
+d35 pins the reachable case; separation invariant demoted.
+**Key outputs:**
+- mirlite doAssign overlap guard (copy branch only, via doAssignCont
+  split; access-free resolver) + oseair Memcpy nonoverlapping check;
+  runN_Memcpy_step gains h_disj; both copy leaves supply it from the
+  guard. Teeth both sides. d33 → both-refuse pin; d35 differential.
+- Residual/audit/parked docs: all remaining copy shapes UNBLOCKED;
+  separation conjunct likely unnecessary.
+**Critical corrections:** git-checkout-during-teeth destroyed
+uncommitted edits AGAIN — rule upgraded (inverse-edit reverts only).
+**Status:** complete. All targets; suite 82/123; units 16/16 + 48/48;
+axiom audit exact; audit at 4.
+**Next-session pickup:** the disjoint-range commutation lemma +
+BRIDGE 1S composition (nonzero-offset copy P-src leaf), now that
+nothing blocks it.

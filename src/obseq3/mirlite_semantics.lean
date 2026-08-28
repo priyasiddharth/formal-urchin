@@ -360,6 +360,21 @@ def evalRExpr
               }
           | .error e => .err s!"retag failed: {e}"
 
+/-- The tail of `doAssign` after the destination is resolved (split out
+    2026-08-28 so the overlapping-assignment guard exists ONLY in the
+    `.copy` branch; every other rhs reduces to this directly). -/
+def doAssignCont
+  (M : PermissionModel)
+  (s1 : State M Γ)
+  (resolved : PlaceRes)
+  (permsD : M.State)
+  {τ : LayoutTy}
+  (rhs : RExpr Γ τ) : Result M Γ :=
+  match evalRExpr M { s1 with perms := permsD } rhs with
+  | .err msg => .err msg
+  | .ok output =>
+    writeResolvedPlace M output.state resolved output.values output.values_len
+
 def doAssign
   (M : PermissionModel)
   (state : State M Γ)
@@ -374,10 +389,23 @@ def doAssign
   match resolvePlaceAcc M s1 dst with
   | .error e => .err e
   | .ok (resolved, permsD) =>
-  match evalRExpr M { s1 with perms := permsD } rhs with
-  | .err msg => .err msg
-  | .ok output =>
-    writeResolvedPlace M output.state resolved output.values output.values_len
+  -- MIR forbids overlapping place-to-place assignment (Miri lowers it
+  -- to a NONOVERLAPPING copy and flags overlap as UB). Added 2026-08-28:
+  -- the guard exists only in the `.copy` branch, checked with the
+  -- ACCESS-FREE resolver so no SB event is duplicated; it is what makes
+  -- the target `Memcpy`'s nonoverlapping check dischargeable — source
+  -- success supplies the disjointness the borrow-cleanup interleaving
+  -- needs (the d33 countermodel class).
+  match rhs with
+  | .copy src =>
+      match resolvePlace? s1 src with
+      | some rs =>
+          if rs.addr < resolved.addr + blockSize τ ∧
+             resolved.addr < rs.addr + blockSize τ then
+            .err "copy of overlapping ranges"
+          else doAssignCont M s1 resolved permsD (.copy src)
+      | none => doAssignCont M s1 resolved permsD (.copy src)
+  | rhs => doAssignCont M s1 resolved permsD rhs
 
 /-- Read a runtime word for an `AllocLen`. A `fromPlace` read is a real
     SB read access through the place's tag. -/

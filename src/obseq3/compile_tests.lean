@@ -762,18 +762,15 @@ def d32_field_copy_zero_offset : IO Unit :=
      .assign yD32 (.copy (.proj tupD32 (.field ⟨0, by decide⟩ .nil)))]
     .ok "d32 field copy zero offset"
 
-/-- STATE-LEVEL divergence pin (the t16 pattern, two machines): the
-    overlap countermodel that makes the NONZERO-offset proj-src copy
-    leaf unprovable without a separation invariant (see
-    `copy_place_residual`). Two distinct locals are FORGED to overlap —
-    `y : natL` re-bound INSIDE `tup : pairL`'s block — with cell 1's
-    stack `[Ref 4, MutRef 3, Own 1]`, `tup.tag := 4` (the top Shared),
-    `y.tag := 3` (the Unique below). `y := copy tup.1` then SUCCEEDS on
-    mirlite (read via 4 is a no-op, useMut via 3 pops the Ref) while
-    the compiled `[Borrow(Shared); Memcpy; Die]` errs at the `Die`: the
-    Memcpy's dst useMut pops the fresh tag out from under it. No
-    reachable state has overlapping locals — this documents an
-    invariant gap, not a compiler bug on real programs. -/
+/-- STATE-LEVEL pin, RETIRED-countermodel edition (2026-08-28): this
+    forged overlap state — `y : natL` re-bound INSIDE `tup : pairL`'s
+    block, cell 1's stack `[Ref 4, MutRef 3, Own 1]`, `tup.tag := 4`,
+    `y.tag := 3` — used to make `y := copy tup.1` DIVERGE (source ok,
+    target dies at the `Die`), which was the separation-invariant
+    countermodel. The overlapping-assignment check dissolved it: BOTH
+    machines now refuse the copy — mirlite at the `doAssign` overlap
+    guard, oseair at the `Memcpy`'s nonoverlapping check. Teeth:
+    reverting either check resurrects the one-sided behavior. -/
 def ΓD33 : Ctx := [pairL, natL]
 def tupD33 : Place ΓD33 pairL := .local ⟨⟨0, by decide⟩, rfl⟩
 def yLocD33 : Local ΓD33 natL := ⟨⟨1, by decide⟩, rfl⟩
@@ -797,8 +794,11 @@ def d33_overlap_junk_copy_diverges : IO Unit := do
   let stmt : Stmt ΓD33 :=
     .assign (.local yLocD33) (.copy (.proj tupD33 (.field ⟨1, by decide⟩ .nil)))
   match mirlite.stepStmt M junkSrc stmt with
-  | .ok _ => pure ()
-  | .err e => throw (IO.userError s!"d33: source should succeed, got: {e}")
+  | .ok _ => throw (IO.userError
+      "d33: source should now REFUSE the overlapping copy")
+  | .err e =>
+      assert ((e.splitOn "overlapping").length > 1)
+        s!"d33: expected the overlap guard, got: {e}"
   -- TARGET: same stacks, registers holding the forged pointers; the
   -- program is exactly what the compiler emits for the statement
   let junkTgt : oseair.State M :=
@@ -813,16 +813,16 @@ def d33_overlap_junk_copy_diverges : IO Unit := do
      .Memcpy (.R 1) (.R 2) .NatTy,                   -- the copy (read fresh, useMut dst)
      .Die (.R 2) 1]                                  -- cleanup: fresh tag must be on top
   let prog : oseair.Prog := fun n => instrs.get? n
-  -- Borrow and Memcpy succeed; the Die finds MutRef 3 on top, not the fresh 5
-  match oseair.runN M 2 junkTgt prog with
+  -- the Borrow succeeds; the Memcpy now refuses the overlapping ranges
+  match oseair.runN M 1 junkTgt prog with
   | .Ok _ => pure ()
-  | .Err e => throw (IO.userError s!"d33: Borrow;Memcpy should succeed, got: {e}")
-  match oseair.runN M 3 junkTgt prog with
+  | .Err e => throw (IO.userError s!"d33: the Borrow should succeed, got: {e}")
+  match oseair.runN M 2 junkTgt prog with
   | .Ok _ => throw (IO.userError
-      "d33: target should err at the Die (source succeeded -- divergence lost?)")
+      "d33: the target Memcpy should refuse the overlapping ranges")
   | .Err e =>
-      assert ((e.splitOn "sb-die").length > 1)
-        s!"d33: expected an sb-die error, got: {e}"
+      assert ((e.splitOn "overlapping").length > 1)
+        s!"d33: expected the Memcpy overlap check, got: {e}"
 
 /-- FIXED-BUG witness (was the KNOWN-COMPILER-BUG pin, flipped
     2026-08-28 when the lowering-order fix landed): the assign-place
@@ -853,6 +853,17 @@ def d34_deref_dst_temp_killed_by_rhs_spine : IO Unit := do
      .assign (.proj (.deref pD34) (.field ⟨1, by decide⟩ .nil))
        (.ref .Mut false [] (.deref (.deref wD34)))]
   expectDiff ΓD34 prog .ok "d34 deref dst temp survives rhs spine"
+
+/-- Differential: the REACHABLE overlapping assignment — an exact
+    self-copy `x := copy x` — is UB on BOTH machines at the same
+    statement: mirlite's `doAssign` overlap guard and oseair's
+    `Memcpy` nonoverlapping check (MIR lowers assignment to a
+    nonoverlapping copy; Miri flags overlap). -/
+def d35_self_copy_is_ub : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 7),
+     .assign xA (.copy xA)]
+    (.ub 1) "d35 self copy is ub"
 
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
@@ -901,7 +912,8 @@ def allTests : List (IO Unit) := [
   d31_zst_reborrow,
   d32_field_copy_zero_offset,
   d33_overlap_junk_copy_diverges,
-  d34_deref_dst_temp_killed_by_rhs_spine]
+  d34_deref_dst_temp_killed_by_rhs_spine,
+  d35_self_copy_is_ub]
 
 def runAll : IO Unit := do
   allTests.forM id

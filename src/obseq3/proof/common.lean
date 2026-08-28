@@ -1911,6 +1911,8 @@ theorem runN_Memcpy_step
     (h_sentry : PtrRegisterEntry s.reg src sB sO sS sT)
     (h_dle : dB + dO + obseq.typeSize ty ≤ dB + dS)
     (h_sle : sB + sO + obseq.typeSize ty ≤ sB + sS)
+    (h_disj : ¬(dB + dO < sB + sO + obseq.typeSize ty ∧
+                sB + sO < dB + dO + obseq.typeSize ty))
     (h_read : MSB.read s.perms (sB + sO) (obseq.typeSize ty) sT = .ok p2)
     (h_useMut : MSB.useMut p2 (dB + dO) (obseq.typeSize ty) dT = .ok p3) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
@@ -1931,6 +1933,10 @@ theorem runN_Memcpy_step
     rw [if_neg (by
       simp only [Bool.or_eq_true, decide_eq_true_eq, not_or, Nat.not_lt]
       exact ⟨h_dle, h_sle⟩)]
+    rw [if_neg (by
+      simp only [Bool.and_eq_true, decide_eq_true_eq, not_and]
+      intro h1 h2
+      exact h_disj ⟨h1, h2⟩)]
     simp only [h_read, h_useMut]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 

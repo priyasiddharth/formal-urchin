@@ -449,15 +449,15 @@ field to "miri-verified".
 **References:** conformance/README.md (Local witnesses section),
 journal/2026-08/2026-08-21-deref-read.md.
 
-## separation-invariant (PARKED 2026-08-28, user decision)
-`CompilerInv` lacks a separation conjunct (distinct bound locals
-disjoint), which makes every interleaved-keystone shape FALSE in
-overlap-junk states — countermodel in `copy_place_residual`'s
-docstring (nonzero-offset proj-src copy: target `Die` errs after the
-dst `useMut` pops the fresh tag). Adding it would unlock: nonzero-
-offset copy P-src, copy deref-src cleanup, and the non-local-dst
-residuals in ref/const_write. Cheap to carry (env unchanged ⇒
-transports verbatim; real work only in alloc/fresh-dst leaves).
+## separation-invariant (DEMOTED 2026-08-28 night — likely unnecessary)
+Originally: `CompilerInv` lacks a separation conjunct, making the
+interleaved-keystone shapes FALSE in overlap-junk states (d33). Both
+consumers have since been dissolved WITHOUT it: the overlapping-
+assignment guard + `Memcpy` nonoverlapping check supply per-statement
+src/dst disjointness for every copy shape, and the lowering-order fix
+removed the non-local-dst interleaving entirely (dst `Borrow;store;Die`
+is contiguous — BRIDGE 1 shape). Keep parked only in case a future
+regime needs cross-STATEMENT separation; nothing known does.
 
 ## lowering-order-bug (RESOLVED 2026-08-28 — the lowering-order fix)
 d34 pinned a REACHABLE divergence (dst temporary minted before rhs

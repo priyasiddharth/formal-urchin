@@ -429,7 +429,7 @@ theorem ref_local_local_simulation
   subst h_baseS
   -- §1 invert the source step: prepare is a no-op, both locals resolve,
   -- the retag succeeds, the pointer is written
-  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.preparePlaceAssign,
+  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont, mirlite.preparePlaceAssign,
     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc, h_envS,
     mirlite.evalRExpr] at h_step
   rw [if_neg (Nat.lt_irrefl (bS.addr + blockSize τ))] at h_step
@@ -652,7 +652,8 @@ theorem ref_fresh_dst_simulation
               = some bS := by
             simp only [mirlite.Env.lookup, mirlite.Env.set, if_neg h_idx_ne]
             exact h_envS
-          simp only [mirlite.resolvePlaceAcc, hD1, mirlite.evalRExpr, hS1] at h_step
+          simp only [mirlite.doAssignCont, mirlite.resolvePlaceAcc, hD1,
+            mirlite.evalRExpr, hS1] at h_step
           rw [if_neg (Nat.lt_irrefl (bS.addr + blockSize τ))] at h_step
           -- §3 the retag on the source place
           cases h_ref_src : MSB.ref permsOwned bS.addr (blockSize τ) bS.tag kind prot mask with
@@ -1020,7 +1021,7 @@ theorem ref_proj_local_simulation
   subst h_baseD
   subst h_baseS
   -- §1 invert the source step: both locals resolve, retag at the FIELD
-  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.preparePlaceAssign,
+  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont, mirlite.preparePlaceAssign,
     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc, h_envS,
     mirlite.evalRExpr] at h_step
   rw [if_neg (Nat.not_lt.mpr (show bS.addr + pathOffset f + blockSize τ
@@ -1227,7 +1228,7 @@ theorem ref_deref_local_simulation
   have h_baseD : baseD = bD.addr := (h_id_a _ _ h_raD).symm
   subst h_baseD
   -- §1 invert the source step down to the loaded pointer
-  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.preparePlaceAssign,
+  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont, mirlite.preparePlaceAssign,
     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc,
     mirlite.evalRExpr] at h_step
   cases h_dres : mirlite.resolvePlaceAcc MSB s_mir P with
@@ -1754,7 +1755,7 @@ theorem CompilerInv_step_ref
               | none =>
                   -- `&src` of an unbound local: the source errs at resolution
                   exfalso
-                  simp [mirlite.stepStmt, mirlite.doAssign, mirlite.preparePlaceAssign,
+                  simp [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont, mirlite.preparePlaceAssign,
                     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc, h_envS,
                     mirlite.evalRExpr] at h_step
           | none =>
@@ -1777,7 +1778,8 @@ theorem CompilerInv_step_ref
                       simp only [mirlite.resolvePlaceAcc] at h_step
                       split at h_step
                       · simp at h_step
-                      · simp [mirlite.evalRExpr, mirlite.resolvePlaceAcc, hS1] at h_step
+                      · simp [mirlite.doAssignCont, mirlite.evalRExpr,
+                          mirlite.resolvePlaceAcc, hS1] at h_step
       | proj sbase f =>
           cases sbase with
           | «local» srcLoc =>
@@ -1793,7 +1795,7 @@ theorem CompilerInv_step_ref
                         h_run, h_inv'⟩
                   | none =>
                       exfalso
-                      simp [mirlite.stepStmt, mirlite.doAssign,
+                      simp [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont,
                         mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_envD,
                         mirlite.resolvePlaceAcc, h_envS, mirlite.evalRExpr] at h_step
               | none =>

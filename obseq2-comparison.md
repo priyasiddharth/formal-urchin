@@ -4,6 +4,46 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-28 (night, latest) — Overlapping Copies Become UB, and the Last Countermodel Retires
+
+Forty-third increment. Overlapping place-to-place assignment is now UB on both
+machines: mirlite's `doAssign` guards the `.copy` branch (resolved src range
+vs resolved dst range, checked with the access-free resolver so no SB event
+is duplicated), and oseair's `Memcpy` gained the matching nonoverlapping
+check — it models LLVM memcpy, so refusing overlap is what the instruction
+always meant. This is the retag fix's sibling: source success at the guard
+*supplies* the disjointness the target fragment needs, and the
+`Borrow(Shared); Memcpy; Die` interleaving that made the nonzero-offset copy
+leaf false now dissolves — the `Die` and the destination write act on
+provably disjoint cells.
+
+d33, the overlap countermodel, is retired: both machines now refuse the
+forged state, and the test pins exactly that, with teeth verified by
+transiently disabling each side's check. d35 pins the reachable case
+differentially — `x := copy x` is UB at the same statement on both machines.
+The Miri-pinned corpus is unchanged, confirming reachable behavior is
+otherwise preserved.
+
+The bookkeeping consequence is the pleasant one: after this and the
+lowering-order fix, **no residual shape in copy, ref, or const_write has a
+standing countermodel**. The separation invariant — a week ago the looming
+next conjunct — is demoted to the parked list's cold storage, both its
+consumers dissolved by cheaper, more faithful fixes at events the semantics
+already owned. What remains everywhere is composition work, not blockers.
+
+One engineering note: the first guard implementation, a `let overlapUB :
+Bool` in the main flow, leaked an `if false` wrapper into every non-copy
+proof; the right shape is a branch-local guard (`doAssignCont` split) so
+non-copy rhs reduce to the exact old term. And one process scar, the same
+one as last time: a `git checkout` during teeth-verification destroyed the
+uncommitted semantics — reverts during teeth are now inverse edits, never
+checkouts.
+
+Units 16/16 + 48/48, suite pass 82 | fail 0 of 123, differential includes
+d34 (agreement) and d35 (shared UB).
+
+---
+
 ## 2026-08-28 (night, later) — The Compiler Learns MIR's Order
 
 Forty-second increment: the lowering-order bug is fixed, hours after d34

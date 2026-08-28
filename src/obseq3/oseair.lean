@@ -385,6 +385,11 @@ def stepWith (M : PermissionModel) (A : AllocatorSpec)
           let sAddr := sBase + sOff
           let sz := typeSize ty
           if dAddr + sz > dBase + dSize || sAddr + sz > sBase + sSize then Result.Err "OOB"
+          -- Memcpy models a NONOVERLAPPING copy (LLVM memcpy / Miri's
+          -- assignment lowering): overlap is UB, mirroring mirlite's
+          -- overlapping-assignment check (2026-08-28)
+          else if dAddr < sAddr + sz && sAddr < dAddr + sz then
+            Result.Err "Memcpy overlapping ranges"
           else
             match M.read state.perms sAddr sz sTag with
             | .ok perms2 =>
