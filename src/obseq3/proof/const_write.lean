@@ -650,6 +650,51 @@ theorem compileStmt_proj_offset_run
   simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
     cleanupInstrs, h_bres, emit_nil]
 
+/-- The fragment of `(*P).path := v` at ZERO offset (`P` a pointer
+    place lowering with no cleanup): the projection returns the loaded
+    register itself, so the fragment is D-spine's — `[P-code; Load;
+    CStore]`. -/
+theorem compileStmt_proj_deref_zero_run
+    {Γ : Ctx} {σ : LayoutTy}
+    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {path : PathTo σ obseq.LayoutTy.NatL}
+    {cs : CompilerState}
+    {pOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared P)}
+    (v : Word)
+    (h_o : pathOffset path = 0)
+    (h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref P) path)) cs = cs)
+    (h_pval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P) cs = Except.ok pOut)
+    (h_pclean : pOut.result.cleanup = []) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.proj (.deref P) path) (.constInit v))) cs
+      = emit (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs) with
+            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs).nextReg + 1 }
+          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs).nextReg)
+            (Rhs.Load obseq.TyVal.PTy pOut.result.reg)])
+          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v]
+            (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs).nextReg)] := by
+  have h_base_eq : placeToRegChecked (Γ := Γ) RefKind.Mut (.deref P)
+      = (do
+          let ptrOut ← placeToRegChecked RefKind.Shared P
+          let ptrRes := ptrOut.result
+          let loadedReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+          pure {
+            result := { reg := loadedReg, cleanup := [] },
+            evidence := PlaceToRegEvidence.deref P ptrRes loadedReg ptrOut.evidence
+          }) := by simp only [placeToRegChecked]
+  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
+    (base := .deref P) path (fun _ _ _ h => by cases h)
+  simp only [compileStmtChecked, h_proj_eq, h_base_eq, compileRExprToChecked,
+    compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+    h_root, h_pval, h_o, dif_pos]
+  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+    cleanupInstrs, h_pclean, emit_nil]
+
 /-- The fragment of `(*P).path := v` (nonzero offset, `P` a pointer place
     lowering with no cleanup — e.g. a load spine):
     `[P-code; Load; Borrow(Mut); CStore; Die]`. -/
@@ -1168,13 +1213,13 @@ theorem const_write_deref_proj_simulation
           exact Nat.le_trans (Nat.le_succ _) (Nat.le_succ _)
       · simp at h_w
 
-/-- REGIME C-deref, CLOSED: constant write to a NONZERO-offset projection
-    off a DEREFERENCED load spine — `(*p).f := v` and every all-deref
-    deepening of `p`. The spine mother lemma delivers the loaded pointer;
-    the C1 pattern finishes: `Borrow(Mut); CStore; Die` with the parent
-    tag coming from the LOADED pointer (via `MemValSim`) instead of a
-    local binding. -/
-theorem const_write_proj_deref_simulation
+/-- REGIME C-deref-ZERO, CLOSED 2026-08-29: `(*P).f := v` at ZERO
+    offset over any load spine — the projection returns the loaded
+    register, so this is regime D-spine with the projected resolution
+    shape: `[P-code; Load; CStore]`, the write going through the LOADED
+    tag at `b + o + 0`. Takes the `stmt0` transfer triple so nested
+    projection towers over deref roots flatten into it. -/
+theorem const_write_proj_deref_zero_simulation
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
     {s_mir s_pre s_mir' : mirlite.State MSB Γ}
@@ -1185,11 +1230,21 @@ theorem const_write_proj_deref_simulation
     (compProg : oseair.Prog)
     (v : Word)
     (h_spine : LoadSpine P)
-    (h_off : pathOffset path ≠ 0)
+    (h_o : pathOffset path = 0)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc
-      = some (.assign (.proj (.deref P) path) (.constInit v)))
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj (.deref P) path) (.constInit v))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj (.deref P) path) (.constInit v))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_prep : mirlite.preparePlaceAssign MSB s_mir (.proj (.deref P) path) = .ok s_pre)
     (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.proj (.deref P) path)
       = .ok (resolved, permsD))
@@ -1247,13 +1302,14 @@ theorem const_write_proj_deref_simulation
     obtain ⟨dstOut, h_dstOut⟩ := placeToRegChecked_ok_of_placeInputsMapped
       (cs := csPrefix) (kind := RefKind.Mut)
       (p := .proj (.deref P) path) h_mapped
-    obtain ⟨stmtOut, h_stmtOut⟩ : ∃ so, CheckedCompilerM.value
+    obtain ⟨stmtOutC, h_stmtOutC⟩ : ∃ so, CheckedCompilerM.value
         (compileStmtChecked (Stmt.assign (.proj (.deref P) path) (.constInit v)))
         csPrefix = Except.ok so :=
       ⟨{ result := (),
          evidence := StmtEvidence.assignPlace (.proj (.deref P) path) (.constInit v)
            dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
        by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
+    obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
     have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
       (base := .deref P) path (fun _ _ _ h => by cases h)
     have h_bindD : placeToRegChecked (Γ := Γ) RefKind.Mut (.deref P)
@@ -1314,16 +1370,341 @@ theorem const_write_proj_deref_simulation
       intro q' instr h_lt h_code
       have h_incrP := StateIncr.trans h_incr0 (StateIncr.trans h_incr1 h_incr2)
       refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrP.nextLabel_le
-      · rw [h_incrP.code_eq q' h_lt]
+      · rw [h_run0 csPrefix]
+        exact Nat.lt_of_lt_of_le h_lt h_incrP.nextLabel_le
+      · rw [h_run0 csPrefix, h_incrP.code_eq q' h_lt]
         exact h_code
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
       h_pprm, h_pregmono, h_plabmono⟩ :=
       loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
         pRes permsP h_dres h_lbs h_prb h_sms h_psim h_pc h_instP
-    have h_stmtRun := compileStmt_proj_deref_run (cs := csPrefix) (pOut := pOut)
+    rw [show path.offset = 0 from h_o] at h_write
+    have h_stmtRunC := compileStmt_proj_deref_zero_run v h_o h_root h_pval h_pclean
+    have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
+    -- pointer-place bounds from the dereferenceable check
+    have h_cancel : pRes.allocBase + (pRes.addr - pRes.allocBase) = pRes.addr := by
+      grind
+    have h_off : pRes.addr - pRes.allocBase < pRes.allocSize := by grind
+    -- the final Load
+    have h_code1 : compProg s_mid.pc = some (Instr.Assgn
+        (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+        (Rhs.Load obseq.TyVal.PTy pOut.result.reg)) := by
+      rw [h_ppc]
+      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+      · rw [h_stmtRun]
+        show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextLabel < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextLabel + 1 + 1
+        omega
+      · rw [h_stmtRun]
+        rw [emit_code_lt_nextLabel _ _
+          (by show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextLabel < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextLabel + 1; omega)]
+        have h := emit_code_at_new
+          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1 }
+          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+            (Rhs.Load obseq.TyVal.PTy pOut.result.reg)]
+          (k := 0) (by simp)
+        simpa using h
+    obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
+      sb_read_respects_PermSim h_ppsim h_wf_t h_prt h_pnw h_qread
+    have h_read_tgt' : MSB.read s_mid.perms
+        (pRes.allocBase + (pRes.addr - pRes.allocBase)) 1 ptag = .ok p2 := by
+      rw [h_cancel]
+      exact h_read_tgt
+    have h_run1 := runN_Assgn_Load_ptr_step compProg s_mid
+      (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+      pOut.result.reg obseq.TyVal.PTy h_code1 h_pentry h_off h_read_tgt'
+    -- the loaded cell holds the ρ-renamed final pointer
+    obtain ⟨addr', value', h_ra', h_find_tgt, h_mvs⟩ := h_sms _ _ h_qfind
+    have h_addr' : addr' = pRes.addr := (h_id_a _ _ h_ra').symm
+    subst h_addr'
+    cases value' with
+    | Undef => exact h_mvs.elim
+    | Dat _ => exact h_mvs.elim
+    | Ptr b2 o2 s2 t2 =>
+    obtain ⟨h_b, h_o, h_s, h_t, h_tnw, h_range⟩ := h_mvs
+    have h_b2 : b2 = b := (h_id_a _ _ h_b).symm
+    subst h_b2
+    subst h_o
+    subst h_s
+    have h_rws : oseair.readWordSeq s_mid.mem
+        (pRes.allocBase + (pRes.addr - pRes.allocBase))
+        (obseq.typeSize obseq.TyVal.PTy) = [Val.Ptr b2 o2 s2 t2] := by
+      rw [h_cancel]
+      show oseair.readWordSeq s_mid.mem pRes.addr 1 = _
+      rw [h_pmem]
+      simp [oseair.readWordSeq, h_find_tgt]
+    -- the CStore through the loaded pointer
+    have h_code2 : compProg (s_mid.pc + 1) = some (Instr.CStore obseq.TyVal.NatTy
+        [Val.Dat v] (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)) := by
+      rw [h_ppc]
+      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+      · rw [h_stmtRun]
+        show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextLabel + 1 < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextLabel + 1 + 1
+        omega
+      · rw [h_stmtRun]
+        have h := emit_code_at_new
+          (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1 }
+            [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+              (Rhs.Load obseq.TyVal.PTy pOut.result.reg)])
+          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v]
+            (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)]
+          (k := 0) (by simp)
+        simpa [emit] using h
+    have h_w := h_write
+    simp only [mirlite.writeResolvedPlace] at h_w
+    split at h_w
+    · simp at h_w
+    · rename_i h_nb
+      split at h_w
+      · rename_i perms' h_useMut_src
+        cases h_w
+        have h_osz : o2 < s2 := by
+          have h1 : b2 + o2 + 1 ≤ b2 + s2 := Nat.le_of_not_lt (by simpa using h_nb)
+          exact Nat.lt_of_add_lt_add_left (Nat.lt_of_succ_le h1)
+        obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
+          sb_write_respects_PermSim h_psim2 h_wf_t h_t h_tnw h_useMut_src
+        have h_entry1 : PtrRegisterEntry
+            (oseair.RegMap.insert s_mid.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+              (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem
+                (pRes.allocBase + (pRes.addr - pRes.allocBase))
+                (obseq.typeSize obseq.TyVal.PTy)))
+            (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg) b2 ((b2 + o2) - b2) s2 t2 := by
+          show oseair.RegMap.lookup _ _ = _
+          rw [Nat.add_sub_cancel_left, RegMap.lookup_insert_self, h_rws]
+        obtain ⟨h_wtp, h_sms'⟩ :=
+          writeThroughPtr_sim (ρa := ρa) (ρt := ρt) (τ := obseq.LayoutTy.NatL)
+            (s_pre := { s_mir with perms := permsP' })
+            (s_osea := ({ s_mid with perms := p2, reg := oseair.RegMap.insert s_mid.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg) (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem (pRes.allocBase + (pRes.addr - pRes.allocBase)) (obseq.typeSize obseq.TyVal.PTy)), pc := s_mid.pc + 1 } : oseair.State MSB))
+            (resolved := { addr := b2 + o2, tag := t, allocBase := b2, allocSize := s2 })
+            "CStore Invalid Ptr" [mirlite.MemValue.word v] [Val.Dat v] rfl
+            ⟨rfl, trivial⟩ h_id_a h_entry1 h_useMut_tgt
+            (by rw [show (({ s_mid with perms := p2, reg := oseair.RegMap.insert s_mid.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg) (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem (pRes.allocBase + (pRes.addr - pRes.allocBase)) (obseq.typeSize obseq.TyVal.PTy)), pc := s_mid.pc + 1 } : oseair.State MSB)).mem = s_mid.mem from rfl, h_pmem]; exact h_sms)
+            (Nat.le_add_right b2 o2)
+            (fun k hk => by
+              simp [Nat.lt_one_iff] at hk
+              subst hk
+              obtain ⟨a', h_a'⟩ := h_range o2 h_osz
+              have h_ida := h_id_a _ _ h_a'
+              rw [← h_ida] at h_a'
+              exact h_a')
+            h_write
+        have h_run2 := runN_CStore_step compProg ({ s_mid with perms := p2, reg := oseair.RegMap.insert s_mid.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg) (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem (pRes.allocBase + (pRes.addr - pRes.allocBase)) (obseq.typeSize obseq.TyVal.PTy)), pc := s_mid.pc + 1 } : oseair.State MSB) _
+          obseq.TyVal.NatTy [Val.Dat v]
+          (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg) h_code2 rfl h_wtp
+        have h_run :=
+          (oseair_runN_add (n1 + 1) 1 s_osea compProg _
+            ((oseair_runN_add n1 1 s_osea compProg s_mid h_prun).trans h_run1)).trans h_run2
+        refine ⟨_, n1 + 1 + 1, h_run, ?_⟩
+        refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
+            ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
+            h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
+        · -- label agreement
+          show s_mid.pc + 1 + 1 = _
+          rw [h_ppc, h_stmtRun]
+          simp [emit]
+        · -- LocalBindingSim across the fresh load register and the emits
+          refine LocalBindingSim.placeRegMap_congr ?_
+            (LocalBindingSim.insert_fresh_reg h_plbs h_prb h_pregmono rfl)
+          rw [h_stmtRun]
+          exact h_pprm
+        · -- TagRenameBounded: the spine only READS and the store only WRITES,
+          -- so no counter moved anywhere along the fragment
+          show TagRenameBounded ρt perms'.NextTag p3.NextTag
+          rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt,
+            sb_read_NextTag h_qread, sb_read_NextTag h_read_tgt, h_pnt1, h_pnt2]
+          exact h_tbd
+        · -- AllocLockstep: the fragment loads and stores, never allocates
+          simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
+            oseair_writeWordSeq_addrStart, h_pmem]
+          exact h_alloc
+        · -- UnboundLocalsUnmapped: `placeRegMap` is untouched by the
+          -- spine's loads and by the store
+          intro τ'' loc' h_none
+          rw [h_stmtRun]
+          simp only [getPlaceInfo, emit]
+          rw [h_pprm]
+          exact h_unmap loc' h_none
+        · -- PlaceRegMapBound
+          intro idx reg τ'' h_look
+          rw [h_stmtRun] at h_look ⊢
+          have h_cs : getPlaceInfo csPrefix idx = some (reg, τ'') := by
+            show csPrefix.placeRegMap.lookup idx = _
+            rw [← h_pprm]
+            exact h_look
+          exact RegisterBelow.mono
+            (Nat.le_trans h_pregmono (Nat.le_succ _)) (h_prb _ _ _ h_cs)
+      · simp at h_w
+
+
+/-- REGIME C-deref, CLOSED: constant write to a NONZERO-offset projection
+    off a DEREFERENCED load spine — `(*p).f := v` and every all-deref
+    deepening of `p`. The spine mother lemma delivers the loaded pointer;
+    the C1 pattern finishes: `Borrow(Mut); CStore; Die` with the parent
+    tag coming from the LOADED pointer (via `MemValSim`) instead of a
+    local binding. -/
+theorem const_write_proj_deref_simulation
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_pre s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {σ : LayoutTy}
+    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {path : PathTo σ obseq.LayoutTy.NatL}
+    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
+    (compProg : oseair.Prog)
+    (v : Word)
+    (h_spine : LoadSpine P)
+    (h_off : pathOffset path ≠ 0)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj (.deref P) path) (.constInit v))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj (.deref P) path) (.constInit v))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
+    (h_prep : mirlite.preparePlaceAssign MSB s_mir (.proj (.deref P) path) = .ok s_pre)
+    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.proj (.deref P) path)
+      = .ok (resolved, permsD))
+    (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
+                 MSB { s_pre with perms := permsD } resolved
+                 [mirlite.MemValue.word v] rfl = .ok s_mir') :
+    ∃ (s_osea' : oseair.State MSB) (n : Nat),
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
+  have h_pre : s_pre = s_mir := by
+    simp only [mirlite.preparePlaceAssign] at h_prep
+    split at h_prep
+    · cases h_prep; rfl
+    · simp [mirlite.allocateRoot] at h_prep
+  rw [h_pre] at h_res h_write
+  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
+    h_alloc, h_unmap, h_prb⟩ := h_inv
+  simp only [mirlite.resolvePlaceAcc] at h_res
+  cases h_dres : mirlite.resolvePlaceAcc MSB s_mir P with
+  | error e => simp [h_dres] at h_res
+  | ok pr =>
+  obtain ⟨pRes, permsP⟩ := pr
+  simp only [h_dres] at h_res
+  by_cases h_qb : pRes.addr < pRes.allocBase ∨
+      pRes.addr ≥ pRes.allocBase + pRes.allocSize
+  · rw [if_pos h_qb] at h_res
+    exact absurd h_res (by simp)
+  · rw [if_neg h_qb] at h_res
+    cases h_qread : MSB.read permsP pRes.addr 1 pRes.tag with
+    | error e => simp [h_qread] at h_res
+    | ok permsP' =>
+    simp only [h_qread] at h_res
+    cases h_qfind : mirlite.Mem.find? s_mir.mem pRes.addr with
+    | none => simp [h_qfind] at h_res
+    | some mv =>
+    cases mv with
+    | undef => simp [h_qfind] at h_res
+    | word w => simp [h_qfind] at h_res
+    | ptrVal b o sz t =>
+    simp only [h_qfind, Except.ok.injEq, Prod.mk.injEq] at h_res
+    obtain ⟨h_r1, h_r2⟩ := h_res
+    subst h_r1
+    subst h_r2
+    have h_resolved : ∃ r0, mirlite.resolvePlace? s_mir (.proj (.deref P) path)
+        = some r0 := by
+      simp only [mirlite.preparePlaceAssign] at h_prep
+      split at h_prep
+      · rename_i r0 h_r0
+        exact ⟨r0, h_r0⟩
+      · simp [mirlite.allocateRoot] at h_prep
+    obtain ⟨r0, h_resolved⟩ := h_resolved
+    have h_mapped : PlaceInputsMapped csPrefix (Place.proj (Place.deref P) path) :=
+      placeInputsMapped_of_localBindingSim_resolvePlace h_lbs h_resolved
+    have h_root := ensurePlaceRoot_run_eq_of_mapped h_mapped
+    obtain ⟨dstOut, h_dstOut⟩ := placeToRegChecked_ok_of_placeInputsMapped
+      (cs := csPrefix) (kind := RefKind.Mut)
+      (p := .proj (.deref P) path) h_mapped
+    obtain ⟨stmtOutC, h_stmtOutC⟩ : ∃ so, CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.proj (.deref P) path) (.constInit v)))
+        csPrefix = Except.ok so :=
+      ⟨{ result := (),
+         evidence := StmtEvidence.assignPlace (.proj (.deref P) path) (.constInit v)
+           dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
+       by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
+    obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
+    have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
+      (base := .deref P) path (fun _ _ _ h => by cases h)
+    have h_bindD : placeToRegChecked (Γ := Γ) RefKind.Mut (.deref P)
+        = (do
+            let ptrOut ← placeToRegChecked RefKind.Shared P
+            let ptrRes := ptrOut.result
+            let loadedReg ← CheckedCompilerM.lift freshRegM
+            let _ ← CheckedCompilerM.lift
+              (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+            let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+            pure {
+              result := { reg := loadedReg, cleanup := [] },
+              evidence := PlaceToRegEvidence.deref P ptrRes loadedReg ptrOut.evidence
+            }) := by simp only [placeToRegChecked]
+    have h_incr0 : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix)
+        (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) csPrefix) := by
+      rw [h_bindD, CheckedCompilerM.run_bind]
+      cases h : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P) csPrefix with
+      | ok a => exact CheckedCompilerM.incr _ _
+      | error e => exact StateIncr.refl _
+    have h_incr1 : StateIncr
+        (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) csPrefix)
+        (CheckedCompilerM.run (placeToRegChecked RefKind.Mut
+          (.proj (.deref P) path)) csPrefix) := by
+      rw [h_proj_eq, CheckedCompilerM.run_bind]
+      cases h : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) csPrefix with
+      | ok a => exact CheckedCompilerM.incr _ _
+      | error e => exact StateIncr.refl _
+    have h_stmt_bind : compileStmtChecked (Stmt.assign (.proj (.deref P) path) (.constInit v))
+        = (do
+            let _ ← CheckedCompilerM.lift (ensurePlaceRoot (Place.proj (Place.deref P) path))
+            let dstOut ← placeToRegChecked RefKind.Mut (.proj (.deref P) path)
+            let dstRes := dstOut.result
+            let rhsOut ← compileRExprToChecked dstRes.reg (.constInit v)
+            let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
+            pure {
+              result := (),
+              evidence := StmtEvidence.assignPlace (.proj (.deref P) path) (.constInit v)
+                dstRes dstOut.evidence rhsOut.evidence
+            }) := rfl
+    have h_incr2 : StateIncr
+        (CheckedCompilerM.run (placeToRegChecked RefKind.Mut
+          (.proj (.deref P) path)) csPrefix)
+        (CheckedCompilerM.run
+          (compileStmtChecked (Stmt.assign (.proj (.deref P) path) (.constInit v))) csPrefix) := by
+      rw [h_stmt_bind]
+      rw [CheckedCompilerM.run_bind]
+      simp only [CheckedCompilerM.value_lift, CheckedCompilerM.run_lift, h_root]
+      rw [CheckedCompilerM.run_bind]
+      cases h : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Mut (.proj (.deref P) path)) csPrefix with
+      | ok a => exact CheckedCompilerM.incr _ _
+      | error e => exact StateIncr.refl _
+    have h_instP : ∀ q' instr,
+        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextLabel →
+        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).code q' = some instr →
+        compProg q' = some instr := by
+      intro q' instr h_lt h_code
+      have h_incrP := StateIncr.trans h_incr0 (StateIncr.trans h_incr1 h_incr2)
+      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+      · rw [h_run0 csPrefix]
+        exact Nat.lt_of_lt_of_le h_lt h_incrP.nextLabel_le
+      · rw [h_run0 csPrefix, h_incrP.code_eq q' h_lt]
+        exact h_code
+    obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
+      h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
+      h_pprm, h_pregmono, h_plabmono⟩ :=
+      loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
+        pRes permsP h_dres h_lbs h_prb h_sms h_psim h_pc h_instP
+    have h_stmtRunC := compileStmt_proj_deref_run (cs := csPrefix) (pOut := pOut)
       v h_off h_root h_pval h_pclean
+    have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
     have h_len4 : ((emit (emit (emit
         { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1 }
             [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg) (Rhs.Load obseq.TyVal.PTy pOut.result.reg)]) with
@@ -1589,8 +1970,7 @@ theorem const_write_proj_deref_simulation
           exact ⟨by rw [h_sm]; exact hs, by rw [h_pf]; exact hp,
                  by rw [h_ex]; exact he, Nat.le_trans hn h_ntle⟩
         refine ⟨_, n1 + 1 + 1 + 1 + 1, h_run, ?_⟩
-        refine ⟨CheckedCompilerM.run
-          (compileStmtChecked (Stmt.assign (.proj (.deref P) path) (.constInit v))) csPrefix,
+        refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
           ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, ?_, h_psim4,
           h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
         · show s_mid.pc + 1 + 1 + 1 + 1 = _
@@ -1677,8 +2057,18 @@ theorem const_write_proj_zero_simulation
     (h_off : pathOffset path = 0)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc
-      = some (.assign (.proj (.local loc) path) (.constInit v)))
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj (.local loc) path) (.constInit v))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj (.local loc) path) (.constInit v))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_env : mirlite.Env.lookup s_mir.env loc = some binding)
     (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL) MSB s_mir
         { addr := binding.addr + pathOffset path, tag := binding.tag,
@@ -1711,9 +2101,10 @@ theorem const_write_proj_zero_simulation
         (p := Place.proj (Place.local loc) path) h_mapped
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
         placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-      have h_stmtRun := compileStmt_proj_zero_run (cs := csPrefix) (baseOut := baseOut)
+      have h_stmtRunC := compileStmt_proj_zero_run (cs := csPrefix) (baseOut := baseOut)
         (fun _ _ _ h => by cases h) v h_off h_root h_brun h_bval h_bres
-      obtain ⟨stmtOut, h_stmtOut⟩ :
+      have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
+      obtain ⟨stmtOutC, h_stmtOutC⟩ :
           ∃ so, CheckedCompilerM.value
             (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v)))
             csPrefix = Except.ok so := by
@@ -1725,6 +2116,7 @@ theorem const_write_proj_zero_simulation
                    (.constInit v) dstOut.result dstOut.evidence
                    (RExprToEvidence.constInit v) },
                by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
+      obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
       have h_code : compProg s_osea.pc
           = some (Instr.CStore obseq.TyVal.NatTy [Val.Dat v] reg) := by
         rw [h_pc]
@@ -1754,8 +2146,7 @@ theorem const_write_proj_zero_simulation
       have h_run := runN_CStore_step compProg s_osea _
         obseq.TyVal.NatTy [Val.Dat v] reg h_code rfl h_wtp
       refine ⟨_, 1, h_run, ?_⟩
-      refine ⟨CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v))) csPrefix,
+      refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
         ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim',
         h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
       · show s_osea.pc + 1 = _
@@ -1805,8 +2196,21 @@ theorem const_write_proj_offset_simulation
     (h_off : pathOffset path ≠ 0)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc
-      = some (.assign (.proj (.local loc) path) (.constInit v)))
+    -- the PROGRAM's statement may be a reassociation-equivalent spelling
+    -- of the canonical one (nested projections flatten in the lowering);
+    -- only its compiled RUN/VALUE matter
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj (.local loc) path) (.constInit v))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj (.local loc) path) (.constInit v))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_env : mirlite.Env.lookup s_mir.env loc = some binding)
     (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL) MSB s_mir
         { addr := binding.addr + pathOffset path, tag := binding.tag,
@@ -1853,9 +2257,10 @@ theorem const_write_proj_offset_simulation
         (p := Place.proj (Place.local loc) path) h_mapped
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
         placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-      have h_stmtRun := compileStmt_proj_offset_run (cs := csPrefix) (baseOut := baseOut)
+      have h_stmtRunC := compileStmt_proj_offset_run (cs := csPrefix) (baseOut := baseOut)
         (fun _ _ _ h => by cases h) v h_off h_root h_brun h_bval h_bres
-      obtain ⟨stmtOut, h_stmtOut⟩ :
+      have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
+      obtain ⟨stmtOutC, h_stmtOutC⟩ :
           ∃ so, CheckedCompilerM.value
             (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v)))
             csPrefix = Except.ok so := by
@@ -1867,6 +2272,7 @@ theorem const_write_proj_offset_simulation
                    (.constInit v) dstOut.result dstOut.evidence
                    (RExprToEvidence.constInit v) },
                by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
+      obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
       have h_len3 : ((emit (emit (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
           [Instr.Assgn (Register.R csPrefix.nextReg)
             (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL) reg (pathOffset path))])
@@ -1998,8 +2404,7 @@ theorem const_write_proj_offset_simulation
         obtain ⟨hs, hp, he, hn⟩ := h_psim'
         exact ⟨by rw [h_sm]; exact hs, by rw [h_pf]; exact hp,
                by rw [h_ex]; exact he, Nat.le_trans hn h_ntle⟩
-      refine ⟨CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v))) csPrefix,
+      refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
         ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
         h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
       · show s_osea.pc + 1 + 1 + 1 = _
@@ -2048,7 +2453,18 @@ theorem const_write_deref_spine_simulation
     (h_spine : LoadSpine ptrPlace)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc = some (.assign (.deref ptrPlace) (.constInit v)))
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.deref ptrPlace) (.constInit v))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.deref ptrPlace) (.constInit v))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_prep : mirlite.preparePlaceAssign MSB s_mir (.deref ptrPlace) = .ok s_pre)
     (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.deref ptrPlace) = .ok (resolved, permsD))
     (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
@@ -2073,13 +2489,14 @@ theorem const_write_deref_spine_simulation
   have h_root := ensurePlaceRoot_run_eq_of_mapped h_mapped
   obtain ⟨dstOut, h_dstOut⟩ := placeToRegChecked_ok_of_placeInputsMapped
     (cs := csPrefix) (kind := RefKind.Mut) (p := .deref ptrPlace) h_mapped
-  obtain ⟨stmtOut, h_stmtOut⟩ : ∃ so, CheckedCompilerM.value
+  obtain ⟨stmtOutC, h_stmtOutC⟩ : ∃ so, CheckedCompilerM.value
       (compileStmtChecked (Stmt.assign (.deref ptrPlace) (.constInit v)))
       csPrefix = Except.ok so :=
     ⟨{ result := (),
        evidence := StmtEvidence.assignPlace (.deref ptrPlace) (.constInit v)
          dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
      by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
+  obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
   -- unfold one resolveAcc level
   simp only [mirlite.resolvePlaceAcc] at h_res
   cases h_qres : mirlite.resolvePlaceAcc MSB s_mir ptrPlace with
@@ -2157,8 +2574,9 @@ theorem const_write_deref_spine_simulation
       intro q' instr h_lt h_code
       have h_incrP := StateIncr.trans h_incr0 h_incr1
       refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrP.nextLabel_le
-      · rw [h_incrP.code_eq q' h_lt]
+      · rw [h_run0 csPrefix]
+        exact Nat.lt_of_lt_of_le h_lt h_incrP.nextLabel_le
+      · rw [h_run0 csPrefix, h_incrP.code_eq q' h_lt]
         exact h_code
     -- run the spine
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
@@ -2166,7 +2584,8 @@ theorem const_write_deref_spine_simulation
       h_pprm, h_pregmono, h_plabmono⟩ :=
       loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
         pRes permsP h_qres h_lbs h_prb h_sms h_psim h_pc h_instP
-    have h_stmtRun := compileStmt_deref_run v h_root h_pval h_pclean
+    have h_stmtRunC := compileStmt_deref_run v h_root h_pval h_pclean
+    have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
     -- pointer-place bounds from the dereferenceable check
     have h_cancel : pRes.allocBase + (pRes.addr - pRes.allocBase) = pRes.addr := by
       grind
@@ -2280,8 +2699,7 @@ theorem const_write_deref_spine_simulation
           (oseair_runN_add (n1 + 1) 1 s_osea compProg _
             ((oseair_runN_add n1 1 s_osea compProg s_mid h_prun).trans h_run1)).trans h_run2
         refine ⟨_, n1 + 1 + 1, h_run, ?_⟩
-        refine ⟨CheckedCompilerM.run
-            (compileStmtChecked (Stmt.assign (.deref ptrPlace) (.constInit v))) csPrefix,
+        refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
             ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
             h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
         · -- label agreement
@@ -2409,13 +2827,153 @@ theorem const_write_deref_nonspine_simulation
           exact const_write_deref_deep_residual compProg v h_comp h_inv h_stmt
             h_prep h_res h_write
 
-/-- RESIDUAL (sorried): a projected destination whose BASE is itself a
-    projection or a dereference. The base's own lowering may emit code and
-    carry its own cleanup (`baseRes.cleanup ++ [(tmpReg, …)]`), so the
-    fragment is no longer three instructions and the `Die` sequence is a
-    list rather than one instruction — `runN_cleanupInstrs` is the piece
-    that handles that, and composing it with BRIDGE 1 per level is the
-    work owed. A deref base additionally needs the load spine. -/
+/-! ## Flattening transfer: the two spellings of a nested-projection
+    assignment compile to the SAME run (the lowering reassociates), and
+    the composed spelling's success transfers back to the nested one. -/
+
+theorem compileStmt_assign_proj_assoc_run
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (p : PathTo σ2 τ)
+    (rhs : RExpr Γ τ) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked (.assign (.proj (.proj b q) p) rhs)) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked (.assign (.proj b (q.append p)) rhs)) cs := by
+  have h_bind_n : compileStmtChecked (.assign (.proj (.proj b q) p) rhs)
+      = (do
+          let _ ← CheckedCompilerM.lift
+            (ensurePlaceRoot (Place.proj (Place.proj b q) p))
+          let pre ← compileRExprPreChecked rhs
+          let dstOut ← placeToRegChecked RefKind.Mut (.proj (.proj b q) p)
+          let dstRes := dstOut.result
+          let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
+          pure {
+            result := (),
+            evidence := StmtEvidence.assignPlace (.proj (.proj b q) p) rhs dstRes
+              dstOut.evidence (pre.ev dstRes.reg)
+          }) := rfl
+  have h_bind_c : compileStmtChecked (.assign (.proj b (q.append p)) rhs)
+      = (do
+          let _ ← CheckedCompilerM.lift
+            (ensurePlaceRoot (Place.proj b (q.append p)))
+          let pre ← compileRExprPreChecked rhs
+          let dstOut ← placeToRegChecked RefKind.Mut (.proj b (q.append p))
+          let dstRes := dstOut.result
+          let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
+          pure {
+            result := (),
+            evidence := StmtEvidence.assignPlace (.proj b (q.append p)) rhs dstRes
+              dstOut.evidence (pre.ev dstRes.reg)
+          }) := rfl
+  rw [h_bind_n, h_bind_c]
+  have h_ens : (ensurePlaceRoot (Place.proj (Place.proj b q) p) : CompilerM Unit)
+      = ensurePlaceRoot (Place.proj b (q.append p)) := rfl
+  rw [h_ens]
+  rw [CheckedCompilerM.run_bind, CheckedCompilerM.run_bind]
+  simp only [CheckedCompilerM.value_lift, CheckedCompilerM.run_lift]
+  rw [CheckedCompilerM.run_bind, CheckedCompilerM.run_bind]
+  cases h_pre : CheckedCompilerM.value (compileRExprPreChecked rhs)
+      ((ensurePlaceRoot (Place.proj b (q.append p))).run cs) with
+  | error e => rfl
+  | ok pre =>
+      simp only
+      rw [CheckedCompilerM.run_bind, CheckedCompilerM.run_bind,
+        placeToRegChecked_proj_assoc_eq q p,
+        CheckedCompilerM.run_bind, CheckedCompilerM.value_bind]
+      cases h_dst : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Mut (.proj b (q.append p)))
+          (CheckedCompilerM.run (compileRExprPreChecked rhs)
+            ((ensurePlaceRoot (Place.proj b (q.append p))).run cs)) with
+      | error e => rfl
+      | ok out =>
+          simp only [CheckedCompilerM.value_pure, CheckedCompilerM.run_pure]
+          rfl
+
+/-- The composed spelling's lowering success transfers to the nested
+    spelling. -/
+theorem compileStmt_assign_proj_assoc_value
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (p : PathTo σ2 τ)
+    (rhs : RExpr Γ τ) (cs : CompilerState) {so} :
+    CheckedCompilerM.value
+        (compileStmtChecked (.assign (.proj b (q.append p)) rhs)) cs
+      = Except.ok so →
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked (.assign (.proj (.proj b q) p) rhs)) cs
+      = Except.ok so' := by
+  intro h
+  have h_run := compileStmt_assign_proj_assoc_run b q p rhs cs
+  -- value follows the same bind spine; mirror the run proof
+  revert h
+  have h_bind_n : compileStmtChecked (.assign (.proj (.proj b q) p) rhs)
+      = (do
+          let _ ← CheckedCompilerM.lift
+            (ensurePlaceRoot (Place.proj (Place.proj b q) p))
+          let pre ← compileRExprPreChecked rhs
+          let dstOut ← placeToRegChecked RefKind.Mut (.proj (.proj b q) p)
+          let dstRes := dstOut.result
+          let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
+          pure {
+            result := (),
+            evidence := StmtEvidence.assignPlace (.proj (.proj b q) p) rhs dstRes
+              dstOut.evidence (pre.ev dstRes.reg)
+          }) := rfl
+  have h_bind_c : compileStmtChecked (.assign (.proj b (q.append p)) rhs)
+      = (do
+          let _ ← CheckedCompilerM.lift
+            (ensurePlaceRoot (Place.proj b (q.append p)))
+          let pre ← compileRExprPreChecked rhs
+          let dstOut ← placeToRegChecked RefKind.Mut (.proj b (q.append p))
+          let dstRes := dstOut.result
+          let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
+          pure {
+            result := (),
+            evidence := StmtEvidence.assignPlace (.proj b (q.append p)) rhs dstRes
+              dstOut.evidence (pre.ev dstRes.reg)
+          }) := rfl
+  rw [h_bind_n, h_bind_c]
+  have h_ens : (ensurePlaceRoot (Place.proj (Place.proj b q) p) : CompilerM Unit)
+      = ensurePlaceRoot (Place.proj b (q.append p)) := rfl
+  rw [h_ens]
+  rw [CheckedCompilerM.value_bind, CheckedCompilerM.value_bind]
+  simp only [CheckedCompilerM.value_lift, CheckedCompilerM.run_lift]
+  rw [CheckedCompilerM.value_bind, CheckedCompilerM.value_bind]
+  cases h_pre : CheckedCompilerM.value (compileRExprPreChecked rhs)
+      ((ensurePlaceRoot (Place.proj b (q.append p))).run cs) with
+  | error e => intro h; simp at h
+  | ok pre =>
+      simp only
+      rw [CheckedCompilerM.value_bind,
+        placeToRegChecked_proj_assoc_eq q p,
+        CheckedCompilerM.value_bind, CheckedCompilerM.value_bind,
+        CheckedCompilerM.run_bind]
+      cases h_dst : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Mut (.proj b (q.append p)))
+          (CheckedCompilerM.run (compileRExprPreChecked rhs)
+            ((ensurePlaceRoot (Place.proj b (q.append p))).run cs)) with
+      | error e => intro h; simp at h
+      | ok out =>
+          simp only [CheckedCompilerM.value_pure, CheckedCompilerM.run_pure]
+          intro h
+          exact ⟨_, rfl⟩
+
+/-- RESIDUAL (sorried), NARROWED 2026-08-29: after the flattening
+    recursion (nested projection towers reassociate on BOTH machines and
+    recurse into the closed leaves, `stmt0`-threaded) and the zero-offset
+    deref leaf, what remains routed here:
+    - UNBOUND roots (regime-B composition: `allocateRoot` + the closed
+      proj endgames on the fresh block);
+    - NON-SPINE pointer chains (projections inside the pointer place —
+      the deep-chain class shared with `const_write_deref_deep_residual`,
+      wanting the pending-cleanup spine generalization). -/
 theorem const_write_proj_nonlocal_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -2427,7 +2985,18 @@ theorem const_write_proj_nonlocal_residual
     (v : Word)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc = some (.assign (.proj base path) (.constInit v)))
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj base path) (.constInit v))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj base path) (.constInit v))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_prep : mirlite.preparePlaceAssign MSB s_mir (.proj base path) = .ok s_pre)
     (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.proj base path) = .ok (resolved, permsD))
     (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
@@ -2457,7 +3026,18 @@ theorem const_write_proj_simulation
     (v : Word)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc = some (.assign (.proj base path) (.constInit v)))
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj base path) (.constInit v))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj base path) (.constInit v))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_prep : mirlite.preparePlaceAssign MSB s_mir (.proj base path) = .ok s_pre)
     (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.proj base path) = .ok (resolved, permsD))
     (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
@@ -2468,12 +3048,12 @@ theorem const_write_proj_simulation
       TagRenameIncr ρt ρt' ∧
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
-  cases base with
+  induction base with
   | «local» loc =>
       cases h_env : mirlite.Env.lookup s_mir.env loc with
       | none =>
           exact const_write_proj_nonlocal_residual compProg v h_comp h_inv h_stmt
-            h_prep h_res h_write
+            h_run0 h_val0 h_prep h_res h_write
       | some binding =>
           -- the destination root is bound, so prepare is a no-op and the
           -- projected place resolves to base + offset
@@ -2490,31 +3070,51 @@ theorem const_write_proj_simulation
           by_cases h_off : pathOffset path = 0
           · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
               const_write_proj_zero_simulation compProg v h_off h_comp h_inv h_stmt
+                h_run0 h_val0
                 h_env h_write
             exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
               h_run, h_inv'⟩
           · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
               const_write_proj_offset_simulation compProg v h_off h_comp h_inv h_stmt
+                h_run0 h_val0
                 h_env h_write
             exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
               h_run, h_inv'⟩
-  | proj b p =>
-      exact const_write_proj_nonlocal_residual compProg v h_comp h_inv h_stmt
-        h_prep h_res h_write
+  | proj b q ih =>
+      -- FLATTEN one level: the lowering reassociates, the source cannot
+      -- tell the two spellings apart, and the run/value transfer keeps
+      -- the PROGRAM's statement (stmt0) fixed through the recursion
+      refine ih
+        (fun cs => (h_run0 cs).trans
+          (compileStmt_assign_proj_assoc_run b q path (.constInit v) cs))
+        (fun cs so h => by
+          obtain ⟨so', h'⟩ :=
+            compileStmt_assign_proj_assoc_value b q path (.constInit v) cs h
+          exact h_val0 cs so' h')
+        ?_ ?_
+      · rw [← preparePlaceAssign_proj_assoc b q path]
+        exact h_prep
+      · rw [← resolvePlaceAcc_proj_assoc b q path]
+        exact h_res
   | deref pp =>
       by_cases h_sp : LoadSpine pp
       · by_cases h_o : pathOffset path = 0
-        · exact const_write_proj_nonlocal_residual compProg v h_comp h_inv h_stmt
-            h_prep h_res h_write
+        · -- CLOSED: `(*p).f := v` at ZERO offset over any load spine
+          obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
+            const_write_proj_deref_zero_simulation compProg v h_sp h_o h_comp h_inv
+              h_stmt h_run0 h_val0 h_prep h_res h_write
+          exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
+            h_run, h_inv'⟩
         · -- CLOSED: `(*p).f := v` over any load spine
           -- (the resolution shape matches after unfolding one proj level)
           obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
             const_write_proj_deref_simulation compProg v h_sp h_o h_comp h_inv h_stmt
+              h_run0 h_val0
               h_prep h_res h_write
           exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
             h_run, h_inv'⟩
       · exact const_write_proj_nonlocal_residual compProg v h_comp h_inv h_stmt
-          h_prep h_res h_write
+          h_run0 h_val0 h_prep h_res h_write
 
 /-- Regime D, decomposed by the pointer place: load spines (all-deref
     chains over a local — every depth) are CLOSED via
@@ -2545,6 +3145,7 @@ theorem const_write_deref_simulation
   by_cases h_spine : LoadSpine ptrPlace
   · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
       const_write_deref_spine_simulation compProg v h_spine h_comp h_inv h_stmt
+        (fun _ => rfl) (fun _ so h => ⟨so, h⟩)
         h_prep h_res h_write
     exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
       h_run, h_inv'⟩
@@ -2605,6 +3206,7 @@ theorem const_write_resolved_simulation
             h_env h_prep h_res h_write
   | proj base path =>
       exact const_write_proj_simulation compProg v h_comp h_inv h_stmt
+        (fun _ => rfl) (fun _ so h => ⟨so, h⟩)
         h_prep h_res h_write
   | deref ptrPlace =>
       exact const_write_deref_simulation compProg v h_comp h_inv h_stmt

@@ -886,6 +886,34 @@ def d37_copy_through_pointer : IO Unit :=
      .assign tA (.copy (.deref pA))]
     .ok "d37 copy through pointer"
 
+/-- Differential: a NESTED projection tower write — `s.1.0 := v` over a
+    pair-of-pairs — exercising the flattening recursion (the lowering
+    reassociates; the source composes offsets). -/
+def nestL := obseq.LayoutTy.TupL [pairL, pairL]
+def ΓD38 : Ctx := [nestL]
+def sD38 : Place ΓD38 nestL := .local ⟨⟨0, by decide⟩, rfl⟩
+
+def d38_nested_proj_write : IO Unit :=
+  expectDiff ΓD38
+    [.assign (.proj (.proj sD38 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨0, by decide⟩ .nil)) (.constInit 9)]
+    .ok "d38 nested proj write"
+
+/-- Differential: a ZERO-offset field write through a pointer —
+    `(*p).0 := v` — the `[Load; CStore]` fragment
+    (`const_write_proj_deref_zero_simulation`). -/
+def ΓD39 : Ctx := [pairL, .PtrL pairL]
+def tD39 : Place ΓD39 pairL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD39 : Place ΓD39 (.PtrL pairL) := .local ⟨⟨1, by decide⟩, rfl⟩
+
+def d39_deref_field_zero_write : IO Unit :=
+  expectDiff ΓD39
+    [.assign (.proj tD39 (.field ⟨0, by decide⟩ .nil)) (.constInit 1),
+     .assign (.proj tD39 (.field ⟨1, by decide⟩ .nil)) (.constInit 2),
+     .assign pD39 (.ref .Mut false [] tD39),
+     .assign (.proj (.deref pD39) (.field ⟨0, by decide⟩ .nil)) (.constInit 7)]
+    .ok "d39 deref field zero write"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -936,7 +964,9 @@ def allTests : List (IO Unit) := [
   d34_deref_dst_temp_killed_by_rhs_spine,
   d35_self_copy_is_ub,
   d36_field_copy_nonzero_offset,
-  d37_copy_through_pointer]
+  d37_copy_through_pointer,
+  d38_nested_proj_write,
+  d39_deref_field_zero_write]
 
 def runAll : IO Unit := do
   allTests.forM id

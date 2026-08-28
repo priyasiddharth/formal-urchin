@@ -86,6 +86,50 @@ theorem resolvePlace?_of_resolveAcc
                         simp only [mirlite.resolvePlace?, ih h_b, h_find]
                         rw [h.1]
 
+/-! ## Flattening: nested projections compose, on BOTH machines
+
+The compiler reassociates `.proj (.proj b q) p` to `.proj b (q.append
+p)` (GEP of exactly the final field). These lemmas give the SOURCE-side
+mirror: resolution and preparation cannot tell the two spellings apart,
+and a ZERO-offset projection resolves exactly as its base. -/
+
+theorem resolvePlace?_proj_assoc
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ}
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (p : PathTo σ2 τ) :
+    mirlite.resolvePlace? s (.proj (.proj b q) p)
+      = mirlite.resolvePlace? s (.proj b (q.append p)) := by
+  simp only [mirlite.resolvePlace?]
+  cases mirlite.resolvePlace? s b with
+  | none => rfl
+  | some res =>
+      simp only [PathTo.offset_append]
+      rw [Nat.add_assoc]
+
+theorem resolvePlaceAcc_proj_assoc
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ}
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (p : PathTo σ2 τ) :
+    mirlite.resolvePlaceAcc M s (.proj (.proj b q) p)
+      = mirlite.resolvePlaceAcc M s (.proj b (q.append p)) := by
+  simp only [mirlite.resolvePlaceAcc]
+  cases mirlite.resolvePlaceAcc M s b with
+  | error e => rfl
+  | ok pr =>
+      simp only [PathTo.offset_append]
+      rw [Nat.add_assoc]
+
+theorem preparePlaceAssign_proj_assoc
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ}
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (p : PathTo σ2 τ) :
+    mirlite.preparePlaceAssign M s (.proj (.proj b q) p)
+      = mirlite.preparePlaceAssign M s (.proj b (q.append p)) := by
+  simp only [mirlite.preparePlaceAssign, resolvePlace?_proj_assoc b q p]
+  cases mirlite.resolvePlace? s (.proj b (q.append p)) with
+  | none => simp [mirlite.allocateRoot]
+  | some r => rfl
+
 /-- A successful access-resolution implies the place's root local is bound,
     hence (under `LocalBindingSim`) compiler-mapped. -/
 theorem placeInputsMapped_of_resolveAcc

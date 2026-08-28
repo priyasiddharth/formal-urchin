@@ -4,6 +4,37 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-29 (night) — Towers Flatten: the Statement-Transfer Recursion
+
+Forty-sixth increment. Nested projection destinations — `s.f.g := v` at any
+depth — close by recursion, and the instrument is a small abstraction with a
+large yield: the closed leaves no longer insist on the program's statement
+being their canonical spelling. Each takes an opaque `stmt0` plus two
+transfer functions saying its compiled run and value agree with the
+canonical form. The program may say `s.f.g` while the lowering — which
+reassociates projections into one GEP of the final field — compiles what is
+textually `s.(f++g)`; the recursion flattens one level per step, composing
+transfers, while `prog.get?` keeps pointing at the spelling the program
+actually wrote.
+
+The source side mirrors the reassociation in three small lemmas — resolution
+and preparation cannot tell the spellings apart, offsets composing by
+`offset_append` — and the compiled side in a run/value transfer proved by
+bind-peeling. On top of the recursion, the zero-offset deref leaf closed by
+stitching: C-deref's inversion glued to D-spine's endgame, since a zero-offset
+projection of a loaded pointer is just the loaded register again.
+
+With that, every projection tower over a bound local or a load-spine pointer
+is closed at every offset and depth. The const-write projection residual now
+names exactly two classes: unbound roots and non-spine pointer chains — and
+the same statement-transfer recipe is ready for ref and copy's non-local
+destination arms.
+
+Units 17/17 + 52/52 (d38 nested tower, d39 zero-offset through-pointer),
+suite pass 82 | fail 0 of 123.
+
+---
+
 ## 2026-08-29 (later) — Copies Through Pointers, and the Read-Side Twin
 
 Forty-fifth increment. `dst := copy *p` closes for every load spine, and the

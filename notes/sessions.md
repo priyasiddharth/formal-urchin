@@ -585,3 +585,17 @@ axiom audit exact.
 **Next-session pickup:** non-local-dst BRIDGE-1 compositions (largest
 remaining class, shared across all three dispatchers), or const_write
 deref-deep (pending-cleanup spine generalization).
+
+## 2026-08-29 (cont. 2)
+**Session:** (terminal, continued) — non-local dst class, part 1
+**Theme:** the flattening recursion (stmt0-generalized leaves +
+reassociation mirrored source-side) + the zero-offset deref leaf;
+const_write's proj residual down to unbound roots + non-spine chains.
+**Key outputs:** stmt0 triples on C0/C1/C-deref/D-spine;
+resolvePlaceAcc/resolvePlace?/prepare _proj_assoc (spine.lean);
+compileStmt_assign_proj_assoc_run/_value; const_write_proj_simulation
+as base-induction; const_write_proj_deref_zero_simulation (+fragment);
+d38/d39 (52/52). Audit entries 2 updated.
+**Status:** complete; all green; audit at 4.
+**Next-session pickup:** ref/copy non-local-dst arms (same recipe:
+stmt0-generalize + flatten), or regime-B unbound roots.

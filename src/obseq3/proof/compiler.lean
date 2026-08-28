@@ -84,11 +84,18 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
    flattening-transfer, zero-offset pointer fields, or a fresh root. The
    general chain needs the pending-cleanup generalization of
    `loadSpine_lowering_sim` (keystone refactor assessment).
-2. `const_write_proj_nonlocal_residual` — NARROWED 2026-08-27 (second
-   pass): the deref-base SPINE case with nonzero offset is CLOSED
-   (`const_write_proj_deref_simulation`); what remains is a nonspine or
-   zero-offset deref base, a proj base (assoc transfer), or an unbound
-   root.
+2. `const_write_proj_nonlocal_residual` — NARROWED 2026-08-29: the
+   FLATTENING RECURSION closes every nested projection tower — the
+   closed leaves (C0/C1/C-deref/C-deref-zero/D-spine) are generalized
+   over the PROGRAM's statement (`stmt0` + run/value transfer), the
+   lowering's reassociation is mirrored source-side
+   (`resolvePlaceAcc_proj_assoc` etc.), and
+   `const_write_proj_simulation` recurses on the base
+   (`compileStmt_assign_proj_assoc_run/_value`). The zero-offset
+   deref-base leaf (`const_write_proj_deref_zero_simulation`,
+   `[spine; Load; CStore]`) is CLOSED. Remaining: unbound roots
+   (regime-B composition) and non-spine pointer chains (the deep-chain
+   class, shared with residual 1).
 3. `copy_place_residual` — NARROWED 2026-08-29 (later): regimes L→L,
    P0→L, P→L (nonzero offset) and D→L (deref src through a load spine)
    are CLOSED (`copy_local_local_simulation`, `copy_proj_zero_simulation`,
