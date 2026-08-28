@@ -964,11 +964,8 @@ theorem const_write_deref_proj_simulation
     have h_le1 : binding.addr + 0 + pathOffset f
         + blockSize (obseq.LayoutTy.PtrL obseq.LayoutTy.NatL)
         ≤ binding.addr + blockSize σb := by
-      have h1 : binding.addr + pathOffset f < binding.addr + blockSize σb :=
-        Nat.lt_of_not_le (fun h => h_qb (Or.inr h))
       show binding.addr + 0 + pathOffset f + 1 ≤ binding.addr + blockSize σb
-      simp only [Nat.add_zero]
-      exact Nat.succ_le_of_lt h1
+      grind
     have h_entryS' : PtrRegisterEntry s_osea.reg bOut.result.reg binding.addr 0
         (blockSize σb) sTag := by
       rw [h_bres]
@@ -993,10 +990,7 @@ theorem const_write_deref_proj_simulation
         (Register.R csPrefix.nextReg) binding.addr (0 + pathOffset f)
         (blockSize σb) s_osea.perms.NextTag :=
       RegMap.lookup_insert_self _ _ _
-    have h_off_lt : 0 + pathOffset f < blockSize σb := by
-      have h1 : binding.addr + pathOffset f < binding.addr + blockSize σb :=
-        Nat.lt_of_not_le (fun h => h_qb (Or.inr h))
-      simpa using Nat.lt_of_add_lt_add_left h1
+    have h_off_lt : 0 + pathOffset f < blockSize σb := by grind
     have h_run2 := runN_Assgn_Load_ptr_step compProg
       { s_osea with
           perms := q1,
@@ -1420,15 +1414,9 @@ theorem const_write_proj_deref_simulation
         simpa [emit] using h
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_ppsim h_wf_t h_prt h_pnw h_qread
-    have h_ge : pRes.allocBase ≤ pRes.addr :=
-      Nat.le_of_not_lt (fun h => h_qb (Or.inl h))
-    have h_cancel : pRes.allocBase + (pRes.addr - pRes.allocBase) = pRes.addr :=
-      Nat.add_sub_cancel' h_ge
-    have h_lt_ab : pRes.addr < pRes.allocBase + pRes.allocSize :=
-      Nat.lt_of_not_le (fun h => h_qb (Or.inr h))
-    have h_offP : pRes.addr - pRes.allocBase < pRes.allocSize := by
-      rw [← h_cancel] at h_lt_ab
-      exact Nat.lt_of_add_lt_add_left h_lt_ab
+    have h_cancel : pRes.allocBase + (pRes.addr - pRes.allocBase) = pRes.addr := by
+      grind
+    have h_offP : pRes.addr - pRes.allocBase < pRes.allocSize := by grind
     have h_read_tgt' : MSB.read s_mid.perms
         (pRes.allocBase + (pRes.addr - pRes.allocBase)) 1 ptag = .ok p2 := by
       rw [h_cancel]; exact h_read_tgt
@@ -2180,15 +2168,9 @@ theorem const_write_deref_spine_simulation
         pRes permsP h_qres h_lbs h_prb h_sms h_psim h_pc h_instP
     have h_stmtRun := compileStmt_deref_run v h_root h_pval h_pclean
     -- pointer-place bounds from the dereferenceable check
-    have h_ge : pRes.allocBase ≤ pRes.addr :=
-      Nat.le_of_not_lt (fun h => h_qb (Or.inl h))
-    have h_cancel : pRes.allocBase + (pRes.addr - pRes.allocBase) = pRes.addr :=
-      Nat.add_sub_cancel' h_ge
-    have h_off : pRes.addr - pRes.allocBase < pRes.allocSize := by
-      have h : pRes.addr < pRes.allocBase + pRes.allocSize :=
-        Nat.lt_of_not_le (fun h => h_qb (Or.inr h))
-      rw [← h_cancel] at h
-      exact Nat.lt_of_add_lt_add_left h
+    have h_cancel : pRes.allocBase + (pRes.addr - pRes.allocBase) = pRes.addr := by
+      grind
+    have h_off : pRes.addr - pRes.allocBase < pRes.allocSize := by grind
     -- the final Load
     have h_code1 : compProg s_mid.pc = some (Instr.Assgn
         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared ptrPlace) csPrefix).nextReg)

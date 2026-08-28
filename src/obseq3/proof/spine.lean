@@ -178,15 +178,9 @@ theorem loadSpine_lowering_sim
               subst h_r1
               subst h_r2
               -- bounds of the pointer place, from the new dereferenceable check
-              have h_ge : qRes.allocBase ≤ qRes.addr :=
-                Nat.le_of_not_lt (fun h => h_qb (Or.inl h))
-              have h_lt_ab : qRes.addr < qRes.allocBase + qRes.allocSize :=
-                Nat.lt_of_not_le (fun h => h_qb (Or.inr h))
-              have h_cancel : qRes.allocBase + (qRes.addr - qRes.allocBase) = qRes.addr :=
-                Nat.add_sub_cancel' h_ge
-              have h_off : qRes.addr - qRes.allocBase < qRes.allocSize := by
-                rw [← h_cancel] at h_lt_ab
-                exact Nat.lt_of_add_lt_add_left h_lt_ab
+              have h_cancel : qRes.allocBase + (qRes.addr - qRes.allocBase) = qRes.addr := by
+                grind
+              have h_off : qRes.addr - qRes.allocBase < qRes.allocSize := by grind
               -- this level's do-block, definitionally
               have h_bind : placeToRegChecked (Γ := Γ) kind (.deref q)
                   = (do
