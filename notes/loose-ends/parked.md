@@ -448,3 +448,13 @@ field to "miri-verified".
 **Effort estimate:** ~1h once a Miri toolchain is available.
 **References:** conformance/README.md (Local witnesses section),
 journal/2026-08/2026-08-21-deref-read.md.
+
+## separation-invariant (PARKED 2026-08-28, user decision)
+`CompilerInv` lacks a separation conjunct (distinct bound locals
+disjoint), which makes every interleaved-keystone shape FALSE in
+overlap-junk states — countermodel in `copy_place_residual`'s
+docstring (nonzero-offset proj-src copy: target `Die` errs after the
+dst `useMut` pops the fresh tag). Adding it would unlock: nonzero-
+offset copy P-src, copy deref-src cleanup, and the non-local-dst
+residuals in ref/const_write. Cheap to carry (env unchanged ⇒
+transports verbatim; real work only in alloc/fresh-dst leaves).

@@ -455,3 +455,22 @@ splice (un-asserted replace); pipe-masked exit codes on the first two.
 **Status:** complete. Audit green: 4 axioms, 4 pinned sorries.
 **Next-session pickup:** unchanged — pending-cleanup spine
 generalization, or copy P-src.
+
+## 2026-08-28 (late night)
+**Session:** (terminal, continued) — copy P-src
+**Theme:** zero-offset proj-src copy closed; nonzero offset PROVEN
+blocked (countermodel), separation invariant proposed and parked.
+**Key outputs:**
+- `compileStmt_copy_proj_zero_run/_value`, `copy_proj_zero_simulation`
+  (P0→L: bare Memcpy, bounds by typing); dispatcher splits on
+  `pathOffset = 0`; d32 differential test (45/45).
+- The nonzero-offset countermodel: `[Borrow(Shared); Memcpy; Die]`
+  interleaves the dst useMut between BRIDGE-1S phases; overlap-junk
+  states make the leaf FALSE — needs a SEPARATION conjunct (parked,
+  user decision; would also unlock the non-local-dst residuals).
+- journal 2026-08-28-copy-p0-closed.md; audit entry 3 updated.
+**Critical corrections:** none.
+**Status:** complete. Audit at 4; suite 82/123, differential 83/0/0,
+units 16/16 + 45/45; axiom audit green.
+**Next-session pickup:** the separation conjunct if approved (biggest
+unlock), else the pending-cleanup spine generalization.

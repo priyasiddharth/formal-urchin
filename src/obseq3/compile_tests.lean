@@ -747,6 +747,21 @@ def d31_zst_reborrow : IO Unit :=
     .ok "d31 reborrow through a zero-sized pointee"
 
 
+/-- Differential: `y := copy s.0` — a ZERO-offset field copy is a bare
+    `Memcpy` off the base register (no Borrow, no Die); the source reads
+    the field range through the base tag. Covers regime P0→L
+    (`copy_proj_zero_simulation`). -/
+def ΓD32 : Ctx := [pairL, natL]
+def tupD32 : Place ΓD32 pairL := .local ⟨⟨0, by decide⟩, rfl⟩
+def yD32 : Place ΓD32 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+
+def d32_field_copy_zero_offset : IO Unit :=
+  expectDiff ΓD32
+    [.assign (.proj tupD32 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj tupD32 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign yD32 (.copy (.proj tupD32 (.field ⟨0, by decide⟩ .nil)))]
+    .ok "d32 field copy zero offset"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -791,7 +806,8 @@ def allTests : List (IO Unit) := [
   d28_parent_write_cellwise,
   d29_parent_write_kills_overlap,
   d30_reborrow_through_pointer,
-  d31_zst_reborrow]
+  d31_zst_reborrow,
+  d32_field_copy_zero_offset]
 
 def runAll : IO Unit := do
   allTests.forM id

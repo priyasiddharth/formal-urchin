@@ -89,16 +89,18 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
    (`const_write_proj_deref_simulation`); what remains is a nonspine or
    zero-offset deref base, a proj base (assoc transfer), or an unbound
    root.
-3. `copy_place_residual` — NARROWED 2026-08-28: `CompilerInv_step_copy`
-   is now a proved dispatcher; regime L→L (both bound locals, any
-   layout) is CLOSED by `copy_local_local_simulation` — one `Memcpy`,
-   its read/useMut transported by BRIDGE 3, the copied values related by
-   `readWordSeq_sim` (NO bidirectional memory relation was needed:
-   `MemValSim`'s undef row was weakened to undef-refines-anything, sound
-   because every source observer of a word errs on undef). Remaining:
-   non-local src (proj offset / deref spine with cleanup interleaving),
-   non-local or unbound dst (interleaved-keystone commutation /
-   regime-B composition, incl. the `dst = src` aliasing rebind).
+3. `copy_place_residual` — NARROWED 2026-08-28 (evening): regimes L→L
+   and P0→L (zero-offset proj src, `Memcpy` bounds by TYPING) are
+   CLOSED by `copy_local_local_simulation` /
+   `copy_proj_zero_simulation`; `MemValSim`'s undef row weakened to
+   undef-refines-anything made the bidirectional memory relation
+   unnecessary (`readWordSeq_sim`). Remaining, and now KNOWN-BLOCKED on
+   a missing SEPARATION invariant (distinct bound locals disjoint —
+   model decision): nonzero-offset proj src, whose
+   `[Borrow(Shared); Memcpy; Die]` fragment interleaves the dst
+   `useMut` between the BRIDGE-1S phases — an overlap-junk state makes
+   the leaf FALSE as stated (countermodel in the residual docstring).
+   Also: deref src (spine + same interleaving), non-local/unbound dst.
 4. `ref_place_residual` — NARROWED 2026-08-28: regimes P→L
    (`dst := &kind s.f`, bounds by TYPING) and D→L (`dst := &kind *p`
    over a load spine, bounds by the retag-dereferenceable EVENT check

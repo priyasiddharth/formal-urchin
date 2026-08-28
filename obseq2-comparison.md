@@ -4,6 +4,40 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-28 (late) — Zero-Offset Field Copies Close; a Countermodel Names the Next Invariant
+
+Fortieth increment. `dst := copy src.f` at zero offset is regime L→L with a
+wider source allocation — `placeToRegChecked` hands back the base register, so
+the fragment is the same lone `Memcpy`, and the source-side bounds check is
+paid by typing, precisely as C0 widened regime A. Closed in one sitting, with
+d32 covering it differentially.
+
+The nonzero-offset shape did not close, and the reason is worth the increment
+on its own: it *cannot* close as stated. Its fragment is
+`[Borrow(Shared); Memcpy; Die]`, and `Memcpy` is atomic — the destination
+`useMut` executes between the keystone's read and its `Die`. In any reachable
+state that's harmless, because the borrowed field and the destination local
+are disjoint. But `CompilerInv` has no separation conjunct, and in a junk
+state where two distinct locals overlap, a stack shaped `[.. tagD .. tagS]`
+lets the source's read and write both succeed while the target's `useMut`
+pops the fresh Shared out from under its `Die` — which demands its tag
+exactly on top, and errs. Target UB, source fine: the leaf is false. (Same-
+local aliasing is impossible — a `PathTo τ τ` would need a layout to contain
+itself — so this is purely the invariant-gap pattern again, the retag story's
+sibling. But where that gap closed at a typed *event*, this one is a property
+of reachable *states*, so the fix must be a new invariant conjunct.)
+
+The proposal, parked for a model decision: distinct bound locals occupy
+disjoint blocks. It transports verbatim through every leaf that doesn't touch
+the environment, costs real work only at allocation sites, and in exchange
+die↔useMut commute by cell disjointness — unlocking nonzero-offset copies,
+deref-src copy cleanup, and the interleaved-keystone residuals for non-local
+destinations across ref and const_write. One conjunct, three residual classes.
+
+Units 16/16 + 45/45, suite pass 82 | fail 0 of 123, differential 83/0/0.
+
+---
+
 ## 2026-08-28 (evening) — Copy Closes Its First Regime, and Undef Learns Its Place
 
 Thirty-ninth increment. `dst := copy src` for bound locals is one target
