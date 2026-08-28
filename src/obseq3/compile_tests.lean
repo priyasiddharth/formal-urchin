@@ -762,6 +762,68 @@ def d32_field_copy_zero_offset : IO Unit :=
      .assign yD32 (.copy (.proj tupD32 (.field ⟨0, by decide⟩ .nil)))]
     .ok "d32 field copy zero offset"
 
+/-- STATE-LEVEL divergence pin (the t16 pattern, two machines): the
+    overlap countermodel that makes the NONZERO-offset proj-src copy
+    leaf unprovable without a separation invariant (see
+    `copy_place_residual`). Two distinct locals are FORGED to overlap —
+    `y : natL` re-bound INSIDE `tup : pairL`'s block — with cell 1's
+    stack `[Ref 4, MutRef 3, Own 1]`, `tup.tag := 4` (the top Shared),
+    `y.tag := 3` (the Unique below). `y := copy tup.1` then SUCCEEDS on
+    mirlite (read via 4 is a no-op, useMut via 3 pops the Ref) while
+    the compiled `[Borrow(Shared); Memcpy; Die]` errs at the `Die`: the
+    Memcpy's dst useMut pops the fresh tag out from under it. No
+    reachable state has overlapping locals — this documents an
+    invariant gap, not a compiler bug on real programs. -/
+def ΓD33 : Ctx := [pairL, natL]
+def tupD33 : Place ΓD33 pairL := .local ⟨⟨0, by decide⟩, rfl⟩
+def yLocD33 : Local ΓD33 natL := ⟨⟨1, by decide⟩, rfl⟩
+
+def d33_overlap_junk_copy_diverges : IO Unit := do
+  -- the shared permission state (rename = identity on both machines)
+  let perms : AccessPerms :=
+    { StackMap := [(0, [.Own 1]),
+                   (1, [.Ref 4, .MutRef 3, .Own 1]),
+                   (2, [.Own 2])],
+      NextTag := 5 }
+  -- SOURCE: y forged INSIDE tup's block, tags picked from cell 1's stack
+  let env : mirlite.Env ΓD33 :=
+    ((mirlite.Env.empty.set ⟨⟨0, by decide⟩, rfl⟩ { addr := 0, tag := 4 }).set
+      yLocD33 { addr := 1, tag := 3 })
+  let junkSrc : mirlite.State M ΓD33 :=
+    { pc := 0, env := env,
+      mem := { mMap := [(0, .word 7), (1, .word 8), (2, .word 9)],
+               addrStart := 3, allocs := [(0, 2), (2, 1)] },
+      perms := perms }
+  let stmt : Stmt ΓD33 :=
+    .assign (.local yLocD33) (.copy (.proj tupD33 (.field ⟨1, by decide⟩ .nil)))
+  match mirlite.stepStmt M junkSrc stmt with
+  | .ok _ => pure ()
+  | .err e => throw (IO.userError s!"d33: source should succeed, got: {e}")
+  -- TARGET: same stacks, registers holding the forged pointers; the
+  -- program is exactly what the compiler emits for the statement
+  let junkTgt : oseair.State M :=
+    { pc := 0,
+      reg := [(.R 0, (.PTy, [.Ptr 0 0 2 4])),    -- tup: base 0, size 2, tag 4
+              (.R 1, (.PTy, [.Ptr 1 0 1 3]))],   -- y (forged): base 1, size 1, tag 3
+      mem := { mMap := [(0, .Dat 7), (1, .Dat 8), (2, .Dat 9)],
+               addrStart := 3, allocs := [(0, 2), (2, 1)] },
+      perms := perms }
+  let instrs : List oseair.Instr :=
+    [.Assgn (.R 2) (borrowRhs .Shared 1 (.R 0) 1),   -- Borrow(Shared) of tup.1
+     .Memcpy (.R 1) (.R 2) .NatTy,                   -- the copy (read fresh, useMut dst)
+     .Die (.R 2) 1]                                  -- cleanup: fresh tag must be on top
+  let prog : oseair.Prog := fun n => instrs.get? n
+  -- Borrow and Memcpy succeed; the Die finds MutRef 3 on top, not the fresh 5
+  match oseair.runN M 2 junkTgt prog with
+  | .Ok _ => pure ()
+  | .Err e => throw (IO.userError s!"d33: Borrow;Memcpy should succeed, got: {e}")
+  match oseair.runN M 3 junkTgt prog with
+  | .Ok _ => throw (IO.userError
+      "d33: target should err at the Die (source succeeded -- divergence lost?)")
+  | .Err e =>
+      assert ((e.splitOn "sb-die").length > 1)
+        s!"d33: expected an sb-die error, got: {e}"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -807,7 +869,8 @@ def allTests : List (IO Unit) := [
   d29_parent_write_kills_overlap,
   d30_reborrow_through_pointer,
   d31_zst_reborrow,
-  d32_field_copy_zero_offset]
+  d32_field_copy_zero_offset,
+  d33_overlap_junk_copy_diverges]
 
 def runAll : IO Unit := do
   allTests.forM id

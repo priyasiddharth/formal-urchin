@@ -41,3 +41,19 @@ biggest remaining blocker class.
 ## State
 Suite 82/123 (0 fail), differential 83/0/0 (d32 new), units 16/16 +
 45/45. Leaf axioms: propext, Classical.choice, Quot.sound.
+
+## Addendum: the countermodel is now a TEST (d33)
+`d33_overlap_junk_copy_diverges` (compile_tests) pins the divergence
+state-level, t16-style but on BOTH machines: forged overlap (y re-bound
+inside tup's block), cell 1 stack `[Ref 4, MutRef 3, Own 1]`,
+tup.tag := 4, y.tag := 3. Source `y := copy tup.1` succeeds; the
+hand-written compiled fragment `[Borrow(Shared); Memcpy; Die]` runs
+2 steps ok and errs at the Die with "sb-die". Teeth: un-forging the
+overlap (y at its own block) makes the target SUCCEED and the test
+throw — which is simultaneously the demonstration that a separation
+invariant is exactly what the leaf is missing. Units 46/46.
+(Process scars, again: ran the teeth against a stale olean the first
+time — always rebuild before `lake env lean --run`; and a hasty
+`git checkout <file>` destroyed the uncommitted test — reconstructed
+from the session patch. Also a splice bug: `add` ending in the anchor
+AND replacing with add+anchor doubles the anchor.)

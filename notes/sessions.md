@@ -474,3 +474,13 @@ blocked (countermodel), separation invariant proposed and parked.
 units 16/16 + 45/45; axiom audit green.
 **Next-session pickup:** the separation conjunct if approved (biggest
 unlock), else the pending-cleanup spine generalization.
+
+## 2026-08-28 (later still)
+**Session:** (terminal, continued) — countermodel as a test
+**Theme:** d33 pins the overlap divergence (user-requested example).
+**Key outputs:** d33_overlap_junk_copy_diverges — forged two-machine
+junk state; source copy ok, target [Borrow;Memcpy;Die] errs at Die;
+teeth: un-forging the overlap flips the target to success. 46/46.
+**Critical corrections:** stale-olean teeth run (rebuild first!);
+`git checkout` ate the uncommitted test (recovered from session).
+**Status:** complete; audit green.
