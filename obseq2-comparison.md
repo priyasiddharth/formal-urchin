@@ -4,6 +4,39 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-29 — The Quotient and the Slide: Nonzero-Offset Copies Close
+
+Forty-fourth increment, and the deepest plumbing change since the keystones.
+The nonzero-offset field copy `[Borrow(Shared); Memcpy; Die]` needed its die
+to commute past the destination write — true semantically once the overlap
+guard supplies disjointness, but unstatable: `PermSim` related stack maps
+POSITIONALLY over the assoc-list representation, and `SB.set`'s move-to-front
+reorders the list differently under the two op orders. The assoclist
+tradeoff, parked months ago as a durable note, finally came due.
+
+The fix is the observation quotient: `StackMapSim` relates the maps per
+address, and `PermSim`'s stacks conjunct now lives there. The refactor that
+looked like a week was an afternoon — the transports consume the relation
+only through `find?`-shaped lemmas and rebuild it only through matched
+`setChain`s, so swapping the toolkit's five lemmas to find?-level left every
+closed leaf untouched, and one proof (`SB.set_respects`) got SHORTER. On top
+of the quotient, two keystone additions: `sb_die_sb_write_comm` — on
+disjoint ranges, die-then-write becomes write-then-die with a
+find?-identical result — and `sb_write_congr`, which re-bases a transported
+write across states that agree on every observation field.
+
+The leaf itself then reads like its docstring: the guard gives disjointness,
+BRIDGE 1S cancels the GEP borrow, the congruence re-bases the destination
+write, the commutation slides the die, and the quotient absorbs what the
+slide cannot literally preserve. All three proj-src copy regimes are now
+closed; the copy residual is down to proj-of-proj, deref spines, and the
+unbound/non-local destination compositions — none blocked.
+
+Units 16/16 + 49/49, suite pass 82 | fail 0 of 123, differential includes
+d36 (the closed fragment, end to end).
+
+---
+
 ## 2026-08-28 (night, latest) — Overlapping Copies Become UB, and the Last Countermodel Retires
 
 Forty-third increment. Overlapping place-to-place assignment is now UB on both

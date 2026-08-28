@@ -677,6 +677,69 @@ def StackSim (ρt : TagRenameMap) (src tgt : List Item) : Prop :=
 def CellSim (ρt : TagRenameMap) : (Word × List Item) → (Word × List Item) → Prop
   | (a, s), (a', s') => a' = a ∧ StackSim ρt s s'
 
+/-- Stack-map simulation at the OBSERVATION level: same domain, related
+    stacks per ADDRESS (`SB.find?`) — not per list position. Quotienting
+    out the representation order is what lets disjoint-range operation
+    sequences commute even though `SB.set` is move-to-front: the copy
+    leaf's interleaved `Die` (2026-08-28) leaves different cells at the
+    list FRONT than the source's op order, with identical `find?`
+    semantics — the assoclist tradeoff, realized. -/
+def StackMapSim (ρt : TagRenameMap) (x y : SB) : Prop :=
+  ∀ a : Word,
+    match SB.find? x a, SB.find? y a with
+    | none, none => True
+    | some s, some s' => StackSim ρt s s'
+    | _, _ => False
+
+theorem StackMapSim.find?_some {ρt : TagRenameMap} {x y : SB}
+    (h : StackMapSim ρt x y) {a : Word} {s : BorrowStack}
+    (hf : SB.find? x a = some s) :
+    ∃ s', SB.find? y a = some s' ∧ StackSim ρt s s' := by
+  have h' := h a
+  rw [hf] at h'
+  cases hy : SB.find? y a with
+  | none => rw [hy] at h'; exact absurd h' (by simp)
+  | some s' => rw [hy] at h'; exact ⟨s', rfl, h'⟩
+
+theorem StackMapSim.find?_none {ρt : TagRenameMap} {x y : SB}
+    (h : StackMapSim ρt x y) {a : Word}
+    (hf : SB.find? x a = none) : SB.find? y a = none := by
+  have h' := h a
+  rw [hf] at h'
+  cases hy : SB.find? y a with
+  | none => rfl
+  | some s' => rw [hy] at h'; exact absurd h' (by simp)
+
+/-- The target side of a `StackMapSim` can be swapped for any
+    `find?`-identical map — the disjoint-range commutation produces its
+    result only up to representation order. -/
+theorem StackMapSim.congr_right {ρt : TagRenameMap} {x y y' : SB}
+    (h_eq : ∀ a, SB.find? y' a = SB.find? y a)
+    (h : StackMapSim ρt x y) : StackMapSim ρt x y' := by
+  intro a
+  rw [h_eq a]
+  exact h a
+
+theorem StackMapSim.imp {ρt ρt' : TagRenameMap} {x y : SB}
+    (h_i : ∀ i i', ItemSim ρt i i' → ItemSim ρt' i i')
+    (h : StackMapSim ρt x y) : StackMapSim ρt' x y := by
+  intro a
+  have h' := h a
+  cases hx : SB.find? x a with
+  | none =>
+      rw [hx] at h'
+      cases hy : SB.find? y a with
+      | none => simp
+      | some s' => rw [hy] at h'; exact absurd h' (by simp)
+  | some s =>
+      rw [hx] at h'
+      cases hy : SB.find? y a with
+      | none => rw [hy] at h'; exact absurd h' (by simp)
+      | some s' =>
+          rw [hy] at h'
+          simp only [hx, hy]
+          exact ListRel.imp h_i h'
+
 /-- Tag-list simulation (protector frames, exposed set). -/
 def TagListSim (ρt : TagRenameMap) (src tgt : List Tag) : Prop :=
   ListRel (fun t t' => ρt t = some t') src tgt
@@ -686,7 +749,7 @@ def TagListSim (ρt : TagRenameMap) (src tgt : List Tag) : Prop :=
     target counter at least the source's (the target mints extra tags for
     its internal borrows; `Die` pops the items but not the counter). -/
 def PermSim (ρt : TagRenameMap) (src tgt : AccessPerms) : Prop :=
-  ListRel (CellSim ρt) src.StackMap tgt.StackMap ∧
+  StackMapSim ρt src.StackMap tgt.StackMap ∧
   ListRel (TagListSim ρt) src.protFrames tgt.protFrames ∧
   TagListSim ρt src.exposed tgt.exposed ∧
   src.NextTag ≤ tgt.NextTag
@@ -700,12 +763,7 @@ theorem PermSim.rename_mono
     PermSim ρt' src tgt := by
   obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
   refine ⟨?_, ?_, ?_, h_next⟩
-  · refine ListRel.imp ?_ h_stacks
-    intro c c' hc
-    obtain ⟨a, s⟩ := c
-    obtain ⟨a', s'⟩ := c'
-    obtain ⟨ha, hs⟩ := hc
-    exact ⟨ha, ListRel.imp (ItemSim.mono h_incr) hs⟩
+  · exact StackMapSim.imp (fun i i' => ItemSim.mono h_incr i i') h_stacks
   · exact ListRel.imp (fun f f' hf =>
       ListRel.imp (fun t t' ht => h_incr _ _ ht) hf) h_prot
   · exact ListRel.imp (fun t t' ht => h_incr _ _ ht) h_exp

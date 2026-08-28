@@ -89,17 +89,18 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
    (`const_write_proj_deref_simulation`); what remains is a nonspine or
    zero-offset deref base, a proj base (assoc transfer), or an unbound
    root.
-3. `copy_place_residual` — NARROWED 2026-08-28 (night): regimes L→L and
-   P0→L are CLOSED (`copy_local_local_simulation`,
-   `copy_proj_zero_simulation`). The remaining shapes are all
-   UNBLOCKED — no countermodel stands: the overlapping-assignment
-   guard (mirlite `doAssign`) and the `Memcpy` nonoverlapping check
-   (oseair) retire the d33 overlap countermodel and hand every
-   nonzero-offset/deref-src leaf the disjointness its `Die`↔`useMut`
-   commutation needs; the lowering-order fix removed the non-local-dst
-   interleaving. What remains is composition work: a disjoint-range
-   commutation lemma (foldCells locality) + BRIDGE 1S for proj src,
-   spine composition for deref src, regime-B for unbound dst.
+3. `copy_place_residual` — NARROWED 2026-08-29: regimes L→L, P0→L and
+   P→L (nonzero offset) are CLOSED (`copy_local_local_simulation`,
+   `copy_proj_zero_simulation`, `copy_proj_offset_simulation`). The
+   nonzero-offset leaf is the first consumer of the find?-QUOTIENT
+   `PermSim` (`StackMapSim`: stacks related per address, quotienting
+   out `SB.set`'s move-to-front list order) and of the disjoint-range
+   commutation (`sb_die_sb_write_comm` + `sb_write_congr`, keystone):
+   the overlap guard supplies disjointness, BRIDGE 1S cancels the GEP
+   borrow, and the interleaved `Die` slides past the dst write up to
+   `find?`. Remaining: proj-of-proj srcs (reassociation transfer),
+   deref src (spine composition), unbound dst (regime-B), non-local
+   dst (contiguous BRIDGE 1 shape — composition, no blocker).
 4. `ref_place_residual` — NARROWED 2026-08-28: regimes P→L
    (`dst := &kind s.f`, bounds by TYPING) and D→L (`dst := &kind *p`
    over a load spine, bounds by the retag-dereferenceable EVENT check

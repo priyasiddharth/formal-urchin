@@ -865,6 +865,17 @@ def d35_self_copy_is_ub : IO Unit :=
      .assign xA (.copy xA)]
     (.ub 1) "d35 self copy is ub"
 
+/-- Differential: a NONZERO-offset field copy `y := copy s.1` — the
+    `[Borrow(Shared); Memcpy; Die]` fragment whose interleaved die is
+    slid past the dst write by the disjoint-range commutation. Covers
+    regime P→L (`copy_proj_offset_simulation`). -/
+def d36_field_copy_nonzero_offset : IO Unit :=
+  expectDiff ΓD32
+    [.assign (.proj tupD32 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj tupD32 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign yD32 (.copy (.proj tupD32 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d36 field copy nonzero offset"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -913,7 +924,8 @@ def allTests : List (IO Unit) := [
   d32_field_copy_zero_offset,
   d33_overlap_junk_copy_diverges,
   d34_deref_dst_temp_killed_by_rhs_spine,
-  d35_self_copy_is_ub]
+  d35_self_copy_is_ub,
+  d36_field_copy_nonzero_offset]
 
 def runAll : IO Unit := do
   allTests.forM id

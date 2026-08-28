@@ -997,55 +997,30 @@ theorem refCellContent_transport
 
 /-! ## `SB`/`setChain`-level transports -/
 
-theorem SB.find?_transport {ρt : TagRenameMap} :
-    ∀ {x y : SB}, ListRel (CellSim ρt) x y →
-      ∀ {a : Word} {s : BorrowStack}, SB.find? x a = some s →
-      ∃ s', SB.find? y a = some s' ∧ StackSim ρt s s' := by
-  intro x
-  induction x with
-  | nil =>
-      intro y h a s hf
-      simp [SB.find?] at hf
-  | cons e x ih =>
-      obtain ⟨k, st⟩ := e
-      intro y h a s hf
-      cases y with
-      | nil => simp [ListRel] at h
-      | cons e' y' =>
-          obtain ⟨k', st'⟩ := e'
-          simp only [ListRel, CellSim] at h
-          obtain ⟨⟨h_key, h_st⟩, h_tail⟩ := h
-          simp only [SB.find?] at hf ⊢
-          rw [h_key]
-          cases hk : k == a with
-          | true =>
-              simp only [hk, if_true] at hf ⊢
-              injection hf with hf'
-              subst hf'
-              exact ⟨st', rfl, h_st⟩
-          | false =>
-              simp only [hk, Bool.false_eq_true, if_false] at hf ⊢
-              exact ih h_tail hf
+theorem SB.find?_transport {ρt : TagRenameMap}
+    {x y : SB} (h : StackMapSim ρt x y)
+    {a : Word} {s : BorrowStack} (hf : SB.find? x a = some s) :
+    ∃ s', SB.find? y a = some s' ∧ StackSim ρt s s' :=
+  h.find?_some hf
 
 theorem SB.set_respects {ρt : TagRenameMap} {x y : SB}
-    (h : ListRel (CellSim ρt) x y)
+    (h : StackMapSim ρt x y)
     {a : Word} {v v' : BorrowStack} (h_v : StackSim ρt v v') :
-    ListRel (CellSim ρt) (SB.set x a v) (SB.set y a v') := by
-  unfold SB.set
-  refine ⟨⟨rfl, h_v⟩, ?_⟩
-  refine ListRel.filter ?_ h
-  intro e e' he
-  obtain ⟨k, s⟩ := e
-  obtain ⟨k', s'⟩ := e'
-  obtain ⟨rfl, -⟩ := he
-  rfl
+    StackMapSim ρt (SB.set x a v) (SB.set y a v') := by
+  intro b
+  by_cases hb : b = a
+  · subst hb
+    rw [SB.find?_set_self, SB.find?_set_self]
+    exact h_v
+  · rw [SB.find?_set_ne _ hb, SB.find?_set_ne _ hb]
+    exact h b
 
 theorem setChain_chain_respects {ρt : TagRenameMap}
     {W W' : Nat → BorrowStack} {addr : Word} {i len : Nat}
     {x y : SB}
-    (h_xy : ListRel (CellSim ρt) x y)
+    (h_xy : StackMapSim ρt x y)
     (h_W : ∀ j, i ≤ j → j < len → StackSim ρt (W j) (W' j)) :
-    ListRel (CellSim ρt) (setChain x (chain W addr i len))
+    StackMapSim ρt (setChain x (chain W addr i len))
       (setChain y (chain W' addr i len)) := by
   by_cases h : i < len
   · rw [chain_step h, chain_step h, setChain, setChain]
@@ -1086,39 +1061,17 @@ theorem ownCell_content_form (t : Tag) (ap : AccessPerms) (a : Word) :
 
 /-- Absence of a cell transports too — the stack maps are related
     positionally, so they have the same keys in the same order. -/
-theorem SB.find?_none_transport {ρt : TagRenameMap} :
-    ∀ {x y : SB}, ListRel (CellSim ρt) x y →
-      ∀ {a : Word}, SB.find? x a = none → SB.find? y a = none := by
-  intro x
-  induction x with
-  | nil =>
-      intro y h a _
-      cases y with
-      | nil => rfl
-      | cons e y => simp [ListRel] at h
-  | cons e x ih =>
-      obtain ⟨k, st⟩ := e
-      intro y h a hf
-      cases y with
-      | nil => simp [ListRel] at h
-      | cons e' y' =>
-          obtain ⟨k', st'⟩ := e'
-          simp only [ListRel, CellSim] at h
-          obtain ⟨⟨h_key, -⟩, h_tail⟩ := h
-          simp only [SB.find?] at hf ⊢
-          rw [h_key]
-          cases hk : k == a with
-          | true => rw [hk] at hf; simp at hf
-          | false =>
-              simp only [hk, Bool.false_eq_true, if_false] at hf ⊢
-              exact ih h_tail hf
+theorem SB.find?_none_transport {ρt : TagRenameMap}
+    {x y : SB} (h : StackMapSim ρt x y)
+    {a : Word} (hf : SB.find? x a = none) : SB.find? y a = none :=
+  h.find?_none hf
 
 /-- Transport for one cell of an allocation. Both machines end with the
     singleton root stack carrying their own fresh tag; the source's success
     forces the cell to be absent-or-empty, and that property transports. -/
 theorem ownCellStep_transport {ρt : TagRenameMap} {a a' : Word}
     {newS newT : Tag} {x y : SB} {b : Word} {w : BorrowStack}
-    (h_xy : ListRel (CellSim ρt) x y)
+    (h_xy : StackMapSim ρt x y)
     (h_new : ρt newS = some newT)
     (h_ok : ownCellStep a newS (SB.find? x b) = .ok w) :
     ownCellStep a' newT (SB.find? y b) = .ok [Item.Own newT] ∧
@@ -1162,6 +1115,19 @@ theorem sb_write_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
       (fun ap a h_pf h_ex _ => writeCell_content_form tag ap a h_pf h_ex)
       len 0 ap ap' rfl rfl rfl h
   rw [h_ap']
+
+theorem sb_write_frames {ap ap' : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : sb_write ap addr len tag = .ok ap') :
+    ap'.protFrames = ap.protFrames ∧ ap'.exposed = ap.exposed := by
+  obtain ⟨V, W, -, h_ap'⟩ :=
+    foldCells_ok_inv
+      (C := fun a stack => writeCellContent ap.protFrames ap.exposed a tag stack)
+      (msgNone := fun a => s!"sb-write: no borrow stack at address {a}")
+      (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag)
+      (fun ap a h_pf h_ex _ => writeCell_content_form tag ap a h_pf h_ex)
+      len 0 ap ap' rfl rfl rfl h
+  rw [h_ap']
+  exact ⟨rfl, rfl⟩
 
 theorem sb_read_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
     {tag : Tag} (h : sb_read ap addr len tag = .ok ap') :
@@ -1611,7 +1577,7 @@ theorem sb_ref_respects_PermSim
           rfl rfl rfl
           (fun j _ h2 => (h_W' j h2).1)
       -- Common components of the result relation.
-      have h_stacks_res : ListRel (CellSim (ρt.extend src.NextTag tgt.NextTag))
+      have h_stacks_res : StackMapSim (ρt.extend src.NextTag tgt.NextTag)
           (setChain src.StackMap (chain W addr 0 len))
           (setChain tgt.StackMap (chain W' addr 0 len)) :=
         setChain_chain_respects h_stacks (fun j _ h2 => (h_W' j h2).2)

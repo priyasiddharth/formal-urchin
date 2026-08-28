@@ -544,3 +544,26 @@ the parked assoclist tradeoff realized. Three routes written up
 (find?-quotient PermSim / stable SB.set / PtrOffset lowering);
 user decision requested.
 **Status:** paused at the fork; no code changed.
+
+## 2026-08-29 (early)
+**Session:** (terminal, continued) — the quotient, the slide, the leaf
+**Theme:** route (a) executed: find?-quotient PermSim (StackMapSim) +
+disjoint-range commutation; nonzero-offset copy P-src CLOSED.
+**Key outputs:**
+- common.lean: StackMapSim (+find?_some/none/imp/congr_right); PermSim
+  stacks conjunct quotiented; zero downstream breakage.
+- keystone.lean: chain_key_not_mem, sb_write_congr,
+  sb_die_sb_write_comm (find?-level commutation).
+- permsim_transport.lean: toolkit reshaped (find?_transport/set_respects
+  /setChain_chain_respects at find?-level); sb_write_frames.
+- copy.lean: compileStmt_copy_proj_offset_run/_value,
+  copy_proj_offset_simulation; dispatcher fully split on pathOffset;
+  d36 differential (49/49).
+- journal 2026-08-29-copy-p-offset-closed.md (incl. new potholes:
+  grind spelling-atoms, mid-script assert loses earlier edits,
+  of_cells op-pinning).
+**Critical corrections:** lean_verify served a stale sorryAx report
+right after rebuild — cross-checked with #print axioms.
+**Status:** complete. Audit at 4; all suites green; axiom audit exact.
+**Next-session pickup:** copy deref-src (spine composition over the
+same pieces), or the non-local-dst BRIDGE-1 compositions.
