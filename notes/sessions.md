@@ -439,3 +439,19 @@ units 16/16 + 44/44.
 (shared blocker of const_write deep chains, non-spine deref refs, and
 now non-local copy shapes), or copy P-src (proj offset, bounds by
 typing — likely the cheapest remaining leaf).
+
+## 2026-08-28 (night)
+**Session:** (terminal, continued) — axiom-audit tooling
+**Theme:** machine-checked whitelist audit of the main theorem's
+axioms and sorries, per user request; rooted at `compile_correct` on
+the user's direction (not a whole-project sweep).
+**Key outputs:**
+- scripts/axiom_audit.lean (collectAxioms closure vs whitelist; DFS
+  sorry-root pin vs the 4 audited residuals), scripts/audit_axioms.sh;
+  teeth-verified all three failure modes; CLAUDE.md validation wiring.
+- journal 2026-08-28-axiom-audit-tooling.md.
+**Critical corrections:** teeth-check #3 was initially a silent no-op
+splice (un-asserted replace); pipe-masked exit codes on the first two.
+**Status:** complete. Audit green: 4 axioms, 4 pinned sorries.
+**Next-session pickup:** unchanged — pending-cleanup spine
+generalization, or copy P-src.
