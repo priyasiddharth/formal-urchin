@@ -535,3 +535,12 @@ axiom audit exact; audit at 4.
 **Next-session pickup:** the disjoint-range commutation lemma +
 BRIDGE 1S composition (nonzero-offset copy P-src leaf), now that
 nothing blocks it.
+
+## 2026-08-28 (small hours)
+**Session:** (terminal, continued) — commutation attempt
+**Theme:** the disjoint-range commutation is true at find?-level but
+unstatable under PermSim's positional ListRel + move-to-front SB.set —
+the parked assoclist tradeoff realized. Three routes written up
+(find?-quotient PermSim / stable SB.set / PtrOffset lowering);
+user decision requested.
+**Status:** paused at the fork; no code changed.
