@@ -484,3 +484,16 @@ teeth: un-forging the overlap flips the target to success. 46/46.
 **Critical corrections:** stale-olean teeth run (rebuild first!);
 `git checkout` ate the uncommitted test (recovered from session).
 **Status:** complete; audit green.
+
+## 2026-08-28 (night, cont.)
+**Session:** (terminal, continued) — the deref divergence example
+**Theme:** d34: FIRST reachable divergence — the lowering-order bug.
+**Key outputs:** d34_deref_dst_temp_killed_by_rhs_spine (differential,
+source .ok vs target .ub 5, confirmed by execution on first run);
+journal 2026-08-28-lowering-order-bug.md with the three-class
+divergence taxonomy; parked entry (fix = MIR's rhs-first order).
+**Critical corrections:** none.
+**Status:** complete. 47/47 units; suite 82/123; audit green.
+**Next-session pickup:** user decisions queued: (a) lowering-order fix
+(compiler change, unlocks non-local-dst residuals), (b) copy overlap
+event check, (c) separation conjunct.

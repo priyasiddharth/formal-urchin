@@ -458,3 +458,11 @@ dst `useMut` pops the fresh tag). Adding it would unlock: nonzero-
 offset copy P-src, copy deref-src cleanup, and the non-local-dst
 residuals in ref/const_write. Cheap to carry (env unchanged ⇒
 transports verbatim; real work only in alloc/fresh-dst leaves).
+
+## lowering-order-bug (PARKED 2026-08-28, user decision — COMPILER BUG)
+d34 pins a REACHABLE divergence: assign-place lowering mints the dst
+temporary Borrow(Mut) BEFORE rhs evaluation; a rhs deref spine may
+legitimately read the guarded cell (raw-pointer aliasing), killing the
+temporary. Fix = MIR's order: rhs into a temp first, then dst lowering
++ store. Flips d34 to expectDiff .ok and removes the interleaving
+obstacle from ALL non-local-dst residuals (ref/const_write/copy).

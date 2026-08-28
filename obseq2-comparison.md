@@ -4,6 +4,35 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-28 (night) — The First Reachable Divergence: a Lowering-Order Bug
+
+Forty-first increment, and the sharpest kind: d34 pins a divergence on a
+REACHABLE state — a compiler bug, not an invariant gap. The assign-place
+lowering mints its destination temporary `Borrow(Mut)` before the rhs runs,
+but a rhs deref spine may legitimately read the very cell that temporary
+guards: with `t : (u64, *mut u64)`, `p = &raw mut t`, `w = &raw mut t.1`,
+the statement `(*p).1 := &mut **w` succeeds in mirlite (raw tags survive
+foreign reads; no temporary exists) and errs in the compiled fragment (the
+spine's load of `t.1`'s cell and the fresh Unique on it kill each other).
+The differential harness confirmed the prediction on first run: source `.ok`,
+target `.ub` at the statement.
+
+No invariant strengthening or added UB can repair this — both machines'
+behaviors are defined, and simulation owes the source its success. The fix
+is the order MIR itself uses: evaluate the rhs into a temporary first, then
+lower the destination and store. Parked as a model decision; landing it
+flips d34 to a plain agreement test and dissolves the interleaving obstacle
+across every non-local-destination residual at once.
+
+The divergence taxonomy is now three-fold, with one exemplar each: junk
+states fixed at a typed event (the retag bound, t16), junk states needing an
+invariant (the overlap, d33), and reachable states needing a compiler change
+(the lowering order, d34).
+
+Units 16/16 + 47/47, suite pass 82 | fail 0 of 123.
+
+---
+
 ## 2026-08-28 (late) — Zero-Offset Field Copies Close; a Countermodel Names the Next Invariant
 
 Fortieth increment. `dst := copy src.f` at zero offset is regime L→L with a
