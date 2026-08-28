@@ -567,3 +567,21 @@ right after rebuild — cross-checked with #print axioms.
 **Status:** complete. Audit at 4; all suites green; axiom audit exact.
 **Next-session pickup:** copy deref-src (spine composition over the
 same pieces), or the non-local-dst BRIDGE-1 compositions.
+
+## 2026-08-29 (cont.)
+**Session:** (terminal, continued) — copy deref-src
+**Theme:** the read-side event fix (copy-range dereferenceability) +
+regime D→L closed; copy done on all spine-shaped sources.
+**Key outputs:**
+- mirlite .copy range check (t17-pinned, teeth via inverse edit; the
+  overlap guard incidentally caught the self-copy-through-pointer
+  shape first); three one-line if_neg repairs in the closed leaves.
+- resolvePlace?_of_resolveAcc (spine.lean); copy_deref_local_simulation
+  + fragment lemmas; dispatcher split on LoadSpine; d37 differential.
+- journal 2026-08-29-copy-deref-closed.md; audit entry 3 narrowed.
+**Critical corrections:** none new (inverse-edit teeth rule held).
+**Status:** complete. Audit at 4; units 17/17 + 50/50; suite 82/123;
+axiom audit exact.
+**Next-session pickup:** non-local-dst BRIDGE-1 compositions (largest
+remaining class, shared across all three dispatchers), or const_write
+deref-deep (pending-cleanup spine generalization).

@@ -303,6 +303,27 @@ def t16_junk_sized_pointer_retag : IO Unit := do
     "t16 junk-sized reborrow" "out-of-bounds range"
 
 
+/-- The read-side twin of t16: the same forged junk-SIZED pointer
+    (`ptrVal b o 0 t` at a u64 pointee), but consumed by a COPY instead
+    of a retag. The copy-range dereferenceability check (2026-08-29)
+    must reject it — pre-check, the wide SB read succeeded cell-wise
+    and the target Memcpy diverged. -/
+def ΓK : Ctx := [natL, ptrNat, natL]
+def xK : Place ΓK natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pK : Place ΓK ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def yK : Place ΓK natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+def t17_junk_sized_pointer_copy : IO Unit := do
+  let s0 ← expectOk (run ΓK [
+    .assign xK (.constInit 1),
+    .assign pK (.ref .Mut false [] xK),
+    .assign yK (.constInit 0)]) "t17 setup"
+  let some (.ptrVal b o _ t) := s0.mem.find? 1
+    | throw (IO.userError "t17: p's cell should hold a pointer")
+  let junk : State M ΓK := { s0 with mem := s0.mem.write 1 (.ptrVal b o 0 t) }
+  expectErr (stepStmt M junk (.assign yK (.copy (.deref pK))))
+    "t17 junk-sized copy" "out-of-bounds range"
+
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
   t2_raw_const_is_read_only,
@@ -319,7 +340,8 @@ def allTests : List (IO Unit) := [
   t13_freeze_mask_and_weak_protection,
   t14_deref_read_disables_sibling,
   t15_deref_oob_pointer,
-  t16_junk_sized_pointer_retag]
+  t16_junk_sized_pointer_retag,
+  t17_junk_sized_pointer_copy]
 
 def runAll : IO Unit := do
   allTests.forM id

@@ -236,6 +236,16 @@ def evalRExpr
       match resolvePlaceAcc M state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
+          -- Miri requires a typed access's WHOLE RANGE to be
+          -- dereferenceable; through a LOADED pointer the SB read alone
+          -- checks only per-cell stacks. The read-side mirror of the
+          -- retag event fix (2026-08-28); for local/proj sources the
+          -- check is discharged by construction/typing. What makes the
+          -- copy-through-a-pointer regime provable: the target Memcpy
+          -- checks the same bound against the loaded pointer's extent.
+          if resolved.addr + blockSize τ > resolved.allocBase + resolved.allocSize then
+            .err "copy of an out-of-bounds range"
+          else
           match M.read permsR resolved.addr (blockSize τ) resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>

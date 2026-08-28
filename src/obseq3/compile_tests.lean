@@ -876,6 +876,16 @@ def d36_field_copy_nonzero_offset : IO Unit :=
      .assign yD32 (.copy (.proj tupD32 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d36 field copy nonzero offset"
 
+/-- Differential: copy THROUGH a pointer — `y := copy *p` with
+    `p = &mut x` — the `[Load; Memcpy]` fragment reading through the
+    loaded tag. Covers regime D→L (`copy_deref_local_simulation`). -/
+def d37_copy_through_pointer : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 7),
+     .assign pA (.ref .Mut false [] xA),
+     .assign tA (.copy (.deref pA))]
+    .ok "d37 copy through pointer"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -925,7 +935,8 @@ def allTests : List (IO Unit) := [
   d33_overlap_junk_copy_diverges,
   d34_deref_dst_temp_killed_by_rhs_spine,
   d35_self_copy_is_ub,
-  d36_field_copy_nonzero_offset]
+  d36_field_copy_nonzero_offset,
+  d37_copy_through_pointer]
 
 def runAll : IO Unit := do
   allTests.forM id

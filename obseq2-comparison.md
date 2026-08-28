@@ -4,6 +4,35 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-29 (later) — Copies Through Pointers, and the Read-Side Twin
+
+Forty-fifth increment. `dst := copy *p` closes for every load spine, and the
+leaf is almost anticlimactic: the deref place-lowering carries no cleanup, so
+the fragment is `[spine; Load; Memcpy]` — no borrow, no die, no keystone, no
+commutation. The copy reads through the loaded tag, which is exactly the wide
+read the source performs; the proof is the D→L ref scaffolding glued to the
+L→L Memcpy endgame.
+
+What made it possible is the retag event fix's read-side twin: mirlite's
+`.copy` now requires the copied range to be dereferenceable. Without it, the
+t16 junk state — a stored pointer whose size field has been forged down —
+let the source read cell-by-cell through the stacks while the target `Memcpy`
+checked the range against the pointer's recorded extent and refused. Same
+gap, same cure, same test pattern: t17 pins the junk state, with teeth. The
+first draft of t17 taught its own small lesson: `x := copy *p` with
+`p = &mut x` never reaches the range check, because it is an overlapping
+assignment and the guard fires first — the overlap check covering deref
+shapes without ever being told about them.
+
+Copy is now closed on every spine-shaped source — local, zero-offset field,
+offset field, loaded pointer — and its residual holds only the composition
+classes it shares with ref and const_write: mixed chains, fresh roots,
+non-local destinations.
+
+Units 17/17 + 50/50, suite pass 82 | fail 0 of 123.
+
+---
+
 ## 2026-08-29 — The Quotient and the Slide: Nonzero-Offset Copies Close
 
 Forty-fourth increment, and the deepest plumbing change since the keystones.

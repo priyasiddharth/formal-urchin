@@ -29,6 +29,63 @@ inductive LoadSpine {Γ : Ctx} : {τ : LayoutTy} → Place Γ (obseq.LayoutTy.Pt
   | step {τ : LayoutTy} {p : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))} :
       LoadSpine p → LoadSpine (.deref p)
 
+/-- The pure resolver agrees with a successful access-resolution: the
+    access variant only ADDS the SB reads and the deref-OOB check, so
+    when it succeeds, `resolvePlace?` computes the same `PlaceRes`.
+    Connects the overlapping-assignment guard (stated with the pure
+    resolver) to the ranges the access resolution establishes. -/
+theorem resolvePlace?_of_resolveAcc
+    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ} :
+    ∀ {p : Place Γ τ} {r : mirlite.PlaceRes} {perms : M.State},
+      mirlite.resolvePlaceAcc M s p = .ok (r, perms) →
+      mirlite.resolvePlace? s p = some r := by
+  intro p
+  induction p with
+  | «local» loc =>
+      intro r perms h
+      cases h_env : mirlite.Env.lookup s.env loc with
+      | none => simp [mirlite.resolvePlaceAcc, h_env] at h
+      | some binding =>
+          simp only [mirlite.resolvePlaceAcc, h_env, Except.ok.injEq,
+            Prod.mk.injEq] at h
+          simp only [mirlite.resolvePlace?, h_env]
+          rw [h.1]
+  | proj base path ih =>
+      intro r perms h
+      simp only [mirlite.resolvePlaceAcc] at h
+      cases h_b : mirlite.resolvePlaceAcc M s base with
+      | error e => simp [h_b] at h
+      | ok pr =>
+          obtain ⟨res, perms'⟩ := pr
+          simp only [h_b, Except.ok.injEq, Prod.mk.injEq] at h
+          simp only [mirlite.resolvePlace?, ih h_b]
+          rw [h.1]
+  | deref ptrPlace ih =>
+      intro r perms h
+      simp only [mirlite.resolvePlaceAcc] at h
+      cases h_b : mirlite.resolvePlaceAcc M s ptrPlace with
+      | error e => simp [h_b] at h
+      | ok pr =>
+          obtain ⟨ptrRes, perms'⟩ := pr
+          simp only [h_b] at h
+          split at h
+          · simp at h
+          · cases h_rd : M.read perms' ptrRes.addr 1 ptrRes.tag with
+            | error e => simp [h_rd] at h
+            | ok perms'' =>
+                simp only [h_rd] at h
+                cases h_find : mirlite.Mem.find? s.mem ptrRes.addr with
+                | none => simp [h_find] at h
+                | some mv =>
+                    cases mv with
+                    | undef => simp [h_find] at h
+                    | word w => simp [h_find] at h
+                    | ptrVal b o sz t =>
+                        simp only [h_find, Except.ok.injEq, Prod.mk.injEq] at h
+                        simp only [mirlite.resolvePlace?, ih h_b, h_find]
+                        rw [h.1]
+
 /-- A successful access-resolution implies the place's root local is bound,
     hence (under `LocalBindingSim`) compiler-mapped. -/
 theorem placeInputsMapped_of_resolveAcc

@@ -89,17 +89,16 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
    (`const_write_proj_deref_simulation`); what remains is a nonspine or
    zero-offset deref base, a proj base (assoc transfer), or an unbound
    root.
-3. `copy_place_residual` — NARROWED 2026-08-29: regimes L→L, P0→L and
-   P→L (nonzero offset) are CLOSED (`copy_local_local_simulation`,
-   `copy_proj_zero_simulation`, `copy_proj_offset_simulation`). The
-   nonzero-offset leaf is the first consumer of the find?-QUOTIENT
-   `PermSim` (`StackMapSim`: stacks related per address, quotienting
-   out `SB.set`'s move-to-front list order) and of the disjoint-range
-   commutation (`sb_die_sb_write_comm` + `sb_write_congr`, keystone):
-   the overlap guard supplies disjointness, BRIDGE 1S cancels the GEP
-   borrow, and the interleaved `Die` slides past the dst write up to
-   `find?`. Remaining: proj-of-proj srcs (reassociation transfer),
-   deref src (spine composition), unbound dst (regime-B), non-local
+3. `copy_place_residual` — NARROWED 2026-08-29 (later): regimes L→L,
+   P0→L, P→L (nonzero offset) and D→L (deref src through a load spine)
+   are CLOSED (`copy_local_local_simulation`, `copy_proj_zero_simulation`,
+   `copy_proj_offset_simulation`, `copy_deref_local_simulation`). D→L is
+   `[spine; Load; Memcpy]` — no Borrow, no Die, no keystone — with the
+   `Memcpy`'s source bound supplied by the copy-range dereferenceability
+   check (the read-side event fix, t17-pinned) through `MemValSim`'s
+   `o' = o ∧ s' = s`, and its nonoverlapping check by the overlap guard
+   via `resolvePlace?_of_resolveAcc`. Remaining: proj-of-proj and mixed
+   chains (reassociation transfer), unbound dst (regime-B), non-local
    dst (contiguous BRIDGE 1 shape — composition, no blocker).
 4. `ref_place_residual` — NARROWED 2026-08-28: regimes P→L
    (`dst := &kind s.f`, bounds by TYPING) and D→L (`dst := &kind *p`
