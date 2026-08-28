@@ -199,7 +199,14 @@ manifest.
 docstring), paper.md.
 
 ## mirlite `.ref` lacks Miri's retag-dereferenceable check
-**Status:** parked 2026-08-27 — BLOCKS the deref-source ref regime
+**Status:** RESOLVED 2026-08-28 — the event fix landed (user-approved):
+`.ref` errs on `addr + blockSize σ > allocBase + allocSize` (range form).
+Reachable behaviour unchanged (suite/differential identical); the three
+closed ref regimes repaired with one `if_neg` each (L→L/F→L by
+`lt_irrefl`, P→L by the typing lemma). Gap example pinned as t16 (the
+FORGED junk state, teeth-verified) + d30/d31 (reachable reborrow, ZST
+twist). The deref-source regime is now unblocked; leaf still to prove.
+**Original context (kept):** parked 2026-08-27 — BLOCKED the deref-source ref regime
 **Context:** Miri requires a retag's whole range to be dereferenceable;
 mirlite's `evalRExpr .ref` performs `sb_ref` with NO bounds check. For
 `L := &kind *p` the target `Borrow` checks `offset + blockSize τ ≤ size`

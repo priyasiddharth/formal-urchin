@@ -334,6 +334,20 @@ def evalRExpr
       match resolvePlaceAcc M state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
+          -- Miri requires a retag's WHOLE RANGE to be dereferenceable; the
+          -- SB fold alone only guarantees the granting tag per cell. The
+          -- range form admits zero-sized referents at one-past-the-end
+          -- (`&mut ()` on a tail field). Added 2026-08-28: it is the
+          -- retag-side mirror of `writeResolvedPlace`'s check, and it is
+          -- what makes the reborrow-through-a-loaded-pointer regime
+          -- provable — the target's `Rhs.Borrow` performs the identical
+          -- check against the loaded pointer's extent, and only THIS
+          -- event carries the pointee type needed to state the bound
+          -- (memory cells are untyped; see the ZST-vs-u64 example in
+          -- journal 2026-08-27-ref-proj-closed.md).
+          if resolved.addr + blockSize σ > resolved.allocBase + resolved.allocSize then
+            .err "retag of an out-of-bounds range"
+          else
           match M.ref permsR resolved.addr (blockSize σ) resolved.tag kind prot mask with
           | .ok (perms', freshTag) =>
               .ok {

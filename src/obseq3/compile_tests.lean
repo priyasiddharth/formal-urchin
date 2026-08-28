@@ -708,6 +708,45 @@ def d29_parent_write_kills_overlap : IO Unit :=
      .assign (.deref p0Y) (.constInit 10)]
     (.ub 3) "d29 the parent write invalidated p0 itself"
 
+/-! d30/d31: the reachable side of the invariant-gap example. d30 is the
+    canonical reborrow `L := &mut *p` — well-sized by construction, so
+    the new retag-dereferenceable check must NOT fire on either machine.
+    d31 is the ZST twist: the SAME shape with a zero-sized pointee —
+    `pz := &mut z; L := &mut *pz` — where the stored pointer legitimately
+    has size 0 and the range-form checks admit it. Together with unit
+    t16 (the forged size-0 pointer at pointee u64, which must err) they
+    pin all three corners of the example. -/
+def ΓZ : Ctx := [natL, ptrNat, ptrNat, natL]
+def xZ : Place ΓZ natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pZ : Place ΓZ ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def LZ : Place ΓZ ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def tZ : Place ΓZ natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+def d30_reborrow_through_pointer : IO Unit :=
+  expectDiff ΓZ
+    [.assign xZ (.constInit 1),
+     .assign pZ (.ref .Mut false [] xZ),
+     .assign LZ (.ref .Mut false [] (.deref pZ)),
+     .assign (.deref LZ) (.constInit 2),
+     .assign tZ (.copy xZ)]
+    .ok "d30 reborrow &mut *p, write through it"
+
+abbrev unitL := obseq.LayoutTy.TupL ([] : List obseq.LayoutTy)
+def ΓZ2 : Ctx := [unitL, .PtrL unitL, .PtrL unitL, natL]
+def zZ : Place ΓZ2 unitL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pzZ : Place ΓZ2 (.PtrL unitL) := .local ⟨⟨1, by decide⟩, rfl⟩
+def LzZ : Place ΓZ2 (.PtrL unitL) := .local ⟨⟨2, by decide⟩, rfl⟩
+def tZ2 : Place ΓZ2 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+def d31_zst_reborrow : IO Unit :=
+  expectDiff ΓZ2
+    [.assign zZ .uninit,
+     .assign pzZ (.ref .Mut false [] zZ),
+     .assign LzZ (.ref .Mut false [] (.deref pzZ)),
+     .assign tZ2 (.constInit 5)]
+    .ok "d31 reborrow through a zero-sized pointee"
+
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -750,7 +789,9 @@ def allTests : List (IO Unit) := [
   d26_nested_proj_sibling,
   d27_split_field_borrows,
   d28_parent_write_cellwise,
-  d29_parent_write_kills_overlap]
+  d29_parent_write_kills_overlap,
+  d30_reborrow_through_pointer,
+  d31_zst_reborrow]
 
 def runAll : IO Unit := do
   allTests.forM id

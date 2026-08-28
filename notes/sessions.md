@@ -381,3 +381,22 @@ units 15/15 + 42/42.
 **Next-session pickup:** `CompilerInv_step_copy` (bidirectional memory
 relation + Memcpy lemmas), or the mirlite retag check if approved.
 
+## 2026-08-28
+**Session:** (terminal, continued) — the event fix
+**Theme:** mirlite `.ref` gains Miri's retag-dereferenceable check
+(user-approved); the invariant-gap example pinned as tests.
+**Key outputs:**
+- the check (range form, ZST-admitting) in mirlite_semantics.lean;
+  behaviour on reachable states unchanged (suite 82/123, differential
+  82/0/0); three ref regimes repaired with one `if_neg` each.
+- t16: the junk state (`ptrVal _ _ 0` at pointee u64) encoded as DATA —
+  the suite's first STATE-level test; teeth verified by reverting the
+  check. d30 (reachable reborrow) + d31 (ZST reborrow) cover the other
+  corners. Units 16/16 + 44/44.
+- journal 2026-08-28-retag-deref-check.md; parked entry resolved.
+**Critical corrections:** none.
+**Status:** complete. Audit at 4; deref-source ref regime unblocked,
+leaf still to prove.
+**Next-session pickup:** the deref-source ref leaf (now provable), or
+`CompilerInv_step_copy`.
+

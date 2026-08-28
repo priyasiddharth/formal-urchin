@@ -270,6 +270,39 @@ def t15_deref_oob_pointer : IO Unit := do
   ]
   expectErr (run ΓE' prog) "t15 deref oob pointer" "out-of-bounds"
 
+/-! t16: the invariant-gap example, encoded as a STATE (journal
+    2026-08-27-ref-proj-closed / the event-fix discussion). No program
+    reaches a memory cell holding `ptrVal (0, 0, 0, t)` at a `PtrL NatL`
+    use site — every mint site stores the allocation's size — but
+    `mirlite.State` is just data, so the junk state is constructible
+    here. Before 2026-08-28 mirlite's `.ref` accepted the reborrow
+    `L := &mut *p` from this state (no bounds check) while the compiled
+    `Rhs.Borrow` rejected it: the unprovable corner of the simulation.
+    The event fix (Miri's retag-dereferenceable check) makes the source
+    err too. The same VALUE with pointee `()` stays legal — the bound is
+    typed, which is why it lives at the event and not in `MemValSim`. -/
+def ΓJ : Ctx := [natL, ptrNat, ptrNat]
+def xJ : Place ΓJ natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pJ : Place ΓJ ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def LJ : Place ΓJ ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+
+def t16_junk_sized_pointer_retag : IO Unit := do
+  -- reach a legitimate state first: x bound at 0, p bound at 1 holding &mut x
+  let s0 ← expectOk (run ΓJ [
+    .assign xJ (.constInit 1),
+    .assign pJ (.ref .Mut false [] xJ)]) "t16 setup"
+  -- forge the junk: shrink the STORED pointer's size to 0 (unreachable by
+  -- any program; every mint site stores the allocation's size)
+  let some (.ptrVal b o _ t) := s0.mem.find? 1
+    | throw (IO.userError "t16: p's cell should hold a pointer")
+  let junk : State M ΓJ := { s0 with mem := s0.mem.write 1 (.ptrVal b o 0 t) }
+  -- the reborrow through the junk-sized pointer must now be UB at the
+  -- retag event (pre-fix it succeeded: sb_ref has the granting tag on
+  -- cell 0 and never looked at the size)
+  expectErr (stepStmt M junk (.assign LJ (.ref .Mut false [] (.deref pJ))))
+    "t16 junk-sized reborrow" "out-of-bounds range"
+
+
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
   t2_raw_const_is_read_only,
@@ -285,7 +318,8 @@ def allTests : List (IO Unit) := [
   t12_protected_shared_blocks_write,
   t13_freeze_mask_and_weak_protection,
   t14_deref_read_disables_sibling,
-  t15_deref_oob_pointer]
+  t15_deref_oob_pointer,
+  t16_junk_sized_pointer_retag]
 
 def runAll : IO Unit := do
   allTests.forM id

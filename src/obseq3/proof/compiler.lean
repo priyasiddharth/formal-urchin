@@ -96,12 +96,11 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
    (`dst := &kind s.f`) is CLOSED by `ref_proj_local_simulation` — the
    L→L fragment with the offset moved, its `Borrow` bounds check
    discharged by pure TYPING (`PathTo.offset_add_size_le`). Remaining:
-   (a) DEREF sources (`&kind *p`) — blocked on a MODEL GAP: the target's
-   `Borrow` check needs `offset + blockSize τ ≤ size` for the loaded
-   pointer, `MemValSim` carries no pointee-size fact, and mirlite's
-   `.ref` has no bounds check to transport; Miri requires a retag's range
-   to be dereferenceable, so the likely fix is the deref-read pattern
-   (add the check to mirlite — user decision, see loose-ends);
+   (a) DEREF sources (`&kind *p`) — UNBLOCKED 2026-08-28: mirlite's
+   `.ref` now performs Miri's retag-dereferenceable check (the event
+   fix), so source success supplies the target `Borrow`'s bound via
+   `MemValSim`'s `o' = o ∧ s' = s`; the leaf itself (spine prelude +
+   P→L-style endgame over the loaded pointer) is still to be proved;
    (b) non-local destinations — the dst `Borrow;…;Die` interleaves with
    the src retag, so BRIDGE 1 needs a commutation argument (new
    pattern); (c) proj-of-proj sources / fresh roots.

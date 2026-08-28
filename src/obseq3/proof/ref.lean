@@ -335,6 +335,7 @@ theorem ref_local_local_simulation
   simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.preparePlaceAssign,
     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc, h_envS,
     mirlite.evalRExpr] at h_step
+  rw [if_neg (Nat.lt_irrefl (bS.addr + blockSize τ))] at h_step
   cases h_ref_src : MSB.ref s_mir.perms bS.addr (blockSize τ) bS.tag kind prot mask with
   | error e => rw [h_ref_src] at h_step; simp at h_step
   | ok pr =>
@@ -555,6 +556,7 @@ theorem ref_fresh_dst_simulation
             simp only [mirlite.Env.lookup, mirlite.Env.set, if_neg h_idx_ne]
             exact h_envS
           simp only [mirlite.resolvePlaceAcc, hD1, mirlite.evalRExpr, hS1] at h_step
+          rw [if_neg (Nat.lt_irrefl (bS.addr + blockSize τ))] at h_step
           -- §3 the retag on the source place
           cases h_ref_src : MSB.ref permsOwned bS.addr (blockSize τ) bS.tag kind prot mask with
           | error e => rw [h_ref_src] at h_step; simp at h_step
@@ -924,6 +926,11 @@ theorem ref_proj_local_simulation
   simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.preparePlaceAssign,
     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc, h_envS,
     mirlite.evalRExpr] at h_step
+  rw [if_neg (Nat.not_lt.mpr (show bS.addr + pathOffset f + blockSize τ
+      ≤ bS.addr + blockSize σb by
+    have h_fit := PathTo.offset_add_size_le f
+    simp only [Nat.add_assoc]
+    exact Nat.add_le_add_left h_fit _))] at h_step
   cases h_ref_src : MSB.ref s_mir.perms (bS.addr + pathOffset f) (blockSize τ)
       bS.tag kind prot mask with
   | error e => rw [h_ref_src] at h_step; simp at h_step
