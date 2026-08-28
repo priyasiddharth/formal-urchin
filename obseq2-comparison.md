@@ -4,6 +4,39 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-28 (evening) — Copy Closes Its First Regime, and Undef Learns Its Place
+
+Thirty-ninth increment. `dst := copy src` for bound locals is one target
+instruction — `Memcpy` — and its simulation is the cleanest leaf yet: the
+instruction's read-then-useMut is *literally* the source's two events in the
+same order at the same lengths, so BRIDGE 3's read and write members transport
+them one-to-one, no tag is minted, no register is written, and both renames
+grow by `refl`.
+
+The interesting part is the blocker that dissolved. The audit had predicted a
+"bidirectional memory relation": a target cell holding junk where the source
+holds nothing would survive the copy and refute `SourceMemSim`, since the
+source destination becomes an explicit `.undef` that the old `MemValSim`
+related only to `Undef`. The tempting fix — a reverse-domain invariant
+conjunct — would have taxed every closed write site in the development. The
+right fix is a *weakening*: undef refines anything. Every source operation
+that observes a word demands its constructor and errs on undef — branches,
+alloc-length reads, pointer loads — so the cases where target junk could
+diverge are exactly the cases where the source has no defined behaviour to
+simulate. One row of `MemValSim` changed; the whole project rebuilt with zero
+proof edits; and `readWordSeq_sim` — the pointwise relation between the two
+machines' range reads — falls out of `SourceMemSim` alone, holes included.
+
+With `runN_Memcpy_step` (whose Bool `||` bounds check is a new small idiom
+next to the Prop `if`s elsewhere) and BRIDGE 2's existing cell-by-cell write
+lemma, the leaf closed in one sitting. `CompilerInv_step_copy` is now a proved
+dispatcher, `copy_place_residual` names the non-local shapes, and the audit
+holds at four with the copy entry strictly narrower.
+
+Units 16/16 + 44/44, suite pass 82 | fail 0 of 123, differential 82/0/0.
+
+---
+
 ## 2026-08-28 (later) — The Event Fix Pays Off: Reborrow Through a Loaded Pointer
 
 Thirty-eighth increment. `ref_deref_local_simulation` closes `dst := &kind *p`

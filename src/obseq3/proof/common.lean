@@ -761,7 +761,14 @@ def UnboundLocalsUnmapped {Γ : Ctx}
 def MemValSim
   (ρa : AddrRenameMap)
   (ρt : TagRenameMap) : mirlite.MemValue → Val → Prop
-  | .undef,           .Undef             => True
+  -- undef refines ANY target value: an unwritten (or explicitly undef)
+  -- source cell carries no information, and every source operation that
+  -- would OBSERVE the word (branching, alloc-length reads, pointer
+  -- loads) errs on undef, discharging the simulation obligation. This
+  -- is what lets a copy relate `mirlite.readWordSeq` to
+  -- `oseair.readWordSeq` cell-by-cell when the source range has holes
+  -- (`readWordSeq_sim`) without a reverse-domain memory invariant.
+  | .undef,           _                  => True
   | .word v,          .Dat v'            => v' = v
   | .ptrVal b o s t,  .Ptr b' o' s' t'  =>
       ρa b = some b' ∧ o' = o ∧ s' = s ∧ ρt t = some t' ∧
@@ -891,6 +898,39 @@ theorem SourceMemSim.rename_mono
   intro addr value h_find
   obtain ⟨addr', value', h_ra, h_find', h_mvs⟩ := h addr value h_find
   exact ⟨addr', value', h_a _ _ h_ra, h_find', MemValSim.rename_mono h_a h_t h_mvs⟩
+
+/-- Reading the same range on both sides yields `MemValSim`-related
+    value lists: found source cells transport through `SourceMemSim`
+    (landing at the SAME address, ρa being the identity), and source
+    holes read as `.undef`, which refines anything the target holds.
+    The copy analog of BRIDGE 2's read half. -/
+theorem readWordSeq_sim
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {m : mirlite.Mem} {m' : oseair.Mem}
+    (h_id : IdentityOnDomain ρa)
+    (h_sms : SourceMemSim ρa ρt m m') :
+    ∀ (sz : Nat) (addr : Word),
+      ListRel (MemValSim ρa ρt) (mirlite.readWordSeq m addr sz)
+        (oseair.readWordSeq m' addr sz) := by
+  intro sz
+  induction sz with
+  | zero =>
+      intro addr
+      simp [mirlite.readWordSeq, oseair.readWordSeq, ListRel]
+  | succ n ih =>
+      intro addr
+      simp only [mirlite.readWordSeq, oseair.readWordSeq]
+      cases h_find : mirlite.Mem.find? m addr with
+      | none =>
+          cases h_find' : oseair.Mem.find? m' addr with
+          | none => exact ⟨trivial, ih (addr + 1)⟩
+          | some v' => exact ⟨trivial, ih (addr + 1)⟩
+      | some v =>
+          obtain ⟨addr', v', h_ra, h_find', h_mvs⟩ := h_sms addr v h_find
+          have h_a : addr' = addr := (h_id _ _ h_ra).symm
+          rw [h_a] at h_find'
+          rw [h_find']
+          exact ⟨h_mvs, ih (addr + 1)⟩
 
 /-- The main simulation invariant between a source mirlite state and a
     target OSEA state, both at `stackedBorrows`.
@@ -1855,6 +1895,43 @@ theorem runN_CStore_step
     split
     · rename_i hc; simp [h_size] at hc
     · exact h_wtp
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- One-step execution of a `Memcpy`: both registers hold pointers, the
+    ranges are in bounds, the source range is READ through the source
+    tag and the destination range useMut-WRITTEN through the destination
+    tag — the same two events mirlite's `.copy` performs — and the read
+    word sequence is copied. Registers are untouched. -/
+theorem runN_Memcpy_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst src : Register) (ty : obseq.TyVal)
+    {dB dO dS sB sO sS : Word} {dT sT : Tag} {p2 p3 : AccessPerms}
+    (h_instr : compProg s.pc = some (Instr.Memcpy dst src ty))
+    (h_dentry : PtrRegisterEntry s.reg dst dB dO dS dT)
+    (h_sentry : PtrRegisterEntry s.reg src sB sO sS sT)
+    (h_dle : dB + dO + obseq.typeSize ty ≤ dB + dS)
+    (h_sle : sB + sO + obseq.typeSize ty ≤ sB + sS)
+    (h_read : MSB.read s.perms (sB + sO) (obseq.typeSize ty) sT = .ok p2)
+    (h_useMut : MSB.useMut p2 (dB + dO) (obseq.typeSize ty) dT = .ok p3) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p3,
+               mem := oseair.writeWordSeq s.mem (dB + dO)
+                 (oseair.readWordSeq s.mem (sB + sO) (obseq.typeSize ty)),
+               pc := s.pc + 1 } := by
+  have h_dl : oseair.RegMap.lookup s.reg dst
+      = some (obseq.TyVal.PTy, [Val.Ptr dB dO dS dT]) := h_dentry
+  have h_sl : oseair.RegMap.lookup s.reg src
+      = some (obseq.TyVal.PTy, [Val.Ptr sB sO sS sT]) := h_sentry
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p3,
+               mem := oseair.writeWordSeq s.mem (dB + dO)
+                 (oseair.readWordSeq s.mem (sB + sO) (obseq.typeSize ty)),
+               pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, h_dl, h_sl]
+    rw [if_neg (by
+      simp only [Bool.or_eq_true, decide_eq_true_eq, not_or, Nat.not_lt]
+      exact ⟨h_dle, h_sle⟩)]
+    simp only [h_read, h_useMut]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- One-step execution of a `Die`: the register's pointer is read and the

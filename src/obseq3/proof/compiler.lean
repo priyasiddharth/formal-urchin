@@ -89,9 +89,16 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
    (`const_write_proj_deref_simulation`); what remains is a nonspine or
    zero-offset deref base, a proj base (assoc transfer), or an unbound
    root.
-3. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS;
-   still needs a bidirectional memory relation plus the Memcpy execution
-   lemma (and, by the C1 pattern, a Memcpy-succeeds-when lemma).
+3. `copy_place_residual` — NARROWED 2026-08-28: `CompilerInv_step_copy`
+   is now a proved dispatcher; regime L→L (both bound locals, any
+   layout) is CLOSED by `copy_local_local_simulation` — one `Memcpy`,
+   its read/useMut transported by BRIDGE 3, the copied values related by
+   `readWordSeq_sim` (NO bidirectional memory relation was needed:
+   `MemValSim`'s undef row was weakened to undef-refines-anything, sound
+   because every source observer of a word errs on undef). Remaining:
+   non-local src (proj offset / deref spine with cleanup interleaving),
+   non-local or unbound dst (interleaved-keystone commutation /
+   regime-B composition, incl. the `dst = src` aliasing rebind).
 4. `ref_place_residual` — NARROWED 2026-08-28: regimes P→L
    (`dst := &kind s.f`, bounds by TYPING) and D→L (`dst := &kind *p`
    over a load spine, bounds by the retag-dereferenceable EVENT check

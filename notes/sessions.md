@@ -419,3 +419,23 @@ units 16/16 + 44/44.
 **Next-session pickup:** `CompilerInv_step_copy`, or the deep-chain
 spine generalization (shared blocker of const_write deep + non-spine
 deref refs).
+
+## 2026-08-28 (evening)
+**Session:** (terminal, continued) — copy L→L
+**Theme:** `CompilerInv_step_copy` becomes a proved dispatcher; the
+predicted bidirectional-memory blocker dissolves into a MemValSim
+weakening.
+**Key outputs:**
+- `MemValSim` undef row weakened to undef-refines-anything (sound:
+  observers err on undef); zero downstream proof edits.
+- `readWordSeq_sim`, `runN_Memcpy_step` (common.lean);
+  `compileStmt_copy_local_local_run/_value`,
+  `copy_local_local_simulation`, `copy_place_residual` (copy.lean).
+- journal 2026-08-28-copy-ll-closed.md; audit entry 3 updated.
+**Critical corrections:** none.
+**Status:** complete. Audit at 4; suite 82/123, differential 82/0/0,
+units 16/16 + 44/44.
+**Next-session pickup:** the pending-cleanup spine generalization
+(shared blocker of const_write deep chains, non-spine deref refs, and
+now non-local copy shapes), or copy P-src (proj offset, bounds by
+typing — likely the cheapest remaining leaf).
