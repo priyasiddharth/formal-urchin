@@ -400,3 +400,22 @@ leaf still to prove.
 **Next-session pickup:** the deref-source ref leaf (now provable), or
 `CompilerInv_step_copy`.
 
+
+## 2026-08-28 (later)
+**Session:** (terminal, continued) — regime D→L
+**Theme:** the deref-source ref leaf closed — the event fix pays off.
+**Key outputs:**
+- `compileStmt_ref_deref_run/_value`, `ref_deref_local_simulation`
+  (spine prelude + P→L endgame; Borrow bound from the retag event
+  check via MemValSim's o/s equalities); dispatcher splits on
+  `LoadSpine`; residual narrowed to non-spine/unbound/non-local/
+  proj-of-proj shapes.
+- grind pass over the new theorem (h_cancel/h_offP/h_le2/h_dr2 etc.).
+- journal 2026-08-28-ref-deref-closed.md; audit entry 4 updated;
+  dev-log increments 37 (event fix, backfilled) + 38.
+**Critical corrections:** none.
+**Status:** complete. Audit at 4; suite 82/123, differential 82/0/0,
+units 16/16 + 44/44.
+**Next-session pickup:** `CompilerInv_step_copy`, or the deep-chain
+spine generalization (shared blocker of const_write deep + non-spine
+deref refs).

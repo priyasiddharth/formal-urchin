@@ -4,6 +4,59 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-28 (later) — The Event Fix Pays Off: Reborrow Through a Loaded Pointer
+
+Thirty-eighth increment. `ref_deref_local_simulation` closes `dst := &kind *p`
+for any load spine `p` — the regime that was *unprovable* one increment ago.
+The proof is deliberately unoriginal: the spine prelude and source inversion
+are the C-deref text, the endgame is the P→L text, and the only new sentence
+is the one the event fix was added to make sayable. When the source's `.ref`
+succeeds, it has just checked `addr + blockSize τ ≤ allocBase + allocSize`
+against the pointer it loaded from memory; `MemValSim` says the target loaded
+the *same* offset and size; so the target `Borrow`'s bounds check is the same
+inequality in different variable names. `by_cases` on the check, one `grind`,
+done. Compare the P→L increment, where the bound came from typing — each
+closed regime now documents *where* its bounds obligation is paid: typing for
+fields, the event for loaded pointers.
+
+The fresh-tag bookkeeping composes with the spine without new lemmas: reads
+don't mint, so the extension pair `(permsP'.NextTag, p2.NextTag)` rewrites
+back to the state NextTags through the read-framing equations, and
+`TagRenameBounded` transports across the spine for free.
+
+Also in this increment, a grind audit of the new proof: seven manual
+`Nat`-chains and injectivity dances collapsed to `grind`, two `have`s deleted.
+The catalogued potholes all showed up on schedule — `subst` ate the wrong
+variable, `omega` refused `Word`, an unascribed `LocalBindingSim` eta-expanded
+— and one new entry for the list: a register that appears in an *evidence
+type* cannot be rewritten away (dependent motive); quantify over it instead.
+
+Audit stays at four, with the ref residual down to non-spine pointer places,
+unbound destinations, non-local destinations, and proj-of-proj sources.
+Units 16/16 + 44/44, suite pass 82 | fail 0 of 123, differential 82/0/0.
+
+---
+
+## 2026-08-28 — Retags Must Be Dereferenceable: an Event Fix, Not an Invariant Fix
+
+Thirty-seventh increment (backfilled; landed with the morning commit). The
+deref-source ref regime was blocked on a genuine model gap: the target
+`Borrow` checks the borrow range against the loaded pointer's extent, and
+nothing in mirlite's `.ref` implied it. The untyped-memory analysis showed
+why no invariant could state the missing fact — `ptrVal (b,0,0,t)` is a legal
+value at pointee `()` and junk at pointee `u64`, and only the retag *event*
+knows the pointee type. Miri agrees: retags require their whole range
+dereferenceable. So mirlite's `.ref` gained exactly that check, in range form
+(`addr + blockSize σ > allocBase + allocSize`) so one-past-the-end ZST
+reborrows stay legal. Reachable behaviour is unchanged — every mint site
+stores the allocation's true size — confirmed by the full suite and
+differential; the three already-closed ref regimes each needed one `if_neg`.
+The invariant-gap example is pinned three ways: t16 forges the junk state and
+demands the error (the suite's first state-level test, teeth-verified by
+reverting the check), d30 runs the reachable reborrow, d31 the ZST corner.
+
+---
+
 ## 2026-08-27 (night) — The Read-Side Keystone, and the Mixed Chains Close
 
 Thirty-sixth increment. The two deref-rooted shapes — a projection and a

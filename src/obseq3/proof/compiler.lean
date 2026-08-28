@@ -92,18 +92,17 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
 3. `CompilerInv_step_copy` — the `sb_read` transport member EXISTS;
    still needs a bidirectional memory relation plus the Memcpy execution
    lemma (and, by the C1 pattern, a Memcpy-succeeds-when lemma).
-4. `ref_place_residual` — NARROWED 2026-08-27: regime P→L
-   (`dst := &kind s.f`) is CLOSED by `ref_proj_local_simulation` — the
-   L→L fragment with the offset moved, its `Borrow` bounds check
-   discharged by pure TYPING (`PathTo.offset_add_size_le`). Remaining:
-   (a) DEREF sources (`&kind *p`) — UNBLOCKED 2026-08-28: mirlite's
-   `.ref` now performs Miri's retag-dereferenceable check (the event
-   fix), so source success supplies the target `Borrow`'s bound via
-   `MemValSim`'s `o' = o ∧ s' = s`; the leaf itself (spine prelude +
-   P→L-style endgame over the loaded pointer) is still to be proved;
-   (b) non-local destinations — the dst `Borrow;…;Die` interleaves with
-   the src retag, so BRIDGE 1 needs a commutation argument (new
-   pattern); (c) proj-of-proj sources / fresh roots.
+4. `ref_place_residual` — NARROWED 2026-08-28: regimes P→L
+   (`dst := &kind s.f`, bounds by TYPING) and D→L (`dst := &kind *p`
+   over a load spine, bounds by the retag-dereferenceable EVENT check
+   transported through `MemValSim`'s `o' = o ∧ s' = s`) are CLOSED by
+   `ref_proj_local_simulation` / `ref_deref_local_simulation`.
+   Remaining: (a) deref sources whose pointer place is NOT a load spine
+   (projections inside `p` interleave `Borrow;…;Die` cleanup), or with
+   an UNBOUND dst (regime-B composition); (b) non-local destinations —
+   the dst `Borrow;…;Die` interleaves with the src retag, so BRIDGE 1
+   needs a commutation argument (new pattern); (c) proj-of-proj
+   sources / fresh roots.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

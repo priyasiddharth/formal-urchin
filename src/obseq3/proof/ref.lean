@@ -1,5 +1,6 @@
 import obseq3.proof.common
 import obseq3.proof.permsim_transport
+import obseq3.proof.spine
 
 namespace obseq3.proof
 
@@ -250,6 +251,97 @@ theorem compileStmt_ref_proj_local_value
                         cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)] },
             evidence := PlaceToBorrowRegEvidence.proj (.local srcLoc) f baseRes tmpReg
               baseOut.evidence
+          }) := by simp only [placeToBorrowRegChecked]
+  simp only [compileStmtChecked, compileRExprToChecked, h_borrow_eq,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+    h_run, h_pval]
+  exact ⟨_, rfl⟩
+
+/-- The fragment of `dst := &kind *P` when `dst` is a mapped local and `P`
+    lowers with no cleanup (e.g. a load spine): the pointer is loaded,
+    the referent is borrowed through the LOADED tag at offset 0, and the
+    reference is stored: `[P-code; Load; Borrow; RStore]`. -/
+theorem compileStmt_ref_deref_run
+    {Γ : Ctx} {τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {cs : CompilerState} {dstReg : Register}
+    {pOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared P)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (h_dst : getPlaceInfo cs dstLoc.idx.1 = some (dstReg, obseq.LayoutTy.PtrL τ))
+    (h_pval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P) cs
+      = Except.ok pOut)
+    (h_pclean : pOut.result.cleanup = []) :
+    CheckedCompilerM.run
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.ref kind prot mask (.deref P)))) cs
+      = emit (emit
+          { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs).nextReg + 1 }
+              [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs).nextReg)
+                (Rhs.Load obseq.TyVal.PTy pOut.result.reg)]) with
+              nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs).nextReg + 1 + 1 }
+          [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs).nextReg + 1))
+            (Rhs.Borrow kind prot mask (blockSize τ)
+              (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs).nextReg) 0)])
+          [Instr.RStore obseq.TyVal.PTy (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) cs).nextReg + 1)) dstReg] := by
+  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
+  have h_run' : (ensureLocalRegE dstLoc cs).snd.val = cs := h_run
+  have h_borrow_eq : placeToBorrowRegChecked (Γ := Γ) kind prot mask (.deref P)
+      = (do
+          let ptrOut ← placeToRegChecked RefKind.Shared P
+          let ptrRes := ptrOut.result
+          let loadedReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+          let tmpReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) loadedReg 0)])
+          pure {
+            result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
+            evidence := PlaceToBorrowRegEvidence.deref P ptrRes loadedReg tmpReg
+              ptrOut.evidence
+          }) := by simp only [placeToBorrowRegChecked]
+  simp [compileStmtChecked, compileRExprToChecked, h_borrow_eq,
+    h_run, h_run', h_val, h_pval]
+  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+    cleanupInstrs, h_pclean, emit_nil]
+  rfl
+
+/-- The deref-src statement lowers. -/
+theorem compileStmt_ref_deref_value
+    {Γ : Ctx} {τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {cs : CompilerState} {dstReg : Register}
+    {pOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared P)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (h_dst : getPlaceInfo cs dstLoc.idx.1 = some (dstReg, obseq.LayoutTy.PtrL τ))
+    (h_pval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P) cs
+      = Except.ok pOut) :
+    ∃ so, CheckedCompilerM.value
+      (compileStmtChecked
+        (Stmt.assign (.local dstLoc) (.ref kind prot mask (.deref P)))) cs
+      = Except.ok so := by
+  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
+  have h_run' : (ensureLocalRegE dstLoc cs).snd.val = cs := h_run
+  have h_borrow_eq : placeToBorrowRegChecked (Γ := Γ) kind prot mask (.deref P)
+      = (do
+          let ptrOut ← placeToRegChecked RefKind.Shared P
+          let ptrRes := ptrOut.result
+          let loadedReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+          let tmpReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) loadedReg 0)])
+          pure {
+            result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
+            evidence := PlaceToBorrowRegEvidence.deref P ptrRes loadedReg tmpReg
+              ptrOut.evidence
           }) := by simp only [placeToBorrowRegChecked]
   simp only [compileStmtChecked, compileRExprToChecked, h_borrow_eq,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
@@ -1091,15 +1183,489 @@ theorem ref_proj_local_simulation
             omega
         · simp at h_w
 
-/-- RESIDUAL (sorried), NARROWED 2026-08-27: what remains after P→L
-    closed.
-    - DEREF SOURCE (`L := &kind *p`): blocked on a genuine model gap —
-      the target `Borrow`'s bounds check needs `offset + blockSize τ ≤
-      size` for the LOADED pointer, `MemValSim` carries no pointee-size
-      well-formedness, and mirlite's `.ref` has no bounds check to
-      transport. Miri DOES require a retag's range to be dereferenceable,
-      so the likely fix is the deref-read pattern again: add the missing
-      check to mirlite's `.ref` (model decision — see loose-ends).
+/-- REGIME D→L, CLOSED 2026-08-28: a reference THROUGH A LOADED POINTER
+    stored into a bound local — `dst := &kind *P` with `P` a load spine.
+    Fragment: `[P-code; Load; Borrow(kind, offset 0); RStore]`. The target
+    `Borrow`'s bounds check is discharged by the SOURCE's retag-
+    dereferenceability check (the 2026-08-28 event fix) transported
+    through `MemValSim`'s offset/size equalities on the loaded pointer —
+    the shape that was UNPROVABLE before the event fix, because no
+    invariant on untyped memory could supply the bound. `ρt` extends at
+    the fresh pair; the RStore lands via BRIDGE 2 exactly as in P→L. -/
+theorem ref_deref_local_simulation
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {bD : mirlite.Binding}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (compProg : oseair.Prog)
+    (h_spine : LoadSpine P)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    (h_stmt : prog.get? s_mir.pc
+      = some (.assign (.local dstLoc) (.ref kind prot mask (.deref P))))
+    (h_envD : mirlite.Env.lookup s_mir.env dstLoc = some bD)
+    (h_step : mirlite.stepStmt MSB s_mir
+      (.assign (.local dstLoc) (.ref kind prot mask (.deref P))) = .ok s_mir') :
+    ∃ (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa ρt' s_mir' s_osea' := by
+  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
+    h_alloc, h_unmap, h_prb⟩ := h_inv
+  obtain ⟨dstReg, baseD, tagD, h_piD, h_entryD, h_raD, h_rtD, h_nwD, -⟩ :=
+    h_lbs dstLoc bD h_envD
+  have h_baseD : baseD = bD.addr := (h_id_a _ _ h_raD).symm
+  subst h_baseD
+  -- §1 invert the source step down to the loaded pointer
+  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.preparePlaceAssign,
+    mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc,
+    mirlite.evalRExpr] at h_step
+  cases h_dres : mirlite.resolvePlaceAcc MSB s_mir P with
+  | error e => simp [h_dres] at h_step
+  | ok pr =>
+  obtain ⟨pRes, permsP⟩ := pr
+  simp only [h_dres] at h_step
+  by_cases h_qb : pRes.addr < pRes.allocBase ∨
+      pRes.addr ≥ pRes.allocBase + pRes.allocSize
+  · rw [if_pos h_qb] at h_step
+    simp at h_step
+  · rw [if_neg h_qb] at h_step
+    cases h_qread : MSB.read permsP pRes.addr 1 pRes.tag with
+    | error e => simp [h_qread] at h_step
+    | ok permsP' =>
+    simp only [h_qread] at h_step
+    cases h_qfind : mirlite.Mem.find? s_mir.mem pRes.addr with
+    | none => simp [h_qfind] at h_step
+    | some mv =>
+    cases mv with
+    | undef => simp [h_qfind] at h_step
+    | word w => simp [h_qfind] at h_step
+    | ptrVal b o sz t =>
+    simp only [h_qfind] at h_step
+    -- §2 the retag-dereferenceability event check: source success bounds
+    -- the referent inside the loaded pointer's extent
+    by_cases h_fit : b + o + blockSize τ > b + sz
+    · rw [if_pos h_fit] at h_step
+      simp at h_step
+    · rw [if_neg h_fit] at h_step
+      cases h_ref_src : MSB.ref permsP' (b + o) (blockSize τ) t kind prot mask with
+      | error e => rw [h_ref_src] at h_step; simp at h_step
+      | ok pr2 =>
+      obtain ⟨perms', freshTag⟩ := pr2
+      rw [h_ref_src] at h_step
+      simp only at h_step
+      -- §3 compiler-side scaffolding: the statement lowers
+      have h_mapped : PlaceInputsMapped csPrefix P :=
+        placeInputsMapped_of_resolveAcc h_lbs h_dres
+      obtain ⟨pOut0, h_pval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
+        (cs := csPrefix) (kind := RefKind.Shared) (p := P) h_mapped
+      obtain ⟨stmtOut, h_stmtOut⟩ :=
+        compileStmt_ref_deref_value (cs := csPrefix) kind prot mask h_piD h_pval0
+      have h_borrow_eq : placeToBorrowRegChecked (Γ := Γ) kind prot mask (.deref P)
+          = (do
+              let ptrOut ← placeToRegChecked RefKind.Shared P
+              let ptrRes := ptrOut.result
+              let loadedReg ← CheckedCompilerM.lift freshRegM
+              let _ ← CheckedCompilerM.lift
+                (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+              let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+              let tmpReg ← CheckedCompilerM.lift freshRegM
+              let _ ← CheckedCompilerM.lift
+                (emitM [Instr.Assgn tmpReg
+                  (Rhs.Borrow kind prot mask (blockSize τ) loadedReg 0)])
+              pure {
+                result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
+                evidence := PlaceToBorrowRegEvidence.deref P ptrRes loadedReg tmpReg
+                  ptrOut.evidence
+              }) := by simp only [placeToBorrowRegChecked]
+      have h_incr0 : StateIncr
+          (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix)
+          (CheckedCompilerM.run
+            (placeToBorrowRegChecked kind prot mask (.deref P)) csPrefix) := by
+        rw [h_borrow_eq, CheckedCompilerM.run_bind]
+        cases h : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P) csPrefix with
+        | ok a => exact CheckedCompilerM.incr _ _
+        | error e => exact StateIncr.refl _
+      have h_rhs_bind : ∀ r : Register, compileRExprToChecked r
+            (RExpr.ref kind prot mask (.deref P))
+          = (do
+              let srcOut ← placeToBorrowRegChecked kind prot mask (.deref P)
+              let srcRes := srcOut.result
+              let _ ← CheckedCompilerM.lift
+                (emitM [Instr.RStore obseq.TyVal.PTy srcRes.reg r])
+              pure {
+                result := (),
+                evidence := RExprToEvidence.ref kind prot mask (.deref P)
+                  srcRes srcOut.evidence
+              }) := fun _ => rfl
+      have h_incr1 : ∀ r : Register, StateIncr
+          (CheckedCompilerM.run
+            (placeToBorrowRegChecked kind prot mask (.deref P)) csPrefix)
+          (CheckedCompilerM.run
+            (compileRExprToChecked r (.ref kind prot mask (.deref P))) csPrefix) := by
+        intro r
+        rw [h_rhs_bind r, CheckedCompilerM.run_bind]
+        cases h : CheckedCompilerM.value
+            (placeToBorrowRegChecked kind prot mask (.deref P)) csPrefix with
+        | ok a => exact CheckedCompilerM.incr _ _
+        | error e => exact StateIncr.refl _
+      obtain ⟨h_erun, h_eval⟩ := ensureLocalRegE_existing h_piD
+      have h_stmt_bind : compileStmtChecked
+            (Stmt.assign (.local dstLoc) (.ref kind prot mask (.deref P)))
+          = (do
+              let dstOut ← CheckedCompilerM.lift (ensureLocalRegE dstLoc)
+              let dstRes := dstOut.result
+              let rhsOut ← compileRExprToChecked dstRes.reg
+                (.ref kind prot mask (.deref P))
+              pure {
+                result := (),
+                evidence := StmtEvidence.assignLocal dstLoc
+                  (.ref kind prot mask (.deref P)) dstRes
+                  dstOut.evidence rhsOut.evidence
+              }) := rfl
+      have h_incr2 : StateIncr
+          (CheckedCompilerM.run
+            (placeToBorrowRegChecked kind prot mask (.deref P)) csPrefix)
+          (CheckedCompilerM.run
+            (compileStmtChecked
+              (Stmt.assign (.local dstLoc) (.ref kind prot mask (.deref P)))) csPrefix) := by
+        rw [h_stmt_bind, CheckedCompilerM.run_bind]
+        simp only [CheckedCompilerM.value_lift, CheckedCompilerM.run_lift, h_erun]
+        rw [CheckedCompilerM.run_bind]
+        split
+        · simp only [CheckedCompilerM.run_pure]
+          exact h_incr1 _
+        · exact h_incr1 _
+      have h_instP : ∀ q' instr,
+          q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextLabel →
+          (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).code q'
+            = some instr →
+          compProg q' = some instr := by
+        intro q' instr h_lt h_code
+        have h_incrP := StateIncr.trans h_incr0 h_incr2
+        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+        · exact Nat.lt_of_lt_of_le h_lt h_incrP.nextLabel_le
+        · rw [h_incrP.code_eq q' h_lt]
+          exact h_code
+      -- §4 the spine prelude
+      obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
+        h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
+        h_pprm, h_pregmono, h_plabmono⟩ :=
+        loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
+          pRes permsP h_dres h_lbs h_prb h_sms h_psim h_pc h_instP
+      have h_stmtRun := compileStmt_ref_deref_run (cs := csPrefix) (pOut := pOut)
+        kind prot mask h_piD h_pval h_pclean
+      have h_len3 : ((emit (emit
+          { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1 }
+              [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+                (Rhs.Load obseq.TyVal.PTy pOut.result.reg)]) with
+              nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1 + 1 }
+          [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1))
+            (Rhs.Borrow kind prot mask (blockSize τ)
+              (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg) 0)])
+          [Instr.RStore obseq.TyVal.PTy
+            (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1)) dstReg])).nextLabel
+          = (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextLabel + 3 := by
+        simp only [emit, List.length_cons, List.length_nil]
+      -- §5 the three instructions are in the program
+      have h_code1 : compProg s_mid.pc
+          = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+              (Rhs.Load obseq.TyVal.PTy pOut.result.reg)) := by
+        rw [h_ppc]
+        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+        · rw [h_stmtRun, h_len3]; omega
+        · rw [h_stmtRun]
+          rw [emit_code_lt_nextLabel _ _ (by
+            simp only [emit, List.length_cons, List.length_nil]; omega)]
+          rw [emit_code_lt_nextLabel _ _ (by
+            simp only [emit, List.length_cons, List.length_nil]; omega)]
+          have h := emit_code_at_new { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1 }
+            [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+              (Rhs.Load obseq.TyVal.PTy pOut.result.reg)] (k := 0) (by simp)
+          simpa using h
+      have h_code2 : compProg (s_mid.pc + 1)
+          = some (Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1))
+              (Rhs.Borrow kind prot mask (blockSize τ)
+                (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg) 0)) := by
+        rw [h_ppc]
+        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+        · rw [h_stmtRun, h_len3]; omega
+        · rw [h_stmtRun]
+          rw [emit_code_lt_nextLabel _ _ (by
+            simp only [emit, List.length_cons, List.length_nil]; omega)]
+          have h := emit_code_at_new
+            { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1 }
+                [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+                  (Rhs.Load obseq.TyVal.PTy pOut.result.reg)]) with
+                nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1 + 1 }
+            [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1))
+              (Rhs.Borrow kind prot mask (blockSize τ)
+                (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg) 0)] (k := 0) (by simp)
+          simpa [emit] using h
+      have h_code3 : compProg (s_mid.pc + 1 + 1)
+          = some (Instr.RStore obseq.TyVal.PTy
+              (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1)) dstReg) := by
+        rw [h_ppc]
+        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+        · rw [h_stmtRun, h_len3]; omega
+        · rw [h_stmtRun]
+          have h := emit_code_at_new
+            (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1 }
+                [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+                  (Rhs.Load obseq.TyVal.PTy pOut.result.reg)]) with
+                nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1 + 1 }
+              [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1))
+                (Rhs.Borrow kind prot mask (blockSize τ)
+                  (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg) 0)])
+            [Instr.RStore obseq.TyVal.PTy
+              (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1)) dstReg]
+            (k := 0) (by simp)
+          simpa [emit] using h
+      -- §6 execute the Load through the transported pointer-cell read
+      obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
+        sb_read_respects_PermSim h_ppsim h_wf_t h_prt h_pnw h_qread
+      have h_cancel : pRes.allocBase + (pRes.addr - pRes.allocBase) = pRes.addr := by
+        grind
+      have h_offP : pRes.addr - pRes.allocBase < pRes.allocSize := by grind
+      have h_read_tgt' : MSB.read s_mid.perms
+          (pRes.allocBase + (pRes.addr - pRes.allocBase)) 1 ptag = .ok p2 := by
+        rw [h_cancel]; exact h_read_tgt
+      have h_run1 := runN_Assgn_Load_ptr_step compProg s_mid
+        (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+        pOut.result.reg obseq.TyVal.PTy
+        h_code1 h_pentry h_offP h_read_tgt'
+      obtain ⟨addr', value', h_ra', h_find_tgt, h_mvs⟩ := h_sms _ _ h_qfind
+      have h_addr' : addr' = pRes.addr := (h_id_a _ _ h_ra').symm
+      subst h_addr'
+      cases value' with
+      | Undef => exact h_mvs.elim
+      | Dat _ => exact h_mvs.elim
+      | Ptr b2 o2 s2 t2 =>
+      obtain ⟨h_b, h_o, h_s, h_t, h_tnw, h_range⟩ := h_mvs
+      have h_b2 : b2 = b := (h_id_a _ _ h_b).symm
+      subst h_b2
+      subst h_o
+      subst h_s
+      have h_rws : oseair.readWordSeq s_mid.mem
+          (pRes.allocBase + (pRes.addr - pRes.allocBase))
+          (obseq.typeSize obseq.TyVal.PTy) = [Val.Ptr b2 o2 s2 t2] := by
+        rw [h_cancel]
+        show oseair.readWordSeq s_mid.mem pRes.addr 1 = _
+        rw [h_pmem]
+        simp [oseair.readWordSeq, h_find_tgt]
+      -- §7 the retag transported: the fresh pair extends ρt
+      have h_tbd2 : TagRenameBounded ρt permsP'.NextTag p2.NextTag := by
+        rw [sb_read_NextTag h_qread, h_pnt1, sb_read_NextTag h_read_tgt, h_pnt2]
+        exact h_tbd
+      obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
+        sb_ref_respects_PermSim h_psim2 h_wf_t h_tbd2 h_t h_tnw h_ref_src
+      subst h_fresh_eq
+      have h_rt_new : (ρt.extend permsP'.NextTag p2.NextTag) permsP'.NextTag
+          = some p2.NextTag := TagRenameMap.extend_self _ _ _
+      have h0 : wildcardTag < permsP'.NextTag := (h_tbd2 _ _ h_wf_t.2).1
+      have h_nw_new : (permsP'.NextTag == wildcardTag) = false := by grind
+      -- §8 execute the Borrow: bound from the SOURCE event check
+      have h_le2 : b2 + o2 + 0 + blockSize τ ≤ b2 + s2 := by grind
+      have h_entry_loaded : PtrRegisterEntry
+          (oseair.RegMap.insert s_mid.reg
+            (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+            (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem
+              (pRes.allocBase + (pRes.addr - pRes.allocBase))
+              (obseq.typeSize obseq.TyVal.PTy)))
+          (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+          b2 o2 s2 t2 := by
+        show oseair.RegMap.lookup _ _ = _
+        rw [RegMap.lookup_insert_self, h_rws]
+      have h_ref_tgt' : MSB.ref p2 (b2 + o2 + 0) (blockSize τ) t2 kind prot mask
+          = .ok (tgtPerms, p2.NextTag) := by
+        simpa using h_ref_tgt
+      have h_run2 := runN_Assgn_Borrow_step compProg
+        { s_mid with
+            perms := p2,
+            reg := oseair.RegMap.insert s_mid.reg
+              (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+              (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem
+                (pRes.allocBase + (pRes.addr - pRes.allocBase))
+                (obseq.typeSize obseq.TyVal.PTy)),
+            pc := s_mid.pc + 1 }
+        (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1))
+        (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+        kind prot mask (blockSize τ) 0
+        h_code2 h_entry_loaded h_le2 h_ref_tgt'
+      -- §9 the pointer store via BRIDGE 2 into the dst binding
+      obtain ⟨dstReg2, baseD2, tagD2, h_piD2, h_entryD2, h_raD2, h_rtD2, h_nwD2, -⟩ :=
+        h_plbs dstLoc bD h_envD
+      have h_dr2 : dstReg2 = dstReg := by grind
+      have h_baseD2 : baseD2 = bD.addr := (h_id_a _ _ h_raD2).symm
+      rw [h_dr2, h_baseD2] at h_entryD2
+      rw [h_baseD2] at h_raD2
+      have h_regne1 : dstReg
+          ≠ Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg := by
+        cases dstReg with
+        | R n =>
+            have h_lt := h_prb _ _ _ h_piD
+            grind [RegisterBelow]
+      have h_regne2 : dstReg
+          ≠ Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1) := by
+        cases dstReg with
+        | R n =>
+            have h_lt := h_prb _ _ _ h_piD
+            grind [RegisterBelow]
+      have h_w := h_step
+      simp only [mirlite.writeResolvedPlace] at h_w
+      split at h_w
+      · simp at h_w
+      · rename_i h_nb
+        split at h_w
+        · rename_i perms'' h_useMut_src
+          cases h_w
+          obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
+            sb_write_respects_PermSim h_psim' h_wf_t'
+              (h_incr_t _ _ h_rtD2) h_nwD2 h_useMut_src
+          have h_entryD1 : PtrRegisterEntry
+              (oseair.RegMap.insert
+                (oseair.RegMap.insert s_mid.reg
+                  (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+                  (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem
+                    (pRes.allocBase + (pRes.addr - pRes.allocBase))
+                    (obseq.typeSize obseq.TyVal.PTy)))
+                (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1))
+                (obseq.TyVal.PTy, [Val.Ptr b2 (o2 + 0) s2 p2.NextTag]))
+              dstReg bD.addr (bD.addr - bD.addr) (blockSize (obseq.LayoutTy.PtrL τ)) tagD2 := by
+            rw [Nat.sub_self]
+            show oseair.RegMap.lookup _ _ = _
+            rw [RegMap.lookup_insert_ne _ h_regne2,
+              RegMap.lookup_insert_ne _ h_regne1]
+            exact h_entryD2
+          obtain ⟨h_wtp, h_sms'⟩ :=
+            writeThroughPtr_sim (τ := obseq.LayoutTy.PtrL τ)
+              (s_osea :=
+                { s_mid with
+                    perms := tgtPerms,
+                    reg := oseair.RegMap.insert
+                      (oseair.RegMap.insert s_mid.reg
+                        (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+                        (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem
+                          (pRes.allocBase + (pRes.addr - pRes.allocBase))
+                          (obseq.typeSize obseq.TyVal.PTy)))
+                      (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1))
+                      (obseq.TyVal.PTy, [Val.Ptr b2 (o2 + 0) s2 p2.NextTag]),
+                    pc := s_mid.pc + 1 + 1 })
+              (resolved := { addr := bD.addr, tag := bD.tag, allocBase := bD.addr,
+                             allocSize := blockSize (obseq.LayoutTy.PtrL τ) })
+              "RStore Invalid Regs"
+              [mirlite.MemValue.ptrVal b2 (b2 + o2 - b2) s2 permsP'.NextTag]
+              [Val.Ptr b2 (o2 + 0) s2 p2.NextTag] rfl
+              ⟨⟨h_b, by simp [Nat.add_sub_cancel_left], rfl, h_rt_new, h_nw_new,
+                fun k hk => ⟨(h_range k hk).choose,
+                  AddrRenameIncr.refl ρa _ _ (h_range k hk).choose_spec⟩⟩, trivial⟩
+              h_id_a h_entryD1 h_useMut_tgt
+              (by
+                show SourceMemSim ρa (ρt.extend permsP'.NextTag p2.NextTag)
+                  s_mir.mem s_mid.mem
+                rw [h_pmem]
+                exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
+              (Nat.le_refl _)
+              (fun k hk => by
+                have hk0 : k = 0 := by simpa using hk
+                subst hk0
+                rw [Nat.add_zero]
+                exact h_raD2)
+              h_step
+          have h_run3 := runN_RStore_step compProg _ _ obseq.TyVal.PTy
+            (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1))
+            dstReg _ _ h_code3
+            (RegMap.lookup_insert_self _ _ _)
+            (by rw [RegMap.lookup_insert_ne _ h_regne2,
+                RegMap.lookup_insert_ne _ h_regne1]; exact h_entryD2)
+            h_wtp
+          have h_runA := (oseair_runN_add n1 1 s_osea compProg s_mid h_prun).trans h_run1
+          have h_runB := (oseair_runN_add (n1 + 1) 1 s_osea compProg _ h_runA).trans h_run2
+          have h_runC := (oseair_runN_add (n1 + 1 + 1) 1 s_osea compProg _ h_runB).trans h_run3
+          -- §10 rebuild the invariant under the extended ρt
+          refine ⟨_, _, n1 + 1 + 1 + 1, h_incr_t, h_runC, ?_⟩
+          refine ⟨CheckedCompilerM.run
+            (compileStmtChecked
+              (Stmt.assign (.local dstLoc)
+                (.ref kind prot mask (.deref P)))) csPrefix,
+            ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
+            h_id_a, h_wf_t', ?_, ?_, ?_, ?_⟩
+          · show s_mid.pc + 1 + 1 + 1 = _
+            rw [h_ppc, h_stmtRun, h_len3]
+          · have h_plbs' : LocalBindingSim ρa (ρt.extend permsP'.NextTag p2.NextTag)
+                s_mir.env s_mid csPrefix :=
+              LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_plbs
+            have h_lbs1 : LocalBindingSim ρa (ρt.extend permsP'.NextTag p2.NextTag)
+                s_mir.env
+                { s_mid with
+                    perms := p2,
+                    reg := oseair.RegMap.insert s_mid.reg
+                      (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+                      (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem
+                        (pRes.allocBase + (pRes.addr - pRes.allocBase))
+                        (obseq.typeSize obseq.TyVal.PTy)),
+                    pc := s_mid.pc + 1 } csPrefix :=
+              LocalBindingSim.insert_fresh_reg h_plbs' h_prb h_pregmono rfl
+            have h_lbs2 : LocalBindingSim ρa (ρt.extend permsP'.NextTag p2.NextTag)
+                s_mir.env
+                { s_mid with
+                    perms := tgtPerms,
+                    reg := oseair.RegMap.insert
+                      (oseair.RegMap.insert s_mid.reg
+                        (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
+                        (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem
+                          (pRes.allocBase + (pRes.addr - pRes.allocBase))
+                          (obseq.typeSize obseq.TyVal.PTy)))
+                      (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg + 1))
+                      (obseq.TyVal.PTy, [Val.Ptr b2 (o2 + 0) s2 p2.NextTag]),
+                    pc := s_mid.pc + 1 + 1 } csPrefix :=
+              LocalBindingSim.insert_fresh_reg h_lbs1 h_prb
+                (Nat.le_trans h_pregmono (Nat.le_succ _)) rfl
+            intro τ' loc' binding' h_env'
+            obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
+              h_lbs2 loc' binding' h_env'
+            refine ⟨reg', base', tag', ?_, h_entry', h_ra', h_rt', h_nw', h_dom'⟩
+            rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit,
+              getPlaceInfo_setNextReg, getPlaceInfo_emit, getPlaceInfo_setNextReg]
+            show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).placeRegMap.lookup loc'.idx.1 = _
+            rw [h_pprm]
+            exact h_pi'
+          · show TagRenameBounded _ perms''.NextTag p3.NextTag
+            rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
+            exact h_tbd'
+          · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
+              oseair_writeWordSeq_addrStart, h_pmem]
+            exact h_alloc
+          · intro τ' loc' h_none
+            rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit,
+              getPlaceInfo_setNextReg, getPlaceInfo_emit, getPlaceInfo_setNextReg]
+            show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).placeRegMap.lookup loc'.idx.1 = none
+            rw [h_pprm]
+            exact h_unmap loc' h_none
+          · intro idx reg'' τ'' h_look
+            rw [h_stmtRun] at h_look ⊢
+            rw [getPlaceInfo_emit, getPlaceInfo_emit,
+              getPlaceInfo_setNextReg, getPlaceInfo_emit, getPlaceInfo_setNextReg] at h_look
+            have h_cs : getPlaceInfo csPrefix idx = some (reg'', τ'') := by
+              show csPrefix.placeRegMap.lookup idx = _
+              rw [← h_pprm]
+              exact h_look
+            refine RegisterBelow.mono ?_ (h_prb _ _ _ h_cs)
+            simp only [emit]
+            exact Nat.le_trans h_pregmono
+              (Nat.le_trans (Nat.le_succ _) (Nat.le_succ _))
+        · simp at h_w
+
+/-- RESIDUAL (sorried), NARROWED 2026-08-28: what remains after P→L and
+    D→L (deref source through a load spine) closed.
+    - DEREF SOURCE, non-spine pointer place or UNBOUND dst: `*p` where
+      `p` involves projections (needs the interleaved `Borrow;…;Die`
+      cleanup commutation) or the regime-B fresh-dst composition.
     - NON-LOCAL DESTINATION: the dst `Borrow(Mut); …; Die` INTERLEAVES
       with the src retag (dst is lowered before the rhs), so BRIDGE 1
       needs a commutation argument for the op between its phases — a new
@@ -1213,7 +1779,20 @@ theorem CompilerInv_step_ref
               exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
           | deref _ =>
               exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
-      | deref _ => exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
+      | deref pp =>
+          by_cases h_sp : LoadSpine pp
+          · cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
+            | some bD =>
+                -- CLOSED: `dst := &kind *p` through a load spine
+                obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+                  ref_deref_local_simulation kind prot mask compProg h_sp h_comp h_inv
+                    h_stmt h_envD h_step
+                exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr,
+                  h_run, h_inv'⟩
+            | none =>
+                exact ref_place_residual kind prot mask compProg h_comp h_inv
+                  h_stmt h_step
+          · exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
   | proj _ _ => exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
   | deref _ => exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
 
