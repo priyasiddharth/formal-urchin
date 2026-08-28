@@ -81,9 +81,10 @@ theorem compileStmt_ref_local_local_run
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
   obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
     placeToRegChecked_local_existing (kind := kind) h_src
-  simp [compileStmtChecked, compileRExprToChecked, placeToBorrowRegChecked,
+  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, placeToBorrowRegChecked,
     h_run, h_val, h_prun, h_pval, h_pres]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+    cleanupInstrs, emit_nil]
 
 /-- The fragment of `dst := &src` when the DESTINATION is unmapped: the
     root `Alloc` that `ensureLocalRegE` emits, then the `Borrow` into a
@@ -131,9 +132,12 @@ theorem compileStmt_ref_fresh_local_run
       exact h_src
   obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
     placeToRegChecked_local_existing (kind := kind) h_srcPost
-  simp [compileStmtChecked, compileRExprToChecked, placeToBorrowRegChecked,
+  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, placeToBorrowRegChecked,
     h_run, h_val, h_prun, h_pval, h_pres]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM, setPlaceInfo, emit]
+  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+    cleanupInstrs, emit_nil, setPlaceInfo, emit]
+  funext label
+  rw [if_neg (fun h => by rcases h with ⟨h1, h2⟩; omega)]
 
 /-- The fresh-destination statement lowers. -/
 theorem compileStmt_ref_fresh_local_value
@@ -168,7 +172,7 @@ theorem compileStmt_ref_fresh_local_value
       exact h_src
   obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
     placeToRegChecked_local_existing (kind := kind) h_srcPost
-  simp only [compileStmtChecked, compileRExprToChecked, placeToBorrowRegChecked,
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, placeToBorrowRegChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
@@ -215,9 +219,10 @@ theorem compileStmt_ref_proj_local_run
             evidence := PlaceToBorrowRegEvidence.proj (.local srcLoc) f baseRes tmpReg
               baseOut.evidence
           }) := by simp only [placeToBorrowRegChecked]
-  simp [compileStmtChecked, compileRExprToChecked, h_borrow_eq,
+  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_borrow_eq,
     h_run, h_run', h_val, h_prun, h_pval, h_pres]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+    cleanupInstrs, emit_nil]
 
 /-- The proj-src statement lowers. -/
 theorem compileStmt_ref_proj_local_value
@@ -252,7 +257,7 @@ theorem compileStmt_ref_proj_local_value
             evidence := PlaceToBorrowRegEvidence.proj (.local srcLoc) f baseRes tmpReg
               baseOut.evidence
           }) := by simp only [placeToBorrowRegChecked]
-  simp only [compileStmtChecked, compileRExprToChecked, h_borrow_eq,
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_borrow_eq,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
@@ -304,7 +309,7 @@ theorem compileStmt_ref_deref_run
             evidence := PlaceToBorrowRegEvidence.deref P ptrRes loadedReg tmpReg
               ptrOut.evidence
           }) := by simp only [placeToBorrowRegChecked]
-  simp [compileStmtChecked, compileRExprToChecked, h_borrow_eq,
+  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_borrow_eq,
     h_run, h_run', h_val, h_pval]
   simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
     cleanupInstrs, h_pclean, emit_nil]
@@ -343,7 +348,7 @@ theorem compileStmt_ref_deref_value
             evidence := PlaceToBorrowRegEvidence.deref P ptrRes loadedReg tmpReg
               ptrOut.evidence
           }) := by simp only [placeToBorrowRegChecked]
-  simp only [compileStmtChecked, compileRExprToChecked, h_borrow_eq,
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_borrow_eq,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
@@ -365,7 +370,7 @@ theorem compileStmt_ref_local_local_value
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
   obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
     placeToRegChecked_local_existing (kind := kind) h_src
-  simp only [compileStmtChecked, compileRExprToChecked, placeToBorrowRegChecked,
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, placeToBorrowRegChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
@@ -1291,18 +1296,36 @@ theorem ref_deref_local_simulation
         cases h : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P) csPrefix with
         | ok a => exact CheckedCompilerM.incr _ _
         | error e => exact StateIncr.refl _
-      have h_rhs_bind : ∀ r : Register, compileRExprToChecked r
-            (RExpr.ref kind prot mask (.deref P))
+      have h_pre_bind : compileRExprPreChecked
+            (RExpr.ref (Γ := Γ) kind prot mask (.deref P))
           = (do
               let srcOut ← placeToBorrowRegChecked kind prot mask (.deref P)
               let srcRes := srcOut.result
-              let _ ← CheckedCompilerM.lift
-                (emitM [Instr.RStore obseq.TyVal.PTy srcRes.reg r])
               pure {
-                result := (),
-                evidence := RExprToEvidence.ref kind prot mask (.deref P)
+                store := fun dstPtr =>
+                  [Instr.RStore obseq.TyVal.PTy srcRes.reg dstPtr],
+                postCleanup := [],
+                ev := fun _ => RExprToEvidence.ref kind prot mask (.deref P)
                   srcRes srcOut.evidence
-              }) := fun _ => rfl
+              }) := rfl
+      have h_pre_run : CheckedCompilerM.run
+            (compileRExprPreChecked (RExpr.ref (Γ := Γ) kind prot mask (.deref P)))
+            csPrefix
+          = CheckedCompilerM.run
+              (placeToBorrowRegChecked kind prot mask (.deref P)) csPrefix := by
+        rw [h_pre_bind, CheckedCompilerM.run_bind]
+        cases h : CheckedCompilerM.value
+            (placeToBorrowRegChecked kind prot mask (.deref P)) csPrefix with
+        | ok a => rfl
+        | error e => rfl
+      have h_rhs_bind : ∀ r : Register, compileRExprToChecked r
+            (RExpr.ref kind prot mask (.deref P))
+          = (do
+              let pre ← compileRExprPreChecked
+                (RExpr.ref kind prot mask (.deref P))
+              let _ ← CheckedCompilerM.lift (emitM (pre.store r))
+              let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+              pure { result := (), evidence := pre.ev r }) := fun _ => rfl
       have h_incr1 : ∀ r : Register, StateIncr
           (CheckedCompilerM.run
             (placeToBorrowRegChecked kind prot mask (.deref P)) csPrefix)
@@ -1311,9 +1334,10 @@ theorem ref_deref_local_simulation
         intro r
         rw [h_rhs_bind r, CheckedCompilerM.run_bind]
         cases h : CheckedCompilerM.value
-            (placeToBorrowRegChecked kind prot mask (.deref P)) csPrefix with
-        | ok a => exact CheckedCompilerM.incr _ _
-        | error e => exact StateIncr.refl _
+            (compileRExprPreChecked
+              (RExpr.ref (Γ := Γ) kind prot mask (.deref P))) csPrefix with
+        | ok a => rw [h_pre_run] at *; exact CheckedCompilerM.incr _ _
+        | error e => rw [h_pre_run] at *; exact StateIncr.refl _
       obtain ⟨h_erun, h_eval⟩ := ensureLocalRegE_existing h_piD
       have h_stmt_bind : compileStmtChecked
             (Stmt.assign (.local dstLoc) (.ref kind prot mask (.deref P)))

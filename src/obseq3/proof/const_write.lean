@@ -48,7 +48,7 @@ theorem const_write_stmt_evidence
             (CompilerM.value (ensureLocalRegE loc) csPrefix).evidence
             (RExprToEvidence.constInit v)
         }
-      · simp [compileStmtChecked, compileRExprToChecked]
+      · simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, emitM, cleanupInstrs, emit_nil, CompilerM.run]
   | proj base path =>
       cases h_resolved : mirlite.resolvePlace? s_mir (.proj base path) with
       | none =>
@@ -61,7 +61,7 @@ theorem const_write_stmt_evidence
             (ensurePlaceRoot_maps_root _ csPrefix)
           refine ⟨csPrefix, ?_, h_csAt, ?_⟩
           · exact { result := (), evidence := StmtEvidence.assignPlace (.proj base path) (.constInit v) dstOut.result dstOut.evidence (RExprToEvidence.constInit v) }
-          · simp [compileStmtChecked, compileRExprToChecked, h_dstOut]
+          · simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut]
       | some resolved =>
           have h_mapped :=
             placeInputsMapped_of_localBindingSim_resolvePlace h_lbs h_resolved
@@ -76,7 +76,7 @@ theorem const_write_stmt_evidence
             evidence := StmtEvidence.assignPlace (.proj base path) (.constInit v) dstOut.result
               dstOut.evidence (RExprToEvidence.constInit v)
           }
-          · simp [compileStmtChecked, compileRExprToChecked, h_dstOut, h_root]
+          · simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]
   | deref ptrPlace =>
       cases h_resolved : mirlite.resolvePlace? s_mir (.deref ptrPlace) with
       | none =>
@@ -95,7 +95,7 @@ theorem const_write_stmt_evidence
             evidence := StmtEvidence.assignPlace (.deref ptrPlace) (.constInit v) dstOut.result
               dstOut.evidence (RExprToEvidence.constInit v)
           }
-          · simp [compileStmtChecked, compileRExprToChecked, h_dstOut, h_root]
+          · simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]
 
 /-- The compiled fragment of a constant write to an already-mapped local is
     exactly one `CStore` through the mapped register. -/
@@ -108,8 +108,8 @@ theorem compileStmt_local_existing_run
         (compileStmtChecked (Stmt.assign (.local loc) (.constInit v))) cs
       = emit cs [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] reg] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h
-  simp [compileStmtChecked, compileRExprToChecked, h_run, h_val]
-  rfl
+  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_run, h_val]
+  simp [CompilerM.run, emitM, cleanupInstrs, emit_nil]
 
 /-- REGIME A, CLOSED: constant write to an already-bound local. The
     fragment is one `CStore`; execution is BRIDGE 2, the permission
@@ -155,7 +155,7 @@ theorem const_write_local_existing_simulation
           ∃ so, CheckedCompilerM.value
             (compileStmtChecked (Stmt.assign (.local loc) (.constInit v)))
             csPrefix = Except.ok so :=
-        ⟨{ result := (), evidence := StmtEvidence.assignLocal loc (.constInit v) (CompilerM.value (ensureLocalRegE loc) csPrefix).result (CompilerM.value (ensureLocalRegE loc) csPrefix).evidence (RExprToEvidence.constInit v) }, by simp [compileStmtChecked, compileRExprToChecked]⟩
+        ⟨{ result := (), evidence := StmtEvidence.assignLocal loc (.constInit v) (CompilerM.value (ensureLocalRegE loc) csPrefix).result (CompilerM.value (ensureLocalRegE loc) csPrefix).evidence (RExprToEvidence.constInit v) }, by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, emitM, cleanupInstrs, emit_nil, CompilerM.run]⟩
       have h_code : compProg s_osea.pc
           = some (Instr.CStore obseq.TyVal.NatTy [Val.Dat v] reg) := by
         rw [h_pc]
@@ -312,7 +312,7 @@ theorem const_write_fresh_local_simulation
              (CompilerM.value (ensureLocalRegE loc) csPrefix).result
              (CompilerM.value (ensureLocalRegE loc) csPrefix).evidence
              (RExprToEvidence.constInit v) },
-         by simp [compileStmtChecked, compileRExprToChecked]⟩
+         by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, emitM, cleanupInstrs, emit_nil, CompilerM.run]⟩
       -- §5 the two instructions, at pc and pc+1
       have h_sz : obseq.typeSize (layoutToTyVal obseq.LayoutTy.NatL)
           = blockSize obseq.LayoutTy.NatL := obseq.typeSize_layoutToTyVal _
@@ -530,7 +530,7 @@ theorem compileStmt_deref_run
             result := { reg := loadedReg, cleanup := [] },
             evidence := PlaceToRegEvidence.deref P ptrRes loadedReg ptrOut.evidence
           }) := by simp only [placeToRegChecked]
-  simp only [compileStmtChecked, h_deref_eq, compileRExprToChecked,
+  simp only [compileStmtChecked, h_deref_eq, compileRExprToChecked, compileRExprPreChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
@@ -589,7 +589,7 @@ theorem compileStmt_proj_zero_run
               evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
                 baseOut.evidence h_offset
             }) := placeToRegChecked_proj_root_eq path h_np
-  simp only [compileStmtChecked, h_proj_eq, compileRExprToChecked,
+  simp only [compileStmtChecked, h_proj_eq, compileRExprToChecked, compileRExprPreChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
@@ -642,13 +642,13 @@ theorem compileStmt_proj_offset_run
               evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
                 baseOut.evidence h_offset
             }) := placeToRegChecked_proj_root_eq path h_np
-  simp only [compileStmtChecked, h_proj_eq, compileRExprToChecked,
+  simp only [compileStmtChecked, h_proj_eq, compileRExprToChecked, compileRExprPreChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
     h_root, h_brun, h_bval, dif_neg h_off]
   simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bres]
+    cleanupInstrs, h_bres, emit_nil]
 
 /-- The fragment of `(*P).path := v` (nonzero offset, `P` a pointer place
     lowering with no cleanup — e.g. a load spine):
@@ -693,7 +693,7 @@ theorem compileStmt_proj_deref_run
           }) := by simp only [placeToRegChecked]
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [compileStmtChecked, h_proj_eq, h_base_eq, compileRExprToChecked,
+  simp only [compileStmtChecked, h_proj_eq, h_base_eq, compileRExprToChecked, compileRExprPreChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
@@ -748,7 +748,7 @@ theorem compileStmt_deref_proj_run
             result := { reg := loadedReg, cleanup := [] },
             evidence := PlaceToRegEvidence.deref (.proj base f) ptrRes loadedReg ptrOut.evidence
           }) := by simp only [placeToRegChecked]
-  simp only [compileStmtChecked, h_bindD, h_proj_eq, compileRExprToChecked,
+  simp only [compileStmtChecked, h_bindD, h_proj_eq, compileRExprToChecked, compileRExprPreChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
@@ -845,7 +845,7 @@ theorem const_write_deref_proj_simulation
       ⟨{ result := (),
          evidence := StmtEvidence.assignPlace (.deref (.proj (.local loc) f)) (.constInit v)
            dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
-       by simp [compileStmtChecked, compileRExprToChecked, h_dstOut, h_root]⟩
+       by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
     obtain ⟨h_brun, bOut, h_bval, h_bres⟩ :=
       placeToRegChecked_local_existing (kind := RefKind.Shared) h_piS
     have h_stmtRun := compileStmt_deref_proj_run (cs := csPrefix) (bOut := bOut)
@@ -1253,7 +1253,7 @@ theorem const_write_proj_deref_simulation
       ⟨{ result := (),
          evidence := StmtEvidence.assignPlace (.proj (.deref P) path) (.constInit v)
            dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
-       by simp [compileStmtChecked, compileRExprToChecked, h_dstOut, h_root]⟩
+       by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
     have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
       (base := .deref P) path (fun _ _ _ h => by cases h)
     have h_bindD : placeToRegChecked (Γ := Γ) RefKind.Mut (.deref P)
@@ -1724,7 +1724,7 @@ theorem const_write_proj_zero_simulation
                  evidence := StmtEvidence.assignPlace (.proj (.local loc) path)
                    (.constInit v) dstOut.result dstOut.evidence
                    (RExprToEvidence.constInit v) },
-               by simp [compileStmtChecked, compileRExprToChecked, h_dstOut, h_root]⟩
+               by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
       have h_code : compProg s_osea.pc
           = some (Instr.CStore obseq.TyVal.NatTy [Val.Dat v] reg) := by
         rw [h_pc]
@@ -1866,7 +1866,7 @@ theorem const_write_proj_offset_simulation
                  evidence := StmtEvidence.assignPlace (.proj (.local loc) path)
                    (.constInit v) dstOut.result dstOut.evidence
                    (RExprToEvidence.constInit v) },
-               by simp [compileStmtChecked, compileRExprToChecked, h_dstOut, h_root]⟩
+               by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
       have h_len3 : ((emit (emit (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
           [Instr.Assgn (Register.R csPrefix.nextReg)
             (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL) reg (pathOffset path))])
@@ -2079,7 +2079,7 @@ theorem const_write_deref_spine_simulation
     ⟨{ result := (),
        evidence := StmtEvidence.assignPlace (.deref ptrPlace) (.constInit v)
          dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
-     by simp [compileStmtChecked, compileRExprToChecked, h_dstOut, h_root]⟩
+     by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
   -- unfold one resolveAcc level
   simp only [mirlite.resolvePlaceAcc] at h_res
   cases h_qres : mirlite.resolvePlaceAcc MSB s_mir ptrPlace with

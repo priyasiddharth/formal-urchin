@@ -1338,6 +1338,27 @@ theorem ensureLocalRegE_fresh
     exact absurd h (by simp)
   · exact ⟨rfl, rfl⟩
 
+/-- Emitting the empty instruction list is a no-op on the compiler state
+    (the deref/cleanup lowering paths emit `cleanupInstrs [] = []`). -/
+theorem emit_nil (cs : CompilerState) : emit cs [] = cs := by
+  show ({ cs with
+    nextLabel := cs.nextLabel + 0,
+    code := fun label =>
+      if cs.nextLabel ≤ label ∧ label < cs.nextLabel + 0 then
+        ([] : List Instr).get? (label - cs.nextLabel)
+      else cs.code label } : CompilerState) = cs
+  have h_code : (fun label =>
+      if cs.nextLabel ≤ label ∧ label < cs.nextLabel + 0 then
+        ([] : List Instr).get? (label - cs.nextLabel)
+      else cs.code label) = cs.code := by
+    funext label
+    rw [if_neg]
+    rintro ⟨h1, h2⟩
+    exact absurd (Nat.lt_of_le_of_lt h1 h2) (Nat.lt_irrefl _)
+  rw [h_code]
+  show ({ cs with nextLabel := cs.nextLabel + 0 } : CompilerState) = cs
+  rw [Nat.add_zero]
+
 /-- The compiled fragment of a constant write to an UNMAPPED local is two
     instructions: the root `Alloc` that `ensurePlaceRoot` emits (mirroring
     mirlite's `preparePlaceAssign`) followed by the `CStore`. -/
@@ -1363,10 +1384,10 @@ theorem compileStmt_local_fresh_run
         loc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.NatL))
       loc.idx.1 = some (Register.R cs.nextReg, obseq.LayoutTy.NatL) :=
     getPlaceInfo_setPlaceInfo_self _ _ _
-  simp [compileStmtChecked, compileRExprToChecked, ensurePlaceRoot,
+  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
     CompilerM.run_bind, CompilerM.run_pure, h_run, h_val,
     placeToRegChecked, h_pi]
-  rfl
+  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, emit_nil]
 
 /-! ## §E Fragment layout + emit-preserves-memory -/
 
@@ -1576,27 +1597,6 @@ theorem placeToRegChecked_emits_preserves_mem
         (checkedEmitsPreservesMem_lift (emitM_cleanup_preserves_mem ptrOut.result.cleanup))
         (fun _ => ?_)
       exact checkedEmitsPreservesMem_pure _
-
-/-- Emitting the empty instruction list is a no-op on the compiler state
-    (the deref/cleanup lowering paths emit `cleanupInstrs [] = []`). -/
-theorem emit_nil (cs : CompilerState) : emit cs [] = cs := by
-  show ({ cs with
-    nextLabel := cs.nextLabel + 0,
-    code := fun label =>
-      if cs.nextLabel ≤ label ∧ label < cs.nextLabel + 0 then
-        ([] : List Instr).get? (label - cs.nextLabel)
-      else cs.code label } : CompilerState) = cs
-  have h_code : (fun label =>
-      if cs.nextLabel ≤ label ∧ label < cs.nextLabel + 0 then
-        ([] : List Instr).get? (label - cs.nextLabel)
-      else cs.code label) = cs.code := by
-    funext label
-    rw [if_neg]
-    rintro ⟨h1, h2⟩
-    exact absurd (Nat.lt_of_le_of_lt h1 h2) (Nat.lt_irrefl _)
-  rw [h_code]
-  show ({ cs with nextLabel := cs.nextLabel + 0 } : CompilerState) = cs
-  rw [Nat.add_zero]
 
 /-! ## §F Execution helpers -/
 

@@ -4,6 +4,37 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-28 (night, later) — The Compiler Learns MIR's Order
+
+Forty-second increment: the lowering-order bug is fixed, hours after d34
+pinned it. The rhs lowering is split into a source phase — every load,
+borrow, and temporary the right-hand side needs — and a store phase that is
+just a function of the eventual destination register. The assign-place arm
+now runs them in MIR's order: rhs first, destination second, store third, so
+no destination temporary is ever live while right-hand-side code executes.
+d34's pin fired on the first post-fix run and the test is now a plain
+agreement check, with reversion teeth: swap the two lines back and the
+divergence returns on cue.
+
+The proof fallout was almost indecently small. The rhs instruction streams
+are unchanged by the split, and code-free right-hand sides (every constant
+write) emit byte-identical assign-place fragments, so all closed regimes kept
+their statements; the state-function monad's definitional monad laws kept
+most `rfl` equations alive through the refactor, and the rest was a handful
+of `simp` lists learning two new names. The one enduring lesson was
+operational, not mathematical: bare `lake build` builds only the default
+target, which does not include the proof library — two "full build, zero
+errors" sweeps were vacuous before the axiom-audit wrapper, which builds the
+proof lib explicitly, caught the real breakage. Validation now names its
+targets.
+
+With the interleaving obstacle gone, the non-local-destination residuals are
+down to the separation/overlap analysis alone — the two parked decisions.
+
+Units 16/16 + 47/47 (d34 now agreement), suite pass 82 | fail 0 of 123.
+
+---
+
 ## 2026-08-28 (night) — The First Reachable Divergence: a Lowering-Order Bug
 
 Forty-first increment, and the sharpest kind: d34 pins a divergence on a

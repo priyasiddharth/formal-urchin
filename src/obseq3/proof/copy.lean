@@ -24,9 +24,9 @@ theorem compileStmt_copy_local_local_run
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
   obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Shared) h_src
-  simp [compileStmtChecked, compileRExprToChecked,
+  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
     h_run, h_val, h_prun, h_pval, h_pres]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs]
+  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, emit_nil]
 
 /-- The copy statement lowers in this regime. -/
 theorem compileStmt_copy_local_local_value
@@ -42,7 +42,7 @@ theorem compileStmt_copy_local_local_value
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
   obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Shared) h_src
-  simp only [compileStmtChecked, compileRExprToChecked,
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
@@ -222,7 +222,7 @@ theorem compileStmt_copy_proj_zero_run
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ)
     (kind := RefKind.Shared) (base := .local srcLoc) f
     (fun _ _ _ h => by cases h)
-  simp only [compileStmtChecked, compileRExprToChecked, h_proj_eq,
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_proj_eq,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
@@ -249,7 +249,7 @@ theorem compileStmt_copy_proj_zero_value
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ)
     (kind := RefKind.Shared) (base := .local srcLoc) f
     (fun _ _ _ h => by cases h)
-  simp only [compileStmtChecked, compileRExprToChecked, h_proj_eq,
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_proj_eq,
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,

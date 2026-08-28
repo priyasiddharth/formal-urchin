@@ -533,51 +533,68 @@ inductive RExprToEvidence {Γ : Ctx}
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
       RExprToEvidence dstPtr (.refSlice (τ := τ) kind prot src)
 
-def compileRExprToChecked
-  (dstPtr : Register)
-  {Γ : Ctx} {τ : LayoutTy}
-  (expr : RExpr Γ τ) :
-    CheckedEvidenceM Unit (fun _ => RExprToEvidence dstPtr expr) :=
-  match expr with
-  | .constInit value => do
-      let _ ← CheckedCompilerM.lift
-        (emitM [Instr.CStore obseq.TyVal.NatTy [Val.Dat value] dstPtr])
-      pure { result := (), evidence := RExprToEvidence.constInit value }
+/-- The source-side lowering of an rhs: everything EXCEPT the final
+    store through the destination register — the loads, borrows, temp
+    assignments, and any src cleanups that may run before the store.
+    Returned: the store instruction(s) as a function of the eventual
+    destination register, the cleanups that must run AFTER the store
+    (a copy's src borrow must survive its own `Memcpy`), and the
+    evidence factory.
+
+    This split is what lets `compileStmtChecked`'s assign-PLACE arm use
+    MIR's lowering order — rhs first, then the destination — so no dst
+    temporary `Borrow` is live while rhs code runs (the d34
+    lowering-order bug, 2026-08-28). -/
+structure RhsPre (Γ : Ctx) (τ : LayoutTy) (expr : RExpr Γ τ) where
+  store : Register → List Instr
+  postCleanup : List (Register × Nat)
+  ev : (dstPtr : Register) → RExprToEvidence dstPtr expr
+
+def compileRExprPreChecked
+  {Γ : Ctx} {τ : LayoutTy} :
+    (expr : RExpr Γ τ) → CheckedCompilerM (RhsPre Γ τ expr)
+  | .constInit value =>
+      pure {
+        store := fun dstPtr => [Instr.CStore obseq.TyVal.NatTy [Val.Dat value] dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.constInit value
+      }
   | .copy (τ := τ) src => do
       let srcOut ← placeToRegChecked RefKind.Shared src
       let srcRes := srcOut.result
-      let _ ← CheckedCompilerM.lift
-        (emitM ([Instr.Memcpy dstPtr srcRes.reg (layoutToTyVal τ)] ++ cleanupInstrs srcRes.cleanup))
       pure {
-        result := (),
-        evidence := RExprToEvidence.copy src srcRes srcOut.evidence
+        store := fun dstPtr => [Instr.Memcpy dstPtr srcRes.reg (layoutToTyVal τ)],
+        postCleanup := srcRes.cleanup,
+        ev := fun _ => RExprToEvidence.copy src srcRes srcOut.evidence
       }
   | .ref kind prot mask src => do
       let srcOut ← placeToBorrowRegChecked kind prot mask src
       let srcRes := srcOut.result
-      let _ ← CheckedCompilerM.lift
-        (emitM [Instr.RStore obseq.TyVal.PTy srcRes.reg dstPtr])
       pure {
-        result := (),
-        evidence := RExprToEvidence.ref kind prot mask src srcRes srcOut.evidence
+        store := fun dstPtr => [Instr.RStore obseq.TyVal.PTy srcRes.reg dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.ref kind prot mask src srcRes srcOut.evidence
       }
-  | .uninit => do
+  | .uninit =>
       -- mirlite fills the destination with `blockSize τ` undef cells via a
       -- useMut write; CStore of Undef values is the same event stream
-      let _ ← CheckedCompilerM.lift
-        (emitM [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) dstPtr])
-      pure { result := (), evidence := RExprToEvidence.uninit }
+      pure {
+        store := fun dstPtr =>
+          [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.uninit
+      }
   | .exposeAddr src => do
       let srcOut ← placeToRegChecked RefKind.Shared src
       let srcRes := srcOut.result
       let tmpReg ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
         (emitM ([Instr.Assgn tmpReg (Rhs.ExposeAddr srcRes.reg)]
-          ++ cleanupInstrs srcRes.cleanup
-          ++ [Instr.RStore obseq.TyVal.NatTy tmpReg dstPtr]))
+          ++ cleanupInstrs srcRes.cleanup))
       pure {
-        result := (),
-        evidence := RExprToEvidence.exposeAddr src srcRes srcOut.evidence
+        store := fun dstPtr => [Instr.RStore obseq.TyVal.NatTy tmpReg dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.exposeAddr src srcRes srcOut.evidence
       }
   | .fromExposed src => do
       let srcOut ← placeToRegChecked RefKind.Shared src
@@ -585,22 +602,21 @@ def compileRExprToChecked
       let tmpReg ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
         (emitM ([Instr.Assgn tmpReg (Rhs.FromExposed srcRes.reg)]
-          ++ cleanupInstrs srcRes.cleanup
-          ++ [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr]))
+          ++ cleanupInstrs srcRes.cleanup))
       pure {
-        result := (),
-        evidence := RExprToEvidence.fromExposed src srcRes srcOut.evidence
+        store := fun dstPtr => [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.fromExposed src srcRes srcOut.evidence
       }
   | .ptrCast src => do
       -- tag-preserving type-punning cast = a one-cell copy with an SB
       -- read, which is exactly Memcpy at PTy
       let srcOut ← placeToRegChecked RefKind.Shared src
       let srcRes := srcOut.result
-      let _ ← CheckedCompilerM.lift
-        (emitM ([Instr.Memcpy dstPtr srcRes.reg obseq.TyVal.PTy] ++ cleanupInstrs srcRes.cleanup))
       pure {
-        result := (),
-        evidence := RExprToEvidence.ptrCast src srcRes srcOut.evidence
+        store := fun dstPtr => [Instr.Memcpy dstPtr srcRes.reg obseq.TyVal.PTy],
+        postCleanup := srcRes.cleanup,
+        ev := fun _ => RExprToEvidence.ptrCast src srcRes srcOut.evidence
       }
   | .ptrOffset (σ := σ) src delta => do
       -- delta is in pointees of the SOURCE type; pre-scale to cells
@@ -609,11 +625,11 @@ def compileRExprToChecked
       let tmpReg ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
         (emitM ([Instr.Assgn tmpReg (Rhs.PtrOffset srcRes.reg (delta * (blockSize σ : Int)))]
-          ++ cleanupInstrs srcRes.cleanup
-          ++ [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr]))
+          ++ cleanupInstrs srcRes.cleanup))
       pure {
-        result := (),
-        evidence := RExprToEvidence.ptrOffset src delta srcRes srcOut.evidence
+        store := fun dstPtr => [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.ptrOffset src delta srcRes srcOut.evidence
       }
   | .refSlice kind prot src => do
       let srcOut ← placeToRegChecked RefKind.Shared src
@@ -621,12 +637,26 @@ def compileRExprToChecked
       let tmpReg ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
         (emitM ([Instr.Assgn tmpReg (Rhs.BorrowRest kind prot srcRes.reg)]
-          ++ cleanupInstrs srcRes.cleanup
-          ++ [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr]))
+          ++ cleanupInstrs srcRes.cleanup))
       pure {
-        result := (),
-        evidence := RExprToEvidence.refSlice kind prot src srcRes srcOut.evidence
+        store := fun dstPtr => [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.refSlice kind prot src srcRes srcOut.evidence
       }
+
+/-- Store-through-dst rhs lowering: the pre phase followed by the store
+    and the post-store cleanups. The instruction stream is UNCHANGED
+    from before the 2026-08-28 split for every rhs; only the assign-
+    PLACE arm of `compileStmtChecked` interleaves differently. -/
+def compileRExprToChecked
+  (dstPtr : Register)
+  {Γ : Ctx} {τ : LayoutTy}
+  (expr : RExpr Γ τ) :
+    CheckedEvidenceM Unit (fun _ => RExprToEvidence dstPtr expr) := do
+  let pre ← compileRExprPreChecked expr
+  let _ ← CheckedCompilerM.lift (emitM (pre.store dstPtr))
+  let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+  pure { result := (), evidence := pre.ev dstPtr }
 
 /-- Evidence-free twin of `compileStmtChecked`'s two assign cases (kept in
     sync with them), for use as the guarded block of `assignIf`. -/
@@ -639,8 +669,10 @@ def compileAssignChecked {Γ : Ctx} {τ : LayoutTy}
       pure ()
   | dst => do
       let _ ← CheckedCompilerM.lift (ensurePlaceRoot dst)
+      let pre ← compileRExprPreChecked rhs
       let dstOut ← placeToRegChecked RefKind.Mut dst
-      let _ ← compileRExprToChecked dstOut.result.reg rhs
+      let _ ← CheckedCompilerM.lift (emitM (pre.store dstOut.result.reg))
+      let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
       let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstOut.result.cleanup))
       pure ()
 
@@ -725,14 +757,20 @@ def compileStmtChecked {Γ : Ctx} :
         evidence := StmtEvidence.assignLocal loc rhs dstRes dstOut.evidence rhsOut.evidence
       }
   | .assign dst rhs => do
+      -- MIR's lowering order (the d34 fix): rhs SOURCE code first, then
+      -- the destination lowering, then the store — no dst temporary
+      -- `Borrow` is live while rhs code runs
       let _ ← CheckedCompilerM.lift (ensurePlaceRoot dst)
+      let pre ← compileRExprPreChecked rhs
       let dstOut ← placeToRegChecked RefKind.Mut dst
       let dstRes := dstOut.result
-      let rhsOut ← compileRExprToChecked dstRes.reg rhs
+      let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
+      let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
       let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
       pure {
         result := (),
-        evidence := StmtEvidence.assignPlace dst rhs dstRes dstOut.evidence rhsOut.evidence
+        evidence := StmtEvidence.assignPlace dst rhs dstRes dstOut.evidence
+          (pre.ev dstRes.reg)
       }
   | .pushProtectors => do
       let _ ← CheckedCompilerM.lift (emitM [Instr.PushProt])

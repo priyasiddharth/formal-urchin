@@ -824,20 +824,18 @@ def d33_overlap_junk_copy_diverges : IO Unit := do
       assert ((e.splitOn "sb-die").length > 1)
         s!"d33: expected an sb-die error, got: {e}"
 
-/-- KNOWN-COMPILER-BUG pin (REACHABLE divergence, unlike d33): the
-    destination lowering's temporary `Borrow(Mut)` is minted BEFORE the
-    rhs is evaluated, but the rhs's deref spine may legitimately READ
-    the very cell the temporary guards (it is a pointer cell on the
-    rhs's own path). With raw pointers the aliasing is legal on both
-    machines: `t : (u64, *mut u64)`, `p = &raw mut t`,
-    `w = &raw mut t.1`, then `(*p).1 := &mut **w`. mirlite mints no
-    temporary — it reads cell a+1 via t_w during resolution and writes
-    it through t_p (raws survive foreign reads) — and SUCCEEDS. The
-    target's fresh Unique on a+1 is killed by (or kills, depending on
-    SRW grouping) the spine's read, and the fragment errs. The fix is a
-    LOWERING-ORDER change (evaluate rhs before the dst borrow, MIR's
-    `tmp = rhs; dst = move tmp`) — a model decision, parked. This test
-    FLIPS (target `.ok`) when that lands: update it to `expectDiff`. -/
+/-- FIXED-BUG witness (was the KNOWN-COMPILER-BUG pin, flipped
+    2026-08-28 when the lowering-order fix landed): the assign-place
+    lowering used to mint its dst temporary `Borrow(Mut)` BEFORE the
+    rhs ran, and the rhs's deref spine legitimately READS the guarded
+    cell (a pointer cell on its own path) — with raw pointers this is
+    legal aliasing on both machines, so the target erred where mirlite
+    succeeded (a REACHABLE divergence: `t : (u64, *mut u64)`,
+    `p = &raw mut t`, `w = &raw mut t.1`, `(*p).1 := &mut **w`).
+    `compileStmtChecked`'s assign-place arm now uses MIR's order — rhs
+    source code first, then the destination lowering, then the store —
+    and both machines agree. Teeth: reverting the arm to the old order
+    makes this test report `.ub 5` again. -/
 def tPairL := obseq.LayoutTy.TupL [natL, ptrNat]
 def ΓD34 : Ctx := [tPairL, .PtrL tPairL, .PtrL ptrNat, natL]
 def tD34 : Place ΓD34 tPairL := .local ⟨⟨0, by decide⟩, rfl⟩
@@ -854,13 +852,7 @@ def d34_deref_dst_temp_killed_by_rhs_spine : IO Unit := do
      .assign wD34 (.ref (.Raw true) false [] (.proj tD34 (.field ⟨1, by decide⟩ .nil))),
      .assign (.proj (.deref pD34) (.field ⟨1, by decide⟩ .nil))
        (.ref .Mut false [] (.deref (.deref wD34)))]
-  let src := srcRun ΓD34 prog
-  assert (src == .ok) s!"d34: source should succeed, got {reprStr src}"
-  match tgtRun ΓD34 prog with
-  | .error e => throw (IO.userError s!"d34: {e}")
-  | .ok tgt =>
-      assert (tgt == .ub 5)
-        s!"d34: pinned target UB at the final stmt (known lowering-order bug); got {reprStr tgt} — if .ok, the bug is FIXED: flip this test to expectDiff .ok"
+  expectDiff ΓD34 prog .ok "d34 deref dst temp survives rhs spine"
 
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,

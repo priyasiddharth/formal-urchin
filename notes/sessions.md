@@ -497,3 +497,22 @@ divergence taxonomy; parked entry (fix = MIR's rhs-first order).
 **Next-session pickup:** user decisions queued: (a) lowering-order fix
 (compiler change, unlocks non-local-dst residuals), (b) copy overlap
 event check, (c) separation conjunct.
+
+## 2026-08-28 (night, cont. 2)
+**Session:** (terminal, continued) — the lowering-order fix
+**Theme:** compiler fixed to MIR's order; d34 flips to agreement.
+**Key outputs:**
+- compile.lean: `RhsPre` + `compileRExprPreChecked` split; assign-place
+  arm (and compileAssignChecked twin) lower rhs BEFORE dst; rhs streams
+  unchanged, so closed-regime statements survived.
+- d34 → expectDiff .ok (reversion teeth verified: old order → .ub 5).
+- Proof fallout tiny (defeq monad laws); emit_nil relocated; new
+  pothole recorded: bare `lake build` builds only Core — validate with
+  explicit targets.
+- journal 2026-08-28-lowering-order-fix.md; parked entry RESOLVED.
+**Critical corrections:** the "full build 0 errors" sweeps before the
+audit wrapper caught the breakage were vacuous (default-target trap).
+**Status:** complete. All targets green; suite 82/123; units 16/16 +
+47/47; axiom audit exact; audit at 4.
+**Next-session pickup:** copy overlap event check (b) and/or the
+separation conjunct (c) — the remaining unlocks for the residuals.

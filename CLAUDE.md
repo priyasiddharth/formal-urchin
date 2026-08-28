@@ -6,6 +6,10 @@ reference implementation.
 
 notes at: notes/
 
+- Validation builds: bare `lake build` builds only the DEFAULT target
+  (Core), which EXCLUDES the obseq3 proof lib — use
+  `lake build Core Obseq3 Obseq3Proof Conformance` (or rely on
+  `scripts/audit_axioms.sh`, which builds Obseq3Proof).
 - Axiom/sorry audit: `scripts/audit_axioms.sh` machine-checks that the
   main theorem (`obseq3.proof.compile_correct`) rests only on the
   whitelisted axioms and EXACTLY the audited sorries (pinned in
