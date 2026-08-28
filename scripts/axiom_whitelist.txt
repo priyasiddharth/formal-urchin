@@ -1,0 +1,17 @@
+# Axiom/sorry whitelist for the audit rooted at obseq3.proof.compile_correct.
+# scripts/audit_axioms.sh FAILS if the current state differs from this file
+# in EITHER direction (new axiom/sorry, or a stale entry after one closes).
+# Update this file in the same commit that changes the proof state, with a
+# matching entry in the SORRY AUDIT block (obseq3/proof/compiler.lean).
+
+[axioms]
+propext
+Classical.choice
+Quot.sound
+sorryAx
+
+[sorries]
+obseq3.proof.copy_place_residual
+obseq3.proof.ref_place_residual
+obseq3.proof.const_write_deref_deep_residual
+obseq3.proof.const_write_proj_nonlocal_residual

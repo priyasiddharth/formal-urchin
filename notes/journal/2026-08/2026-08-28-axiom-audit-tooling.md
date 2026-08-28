@@ -42,3 +42,13 @@ CLAUDE.md: run `scripts/audit_axioms.sh` in validation before every
 proof-touching commit; move the pin in the commit that closes/adds a
 residual. Script needs `import Lean` (project modules don't pull the
 meta API).
+
+## Addendum (same night): whitelist externalized
+Per user request the pin moved out of the script into
+`scripts/axiom_whitelist.txt` (`[axioms]` / `[sorries]` sections, `#`
+comments), and the comparison is now EXACT in both directions for both
+sections — a stale whitelisted axiom that is no longer used also fails,
+keeping the file an honest record. Teeth re-verified on the file:
+removed `sorryAx` line → rogue-axiom failure; added a ghost sorry line
+→ stale-pin failure. (Lean 4.28 note: `String.trim` is deprecated →
+`trimAscii.toString`.)

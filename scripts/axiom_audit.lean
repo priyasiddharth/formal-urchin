@@ -28,17 +28,33 @@ open Lean
 def auditRoots : List Name :=
   [``obseq3.proof.compile_correct]
 
-/-- The only axioms the correctness theorem may rest on. `sorryAx` is
-    admitted ONLY through the audited residuals pinned below. -/
-def axiomWhitelist : List Name :=
-  [``propext, ``Classical.choice, ``Quot.sound, ``sorryAx]
+/-- The whitelist lives in a data file next to this script; the audit
+    compares the CURRENT state against it in both directions. -/
+def whitelistPath : System.FilePath := "scripts/axiom_whitelist.txt"
 
-/-- The audited sorry roots (must match the SORRY AUDIT block). -/
-def expectedSorryRoots : List Name :=
-  [``obseq3.proof.copy_place_residual,
-   ``obseq3.proof.ref_place_residual,
-   ``obseq3.proof.const_write_deref_deep_residual,
-   ``obseq3.proof.const_write_proj_nonlocal_residual]
+/-- Parse the whitelist file: `[axioms]` / `[sorries]` sections, one name
+    per line, `#` comments. -/
+def parseWhitelist (text : String) : Except String (List String × List String) := Id.run do
+  let mut axioms : List String := []
+  let mut sorries : List String := []
+  let mut section? : Option String := none
+  for line in text.splitOn "\n" do
+    let line := line.trimAscii.toString
+    if line.isEmpty || line.startsWith "#" then
+      continue
+    else if line == "[axioms]" || line == "[sorries]" then
+      section? := some line
+    else
+      match section? with
+      | some "[axioms]" => axioms := axioms ++ [line]
+      | some "[sorries]" => sorries := sorries ++ [line]
+      | _ => return .error s!"whitelist entry outside a section: {line}"
+  return .ok (axioms, sorries)
+
+/-- Both-direction set comparison; returns (extra-in-current, stale-in-whitelist). -/
+def diffSets (current whitelist : List String) : List String × List String :=
+  (current.filter (fun c => !whitelist.contains c),
+   whitelist.filter (fun w => !current.contains w))
 
 /-- Constants directly referenced by a declaration's type and value. -/
 private def usedConsts (ci : ConstantInfo) : Array Name :=
@@ -72,6 +88,10 @@ private partial def sorryRootsFrom (env : Environment) (root : Name) :
 open Elab Command in
 #eval show CoreM Unit from do
   let env ← getEnv
+  let text ← IO.FS.readFile whitelistPath
+  let (wlAxioms, wlSorries) ← match parseWhitelist text with
+    | .ok v => pure v
+    | .error e => throwError "axiom audit: bad whitelist file: {e}"
   let mut allAxioms : NameSet := {}
   let mut allSorryRoots : NameSet := {}
   for root in auditRoots do
@@ -82,20 +102,23 @@ open Elab Command in
       allAxioms := allAxioms.insert a
     for s in sorryRootsFrom env root do
       allSorryRoots := allSorryRoots.insert s
-  -- 1. no axiom outside the whitelist
-  let rogue := allAxioms.toList.filter (fun a => !axiomWhitelist.contains a)
-  unless rogue.isEmpty do
-    throwError "axiom audit FAILED — axioms outside the whitelist: {rogue}"
-  -- 2. the sorry set is EXACTLY the audited one
-  let unexpected := allSorryRoots.toList.filter
-    (fun s => !expectedSorryRoots.contains s)
-  let closed := expectedSorryRoots.filter
-    (fun s => !allSorryRoots.contains s)
-  unless unexpected.isEmpty do
-    throwError "axiom audit FAILED — UNAUDITED sorries reachable from the root: {unexpected}\n(add to expectedSorryRoots only with an audit entry)"
-  unless closed.isEmpty do
-    throwError "axiom audit FAILED — pinned sorries no longer present (closed?): {closed}\n(remove them from expectedSorryRoots)"
-  IO.println s!"axiom audit OK
+  -- exact comparison, both directions, both sections
+  let (rogueAx, staleAx) :=
+    diffSets (allAxioms.toList.map toString) wlAxioms
+  let (rogueSorry, staleSorry) :=
+    diffSets (allSorryRoots.toList.map toString) wlSorries
+  let mut failures : List String := []
+  unless rogueAx.isEmpty do
+    failures := failures ++ [s!"axioms NOT in the whitelist: {rogueAx}"]
+  unless staleAx.isEmpty do
+    failures := failures ++ [s!"whitelisted axioms no longer used (stale): {staleAx}"]
+  unless rogueSorry.isEmpty do
+    failures := failures ++ [s!"UNAUDITED sorries reachable from the root: {rogueSorry}"]
+  unless staleSorry.isEmpty do
+    failures := failures ++ [s!"pinned sorries no longer present (closed?): {staleSorry}"]
+  unless failures.isEmpty do
+    throwError "axiom audit FAILED — current state ≠ {whitelistPath}:\n  {String.intercalate "\n  " failures}\n(update the whitelist file only together with the SORRY AUDIT block)"
+  IO.println s!"axiom audit OK — matches {whitelistPath}
   roots        : {auditRoots}
   axioms used  : {allAxioms.toList}
   sorry roots  : {allSorryRoots.toList} ({allSorryRoots.size} audited)"
