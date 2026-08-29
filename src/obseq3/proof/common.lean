@@ -883,6 +883,32 @@ theorem IdentityOnDomain.extend_id {ρa : AddrRenameMap}
   intro x x' hx
   grind [AddrRenameMap.extend, IdentityOnDomain]
 
+/-- Identity extension over a whole block: every cell of `[base, base+n)`
+    maps to itself. Regime B for MULTI-CELL roots (a projected dst whose
+    fresh root is a tuple) needs the rename defined on the entire block,
+    not just its base — `LocalBindingSim`'s block-domain conjunct
+    quantifies over all `k < blockSize`. -/
+def AddrRenameMap.extendIdRange (ρa : AddrRenameMap) (base : Word) (n : Nat) :
+    AddrRenameMap :=
+  fun x => if base ≤ x ∧ x < base + n then some x else ρa x
+
+theorem AddrRenameMap.extendIdRange_mem {ρa : AddrRenameMap} {base x : Word}
+    {n : Nat} (h1 : base ≤ x) (h2 : x < base + n) :
+    ρa.extendIdRange base n x = some x := by
+  simp [AddrRenameMap.extendIdRange, h1, h2]
+
+theorem AddrRenameIncr.extendIdRange {ρa : AddrRenameMap}
+    (h_id : IdentityOnDomain ρa) (base : Word) (n : Nat) :
+    AddrRenameIncr ρa (ρa.extendIdRange base n) := by
+  intro x x' hx
+  grind [AddrRenameMap.extendIdRange, IdentityOnDomain]
+
+theorem IdentityOnDomain.extendIdRange {ρa : AddrRenameMap}
+    (h_id : IdentityOnDomain ρa) (base : Word) (n : Nat) :
+    IdentityOnDomain (ρa.extendIdRange base n) := by
+  intro x x' hx
+  grind [AddrRenameMap.extendIdRange, IdentityOnDomain]
+
 /-! ### Lockstep allocation
 
 Both machines allocate with the same bump allocator (`mirlite.allocate`

@@ -4,6 +4,31 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 (later) — The Second Sorry Dies
+
+Sixtieth increment: `const_write_proj_nonlocal_residual` is deleted and
+the whitelist drops to two. The last class was unbound roots — `s.f := v`
+where the write's own statement allocates `s`. Both machines allocate the
+σ-sized root in lockstep (`allocateRoot` source-side, `ensurePlaceRoot`'s
+root `Alloc` compiled-side), and then the ordinary projected endgames land
+inside the fresh block: a bare `CStore` at offset zero, `Borrow; CStore;
+Die` otherwise, the Borrow's bound supplied by typing alone (a field fits
+its layout).
+
+The one genuinely new piece is `extendIdRange`: the bare-local regime B
+extended the address rename by a single identity pair, which was quietly
+load-bearing on `blockSize NatL = 1`. A tuple root needs the rename
+defined on EVERY cell of the fresh block — the binding-sim's block-domain
+conjunct quantifies over all of it, and a nonzero-offset write lands past
+the base. Extending by the identity over the whole range needs no
+freshness side conditions, for the same reason the single-pair extension
+didn't: identity-on-domain leaves no room for disagreement.
+
+d54 pins the fresh-root writes, with teeth: undersizing the root `Alloc`
+to one cell makes the field-1 borrow fall off the block, and the witness
+sees the target trap where the source doesn't. Units 17/17 + 67/67, suite
+pass 82 | fail 0 of 123, axiom audit exact at two.
+
 ## 2026-09-03 — One Leaf Per Offset
 
 Fifty-ninth increment: the C-deref leaves collapse onto the mother lemma.

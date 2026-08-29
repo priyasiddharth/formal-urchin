@@ -775,3 +775,20 @@ the .local arm). d52+d53 (66/66), teeth via broken Borrow offset.
 **Next-session pickup:** regime-B unbound roots (allocateRoot + the
 fresh-block C0/C1 endgames) → const_write_proj_nonlocal_residual to
 ZERO, whitelist 3 → 2; then copy/ref remaining classes.
+
+## 2026-09-03 (later)
+**Session:** (terminal, continued) — regime B-proj closes the second residual
+**Theme:** `const_write_proj_nonlocal_residual` DELETED (whitelist 3→2).
+Fresh fragments (`compileStmt_proj_fresh_zero_run/_offset_run/_value`)
+over `ensureLocalRegE_fresh` + post-`setPlaceInfo` local lowering; leaf
+`const_write_proj_fresh_simulation` = fresh-local §1–§3 at `blockSize σ`
++ C0/C1 endgames on the fresh block (Borrow bound from
+`PathTo.offset_add_size_le`). NEW: `AddrRenameMap.extendIdRange` —
+block-wide identity ρa extension (block-domain conjunct + nonzero-offset
+writes need every cell, not just the base). d54 (67/67), teeth via
+undersized root Alloc.
+**Status:** complete; all green; corpus 82/123 (0 fail); audit exact at 2.
+**Next-session pickup:** copy residual classes (proj-topped srcs over
+non-local bases, unbound dst, non-local dst — BRIDGE 1 composition) and
+ref residual classes (proj-topped dsts over non-local bases, non-local
+srcs under non-local dsts, unbound roots) → drive to ZERO sorries.

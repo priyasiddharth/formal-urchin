@@ -78,7 +78,7 @@ the two facts the minting members need.
   `AllocLockstep.allocate_eq` is the consumer-facing form: corresponding
   allocations agree, and the property survives them.
 
-Remaining (3): every remaining sorry is blocked on a NAMED obligation.
+Remaining (2): every remaining sorry is blocked on a NAMED obligation.
 1. ✔ `const_write_deref_deep_residual` — RETIRED 2026-09-01, the first
    residual to die. The pending-cleanup generalization landed as
    `ptrChain_lowering_sim`; `flattenPlace` + its congruence family
@@ -87,15 +87,18 @@ Remaining (3): every remaining sorry is blocked on a NAMED obligation.
    shape through `const_write_deref_chain_simulation` and never falls
    back. The residual and its nonspine dispatcher were deleted; the
    axiom whitelist dropped to THREE sorries.
-2. `const_write_proj_nonlocal_residual` — NARROWED 2026-09-03: the two
-   C-deref leaves are COLLAPSED onto the mother lemma at
-   `Mut (.deref P)`, gated on the WHOLE pointer place
-   (`PtrChain (.deref P)` — chains of any depth, proj-interiors
-   included), and the proj-dst dispatcher's deref arm is TOTAL via the
-   flatten transfer (`compileStmt_const_projderef_flatten_run/_value` +
-   `PtrChain_flatten_deref`). Remaining: UNBOUND roots only
-   (regime-B composition: `allocateRoot` + the closed proj endgames on
-   the fresh block).
+2. ✔ `const_write_proj_nonlocal_residual` — RETIRED 2026-09-03, the
+   second residual to die. The two C-deref leaves COLLAPSED onto the
+   mother lemma at `Mut (.deref P)` (gate `PtrChain (.deref P)` — any
+   depth, proj-interiors included); the proj-dst dispatcher's deref arm
+   went TOTAL via the flatten transfer
+   (`compileStmt_const_projderef_flatten_run/_value` +
+   `PtrChain_flatten_deref`); and the last class — UNBOUND roots —
+   closed as `const_write_proj_fresh_simulation` (regime B-proj:
+   `allocateRoot`/`ensurePlaceRoot` allocate the σ-sized root in
+   lockstep, ρa extends by the IDENTITY over the whole fresh block via
+   `AddrRenameMap.extendIdRange`, then the C0/C1 endgames land inside
+   it). The axiom whitelist dropped to TWO sorries.
 3. `copy_place_residual` — NARROWED 2026-08-29 (later): regimes L→L,
    P0→L, P→L (nonzero offset) and D→L (deref src through a load spine)
    are CLOSED (`copy_local_local_simulation`, `copy_proj_zero_simulation`,

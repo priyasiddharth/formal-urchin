@@ -1208,6 +1208,27 @@ def d53_proj_write_through_flattened_ptr : IO Unit :=
      .assign yD53 (.copy (.proj tD53 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d53 proj write through flattened ptr"
 
+def ΓD54 : Ctx := [pairD52L, pairD52L, natL, natL]
+def sD54 : Place ΓD54 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
+def tD54 : Place ΓD54 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
+def xD54 : Place ΓD54 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def yD54 : Place ΓD54 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: projected writes whose FIRST touch allocates the root —
+    `s.1 := v` with `s` unbound (regime B-proj, nonzero offset: the
+    root `Alloc` must size the WHOLE tuple, then `Borrow; CStore; Die`
+    lands inside it) and `t.0 := w` with `t` unbound (zero offset:
+    `Alloc; CStore` at the block base). Closed 2026-09-03, the
+    increment that killed `const_write_proj_nonlocal_residual`. -/
+def d54_fresh_root_proj_writes : IO Unit :=
+  expectDiff ΓD54
+    [.assign (.proj sD54 (.field ⟨1, by decide⟩ .nil)) (.constInit 9),
+     .assign (.proj sD54 (.field ⟨0, by decide⟩ .nil)) (.constInit 4),
+     .assign (.proj tD54 (.field ⟨0, by decide⟩ .nil)) (.constInit 5),
+     .assign xD54 (.copy (.proj sD54 (.field ⟨1, by decide⟩ .nil))),
+     .assign yD54 (.copy (.proj tD54 (.field ⟨0, by decide⟩ .nil)))]
+    .ok "d54 fresh root proj writes"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1274,7 +1295,8 @@ def allTests : List (IO Unit) := [
   d50_write_through_nested_ptr_field,
   d51_copy_ref_through_nested_ptr_field,
   d52_proj_write_through_chain,
-  d53_proj_write_through_flattened_ptr]
+  d53_proj_write_through_flattened_ptr,
+  d54_fresh_root_proj_writes]
 
 def runAll : IO Unit := do
   allTests.forM id
