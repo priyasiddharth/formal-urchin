@@ -1054,6 +1054,44 @@ def d46_write_through_deref_struct_field : IO Unit :=
        (.constInit 9)]
     .ok "d46 write through deref-struct field"
 
+def ΓD47 : Ctx := [refField2L, natL, natL]
+def sD47 : Place ΓD47 refField2L := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD47 : Place ΓD47 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def yD47 : Place ΓD47 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- Positive: copy THROUGH a pointer field — `y := copy *(s.f)`. The
+    src is a proj-topped `PtrChain`, the shape the collapsed copy leaf
+    (mother lemma on the WHOLE source place, 2026-08-31) serves. -/
+def d47_copy_through_ptr_field : IO Unit :=
+  expectDiff ΓD47
+    [.assign xD47 (.constInit 5),
+     .assign (.proj sD47 (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] xD47),
+     .assign yD47 (.copy (.deref (.proj sD47 (.field ⟨1, by decide⟩ .nil))))]
+    .ok "d47 copy through ptr field"
+
+def tD48L := obseq.LayoutTy.TupL [natL, ptrPtrNat]
+def ΓD48 : Ctx := [tD48L, ptrNat, natL, natL]
+def tD48 : Place ΓD48 tD48L := .local ⟨⟨0, by decide⟩, rfl⟩
+def rD48 : Place ΓD48 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def xD48 : Place ΓD48 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def yD48 : Place ΓD48 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: a reference stored THROUGH a pointer-to-pointer FIELD —
+    `*(t.f) := &mut y`, then written through double-deref. The dst is a
+    proj-topped `PtrChain`, the shape the collapsed ref deref-dst leaf
+    (mother lemma at `Mut` on the WHOLE dst, 2026-08-31) serves. -/
+def d48_ref_through_ptr_field_dst : IO Unit :=
+  expectDiff ΓD48
+    [.assign xD48 (.constInit 5),
+     .assign yD48 (.constInit 6),
+     .assign rD48 (.ref .Mut false [] xD48),
+     .assign (.proj tD48 (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] rD48),
+     .assign (.deref (.proj tD48 (.field ⟨1, by decide⟩ .nil)))
+       (.ref .Mut false [] yD48),
+     .assign (.deref (.deref (.proj tD48 (.field ⟨1, by decide⟩ .nil))))
+       (.constInit 9)]
+    .ok "d48 ref through ptr field dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1113,7 +1151,9 @@ def allTests : List (IO Unit) := [
   d43_ref_through_loaded_ptr,
   d44_write_through_ptr_field_chain,
   d45_ref_through_ptr_field_chain,
-  d46_write_through_deref_struct_field]
+  d46_write_through_deref_struct_field,
+  d47_copy_through_ptr_field,
+  d48_ref_through_ptr_field_dst]
 
 def runAll : IO Unit := do
   allTests.forM id

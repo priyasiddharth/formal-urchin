@@ -707,3 +707,19 @@ unbound roots.
 **Next-session pickup:** apply the same collapse to copy D→L and ref
 deref-src/deref-dst (they still hand-run the final Load); then
 proj-of-proj normalization inside chains; unbound roots.
+
+## 2026-09-01
+**Session:** (terminal, continued) — the collapse travels
+**Theme:** copy D→L + ref deref-dst re-founded on the whole-place
+mother lemma (Shared on the src / Mut on the dst from post-Borrow);
+~500 more lines deleted; chain srcs and deref-dst chains closed
+(d47 `y := copy *(s.f)`, d48 `*(t.f) := &x`; 61/61).
+**Key outputs:** compileStmt_copy_derefchain_run/_value,
+compileStmt_ref_derefdst_run/_value (opaque-run forms),
+resolvePlaceAcc_local (targeted reduction keeping siblings opaque),
+dispatchers regated to PtrChain (.deref _), residual docstrings
+narrowed.
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 4.
+**Next-session pickup:** ref deref-src collapse (borrow-deref bind
+equation), proj-topped srcs/dsts over non-local bases, proj-of-proj
+normalization, unbound roots (regime-B → first residual to zero).

@@ -4,6 +4,29 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-01 — The Collapse Travels
+
+Fifty-fifth increment: the whole-place heuristic applied to its two named
+candidates. Copy's deref-source leaf and ref's deref-destination leaf both
+re-founded on the mother lemma called at the WHOLE place — copy's source at
+`Shared`, ref's destination at `Mut` from the post-Borrow state, the borrow
+temp riding the register-frame conjunct across the entire lowering. Between
+them another ~500 lines of hand-run `Load`s and find-inversions deleted, and
+two more residual classes closed: `y := copy *(s.f)` and `*(t.f) := &x`
+(d47, d48). One pleasant surprise: with no register insert after the mother
+lemma, the store's operand lookups are independent facts, and the usual
+register-distinctness lemma is simply unnecessary — deleted rather than
+proved.
+
+The pattern is now three-for-three. Ref's deref-source leaf remains on the
+old gate — its lowering interposes a `Borrow` after the `Load`, so its
+collapse wants one bind equation first — and the proj-topped shapes over
+non-local bases are the next class out.
+
+Units 17/17 + 61/61, suite pass 82 | fail 0 of 123, axiom audit exact.
+
+---
+
 ## 2026-08-31 (later still) — One Leaf Eats Two
 
 Fifty-fourth increment, and an unplanned collapse: the plan called for
