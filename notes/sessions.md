@@ -746,3 +746,15 @@ the same commit). d50 (63/63).
 **Next-session pickup:** flatten transfer for the C-deref proj-dst
 gates + copy/ref dispatchers (cheap); then regime-B unbound roots →
 kill const_write_proj_nonlocal_residual.
+
+## 2026-09-02
+**Session:** (terminal, continued) — flatten transfer to copy/ref
+**Theme:** all deref dispatch arms TOTAL for bound roots: 3 source
+statement congruences, stmt0 surgery on the 3 collapsed leaves,
+compiled statement pairs per shape (4-way agree alignment; valunit
+currency; ref-src via the borrow-deref shared prefix + INNER agree).
+d51 (64/64).
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 3.
+**Next-session pickup:** regime-B unbound roots (kills
+const_write_proj_nonlocal) or C-deref collapse+flatten (proj-dst
+gates); then copy/ref proj-topped and unbound classes.

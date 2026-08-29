@@ -872,6 +872,180 @@ theorem compileStmt_copy_derefchain_value
     h_run, h_sval]
   exact ⟨_, rfl⟩
 
+/-! ## Flatten transfer for the copy-src shape -/
+
+theorem compileRExprToChecked_copysrc_flatten_run
+    {Γ : Ctx} {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+    (r : Register) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileRExprToChecked r (RExpr.copy (Γ := Γ) (.deref P))) cs
+      = CheckedCompilerM.run
+          (compileRExprToChecked r (RExpr.copy (.deref (flattenPlace P)))) cs := by
+  obtain ⟨h_agr, h_agv⟩ :=
+    placeToRegChecked_flatten_agree (Place.deref P) RefKind.Shared cs
+  rw [show flattenPlace (Place.deref P) = Place.deref (flattenPlace P) from rfl]
+    at h_agr h_agv
+  simp only [compileRExprToChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+  cases hF : CheckedCompilerM.value
+      (placeToRegChecked RefKind.Shared (Place.deref (flattenPlace P))) cs with
+  | error eF =>
+      cases hO : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (Place.deref P)) cs with
+      | error eO =>
+          simp only [hF, hO]
+          exact h_agr.symm
+      | ok oO =>
+          exfalso
+          rw [hF, hO] at h_agv
+          simp [Except.map] at h_agv
+  | ok oF =>
+      cases hO : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (Place.deref P)) cs with
+      | error eO =>
+          exfalso
+          rw [hF, hO] at h_agv
+          simp [Except.map] at h_agv
+      | ok oO =>
+          have h_res : oF.result = oO.result := by
+            rw [hF, hO] at h_agv
+            simpa [Except.map] using h_agv
+          simp only [hF, hO, h_res]
+          rw [h_agr]
+
+theorem compileRExprToChecked_copysrc_flatten_valunit
+    {Γ : Ctx} {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+    (r : Register) (cs : CompilerState) :
+    (CheckedCompilerM.value
+        (compileRExprToChecked r (RExpr.copy (Γ := Γ) (.deref P))) cs).map
+      (fun _ => ())
+      = (CheckedCompilerM.value
+          (compileRExprToChecked r (RExpr.copy (.deref (flattenPlace P)))) cs).map
+        (fun _ => ()) := by
+  obtain ⟨h_agr, h_agv⟩ :=
+    placeToRegChecked_flatten_agree (Place.deref P) RefKind.Shared cs
+  rw [show flattenPlace (Place.deref P) = Place.deref (flattenPlace P) from rfl]
+    at h_agr h_agv
+  simp only [compileRExprToChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+  cases hF : CheckedCompilerM.value
+      (placeToRegChecked RefKind.Shared (Place.deref (flattenPlace P))) cs with
+  | error eF =>
+      cases hO : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (Place.deref P)) cs with
+      | error eO =>
+          have h_e : eF = eO := by
+            rw [hF, hO] at h_agv
+            simpa [Except.map] using h_agv
+          subst h_e
+          simp [hF, hO, Except.map]
+      | ok oO =>
+          exfalso
+          rw [hF, hO] at h_agv
+          simp [Except.map] at h_agv
+  | ok oF =>
+      cases hO : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (Place.deref P)) cs with
+      | error eO =>
+          exfalso
+          rw [hF, hO] at h_agv
+          simp [Except.map] at h_agv
+      | ok oO =>
+          simp [hF, hO, Except.map]
+
+theorem compileStmt_copy_derefsrc_flatten_run
+    {Γ : Ctx} {τ : LayoutTy}
+    {dstLoc : Local Γ τ} {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+    (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.copy (.deref P)))) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.local dstLoc) (.copy (.deref (flattenPlace P))))) cs := by
+  simp only [compileStmtChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+  have h_run := compileRExprToChecked_copysrc_flatten_run (Γ := Γ) (P := P)
+    ((ensureLocalRegE dstLoc).value cs).result.reg
+    (CompilerM.run (ensureLocalRegE dstLoc) cs)
+  have h_val := compileRExprToChecked_copysrc_flatten_valunit (Γ := Γ) (P := P)
+    ((ensureLocalRegE dstLoc).value cs).result.reg
+    (CompilerM.run (ensureLocalRegE dstLoc) cs)
+  cases hO : CheckedCompilerM.value
+      (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
+        (RExpr.copy (Γ := Γ) (.deref P)))
+      (CompilerM.run (ensureLocalRegE dstLoc) cs) with
+  | error eO =>
+      cases hF : CheckedCompilerM.value
+          (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
+            (RExpr.copy (.deref (flattenPlace P))))
+          (CompilerM.run (ensureLocalRegE dstLoc) cs) with
+      | error eF =>
+          simp only [hO, hF]
+          exact h_run
+      | ok oF =>
+          exfalso
+          rw [hO, hF] at h_val
+          simp [Except.map] at h_val
+  | ok oO =>
+      cases hF : CheckedCompilerM.value
+          (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
+            (RExpr.copy (.deref (flattenPlace P))))
+          (CompilerM.run (ensureLocalRegE dstLoc) cs) with
+      | error eF =>
+          exfalso
+          rw [hO, hF] at h_val
+          simp [Except.map] at h_val
+      | ok oF =>
+          simp only [hO, hF]
+          exact h_run
+
+theorem compileStmt_copy_derefsrc_flatten_value
+    {Γ : Ctx} {τ : LayoutTy}
+    {dstLoc : Local Γ τ} {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+    (cs : CompilerState) :
+    ∀ so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.copy (.deref (flattenPlace P))))) cs
+      = Except.ok so →
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.copy (.deref P)))) cs
+      = Except.ok so' := by
+  intro so h_so
+  have h_val := compileRExprToChecked_copysrc_flatten_valunit (Γ := Γ) (P := P)
+    ((ensureLocalRegE dstLoc).value cs).result.reg
+    (CompilerM.run (ensureLocalRegE dstLoc) cs)
+  simp only [compileStmtChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure] at h_so ⊢
+  cases hO : CheckedCompilerM.value
+      (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
+        (RExpr.copy (Γ := Γ) (.deref P)))
+      (CompilerM.run (ensureLocalRegE dstLoc) cs) with
+  | error eO =>
+      exfalso
+      cases hF : CheckedCompilerM.value
+          (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
+            (RExpr.copy (.deref (flattenPlace P))))
+          (CompilerM.run (ensureLocalRegE dstLoc) cs) with
+      | error eF =>
+          rw [hF] at h_so
+          simp at h_so
+      | ok oF =>
+          rw [hO, hF] at h_val
+          simp [Except.map] at h_val
+  | ok oO =>
+      simp only [hO]
+      exact ⟨_, rfl⟩
+
 /-- REGIME D→L over full chains, COLLAPSED 2026-08-31 (originally
     closed 2026-08-29 for load spines): `dst := copy *P` for every src
     with `PtrChain (.deref P)` — spines, proj-topped pointer places
@@ -895,8 +1069,18 @@ theorem copy_deref_local_simulation
     (h_spine : PtrChain (Place.deref P))
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc
-      = some (.assign (.local dstLoc) (.copy (.deref P))))
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.local dstLoc) (.copy (.deref P)))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.copy (.deref P)))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_envD : mirlite.Env.lookup s_mir.env dstLoc = some bD)
     (h_step : mirlite.stepStmt MSB s_mir
       (.assign (.local dstLoc) (.copy (.deref P))) = .ok s_mir') :
@@ -951,14 +1135,14 @@ theorem copy_deref_local_simulation
           (resolvePlace?_of_resolveAcc h_dres)
       obtain ⟨sOut0, h_sval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
         (cs := csPrefix) (kind := RefKind.Shared) h_mapped
-      obtain ⟨stmtOut, h_stmtOut⟩ :=
+      obtain ⟨stmtOutC, h_stmtOutC⟩ :=
         compileStmt_copy_derefchain_value h_piD h_sval0
+      obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
       have h_incrS : StateIncr
           (CheckedCompilerM.run
             (placeToRegChecked RefKind.Shared (Place.deref P)) csPrefix)
-          (CheckedCompilerM.run
-            (compileStmtChecked
-              (Stmt.assign (.local dstLoc) (.copy (.deref P)))) csPrefix) := by
+          (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
+        rw [h_run0]
         obtain ⟨h_erun, h_eval⟩ := ensureLocalRegE_existing h_piD
         simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
           CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
@@ -984,7 +1168,8 @@ theorem copy_deref_local_simulation
         h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
         ptrChain_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
           rs permsP' h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
-      have h_stmtRun := compileStmt_copy_derefchain_run h_piD h_sval h_sclean
+      have h_stmtRun := (h_run0 csPrefix).trans
+        (compileStmt_copy_derefchain_run h_piD h_sval h_sclean)
       have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
         Nat.add_sub_cancel' h_sle
       -- §4 transports: the wide read through the resolved tag, then the
@@ -1066,9 +1251,7 @@ theorem copy_deref_local_simulation
               (by rw [h_smem]; exact h_sms)
           -- §7 rebuild the invariant (no rename growth, no register writes)
           refine ⟨_, n1 + 1, h_run, ?_⟩
-          refine ⟨CheckedCompilerM.run
-            (compileStmtChecked
-              (Stmt.assign (.local dstLoc) (.copy (.deref P)))) csPrefix,
+          refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
             ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms',
             h_psim3w, h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
           · show s_mid.pc + 1 = _
@@ -1113,12 +1296,11 @@ theorem copy_deref_local_simulation
             exact h_sregmono
         · simp at h_w
 
-/-- RESIDUAL (sorried), NARROWED 2026-08-31: D→L is collapsed onto the
-    whole-place mother lemma, so every chain src is CLOSED
-    (`y := copy *(s.f)`, `y := copy *(*q)` — d47/d44-class). Remaining:
+/-- RESIDUAL (sorried), NARROWED 2026-09-01: the deref-src arm is
+    TOTAL for bound dsts (flatten transfer — every `y := copy *place`
+    spelling normalizes into the chain leaf, d51). Remaining:
     - proj-TOPPED srcs over non-local bases (`y := copy (*p).f` — the
-      Borrow(Shared); Memcpy; Die shape over a chain base) and
-      proj-of-proj spellings (normalization transfer).
+      Borrow(Shared); Memcpy; Die shape over a chain base).
     - UNBOUND dst: the regime-B fresh-root composition (`allocateRoot`
       rebinding; `dst = src` aliasing lands in the overlap guard).
     - NON-LOCAL dst: the dst `Borrow(Mut); store; Die` is contiguous
@@ -1231,18 +1413,20 @@ theorem CompilerInv_step_copy
           | deref _ =>
               exact copy_place_residual compProg h_comp h_inv h_stmt h_step
       | deref pp =>
-          by_cases h_sp : PtrChain (Place.deref pp)
-          · cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
-            | some bD =>
-                -- CLOSED: `dst := copy *p` through a load spine
-                obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
-                  copy_deref_local_simulation compProg h_sp h_comp h_inv
-                    h_stmt h_envD h_step
-                exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa,
-                  TagRenameIncr.refl ρt, h_run, h_inv'⟩
-            | none =>
-                exact copy_place_residual compProg h_comp h_inv h_stmt h_step
-          · exact copy_place_residual compProg h_comp h_inv h_stmt h_step
+          cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
+          | some bD =>
+              -- CLOSED: `dst := copy *chain` — flatten-normalized, TOTAL
+              rw [stepStmt_assign_copysrc_flatten] at h_step
+              obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
+                copy_deref_local_simulation (P := flattenPlace pp) compProg
+                  (PtrChain_flatten_deref pp) h_comp h_inv h_stmt
+                  (fun cs => compileStmt_copy_derefsrc_flatten_run cs)
+                  (fun cs so h => compileStmt_copy_derefsrc_flatten_value cs so h)
+                  h_envD h_step
+              exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa,
+                TagRenameIncr.refl ρt, h_run, h_inv'⟩
+          | none =>
+              exact copy_place_residual compProg h_comp h_inv h_stmt h_step
   | proj _ _ => exact copy_place_residual compProg h_comp h_inv h_stmt h_step
   | deref _ => exact copy_place_residual compProg h_comp h_inv h_stmt h_step
 

@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-02 — Every Star Normalizes
+
+Fifty-eighth increment: the flatten transfer travels to copy and ref, and
+with it every deref arm in every dispatcher is TOTAL for bound roots — any
+spelling of `*place`, stars and fields mixed at any depth, normalizes into
+the chain leaves. The source side cost three statement congruences (one of
+them rhs-generic); the compiled side reuses one proof shape per statement:
+case once on the shared segments, align the diverging lowering with the
+flatten-agree lemma at the right intermediate state, and let the
+result-equation carry the store operands. A small discovery about currency:
+when two values' payload types differ by evidence reassociation, the
+`map (fun _ => ())` projection is exactly the ok/error alignment a
+statement-level transfer needs — nothing more.
+
+d51 pins `y := copy *(s.f.g)` and `q := &mut *(s.f.g)`. Units 17/17 +
+64/64, suite pass 82 | fail 0 of 123, axiom audit exact at three.
+
+---
+
 ## 2026-09-01 (night) — The First Sorry Dies
 
 Fifty-seventh increment, and the campaign crosses a line it has never

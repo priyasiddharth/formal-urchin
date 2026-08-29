@@ -1135,6 +1135,29 @@ def d50_write_through_nested_ptr_field : IO Unit :=
         (.field ⟨1, by decide⟩ .nil))))]
     .ok "d50 write through nested ptr field"
 
+def ΓD51 : Ctx := [sD50L, natL, natL, ptrNat]
+def sD51 : Place ΓD51 sD50L := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD51 : Place ΓD51 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def yD51 : Place ΓD51 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def qD51 : Place ΓD51 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: copy AND ref through a doubly-nested pointer field —
+    `y := copy *(s.f.g)` and `q := &mut *(s.f.g)`. The proj-of-proj
+    src spellings are flatten-normalized (2026-09-01 flatten transfer
+    across the copy/ref dispatchers, which made the deref arms TOTAL). -/
+def d51_copy_ref_through_nested_ptr_field : IO Unit :=
+  expectDiff ΓD51
+    [.assign xD51 (.constInit 5),
+     .assign (.proj (.proj sD51 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] xD51),
+     .assign yD51 (.copy (.deref (.proj (.proj sD51 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil)))),
+     .assign qD51 (.ref .Mut false []
+       (.deref (.proj (.proj sD51 (.field ⟨1, by decide⟩ .nil))
+          (.field ⟨1, by decide⟩ .nil)))),
+     .assign (.deref qD51) (.constInit 9)]
+    .ok "d51 copy and ref through nested ptr field"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1198,7 +1221,8 @@ def allTests : List (IO Unit) := [
   d47_copy_through_ptr_field,
   d48_ref_through_ptr_field_dst,
   d49_ref_of_deref_ptr_field,
-  d50_write_through_nested_ptr_field]
+  d50_write_through_nested_ptr_field,
+  d51_copy_ref_through_nested_ptr_field]
 
 def runAll : IO Unit := do
   allTests.forM id
