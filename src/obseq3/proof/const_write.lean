@@ -1001,9 +1001,7 @@ theorem const_write_deref_proj_simulation
     obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_ex, h_pf, h_ntle⟩ :=
       sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
     have h_qAcc : qAcc' = p2 := by
-      rw [h_read_tgt] at h_rd2
-      injection h_rd2 with h_e
-      exact h_e.symm
+      grind
     subst h_qAcc
     -- §execute the Shared Borrow through the local's register
     have h_le1 : binding.addr + 0 + pathOffset f
@@ -1141,10 +1139,7 @@ theorem const_write_deref_proj_simulation
               have hk0 : k = 0 := by simpa using hk
               subst hk0
               have h_o_lt : o2 < s2 := by
-                have h1 := Nat.not_lt.mp h_nb
-                have h2 : b2 + o2 + 1 ≤ b2 + s2 := by
-                  simpa [List.length_cons, List.length_nil] using h1
-                exact Nat.lt_of_succ_le (Nat.le_of_add_le_add_left h2)
+                grind
               obtain ⟨a', ha'⟩ := h_range o2 h_o_lt
               have h_ida := h_id_a _ _ ha'
               rw [← h_ida] at ha'
@@ -1376,7 +1371,7 @@ theorem const_write_proj_deref_zero_simulation
         exact h_code
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
-      h_pprm, h_pregmono, h_plabmono⟩ :=
+      h_pprm, h_pregmono, h_plabmono, -⟩ :=
       loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
         pRes permsP h_dres h_lbs h_prb h_sms h_psim h_pc h_instP
     rw [show path.offset = 0 from h_o] at h_write
@@ -1459,8 +1454,7 @@ theorem const_write_proj_deref_zero_simulation
       · rename_i perms' h_useMut_src
         cases h_w
         have h_osz : o2 < s2 := by
-          have h1 : b2 + o2 + 1 ≤ b2 + s2 := Nat.le_of_not_lt (by simpa using h_nb)
-          exact Nat.lt_of_add_lt_add_left (Nat.lt_of_succ_le h1)
+          grind
         obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
           sb_write_respects_PermSim h_psim2 h_wf_t h_t h_tnw h_useMut_src
         have h_entry1 : PtrRegisterEntry
@@ -1699,7 +1693,7 @@ theorem const_write_proj_deref_simulation
         exact h_code
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
-      h_pprm, h_pregmono, h_plabmono⟩ :=
+      h_pprm, h_pregmono, h_plabmono, -⟩ :=
       loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
         pRes permsP h_dres h_lbs h_prb h_sms h_psim h_pc h_instP
     have h_stmtRunC := compileStmt_proj_deref_run (cs := csPrefix) (pOut := pOut)
@@ -1848,9 +1842,7 @@ theorem const_write_proj_deref_simulation
         obtain ⟨q2, q3, qAcc', h_wr1, h_die1, h_wr2, h_sm, h_ex, h_pf, h_ntle⟩ :=
           sb_ref_use_die_cancels h_ntw h_unprot h_ref_tgt
         have h_qAcc : qAcc' = p3 := by
-          rw [h_useMut_tgt] at h_wr2
-          injection h_wr2 with h_e
-          exact h_e.symm
+          grind
         subst h_qAcc
         have h_entry_loaded : PtrRegisterEntry
             (oseair.RegMap.insert s_mid.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix).nextReg)
@@ -2246,9 +2238,7 @@ theorem const_write_proj_offset_simulation
         sb_ref_use_die_cancels h_nt h_unprot h_ref_tgt
       -- BRIDGE 1's own direct write is the one BRIDGE 3 produced
       have h_qAcc : qAcc' = qAcc := by
-        rw [h_useMut_tgt] at h_wr2
-        injection h_wr2 with h_e
-        exact h_e.symm
+        grind
       subst h_qAcc
       -- the fragment: Borrow; CStore; Die
       have h_mapped : PlaceInputsMapped csPrefix (Place.proj (Place.local loc) path) :=
@@ -2581,7 +2571,7 @@ theorem const_write_deref_spine_simulation
     -- run the spine
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
-      h_pprm, h_pregmono, h_plabmono⟩ :=
+      h_pprm, h_pregmono, h_plabmono, -⟩ :=
       loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
         pRes permsP h_qres h_lbs h_prb h_sms h_psim h_pc h_instP
     have h_stmtRunC := compileStmt_deref_run v h_root h_pval h_pclean
@@ -2663,8 +2653,7 @@ theorem const_write_deref_spine_simulation
       · rename_i perms' h_useMut_src
         cases h_w
         have h_osz : o2 < s2 := by
-          have h1 : b2 + o2 + 1 ≤ b2 + s2 := Nat.le_of_not_lt (by simpa using h_nb)
-          exact Nat.lt_of_add_lt_add_left (Nat.lt_of_succ_le h1)
+          grind
         obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
           sb_write_respects_PermSim h_psim2 h_wf_t h_t h_tnw h_useMut_src
         have h_entry1 : PtrRegisterEntry

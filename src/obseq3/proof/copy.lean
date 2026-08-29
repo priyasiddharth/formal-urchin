@@ -581,9 +581,7 @@ theorem copy_proj_offset_simulation
         obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle⟩ :=
           sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
         have h_qAcc : qAcc' = p2 := by
-          rw [h_read_tgt] at h_rd2
-          injection h_rd2 with h_e
-          exact h_e.symm
+          grind
         subst h_qAcc
         -- §4 slide the dst write between the keystone's phases
         obtain ⟨p3q, h_wq3, h_p3q_sm, h_p3q_pf, h_p3q_ex, h_p3q_nt⟩ :=
@@ -1104,7 +1102,7 @@ theorem copy_deref_local_simulation
         -- §3 the spine prelude
         obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
           h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
-          h_pprm, h_pregmono, h_plabmono⟩ :=
+          h_pprm, h_pregmono, h_plabmono, -⟩ :=
           loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
             pRes permsP h_dres h_lbs h_prb h_sms h_psim h_pc h_instP
         have h_stmtRun := compileStmt_copy_deref_run (cs := csPrefix) (pOut := pOut)
@@ -1337,9 +1335,7 @@ theorem copy_deref_local_simulation
               rw [getPlaceInfo_emit, getPlaceInfo_emit,
                 getPlaceInfo_setNextReg] at h_look
               have h_cs : getPlaceInfo csPrefix idx = some (reg'', τ'') := by
-                show csPrefix.placeRegMap.lookup idx = _
-                rw [← h_pprm]
-                exact h_look
+                grind [getPlaceInfo]
               refine RegisterBelow.mono ?_ (h_prb _ _ _ h_cs)
               simp only [emit]
               exact Nat.le_trans h_pregmono (Nat.le_succ _)
