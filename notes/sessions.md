@@ -599,3 +599,14 @@ d38/d39 (52/52). Audit entries 2 updated.
 **Status:** complete; all green; audit at 4.
 **Next-session pickup:** ref/copy non-local-dst arms (same recipe:
 stmt0-generalize + flatten), or regime-B unbound roots.
+
+## 2026-08-29 (cont. 3)
+**Session:** (terminal, continued) — ref non-local dst, part 1
+**Theme:** L→P0 closed (`dst.g := &src` @0) — ref's first non-local
+destination; fragment lemmas learn the MIR-order state discipline
+(base facts at the post-rhs compiler state).
+**Key outputs:** compileStmt_ref_projzero_local_run/_value,
+ref_local_projzero_simulation, dispatcher proj-dst arm, d40 (53/53).
+**Status:** complete; all green; audit at 4.
+**Next-session pickup:** the NONZERO field dst (BRIDGE 1 composition
+with the rhs ρt extension).

@@ -914,6 +914,23 @@ def d39_deref_field_zero_write : IO Unit :=
      .assign (.proj (.deref pD39) (.field ⟨0, by decide⟩ .nil)) (.constInit 7)]
     .ok "d39 deref field zero write"
 
+/-- Differential: a reference stored INTO A FIELD at zero offset —
+    `t.0 := &x` with `t : (*mut u64, u64)`-ish — the first non-local
+    DESTINATION regime (`ref_local_projzero_simulation`): the RStore
+    goes through the dst BASE register into the field. -/
+def refFieldL := obseq.LayoutTy.TupL [ptrNat, natL]
+def ΓD40 : Ctx := [refFieldL, natL]
+def tD40 : Place ΓD40 refFieldL := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD40 : Place ΓD40 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+
+def d40_ref_into_field_zero : IO Unit :=
+  expectDiff ΓD40
+    [.assign xD40 (.constInit 5),
+     .assign (.proj tD40 (.field ⟨1, by decide⟩ .nil)) (.constInit 1),
+     .assign (.proj tD40 (.field ⟨0, by decide⟩ .nil)) (.ref .Mut false [] xD40),
+     .assign (.deref (.proj tD40 (.field ⟨0, by decide⟩ .nil))) (.constInit 9)]
+    .ok "d40 ref into field zero"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -966,7 +983,8 @@ def allTests : List (IO Unit) := [
   d36_field_copy_nonzero_offset,
   d37_copy_through_pointer,
   d38_nested_proj_write,
-  d39_deref_field_zero_write]
+  d39_deref_field_zero_write,
+  d40_ref_into_field_zero]
 
 def runAll : IO Unit := do
   allTests.forM id

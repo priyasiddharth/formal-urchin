@@ -4,6 +4,32 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-29 (later night) — References Land in Fields
+
+Forty-seventh increment, and ref's dispatcher gains its first non-local
+destination: `t.f := &x` at a zero-offset field. The regime is L→L wearing a
+wider coat — the projection hands back the destination's base register, the
+fragment is the same `[Borrow; RStore]` pair, and the resolved destination
+simply covers the base's whole block, the same widening C0 performed on
+regime A long ago.
+
+The one lesson worth keeping is about MIR order inside fragment lemmas: the
+destination lowering now runs AFTER the right-hand side's code, so the
+closed-form proof must take its base-register facts at the post-rhs compiler
+state, not at the statement's entry state. The first build failed on exactly
+that, and every future non-local-destination fragment lemma will want the
+same discipline.
+
+d40 pins the regime end to end — including a subsequent write through the
+reference stored in the field, so the minted tag's validity is exercised,
+not just the store. Next up the nonzero-offset field, where the destination
+lowering mints its own Borrow(Mut) and BRIDGE 1 finally meets the rhs
+retag's rename extension in one statement.
+
+Units 17/17 + 53/53, suite pass 82 | fail 0 of 123.
+
+---
+
 ## 2026-08-29 (night) — Towers Flatten: the Statement-Transfer Recursion
 
 Forty-sixth increment. Nested projection destinations — `s.f.g := v` at any

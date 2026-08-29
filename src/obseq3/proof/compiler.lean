@@ -107,17 +107,15 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
    via `resolvePlace?_of_resolveAcc`. Remaining: proj-of-proj and mixed
    chains (reassociation transfer), unbound dst (regime-B), non-local
    dst (contiguous BRIDGE 1 shape — composition, no blocker).
-4. `ref_place_residual` — NARROWED 2026-08-28: regimes P→L
-   (`dst := &kind s.f`, bounds by TYPING) and D→L (`dst := &kind *p`
-   over a load spine, bounds by the retag-dereferenceable EVENT check
-   transported through `MemValSim`'s `o' = o ∧ s' = s`) are CLOSED by
-   `ref_proj_local_simulation` / `ref_deref_local_simulation`.
-   Remaining: (a) deref sources whose pointer place is NOT a load spine
-   (projections inside `p` interleave `Borrow;…;Die` cleanup), or with
-   an UNBOUND dst (regime-B composition); (b) non-local destinations —
-   the dst `Borrow;…;Die` interleaves with the src retag, so BRIDGE 1
-   needs a commutation argument (new pattern); (c) proj-of-proj
-   sources / fresh roots.
+4. `ref_place_residual` — NARROWED 2026-08-29: regimes P→L, D→L, and
+   the FIRST non-local DESTINATION (L→P0: `dst.g := &src` at zero
+   offset, `ref_local_projzero_simulation` — L→L with a wider resolved
+   dst, the RStore through the dst BASE register) are CLOSED.
+   Remaining: (a) field dsts at NONZERO offset (contiguous
+   `Borrow(Mut); RStore; Die` around the store — BRIDGE 1 composition
+   with the rhs retag's ρt extension); (b) nested/deref dst bases (the
+   stmt0 flattening recursion + deref-dst spine, as const_write);
+   (c) non-spine deref srcs, proj-of-proj srcs, unbound dsts.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound
