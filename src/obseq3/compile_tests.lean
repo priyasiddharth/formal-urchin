@@ -1113,6 +1113,28 @@ def d49_ref_of_deref_ptr_field : IO Unit :=
      .assign yD49 (.copy (.deref qD49))]
     .ok "d49 ref of deref ptr field"
 
+def innerD50L := obseq.LayoutTy.TupL [natL, ptrNat]
+def sD50L := obseq.LayoutTy.TupL [natL, innerD50L]
+def ΓD50 : Ctx := [sD50L, natL, natL]
+def sD50 : Place ΓD50 sD50L := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD50 : Place ΓD50 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def yD50 : Place ΓD50 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- Positive: write through a DOUBLY-nested pointer field —
+    `*(s.f.g) := v`. The dst's pointer place is a proj-of-proj
+    spelling, normalized by `flattenPlace` into the chain grammar
+    (2026-09-01, the increment that retired the deep residual). -/
+def d50_write_through_nested_ptr_field : IO Unit :=
+  expectDiff ΓD50
+    [.assign xD50 (.constInit 5),
+     .assign (.proj (.proj sD50 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] xD50),
+     .assign (.deref (.proj (.proj sD50 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil))) (.constInit 9),
+     .assign yD50 (.copy (.deref (.proj (.proj sD50 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil))))]
+    .ok "d50 write through nested ptr field"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1175,7 +1197,8 @@ def allTests : List (IO Unit) := [
   d46_write_through_deref_struct_field,
   d47_copy_through_ptr_field,
   d48_ref_through_ptr_field_dst,
-  d49_ref_of_deref_ptr_field]
+  d49_ref_of_deref_ptr_field,
+  d50_write_through_nested_ptr_field]
 
 def runAll : IO Unit := do
   allTests.forM id

@@ -2149,87 +2149,15 @@ theorem const_write_deref_chain_simulation
         exact h_dregmono
     · simp at h_w
 
-/-- RESIDUAL (sorried), NARROWED 2026-08-31 (twice): after
-    `ptrChain_lowering_sim` and the chain-dst leaf
-    (`const_write_deref_chain_simulation` — which SUBSUMED the D-spine
-    and depth-1 `*(s.f) := v` leaves by gating on the WHOLE dst,
-    `PtrChain (.deref ptrPlace)`), every canonical chain dst is CLOSED:
-    all-deref spines, proj-topped pointer places over chain bases
-    (`*((*q).f) := v`), and interior projections at any depth.
-    Remaining here:
-    - proj-of-proj spellings inside chains (the deref-congruence
-      normalization transfer);
-    - unbound roots (regime-B composition). -/
-theorem const_write_deref_deep_residual
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_pre s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
-    {ptrPlace : Place Γ (obseq.LayoutTy.PtrL obseq.LayoutTy.NatL)}
-    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
-    (compProg : oseair.Prog)
-    (v : Word)
-    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
-    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc = some (.assign (.deref ptrPlace) (.constInit v)))
-    (h_prep : mirlite.preparePlaceAssign MSB s_mir (.deref ptrPlace) = .ok s_pre)
-    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.deref ptrPlace) = .ok (resolved, permsD))
-    (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
-                 MSB { s_pre with perms := permsD } resolved
-                 [mirlite.MemValue.word v] rfl = .ok s_mir') :
-    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
-      AddrRenameIncr ρa ρa' ∧
-      TagRenameIncr ρt ρt' ∧
-      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
-  sorry
-
-/-- PROVED dispatcher: constant write through a deref whose pointer
-    place is NOT a canonical chain. Routes the depth-1 proj-top shape
-    to its closed leaf; everything else (code-emitting proj-top bases,
-    proj-of-proj, unbound roots) to the deep residual. -/
-theorem const_write_deref_nonspine_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_pre s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
-    {ptrPlace : Place Γ (obseq.LayoutTy.PtrL obseq.LayoutTy.NatL)}
-    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
-    (compProg : oseair.Prog)
-    (v : Word)
-    (h_nspine : ¬ PtrChain (Place.deref ptrPlace))
-    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
-    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc = some (.assign (.deref ptrPlace) (.constInit v)))
-    (h_prep : mirlite.preparePlaceAssign MSB s_mir (.deref ptrPlace) = .ok s_pre)
-    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.deref ptrPlace) = .ok (resolved, permsD))
-    (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
-                 MSB { s_pre with perms := permsD } resolved
-                 [mirlite.MemValue.word v] rfl = .ok s_mir') :
-    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
-      AddrRenameIncr ρa ρa' ∧
-      TagRenameIncr ρt ρt' ∧
-      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
-  cases ptrPlace with
-  | «local» ploc =>
-      exact absurd (PtrChain.deref (PtrChain.base ploc)) h_nspine
-  | deref pp =>
-      exact const_write_deref_deep_residual compProg v h_comp h_inv h_stmt
-        h_prep h_res h_write
-  | proj pbase f =>
-      exact const_write_deref_deep_residual compProg v h_comp h_inv h_stmt
-        h_prep h_res h_write
-
 /-- RESIDUAL (sorried), NARROWED 2026-08-29: after the flattening
     recursion (nested projection towers reassociate on BOTH machines and
     recurse into the closed leaves, `stmt0`-threaded) and the zero-offset
     deref leaf, what remains routed here:
     - UNBOUND roots (regime-B composition: `allocateRoot` + the closed
       proj endgames on the fresh block);
-    - NON-SPINE pointer chains (projections inside the pointer place —
-      the deep-chain class shared with `const_write_deref_deep_residual`,
-      wanting the pending-cleanup spine generalization). -/
+    - NON-CHAIN pointer places inside the projected dst (the C-deref
+      leaves still gate `PtrChain P` — their flatten transfer, like
+      regime D's, would retire this class). -/
 theorem const_write_proj_nonlocal_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -2372,6 +2300,95 @@ theorem const_write_proj_simulation
       · exact const_write_proj_nonlocal_residual compProg v h_comp h_inv h_stmt
           h_run0 h_val0 h_prep h_res h_write
 
+/-! ## Flatten transfer for regime D: every deref dst normalizes into
+    the chain grammar, so the chain leaf serves ALL of them. -/
+
+theorem compileStmt_derefdst_flatten_run
+    {Γ : Ctx} {P : Place Γ (obseq.LayoutTy.PtrL obseq.LayoutTy.NatL)}
+    (v : Word) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.deref P) (.constInit v))) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.deref (flattenPlace P)) (.constInit v))) cs := by
+  obtain ⟨h_agr, h_agv⟩ := placeToRegChecked_flatten_agree (Place.deref P)
+    RefKind.Mut (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)
+  rw [show flattenPlace (Place.deref P) = Place.deref (flattenPlace P) from rfl]
+    at h_agr h_agv
+  have h_er : ensurePlaceRoot (Place.deref (flattenPlace P))
+      = ensurePlaceRoot (Place.deref P) := ensurePlaceRoot_flatten (Place.deref P)
+  simp only [compileStmtChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_er]
+  cases hF : CheckedCompilerM.value
+      (placeToRegChecked RefKind.Mut (Place.deref (flattenPlace P)))
+      (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
+  | error eF =>
+      cases hO : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Mut (Place.deref P))
+          (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
+      | error eO =>
+          simp only [hF, hO]
+          exact h_agr.symm
+      | ok oO =>
+          exfalso
+          rw [hF, hO] at h_agv
+          simp [Except.map] at h_agv
+  | ok oF =>
+      cases hO : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Mut (Place.deref P))
+          (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
+      | error eO =>
+          exfalso
+          rw [hF, hO] at h_agv
+          simp [Except.map] at h_agv
+      | ok oO =>
+          have h_res : oF.result = oO.result := by
+            rw [hF, hO] at h_agv
+            simpa [Except.map] using h_agv
+          simp only [hF, hO, h_res]
+          rw [h_agr]
+
+theorem compileStmt_derefdst_flatten_value
+    {Γ : Ctx} {P : Place Γ (obseq.LayoutTy.PtrL obseq.LayoutTy.NatL)}
+    (v : Word) (cs : CompilerState) :
+    ∀ so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.deref (flattenPlace P)) (.constInit v))) cs
+      = Except.ok so →
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.deref P) (.constInit v))) cs
+      = Except.ok so' := by
+  intro so h_so
+  obtain ⟨h_agr, h_agv⟩ := placeToRegChecked_flatten_agree (Place.deref P)
+    RefKind.Mut (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)
+  rw [show flattenPlace (Place.deref P) = Place.deref (flattenPlace P) from rfl]
+    at h_agr h_agv
+  have h_er : ensurePlaceRoot (Place.deref (flattenPlace P))
+      = ensurePlaceRoot (Place.deref P) := ensurePlaceRoot_flatten (Place.deref P)
+  simp only [compileStmtChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_er] at h_so ⊢
+  cases hO : CheckedCompilerM.value
+      (placeToRegChecked RefKind.Mut (Place.deref P))
+      (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
+  | error eO =>
+      exfalso
+      cases hF : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Mut (Place.deref (flattenPlace P)))
+          (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
+      | error eF =>
+          rw [hF] at h_so
+          simp at h_so
+      | ok oF =>
+          rw [hF, hO] at h_agv
+          simp [Except.map] at h_agv
+  | ok oO =>
+      simp only [hO]
+      exact ⟨_, rfl⟩
+
 /-- Regime D, decomposed by whether the WHOLE dst is a canonical chain:
     `PtrChain (.deref ptrPlace)` — all-deref spines AND proj-topped
     pointer places over chain bases — is CLOSED via
@@ -2399,15 +2416,24 @@ theorem const_write_deref_simulation
       TagRenameIncr ρt ρt' ∧
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
-  by_cases h_dc : PtrChain (Place.deref ptrPlace)
-  · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
-      const_write_deref_chain_simulation compProg v h_dc h_comp h_inv h_stmt
-        (fun _ => rfl) (fun _ so h => ⟨so, h⟩)
-        h_prep h_res h_write
-    exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
-      h_run, h_inv'⟩
-  · exact const_write_deref_nonspine_simulation compProg v h_dc h_comp h_inv
-      h_stmt h_prep h_res h_write
+  obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
+    const_write_deref_chain_simulation (ptrPlace := flattenPlace ptrPlace)
+      compProg v (PtrChain_flatten_deref ptrPlace) h_comp h_inv h_stmt
+      (fun cs => compileStmt_derefdst_flatten_run v cs)
+      (fun cs so h => compileStmt_derefdst_flatten_value v cs so h)
+      (by
+        rw [show Place.deref (flattenPlace ptrPlace)
+          = flattenPlace (Place.deref ptrPlace) from rfl,
+          preparePlaceAssign_flatten]
+        exact h_prep)
+      (by
+        rw [show Place.deref (flattenPlace ptrPlace)
+          = flattenPlace (Place.deref ptrPlace) from rfl,
+          resolvePlaceAcc_flatten]
+        exact h_res)
+      h_write
+  exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
+    h_run, h_inv'⟩
 
 /-- Resolved constant-write simulation, decomposed by destination regime:
     regime A (bound local) is CLOSED via

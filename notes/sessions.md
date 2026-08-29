@@ -734,3 +734,15 @@ d49 `q := &mut *(s.f)` (62/62).
 **Status:** complete; all green; corpus 82/123 (0 fail); audit at 4.
 **Next-session pickup:** proj-topped srcs/dsts over non-local bases,
 proj-of-proj normalization, unbound roots (regime-B).
+
+## 2026-09-01 (cont. 2)
+**Session:** (terminal, continued) — flattenPlace; FIRST RESIDUAL DIES
+**Theme:** flattenPlace + congruence family (source ops + compiled
+lowering agree with the flattening); flatten_chainish → every deref
+dst is a chain after normalization; regime D total; deep residual +
+nonspine dispatcher DELETED; whitelist 4 → 3 sorries (audit-pinned in
+the same commit). d50 (63/63).
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 3.
+**Next-session pickup:** flatten transfer for the C-deref proj-dst
+gates + copy/ref dispatchers (cheap); then regime-B unbound roots →
+kill const_write_proj_nonlocal_residual.

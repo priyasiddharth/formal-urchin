@@ -78,16 +78,15 @@ the two facts the minting members need.
   `AllocLockstep.allocate_eq` is the consumer-facing form: corresponding
   allocations agree, and the property survives them.
 
-Remaining (4): every remaining sorry is blocked on a NAMED obligation.
-1. `const_write_deref_deep_residual` — DEEP pointer chains: a proj
-   segment below another deref, proj-of-proj pointer places pending the
-   flattening-transfer, zero-offset pointer fields, or a fresh root. The
-   general chain needs the pending-cleanup generalization of
-   `loadSpine_lowering_sim` — LANDED 2026-08-30 as `ptrChain_lowering_sim`
-   (spine.lean): interior projections are Borrow(Shared); Load; Die
-   triples cancelled per level by BRIDGE 1S. Remaining here: wiring the
-   nonspine dispatchers onto `PtrChain` + proj-of-proj normalization
-   inside chains, unbound roots.
+Remaining (3): every remaining sorry is blocked on a NAMED obligation.
+1. ✔ `const_write_deref_deep_residual` — RETIRED 2026-09-01, the first
+   residual to die. The pending-cleanup generalization landed as
+   `ptrChain_lowering_sim`; `flattenPlace` + its congruence family
+   (spine.lean) then normalized EVERY deref dst into the chain grammar
+   (`PtrChain_flatten_deref`), so regime D's dispatcher routes every
+   shape through `const_write_deref_chain_simulation` and never falls
+   back. The residual and its nonspine dispatcher were deleted; the
+   axiom whitelist dropped to THREE sorries.
 2. `const_write_proj_nonlocal_residual` — NARROWED 2026-08-29: the
    FLATTENING RECURSION closes every nested projection tower — the
    closed leaves (C0/C1/C-deref/C-deref-zero/D-spine) are generalized
@@ -143,7 +142,7 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
   triple's net stack effect is exactly the parent read mirlite's
   `resolvePlaceAcc` performs at the deref. Its success supplier is
   `sb_ref_Shared_ok_of_sb_read_ok` (a shared retag with an empty mask
-  succeeds wherever the read does). `const_write_deref_nonspine_simulation`
+  succeeds wherever the read does). The (since-retired) nonspine dispatcher
   is now a PROVED dispatcher over this and the deep residual.
 
 - ✔ REGIME C of const_write — `const_write_proj_simulation`

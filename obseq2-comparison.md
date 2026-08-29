@@ -4,6 +4,26 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-01 (night) — The First Sorry Dies
+
+Fifty-seventh increment, and the campaign crosses a line it has never
+crossed: a residual is DELETED, not narrowed. The instrument is
+`flattenPlace` — recursive reassociation of nested projections — and one
+small theorem with a large consequence: a flattened place is always a chain
+or a single projection over one, so a flattened DEREF place is always a
+chain. The chain grammar turns out to be a normal form for the entire place
+language, not a fragment of it. With the source semantics and the compiled
+lowering both provably flatten-invariant, regime D's dispatcher normalizes
+first and routes everything through the one chain leaf; nothing is left to
+fall back to, so the deep residual and its dispatcher are gone and the
+machine-checked whitelist now reads three sorries, not four.
+
+d50 pins `*(s.f.g) := v` — a doubly-nested pointer field, the exact shape
+the residual was named for. Units 17/17 + 63/63, suite pass 82 | fail 0 of
+123, axiom audit exact at three.
+
+---
+
 ## 2026-09-01 (later) — Three for Three
 
 Fifty-sixth increment: the last deref leaf falls in line. Ref's

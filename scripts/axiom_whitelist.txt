@@ -13,5 +13,4 @@ sorryAx
 [sorries]
 obseq3.proof.copy_place_residual
 obseq3.proof.ref_place_residual
-obseq3.proof.const_write_deref_deep_residual
 obseq3.proof.const_write_proj_nonlocal_residual

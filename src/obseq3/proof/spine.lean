@@ -149,6 +149,338 @@ theorem preparePlaceAssign_proj_assoc
   | none => simp [mirlite.allocateRoot]
   | some r => rfl
 
+/-! ## Full flattening: EVERY place normalizes into the chain grammar
+
+`flattenPlace` recursively reassociates nested projections. Its output
+never stacks two projections, so a flattened place is a `PtrChain` or a
+single projection over one — and a flattened DEREF place is always a
+chain. Resolution, preparation and the compiled lowering cannot tell a
+place from its flattening apart. -/
+
+/-- Attach a path to an already-flattened base, composing if the base is
+    itself a projection. -/
+def projInto {Γ : Ctx} : {σ τ : LayoutTy} → Place Γ σ → PathTo σ τ → Place Γ τ
+  | _, _, .proj b q, p => .proj b (q.append p)
+  | _, _, b, p => .proj b p
+
+/-- Recursively reassociate every nested projection. -/
+def flattenPlace {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Place Γ τ
+  | _, .local l => .local l
+  | _, .deref p => .deref (flattenPlace p)
+  | _, .proj b path => projInto (flattenPlace b) path
+
+theorem resolvePlaceAcc_projInto
+    {Γ : Ctx} {σ τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ} (b : Place Γ σ) (p : PathTo σ τ) :
+    mirlite.resolvePlaceAcc M s (projInto b p)
+      = mirlite.resolvePlaceAcc M s (.proj b p) := by
+  cases b with
+  | proj b' q => exact resolvePlaceAcc_proj_assoc b' q p |>.symm ▸ rfl
+  | «local» l => rfl
+  | deref pp => rfl
+
+theorem resolvePlaceAcc_flatten
+    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ} (p : Place Γ τ) :
+    mirlite.resolvePlaceAcc M s (flattenPlace p)
+      = mirlite.resolvePlaceAcc M s p := by
+  induction p with
+  | «local» l => rfl
+  | deref pp ih =>
+      show mirlite.resolvePlaceAcc M s (.deref (flattenPlace pp)) = _
+      simp only [mirlite.resolvePlaceAcc, ih]
+  | proj b path ih =>
+      show mirlite.resolvePlaceAcc M s (projInto (flattenPlace b) path) = _
+      rw [resolvePlaceAcc_projInto]
+      simp only [mirlite.resolvePlaceAcc, ih]
+
+theorem resolvePlace?_projInto
+    {Γ : Ctx} {σ τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ} (b : Place Γ σ) (p : PathTo σ τ) :
+    mirlite.resolvePlace? s (projInto b p)
+      = mirlite.resolvePlace? s (.proj b p) := by
+  cases b with
+  | proj b' q => exact resolvePlace?_proj_assoc (M := M) b' q p |>.symm ▸ rfl
+  | «local» l => rfl
+  | deref pp => rfl
+
+theorem resolvePlace?_flatten
+    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ} (p : Place Γ τ) :
+    mirlite.resolvePlace? (M := M) s (flattenPlace p)
+      = mirlite.resolvePlace? s p := by
+  induction p with
+  | «local» l => rfl
+  | deref pp ih =>
+      show mirlite.resolvePlace? s (.deref (flattenPlace pp)) = _
+      simp only [mirlite.resolvePlace?, ih]
+  | proj b path ih =>
+      show mirlite.resolvePlace? s (projInto (flattenPlace b) path) = _
+      rw [resolvePlace?_projInto]
+      simp only [mirlite.resolvePlace?, ih]
+
+theorem allocateRoot_projInto
+    {Γ : Ctx} {σ τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ} (b : Place Γ σ) (p : PathTo σ τ) :
+    mirlite.allocateRoot M s (projInto b p) = mirlite.allocateRoot M s b := by
+  cases b with
+  | proj b' q => rfl
+  | «local» l => rfl
+  | deref pp => rfl
+
+theorem allocateRoot_flatten
+    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ} (p : Place Γ τ) :
+    mirlite.allocateRoot M s (flattenPlace p) = mirlite.allocateRoot M s p := by
+  induction p with
+  | «local» l => rfl
+  | deref pp ih => rfl
+  | proj b path ih =>
+      show mirlite.allocateRoot M s (projInto (flattenPlace b) path) = _
+      rw [allocateRoot_projInto, ih]
+      rfl
+
+theorem preparePlaceAssign_flatten
+    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ} (p : Place Γ τ) :
+    mirlite.preparePlaceAssign M s (flattenPlace p)
+      = mirlite.preparePlaceAssign M s p := by
+  simp only [mirlite.preparePlaceAssign, resolvePlace?_flatten, allocateRoot_flatten]
+
+theorem ensurePlaceRoot_projInto
+    {Γ : Ctx} {σ τ : LayoutTy} (b : Place Γ σ) (p : PathTo σ τ) :
+    ensurePlaceRoot (projInto b p) = ensurePlaceRoot b := by
+  cases b with
+  | proj b' q => rfl
+  | «local» l => rfl
+  | deref pp => rfl
+
+theorem ensurePlaceRoot_flatten
+    {Γ : Ctx} {τ : LayoutTy} (p : Place Γ τ) :
+    ensurePlaceRoot (flattenPlace p) = ensurePlaceRoot p := by
+  induction p with
+  | «local» l => rfl
+  | deref pp ih =>
+      show ensurePlaceRoot (flattenPlace pp) = _
+      exact ih
+  | proj b path ih =>
+      show ensurePlaceRoot (projInto (flattenPlace b) path) = _
+      rw [ensurePlaceRoot_projInto, ih]
+      rfl
+
+/-- A flattened place is a chain, or one projection over a chain. -/
+theorem flatten_chainish {Γ : Ctx} : {τ : LayoutTy} → (p : Place Γ τ) →
+    PtrChain (flattenPlace p) ∨
+    ∃ (σ : LayoutTy) (b : Place Γ σ) (path : PathTo σ τ),
+      flattenPlace p = .proj b path ∧ PtrChain b
+  | _, .local l => .inl (.base l)
+  | _, .deref p => by
+      rcases flatten_chainish p with h | ⟨σ, b, path, h_eq, h_b⟩
+      · exact .inl (.deref h)
+      · exact .inl (by
+          show PtrChain (.deref (flattenPlace p))
+          rw [h_eq]
+          exact .derefProj path h_b)
+  | _, .proj b path => by
+      rcases flatten_chainish b with h | ⟨σ, b', q, h_eq, h_b'⟩
+      · refine .inr ⟨_, flattenPlace b, path, ?_, h⟩
+        show projInto (flattenPlace b) path = _
+        have h_np := PtrChain.not_proj h
+        cases h_flat : flattenPlace b with
+        | proj bb qq => exact absurd h_flat (fun hh => h_np _ bb qq hh)
+        | «local» l => rfl
+        | deref pp => rfl
+      · refine .inr ⟨_, b', q.append path, ?_, h_b'⟩
+        show projInto (flattenPlace b) path = _
+        rw [h_eq]
+        rfl
+
+/-- Every flattened DEREF place is a canonical chain — the fact that
+    retires the non-chain fallbacks. -/
+theorem PtrChain_flatten_deref {Γ : Ctx} {τ : LayoutTy}
+    (p : Place Γ (obseq.LayoutTy.PtrL τ)) :
+    PtrChain (Place.deref (flattenPlace p)) := by
+  rcases flatten_chainish p with h | ⟨σ, b, path, h_eq, h_b⟩
+  · exact .deref h
+  · rw [h_eq]
+    exact .derefProj path h_b
+
+theorem PathTo.append_assoc {a b c d : LayoutTy}
+    (x : PathTo a b) (y : PathTo b c) (z : PathTo c d) :
+    (x.append y).append z = x.append (y.append z) := by
+  induction x with
+  | nil => rfl
+  | field idx tail ih => simp [PathTo.append, ih]
+
+theorem projInto_projInto {Γ : Ctx} {ρ σ τ : LayoutTy}
+    (x : Place Γ ρ) (q : PathTo ρ σ) (p : PathTo σ τ) :
+    projInto (projInto x q) p = projInto x (q.append p) := by
+  cases x with
+  | proj bb qq =>
+      show Place.proj bb ((qq.append q).append p)
+        = Place.proj bb (qq.append (q.append p))
+      rw [PathTo.append_assoc]
+  | «local» l => rfl
+  | deref pp => rfl
+
+/-- The compiled lowering cannot tell a place from its flattening apart:
+    the run is EQUAL and the value's RESULT component (register +
+    cleanup — the evidence differs by reassociation wrappers) agrees. -/
+theorem placeToRegChecked_flatten_agree {Γ : Ctx} :
+    {τ : LayoutTy} → (p : Place Γ τ) → (kind : RefKind) → (cs : CompilerState) →
+    CheckedCompilerM.run (placeToRegChecked kind (flattenPlace p)) cs
+      = CheckedCompilerM.run (placeToRegChecked kind p) cs ∧
+    (CheckedCompilerM.value (placeToRegChecked kind (flattenPlace p)) cs).map
+        (fun o => o.result)
+      = (CheckedCompilerM.value (placeToRegChecked kind p) cs).map
+        (fun o => o.result)
+  | _, .local l, _, _ => ⟨rfl, rfl⟩
+  | _, .proj (.local l) path, _, _ => ⟨rfl, rfl⟩
+  | _, .proj (.proj b q) path, kind, cs => by
+      have h_flat : flattenPlace (Place.proj (Place.proj b q) path)
+          = flattenPlace (Place.proj b (q.append path)) := by
+        show projInto (projInto (flattenPlace b) q) path
+          = projInto (flattenPlace b) (q.append path)
+        exact projInto_projInto _ q path
+      obtain ⟨ihr, ihv⟩ :=
+        placeToRegChecked_flatten_agree (Place.proj b (q.append path)) kind cs
+      rw [h_flat]
+      refine ⟨?_, ?_⟩
+      · rw [ihr, placeToRegChecked_proj_assoc_eq q path]
+        simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+          CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+        split <;> rfl
+      · rw [ihv, placeToRegChecked_proj_assoc_eq q path]
+        simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+          CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+        cases h : CheckedCompilerM.value
+            (placeToRegChecked kind (Place.proj b (q.append path))) cs <;>
+          simp [Except.map]
+  | _, .proj (.deref pp) path, kind, cs => by
+      obtain ⟨ihr, ihv⟩ := placeToRegChecked_flatten_agree (Place.deref pp) kind cs
+      rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp)
+        from rfl] at ihr ihv
+      have h_fl : flattenPlace (Place.proj (Place.deref pp) path)
+          = Place.proj (Place.deref (flattenPlace pp)) path := rfl
+      rw [h_fl]
+      have h_npF : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (qq : PathTo σ' _),
+          Place.deref (flattenPlace pp) = bb.proj qq → False := by
+        intro _ bb qq h
+        cases h
+      have h_npO : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (qq : PathTo σ' _),
+          Place.deref pp = bb.proj qq → False := by
+        intro _ bb qq h
+        cases h
+      rw [placeToRegChecked_proj_root_eq (kind := kind) path h_npF,
+        placeToRegChecked_proj_root_eq (kind := kind) path h_npO]
+      cases hF : CheckedCompilerM.value
+          (placeToRegChecked kind (Place.deref (flattenPlace pp))) cs with
+      | error eF =>
+          cases hO : CheckedCompilerM.value
+              (placeToRegChecked kind (Place.deref pp)) cs with
+          | error eO =>
+              have h_e : eF = eO := by
+                rw [hF, hO] at ihv
+                simpa [Except.map] using ihv
+              subst h_e
+              constructor <;>
+                simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+                  CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+                  CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+                  hF, hO, ihr, Except.map]
+          | ok oO =>
+              exfalso
+              rw [hF, hO] at ihv
+              simp [Except.map] at ihv
+      | ok oF =>
+          cases hO : CheckedCompilerM.value
+              (placeToRegChecked kind (Place.deref pp)) cs with
+          | error eO =>
+              exfalso
+              rw [hF, hO] at ihv
+              simp [Except.map] at ihv
+          | ok oO =>
+              have h_res : oF.result = oO.result := by
+                rw [hF, hO] at ihv
+                simpa [Except.map] using ihv
+              constructor <;>
+                simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+                  CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+                  CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+                  hF, hO] <;>
+                split <;>
+                simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+                  cleanupInstrs, ihr, h_res, Except.map]
+  | _, .deref pp, kind, cs => by
+      obtain ⟨ihr, ihv⟩ := placeToRegChecked_flatten_agree pp RefKind.Shared cs
+      have h_fl : flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) := rfl
+      rw [h_fl]
+      have h_bF : placeToRegChecked (Γ := Γ) kind (.deref (flattenPlace pp))
+          = (do
+              let ptrOut ← placeToRegChecked RefKind.Shared (flattenPlace pp)
+              let ptrRes := ptrOut.result
+              let loadedReg ← CheckedCompilerM.lift freshRegM
+              let _ ← CheckedCompilerM.lift
+                (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+              let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+              pure {
+                result := { reg := loadedReg, cleanup := [] },
+                evidence := PlaceToRegEvidence.deref (flattenPlace pp) ptrRes
+                  loadedReg ptrOut.evidence
+              }) := by simp only [placeToRegChecked]
+      have h_bO : placeToRegChecked (Γ := Γ) kind (.deref pp)
+          = (do
+              let ptrOut ← placeToRegChecked RefKind.Shared pp
+              let ptrRes := ptrOut.result
+              let loadedReg ← CheckedCompilerM.lift freshRegM
+              let _ ← CheckedCompilerM.lift
+                (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+              let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+              pure {
+                result := { reg := loadedReg, cleanup := [] },
+                evidence := PlaceToRegEvidence.deref pp ptrRes loadedReg
+                  ptrOut.evidence
+              }) := by simp only [placeToRegChecked]
+      rw [h_bF, h_bO]
+      cases hF : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (flattenPlace pp)) cs with
+      | error eF =>
+          cases hO : CheckedCompilerM.value
+              (placeToRegChecked RefKind.Shared pp) cs with
+          | error eO =>
+              have h_e : eF = eO := by
+                rw [hF, hO] at ihv
+                simpa [Except.map] using ihv
+              subst h_e
+              constructor <;>
+                simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+                  CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+                  CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+                  hF, hO, ihr, Except.map]
+          | ok oO =>
+              exfalso
+              rw [hF, hO] at ihv
+              simp [Except.map] at ihv
+      | ok oF =>
+          cases hO : CheckedCompilerM.value
+              (placeToRegChecked RefKind.Shared pp) cs with
+          | error eO =>
+              exfalso
+              rw [hF, hO] at ihv
+              simp [Except.map] at ihv
+          | ok oO =>
+              have h_res : oF.result = oO.result := by
+                rw [hF, hO] at ihv
+                simpa [Except.map] using ihv
+              constructor <;>
+                simp [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+                  CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+                  CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+                  hF, hO, ihr, h_res, CompilerM.run, CompilerM.value,
+                  freshRegM, freshReg, emitM, cleanupInstrs, Except.map]
+termination_by τ p kind cs => p.depth
+decreasing_by all_goals (simp [Place.depth]; try omega)
+
 /-- The SOURCE cannot tell the two spellings of a nested-projection
     assignment apart either: `doAssign` consults the destination only
     through `preparePlaceAssign` and `resolvePlaceAcc`, both of which
