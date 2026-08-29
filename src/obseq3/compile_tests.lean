@@ -948,6 +948,24 @@ def d41_ref_into_field_offset : IO Unit :=
      .assign (.deref (.proj tD41 (.field ⟨1, by decide⟩ .nil))) (.constInit 9)]
     .ok "d41 ref into field offset"
 
+/-- Differential: a reference stored into a NESTED field — `s.1.1 :=
+    &mut x` over a pair-of-(nat,ptr) — the dst-flattening recursion for
+    ref (the lowering reassociates to one field borrow), then a write
+    through the stored reference. -/
+def nestRefL := obseq.LayoutTy.TupL [natL, refField2L]
+def ΓD42 : Ctx := [nestRefL, natL]
+def sD42 : Place ΓD42 nestRefL := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD42 : Place ΓD42 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+
+def d42_ref_into_nested_field : IO Unit :=
+  expectDiff ΓD42
+    [.assign xD42 (.constInit 5),
+     .assign (.proj (.proj sD42 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] xD42),
+     .assign (.deref (.proj (.proj sD42 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil))) (.constInit 9)]
+    .ok "d42 ref into nested field"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1002,7 +1020,8 @@ def allTests : List (IO Unit) := [
   d38_nested_proj_write,
   d39_deref_field_zero_write,
   d40_ref_into_field_zero,
-  d41_ref_into_field_offset]
+  d41_ref_into_field_offset,
+  d42_ref_into_nested_field]
 
 def runAll : IO Unit := do
   allTests.forM id

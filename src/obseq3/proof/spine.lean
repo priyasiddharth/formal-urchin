@@ -130,6 +130,23 @@ theorem preparePlaceAssign_proj_assoc
   | none => simp [mirlite.allocateRoot]
   | some r => rfl
 
+/-- The SOURCE cannot tell the two spellings of a nested-projection
+    assignment apart either: `doAssign` consults the destination only
+    through `preparePlaceAssign` and `resolvePlaceAcc`, both of which
+    compose offsets. The step-level mirror of
+    `compileStmt_assign_proj_assoc_run`. -/
+theorem stepStmt_assign_proj_assoc
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ}
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (p : PathTo σ2 τ)
+    (rhs : RExpr Γ τ) :
+    mirlite.stepStmt M s (.assign (.proj (.proj b q) p) rhs)
+      = mirlite.stepStmt M s (.assign (.proj b (q.append p)) rhs) := by
+  show mirlite.doAssign M s (.proj (.proj b q) p) rhs
+    = mirlite.doAssign M s (.proj b (q.append p)) rhs
+  simp only [mirlite.doAssign, preparePlaceAssign_proj_assoc b q p,
+    resolvePlaceAcc_proj_assoc b q p]
+
 /-- A successful access-resolution implies the place's root local is bound,
     hence (under `LocalBindingSim`) compiler-mapped. -/
 theorem placeInputsMapped_of_resolveAcc

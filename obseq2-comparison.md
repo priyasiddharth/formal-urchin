@@ -4,6 +4,28 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-30 (later) — The Recipe Travels: Ref's Destinations Flatten
+
+Forty-ninth increment, and the shortest of the campaign — evidence that the
+statement-transfer recursion has become a recipe rather than a project.
+Nested projection destinations for ref close in three moves: the two
+field-destination leaves learn the `stmt0` triple (the same mechanical
+surgery as const-write's five), the source gains a three-line lemma saying a
+whole STEP cannot tell the two spellings apart (`doAssign` touches the
+destination only through resolution and preparation, both long since proven
+to compose), and the compiled transfer lemmas move to common.lean where they
+always belonged, being rhs-generic. The dispatcher's entire projected-
+destination arm then collapses to a single call.
+
+Ref's version of the recursion is in fact cleaner than the original: where
+const-write pre-destructured the source facts and rewrote them piecewise,
+ref threads the raw step hypothesis through one rewrite per nesting level.
+
+Units 17/17 + 55/55 (d42 stores a reference into a doubly-nested field and
+writes through it), suite pass 82 | fail 0 of 123.
+
+---
+
 ## 2026-08-30 — Two Mints, One Statement
 
 Forty-eighth increment. The nonzero-offset field destination closes for ref —

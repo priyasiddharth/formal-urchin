@@ -1794,9 +1794,20 @@ theorem ref_local_projzero_simulation
     (h_g0 : pathOffset g = 0)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc
-      = some (.assign (.proj (.local dstLoc) g)
-          (.ref kind prot mask (.local srcLoc))))
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj (.local dstLoc) g)
+              (.ref kind prot mask (.local srcLoc)))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj (.local dstLoc) g)
+            (.ref kind prot mask (.local srcLoc)))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_envD : mirlite.Env.lookup s_mir.env dstLoc = some bD)
     (h_envS : mirlite.Env.lookup s_mir.env srcLoc = some bS)
     (h_step : mirlite.stepStmt MSB s_mir
@@ -1842,11 +1853,13 @@ theorem ref_local_projzero_simulation
       have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
           = some tagD := h_incr_t _ _ h_rtD
       -- §3 the fragment and its two instructions
-      have h_stmtRun := compileStmt_ref_projzero_local_run (cs := csPrefix)
+      have h_stmtRunC := compileStmt_ref_projzero_local_run (cs := csPrefix)
         kind prot mask h_g0 h_piD h_piS
-      obtain ⟨stmtOut, h_stmtOut⟩ :=
+      have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
+      obtain ⟨stmtOutC, h_stmtOutC⟩ :=
         compileStmt_ref_projzero_local_value (cs := csPrefix) kind prot mask
           h_g0 h_piD h_piS
+      obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
       have h_code1 : compProg s_osea.pc
           = some (Instr.Assgn (Register.R csPrefix.nextReg)
               (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)) := by
@@ -1945,10 +1958,7 @@ theorem ref_local_projzero_simulation
           have h_run := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
           -- §6 rebuild the invariant under the extended ρt
           refine ⟨_, _, 1 + 1, h_incr_t, h_run, ?_⟩
-          refine ⟨CheckedCompilerM.run
-            (compileStmtChecked
-              (Stmt.assign (.proj (.local dstLoc) g)
-                (.ref kind prot mask (.local srcLoc)))) csPrefix,
+          refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
             ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim2,
             h_id_a, h_wf_t', ?_, ?_, ?_, ?_⟩
           · show s_osea.pc + 1 + 1 = _
@@ -2095,9 +2105,20 @@ theorem ref_local_projoffset_simulation
     (h_go : pathOffset g ≠ 0)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc
-      = some (.assign (.proj (.local dstLoc) g)
-          (.ref kind prot mask (.local srcLoc))))
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj (.local dstLoc) g)
+              (.ref kind prot mask (.local srcLoc)))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj (.local dstLoc) g)
+            (.ref kind prot mask (.local srcLoc)))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_envD : mirlite.Env.lookup s_mir.env dstLoc = some bD)
     (h_envS : mirlite.Env.lookup s_mir.env srcLoc = some bS)
     (h_step : mirlite.stepStmt MSB s_mir
@@ -2165,11 +2186,13 @@ theorem ref_local_projoffset_simulation
             exact h_e.symm
           subst h_qAcc
           -- §4 the fragment and its four instructions
-          have h_stmtRun := compileStmt_ref_projoffset_local_run (cs := csPrefix)
+          have h_stmtRunC := compileStmt_ref_projoffset_local_run (cs := csPrefix)
             kind prot mask h_go h_piD h_piS
-          obtain ⟨stmtOut, h_stmtOut⟩ :=
+          have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
+          obtain ⟨stmtOutC, h_stmtOutC⟩ :=
             compileStmt_ref_projoffset_local_value (cs := csPrefix) kind prot mask
               h_go h_piD h_piS
+          obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
           have h_len4 : ((emit (emit (emit
               { (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
                   [Instr.Assgn (Register.R csPrefix.nextReg)
@@ -2396,10 +2419,7 @@ theorem ref_local_projoffset_simulation
                    by rw [h_ex]; exact he, Nat.le_trans hn h_ntle⟩
           -- §10 rebuild the invariant
           refine ⟨_, _, 1 + 1 + 1 + 1, h_incr_t, h_run, ?_⟩
-          refine ⟨CheckedCompilerM.run
-            (compileStmtChecked
-              (Stmt.assign (.proj (.local dstLoc) g)
-                (.ref kind prot mask (.local srcLoc)))) csPrefix,
+          refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
             ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim4,
             h_id_a, h_wf_t', ?_, ?_, ?_, ?_⟩
           · show s_osea.pc + 1 + 1 + 1 + 1 = _
@@ -2460,16 +2480,14 @@ theorem ref_local_projoffset_simulation
             omega
         · simp at h_w
 
-/-- RESIDUAL (sorried), NARROWED 2026-08-29 (later): both field-dst
-    regimes over bound roots are CLOSED (L→P0 zero-offset,
-    `ref_local_projzero_simulation`; L→P nonzero,
-    `ref_local_projoffset_simulation` — the two-mint leaf: the rhs
-    retag extends ρt, the dst `Borrow(Mut); RStore; Die` triple cancels
-    by BRIDGE 1). Remaining:
-    - nested/deref dst bases: the stmt0 flattening recursion +
-      deref-dst spine composition (as const_write);
+/-- RESIDUAL (sorried), NARROWED 2026-08-30: after the dst-flattening
+    recursion (`ref_proj_dst_simulation` — nested projection dsts of
+    any depth reassociate on both machines and land in the closed
+    field-dst leaves, stmt0-threaded). Remaining:
+    - DEREF dst bases (`(*p).f := &x`, `*p := &x`): the deref-dst spine
+      composition;
     - non-local srcs under non-local dsts (proj/deref src places);
-    - non-spine deref srcs, proj-of-proj srcs, unbound dsts. -/
+    - non-spine deref srcs, proj-of-proj srcs, unbound dst roots. -/
 theorem ref_place_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -2481,7 +2499,10 @@ theorem ref_place_residual
     (compProg : oseair.Prog)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc = some (.assign dst (.ref kind prot mask src)))
+    -- the PROGRAM's statement may be a reassociation-equivalent spelling
+    -- (the dst-flattening recursion threads it through)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
     (h_step : mirlite.stepStmt MSB s_mir (.assign dst (.ref kind prot mask src)) = .ok s_mir') :
     ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
       AddrRenameIncr ρa ρa' ∧
@@ -2489,6 +2510,106 @@ theorem ref_place_residual
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   sorry
+
+/-- The dst-flattening recursion for ref: a PROJECTED destination of any
+    nesting depth reassociates on both machines
+    (`compileStmt_assign_proj_assoc_run/_value`,
+    `stepStmt_assign_proj_assoc`) and recurses into the closed field-dst
+    leaves, threading the PROGRAM's own statement (`stmt0`). Deref
+    bases, non-local srcs and unbound roots route to the residual. -/
+theorem ref_proj_dst_simulation
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {τ : LayoutTy} {σ' : LayoutTy}
+    {dbase : Place Γ σ'} {g : PathTo σ' (obseq.LayoutTy.PtrL τ)}
+    {src : Place Γ τ}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj dbase g) (.ref kind prot mask src))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj dbase g) (.ref kind prot mask src))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
+    (h_step : mirlite.stepStmt MSB s_mir
+      (.assign (.proj dbase g) (.ref kind prot mask src)) = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
+  induction dbase with
+  | «local» dstLoc =>
+      cases src with
+      | «local» srcLoc =>
+          by_cases h_g0 : pathOffset g = 0
+          · cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
+            | some bD =>
+                cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
+                | some bS =>
+                    obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+                      ref_local_projzero_simulation kind prot mask compProg
+                        h_g0 h_comp h_inv h_stmt h_run0 h_val0
+                        h_envD h_envS h_step
+                    exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr,
+                      h_run, h_inv'⟩
+                | none =>
+                    exfalso
+                    simp [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont,
+                      mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_envD,
+                      mirlite.resolvePlaceAcc, h_envS,
+                      mirlite.evalRExpr] at h_step
+            | none =>
+                exact ref_place_residual kind prot mask compProg h_comp h_inv
+                  h_stmt h_step
+          · cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
+            | some bD =>
+                cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
+                | some bS =>
+                    obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+                      ref_local_projoffset_simulation kind prot mask compProg
+                        h_g0 h_comp h_inv h_stmt h_run0 h_val0
+                        h_envD h_envS h_step
+                    exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr,
+                      h_run, h_inv'⟩
+                | none =>
+                    exfalso
+                    simp [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont,
+                      mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_envD,
+                      mirlite.resolvePlaceAcc, h_envS,
+                      mirlite.evalRExpr] at h_step
+            | none =>
+                exact ref_place_residual kind prot mask compProg h_comp h_inv
+                  h_stmt h_step
+      | proj _ _ =>
+          exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
+      | deref _ =>
+          exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
+  | proj b q ih =>
+      refine ih
+        (fun cs => (h_run0 cs).trans
+          (compileStmt_assign_proj_assoc_run b q g (.ref kind prot mask src) cs))
+        (fun cs so h => by
+          obtain ⟨so', h'⟩ :=
+            compileStmt_assign_proj_assoc_value b q g (.ref kind prot mask src) cs h
+          exact h_val0 cs so' h')
+        ?_
+      rw [← stepStmt_assign_proj_assoc b q g (.ref kind prot mask src)]
+      exact h_step
+  | deref pp =>
+      exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
+
+
 
 /-- LEAF 3 (the dispatcher): per-statement simulation for
     `.assign dst (.ref kind prot mask src)`, decomposed by the shapes of
@@ -2593,57 +2714,8 @@ theorem CompilerInv_step_ref
                   h_stmt h_step
           · exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
   | proj dbase g =>
-      cases dbase with
-      | «local» dstLoc =>
-          cases src with
-          | «local» srcLoc =>
-              by_cases h_g0 : pathOffset g = 0
-              · cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
-                | some bD =>
-                    cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
-                    | some bS =>
-                        -- CLOSED: `dst.g := &src` at zero offset
-                        obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-                          ref_local_projzero_simulation kind prot mask compProg
-                            h_g0 h_comp h_inv h_stmt h_envD h_envS h_step
-                        exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr,
-                          h_run, h_inv'⟩
-                    | none =>
-                        exfalso
-                        simp [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont,
-                          mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_envD,
-                          mirlite.resolvePlaceAcc, h_envS,
-                          mirlite.evalRExpr] at h_step
-                | none =>
-                    exact ref_place_residual kind prot mask compProg h_comp h_inv
-                      h_stmt h_step
-              · cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
-                | some bD =>
-                    cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
-                    | some bS =>
-                        -- CLOSED: `dst.g := &src` at nonzero offset
-                        obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-                          ref_local_projoffset_simulation kind prot mask compProg
-                            h_g0 h_comp h_inv h_stmt h_envD h_envS h_step
-                        exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr,
-                          h_run, h_inv'⟩
-                    | none =>
-                        exfalso
-                        simp [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont,
-                          mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_envD,
-                          mirlite.resolvePlaceAcc, h_envS,
-                          mirlite.evalRExpr] at h_step
-                | none =>
-                    exact ref_place_residual kind prot mask compProg h_comp h_inv
-                      h_stmt h_step
-          | proj _ _ =>
-              exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
-          | deref _ =>
-              exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
-      | proj _ _ =>
-          exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
-      | deref _ =>
-          exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
+      exact ref_proj_dst_simulation kind prot mask compProg h_comp h_inv h_stmt
+        (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
   | deref _ => exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
 
 end obseq3.proof

@@ -1160,6 +1160,144 @@ theorem placeToRegChecked_proj_assoc_eq
           }) := by
   simp only [placeToRegChecked]
 
+/-! ## Flattening transfer: the two spellings of a nested-projection
+    assignment compile to the SAME run (the lowering reassociates), and
+    the composed spelling's success transfers back to the nested one. -/
+
+theorem compileStmt_assign_proj_assoc_run
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (p : PathTo σ2 τ)
+    (rhs : RExpr Γ τ) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked (.assign (.proj (.proj b q) p) rhs)) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked (.assign (.proj b (q.append p)) rhs)) cs := by
+  have h_bind_n : compileStmtChecked (.assign (.proj (.proj b q) p) rhs)
+      = (do
+          let _ ← CheckedCompilerM.lift
+            (ensurePlaceRoot (Place.proj (Place.proj b q) p))
+          let pre ← compileRExprPreChecked rhs
+          let dstOut ← placeToRegChecked RefKind.Mut (.proj (.proj b q) p)
+          let dstRes := dstOut.result
+          let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
+          pure {
+            result := (),
+            evidence := StmtEvidence.assignPlace (.proj (.proj b q) p) rhs dstRes
+              dstOut.evidence (pre.ev dstRes.reg)
+          }) := rfl
+  have h_bind_c : compileStmtChecked (.assign (.proj b (q.append p)) rhs)
+      = (do
+          let _ ← CheckedCompilerM.lift
+            (ensurePlaceRoot (Place.proj b (q.append p)))
+          let pre ← compileRExprPreChecked rhs
+          let dstOut ← placeToRegChecked RefKind.Mut (.proj b (q.append p))
+          let dstRes := dstOut.result
+          let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
+          pure {
+            result := (),
+            evidence := StmtEvidence.assignPlace (.proj b (q.append p)) rhs dstRes
+              dstOut.evidence (pre.ev dstRes.reg)
+          }) := rfl
+  rw [h_bind_n, h_bind_c]
+  have h_ens : (ensurePlaceRoot (Place.proj (Place.proj b q) p) : CompilerM Unit)
+      = ensurePlaceRoot (Place.proj b (q.append p)) := rfl
+  rw [h_ens]
+  rw [CheckedCompilerM.run_bind, CheckedCompilerM.run_bind]
+  simp only [CheckedCompilerM.value_lift, CheckedCompilerM.run_lift]
+  rw [CheckedCompilerM.run_bind, CheckedCompilerM.run_bind]
+  cases h_pre : CheckedCompilerM.value (compileRExprPreChecked rhs)
+      ((ensurePlaceRoot (Place.proj b (q.append p))).run cs) with
+  | error e => rfl
+  | ok pre =>
+      simp only
+      rw [CheckedCompilerM.run_bind, CheckedCompilerM.run_bind,
+        placeToRegChecked_proj_assoc_eq q p,
+        CheckedCompilerM.run_bind, CheckedCompilerM.value_bind]
+      cases h_dst : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Mut (.proj b (q.append p)))
+          (CheckedCompilerM.run (compileRExprPreChecked rhs)
+            ((ensurePlaceRoot (Place.proj b (q.append p))).run cs)) with
+      | error e => rfl
+      | ok out =>
+          simp only [CheckedCompilerM.value_pure, CheckedCompilerM.run_pure]
+          rfl
+
+/-- The composed spelling's lowering success transfers to the nested
+    spelling. -/
+theorem compileStmt_assign_proj_assoc_value
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (p : PathTo σ2 τ)
+    (rhs : RExpr Γ τ) (cs : CompilerState) {so} :
+    CheckedCompilerM.value
+        (compileStmtChecked (.assign (.proj b (q.append p)) rhs)) cs
+      = Except.ok so →
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked (.assign (.proj (.proj b q) p) rhs)) cs
+      = Except.ok so' := by
+  intro h
+  have h_run := compileStmt_assign_proj_assoc_run b q p rhs cs
+  -- value follows the same bind spine; mirror the run proof
+  revert h
+  have h_bind_n : compileStmtChecked (.assign (.proj (.proj b q) p) rhs)
+      = (do
+          let _ ← CheckedCompilerM.lift
+            (ensurePlaceRoot (Place.proj (Place.proj b q) p))
+          let pre ← compileRExprPreChecked rhs
+          let dstOut ← placeToRegChecked RefKind.Mut (.proj (.proj b q) p)
+          let dstRes := dstOut.result
+          let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
+          pure {
+            result := (),
+            evidence := StmtEvidence.assignPlace (.proj (.proj b q) p) rhs dstRes
+              dstOut.evidence (pre.ev dstRes.reg)
+          }) := rfl
+  have h_bind_c : compileStmtChecked (.assign (.proj b (q.append p)) rhs)
+      = (do
+          let _ ← CheckedCompilerM.lift
+            (ensurePlaceRoot (Place.proj b (q.append p)))
+          let pre ← compileRExprPreChecked rhs
+          let dstOut ← placeToRegChecked RefKind.Mut (.proj b (q.append p))
+          let dstRes := dstOut.result
+          let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
+          pure {
+            result := (),
+            evidence := StmtEvidence.assignPlace (.proj b (q.append p)) rhs dstRes
+              dstOut.evidence (pre.ev dstRes.reg)
+          }) := rfl
+  rw [h_bind_n, h_bind_c]
+  have h_ens : (ensurePlaceRoot (Place.proj (Place.proj b q) p) : CompilerM Unit)
+      = ensurePlaceRoot (Place.proj b (q.append p)) := rfl
+  rw [h_ens]
+  rw [CheckedCompilerM.value_bind, CheckedCompilerM.value_bind]
+  simp only [CheckedCompilerM.value_lift, CheckedCompilerM.run_lift]
+  rw [CheckedCompilerM.value_bind, CheckedCompilerM.value_bind]
+  cases h_pre : CheckedCompilerM.value (compileRExprPreChecked rhs)
+      ((ensurePlaceRoot (Place.proj b (q.append p))).run cs) with
+  | error e => intro h; simp at h
+  | ok pre =>
+      simp only
+      rw [CheckedCompilerM.value_bind,
+        placeToRegChecked_proj_assoc_eq q p,
+        CheckedCompilerM.value_bind, CheckedCompilerM.value_bind,
+        CheckedCompilerM.run_bind]
+      cases h_dst : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Mut (.proj b (q.append p)))
+          (CheckedCompilerM.run (compileRExprPreChecked rhs)
+            ((ensurePlaceRoot (Place.proj b (q.append p))).run cs)) with
+      | error e => intro h; simp at h
+      | ok out =>
+          simp only [CheckedCompilerM.value_pure, CheckedCompilerM.run_pure]
+          intro h
+          exact ⟨_, rfl⟩
+
 theorem placeToRegChecked_proj_ok_of_baseOk
     {Γ : Ctx} {σ τ : LayoutTy}
     {kind : RefKind} {cs : CompilerState}

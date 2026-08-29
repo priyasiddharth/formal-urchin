@@ -107,17 +107,16 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
    via `resolvePlace?_of_resolveAcc`. Remaining: proj-of-proj and mixed
    chains (reassociation transfer), unbound dst (regime-B), non-local
    dst (contiguous BRIDGE 1 shape — composition, no blocker).
-4. `ref_place_residual` — NARROWED 2026-08-29 (later): P→L, D→L, and
-   BOTH field-dst regimes over bound roots are CLOSED — L→P0
-   (zero offset: L→L with the resolved dst widened to the base block)
-   and L→P (nonzero: `ref_local_projoffset_simulation`, the first
-   TWO-MINT leaf — the rhs retag extends ρt while the dst
-   `Borrow(Mut); RStore; Die` is a compiler phantom BRIDGE 1 cancels;
-   `sb_ref_use_die_cancels` runs UNDER the extended rename, its
-   suppliers fed by `h_tbd'`/`h_psim'` from the rhs member).
-   Remaining: nested/deref dst bases (stmt0 flattening + spine, as
-   const_write), non-local srcs under non-local dsts, non-spine deref
-   srcs, proj-of-proj srcs, unbound dsts.
+4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
+   regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
+   rename), and the DST-FLATTENING RECURSION are CLOSED: nested
+   projection destinations of any depth reassociate on both machines
+   (`stepStmt_assign_proj_assoc` source-side, the transfer lemmas —
+   now in common.lean — compiled-side) and `ref_proj_dst_simulation`
+   recurses into the leaves, stmt0-threaded. The residual's h_stmt is
+   stmt0-loosened. Remaining: deref dst bases (spine composition),
+   non-local srcs under non-local dsts, non-spine deref srcs,
+   proj-of-proj srcs, unbound roots.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

@@ -620,3 +620,15 @@ ref_local_projoffset_simulation, dispatcher wiring, d41 (54/54).
 **Status:** complete; all green; audit at 4.
 **Next-session pickup:** ref dst flattening recursion (stmt0 triples)
 + deref dsts; or copy's non-local dst arms (same recipe).
+
+## 2026-08-30
+**Session:** (terminal, continued) — ref dst flattening
+**Theme:** nested projection dsts closed for ref via the ported
+statement-transfer recursion; transfer lemmas relocated to common.
+**Key outputs:** stmt0 triples on both field-dst leaves;
+stepStmt_assign_proj_assoc (3-line step-level source transfer);
+ref_proj_dst_simulation; dispatcher proj-dst arm = one call; d42
+(55/55); residual h_stmt loosened.
+**Status:** complete; all green; audit at 4.
+**Next-session pickup:** deref dst bases for ref ((*p).f := &x — spine
+composition), or copy's non-local dst arms (recipe ready).
