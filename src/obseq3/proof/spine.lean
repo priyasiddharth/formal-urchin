@@ -21,14 +21,6 @@ open obseq3
 open obseq3.compile
 open obseq3.oseair (Instr Register Rhs Val)
 
-/-- Pointer places whose lowering is a pure `Load` spine: a local, or a
-    dereference of a spine. Projections are excluded — they emit
-    `Borrow`s, whose simulation needs the `sb_ref` transport. -/
-inductive LoadSpine {Γ : Ctx} : {τ : LayoutTy} → Place Γ (obseq.LayoutTy.PtrL τ) → Prop
-  | base {τ : LayoutTy} (loc : Local Γ (obseq.LayoutTy.PtrL τ)) : LoadSpine (.local loc)
-  | step {τ : LayoutTy} {p : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))} :
-      LoadSpine p → LoadSpine (.deref p)
-
 /-- Canonical pointer CHAINS — the pending-cleanup generalization of
     `LoadSpine`. A chain is a local, a dereference of a chain, or a
     dereference of a SINGLE projection whose base is a chain. Since
@@ -55,13 +47,6 @@ theorem PtrChain.not_proj {Γ : Ctx} {σ : LayoutTy} {b : Place Γ σ}
       b = bb.proj q → False := by
   intro σ' bb q h_eq
   cases h <;> simp_all
-
-/-- Every load spine is a chain. -/
-theorem LoadSpine.toPtrChain {Γ : Ctx} {τ : LayoutTy}
-    {p : Place Γ (obseq.LayoutTy.PtrL τ)} (h : LoadSpine p) : PtrChain p := by
-  induction h with
-  | base loc => exact .base loc
-  | step _ ih => exact .deref ih
 
 /-- The pure resolver agrees with a successful access-resolution: the
     access variant only ADDS the SB reads and the deref-OOB check, so

@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-31 (later) — Wiring the Chains
+
+Fifty-third increment: the mechanical half of the payoff. Every leaf and
+dispatcher that gated on the old all-deref spine predicate now gates on
+`PtrChain`, which took one search-and-replace pass and built green on the
+first try — the leaves never knew more about the spine than the mother
+lemma's interface, which is the whole reason the generalization was cheap.
+Pointer chains with interior projections (`*(*(s.f)) := v` and its copy/ref
+siblings) now land in closed leaves instead of residuals; d44 and d45 pin
+the two new shapes end-to-end. The old `LoadSpine` is deleted.
+
+The deep residual's docstring now names its true remainder: proj-TOPPED
+pointer places over code-emitting bases (the depth-1 leaf still assumes a
+bare local base), proj-of-proj normalization, unbound roots.
+
+Units 17/17 + 58/58, suite pass 82 | fail 0 of 123, axiom audit exact.
+
+---
+
 ## 2026-08-31 — The Pending Cleanup Pays Its Debt
 
 Fifty-second increment, and the campaign's long pole snaps: the spine mother

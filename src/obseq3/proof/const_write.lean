@@ -1224,7 +1224,7 @@ theorem const_write_proj_deref_zero_simulation
     {resolved : mirlite.PlaceRes} {permsD : MSB.State}
     (compProg : oseair.Prog)
     (v : Word)
-    (h_spine : LoadSpine P)
+    (h_spine : PtrChain P)
     (h_o : pathOffset path = 0)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
@@ -1372,7 +1372,7 @@ theorem const_write_proj_deref_zero_simulation
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
       h_pprm, h_pregmono, h_plabmono, -⟩ :=
-      ptrChain_lowering_sim h_id_a h_wf_t h_spine.toPtrChain RefKind.Shared csPrefix s_osea
+      ptrChain_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
         pRes permsP h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instP
     rw [show path.offset = 0 from h_o] at h_write
     have h_stmtRunC := compileStmt_proj_deref_zero_run v h_o h_root h_pval h_pclean
@@ -1546,7 +1546,7 @@ theorem const_write_proj_deref_simulation
     {resolved : mirlite.PlaceRes} {permsD : MSB.State}
     (compProg : oseair.Prog)
     (v : Word)
-    (h_spine : LoadSpine P)
+    (h_spine : PtrChain P)
     (h_off : pathOffset path ≠ 0)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
@@ -1694,7 +1694,7 @@ theorem const_write_proj_deref_simulation
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
       h_pprm, h_pregmono, h_plabmono, -⟩ :=
-      ptrChain_lowering_sim h_id_a h_wf_t h_spine.toPtrChain RefKind.Shared csPrefix s_osea
+      ptrChain_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
         pRes permsP h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instP
     have h_stmtRunC := compileStmt_proj_deref_run (cs := csPrefix) (pOut := pOut)
       v h_off h_root h_pval h_pclean
@@ -2440,7 +2440,7 @@ theorem const_write_deref_spine_simulation
     {resolved : mirlite.PlaceRes} {permsD : MSB.State}
     (compProg : oseair.Prog)
     (v : Word)
-    (h_spine : LoadSpine ptrPlace)
+    (h_spine : PtrChain ptrPlace)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     {stmt0 : Stmt Γ}
@@ -2572,7 +2572,7 @@ theorem const_write_deref_spine_simulation
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
       h_pprm, h_pregmono, h_plabmono, -⟩ :=
-      ptrChain_lowering_sim h_id_a h_wf_t h_spine.toPtrChain RefKind.Shared csPrefix s_osea
+      ptrChain_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
         pRes permsP h_qres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instP
     have h_stmtRunC := compileStmt_deref_run v h_root h_pval h_pclean
     have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
@@ -2728,15 +2728,19 @@ theorem const_write_deref_spine_simulation
             (Nat.le_trans h_pregmono (Nat.le_succ _)) (h_prb _ _ _ h_cs)
       · simp at h_w
 
-/-- RESIDUAL (sorried): DEEP pointer chains — a second segment below the
-    first (proj under another deref, proj-of-proj pointer places pending
-    the flattening-transfer, zero-offset pointer fields, or a fresh root).
-    Everything with ONE proj segment at the top of an otherwise
-    local-rooted chain is CLOSED (`const_write_deref_proj_simulation`,
-    `const_write_proj_deref_simulation`); the general chain needs the
-    pending-cleanup generalization (`ptrChain_lowering_sim`, landed
-    2026-08-30) that was once only sketched in
-    the keystone refactor assessment. -/
+/-- RESIDUAL (sorried), NARROWED 2026-08-31: `ptrChain_lowering_sim`
+    landed and the dispatchers gate on `PtrChain`, so every all-chain
+    pointer place (projections directly under derefs, any depth —
+    `*(*(s.f)) := v`, d44) is CLOSED through the migrated leaves.
+    Remaining here:
+    - proj-TOPPED pointer places with a CODE-EMITTING base
+      (`*((*q).f) := v`): the depth-1 leaf
+      `const_write_deref_proj_simulation` still assumes a bare local
+      base; generalizing it to a chain base is a mother-lemma call in
+      place of its "base is code-free" section;
+    - proj-of-proj spellings inside chains (the deref-congruence
+      normalization transfer);
+    - unbound roots (regime-B composition). -/
 theorem const_write_deref_deep_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -2761,10 +2765,10 @@ theorem const_write_deref_deep_residual
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   sorry
 
-/-- RESIDUAL REGIME D-proj (sorried): constant write through a deref whose
-    pointer place is NOT a load spine — some level is a projection, whose
-    lowering emits a `Borrow` with cleanup. Blocked on the `sb_ref`
-    transport member, the same blocker as regime C. -/
+/-- PROVED dispatcher: constant write through a deref whose pointer
+    place is NOT a canonical chain. Routes the depth-1 proj-top shape
+    to its closed leaf; everything else (code-emitting proj-top bases,
+    proj-of-proj, unbound roots) to the deep residual. -/
 theorem const_write_deref_nonspine_simulation
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -2774,7 +2778,7 @@ theorem const_write_deref_nonspine_simulation
     {resolved : mirlite.PlaceRes} {permsD : MSB.State}
     (compProg : oseair.Prog)
     (v : Word)
-    (h_nspine : ¬ LoadSpine ptrPlace)
+    (h_nspine : ¬ PtrChain ptrPlace)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     (h_stmt : prog.get? s_mir.pc = some (.assign (.deref ptrPlace) (.constInit v)))
@@ -2789,7 +2793,7 @@ theorem const_write_deref_nonspine_simulation
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   cases ptrPlace with
-  | «local» ploc => exact absurd (LoadSpine.base ploc) h_nspine
+  | «local» ploc => exact absurd (PtrChain.base ploc) h_nspine
   | deref pp =>
       exact const_write_deref_deep_residual compProg v h_comp h_inv h_stmt
         h_prep h_res h_write
@@ -2949,7 +2953,7 @@ theorem const_write_proj_simulation
       · rw [← resolvePlaceAcc_proj_assoc b q path]
         exact h_res
   | deref pp =>
-      by_cases h_sp : LoadSpine pp
+      by_cases h_sp : PtrChain pp
       · by_cases h_o : pathOffset path = 0
         · -- CLOSED: `(*p).f := v` at ZERO offset over any load spine
           obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
@@ -2994,7 +2998,7 @@ theorem const_write_deref_simulation
       TagRenameIncr ρt ρt' ∧
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
-  by_cases h_spine : LoadSpine ptrPlace
+  by_cases h_spine : PtrChain ptrPlace
   · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
       const_write_deref_spine_simulation compProg v h_spine h_comp h_inv h_stmt
         (fun _ => rfl) (fun _ so h => ⟨so, h⟩)

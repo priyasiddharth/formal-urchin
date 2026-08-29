@@ -925,7 +925,7 @@ theorem copy_deref_local_simulation
     {P : Place Γ (obseq.LayoutTy.PtrL τ)}
     {bD : mirlite.Binding}
     (compProg : oseair.Prog)
-    (h_spine : LoadSpine P)
+    (h_spine : PtrChain P)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     (h_stmt : prog.get? s_mir.pc
@@ -1103,7 +1103,7 @@ theorem copy_deref_local_simulation
         obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
           h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
           h_pprm, h_pregmono, h_plabmono, -⟩ :=
-          ptrChain_lowering_sim h_id_a h_wf_t h_spine.toPtrChain RefKind.Shared csPrefix s_osea
+          ptrChain_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
             pRes permsP h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instP
         have h_stmtRun := compileStmt_copy_deref_run (cs := csPrefix) (pOut := pOut)
           h_piD h_pval h_pclean
@@ -1460,7 +1460,7 @@ theorem CompilerInv_step_copy
           | deref _ =>
               exact copy_place_residual compProg h_comp h_inv h_stmt h_step
       | deref pp =>
-          by_cases h_sp : LoadSpine pp
+          by_cases h_sp : PtrChain pp
           · cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
             | some bD =>
                 -- CLOSED: `dst := copy *p` through a load spine

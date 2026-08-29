@@ -987,6 +987,53 @@ def d43_ref_through_loaded_ptr : IO Unit :=
      .assign (.deref (.deref qD43)) (.constInit 9)]
     .ok "d43 ref through loaded ptr"
 
+def sD44L := obseq.LayoutTy.TupL [natL, ptrPtrNat]
+def ΓD44 : Ctx := [sD44L, ptrNat, natL]
+def sD44 : Place ΓD44 sD44L := .local ⟨⟨0, by decide⟩, rfl⟩
+def rD44 : Place ΓD44 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def xD44 : Place ΓD44 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- Positive: a double-deref THROUGH a pointer-to-pointer FIELD —
+    `*(*(s.f)) := v`. The dst's pointer place is a `PtrChain` with an
+    interior projection (`.deref (.proj s f)`), the first shape the
+    pending-cleanup spine generalization routes to a closed leaf
+    (2026-08-31): its lowering is `Borrow(Shared); Load; Die; Load;
+    CStore`, the triple cancelled by BRIDGE 1S. -/
+def d44_write_through_ptr_field_chain : IO Unit :=
+  expectDiff ΓD44
+    [.assign xD44 (.constInit 5),
+     .assign rD44 (.ref .Mut false [] xD44),
+     .assign (.proj sD44 (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] rD44),
+     .assign (.deref (.deref (.proj sD44 (.field ⟨1, by decide⟩ .nil))))
+       (.constInit 9)]
+    .ok "d44 write through ptr-field chain"
+
+/-- Positive: the ref sibling — a reference stored through the same
+    interior-projection chain (`*(*(s.f)) := &mut y`), then written
+    through. Exercises `ref_derefdst_local_simulation` over a
+    `PtrChain` with a proj level. -/
+def ptrPtrPtrNat := obseq.LayoutTy.PtrL ptrPtrNat
+def sD45L := obseq.LayoutTy.TupL [natL, ptrPtrPtrNat]
+def ΓD45 : Ctx := [sD45L, ptrPtrNat, ptrNat, natL, natL]
+def sD45 : Place ΓD45 sD45L := .local ⟨⟨0, by decide⟩, rfl⟩
+def qD45 : Place ΓD45 ptrPtrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def rD45 : Place ΓD45 ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def xD45 : Place ΓD45 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+def yD45 : Place ΓD45 natL := .local ⟨⟨4, by decide⟩, rfl⟩
+
+def d45_ref_through_ptr_field_chain : IO Unit :=
+  expectDiff ΓD45
+    [.assign xD45 (.constInit 5),
+     .assign yD45 (.constInit 6),
+     .assign rD45 (.ref .Mut false [] xD45),
+     .assign qD45 (.ref .Mut false [] rD45),
+     .assign (.proj sD45 (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] qD45),
+     .assign (.deref (.deref (.proj sD45 (.field ⟨1, by decide⟩ .nil))))
+       (.ref .Mut false [] yD45),
+     .assign (.deref (.deref (.deref (.proj sD45 (.field ⟨1, by decide⟩ .nil)))))
+       (.constInit 9)]
+    .ok "d45 ref through ptr-field chain"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1043,7 +1090,9 @@ def allTests : List (IO Unit) := [
   d40_ref_into_field_zero,
   d41_ref_into_field_offset,
   d42_ref_into_nested_field,
-  d43_ref_through_loaded_ptr]
+  d43_ref_through_loaded_ptr,
+  d44_write_through_ptr_field_chain,
+  d45_ref_through_ptr_field_chain]
 
 def runAll : IO Unit := do
   allTests.forM id

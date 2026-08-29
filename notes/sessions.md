@@ -678,3 +678,15 @@ loadSpine_lowering_sim retired; journal
 **Next-session pickup:** the wiring increment — nonspine dispatchers
 on PtrChain, depth-1 proj-top leaves generalized to chain bases, d44
 witness (`*((*q).f) := v`), residual docstrings + compiler.lean audit.
+
+## 2026-08-31 (cont.)
+**Session:** (terminal, continued) — chain wiring
+**Theme:** dispatchers + leaves re-gated LoadSpine → PtrChain (one
+mechanical pass, first build green); LoadSpine retired; all-chain
+pointer places (interior projs, any depth) now route to closed leaves
+across const_write/copy/ref. d44 (`*(*(s.f)) := v`) + d45 (ref
+sibling) pin the new coverage (58/58).
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 4.
+**Next-session pickup:** proj-TOP bases (`*((*q).f) := v` — generalize
+const_write_deref_proj_simulation to chain bases via a mother-lemma
+call), then proj-of-proj normalization, unbound roots.
