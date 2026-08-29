@@ -843,3 +843,22 @@ mis-pointed Memcpy.
 **Next-session pickup:** copy's NON-LOCAL dst (src lowering, then dst
 lowering, Memcpy, two cleanups) → copy_place_residual to ZERO; then
 ref's remaining classes.
+
+## 2026-09-03 (sixth)
+**Session:** (terminal, continued) — the last copy class is an ORDER mismatch
+**Theme:** investigated `copy_place_residual`'s remaining class
+(non-local dst) and CORRECTED the standing assessment: it is not
+composition work. mirlite performs the copy's range read BEFORE the dst
+resolution (rhs-first); the compiled `Memcpy` performs it AFTER the dst
+lowering's pointer-cell reads, and SB reads do not commute. The class is
+still TRUE — a dst-chain pointer cell inside the source range would need
+τ ∋ PtrL σ and σ ↠ PtrL τ, impossible for an inductive LayoutTy — but
+closing it needs either a memory well-typedness invariant in
+CompilerInv or a compiler change (materialize the source into a temp
+before the dst lowering). Durable note:
+notes/2026-09-03-copy-nonlocal-dst-order.md.
+**Status:** analysis only; no proof change; all green; audit at 2.
+**Next-session pickup:** HUMAN DECISION needed (invariant vs compiler
+change) for copy's last class; meanwhile ref's classes (proj-topped
+dsts over non-local bases, non-local srcs under non-local dsts, unbound
+roots) are independent and can proceed.

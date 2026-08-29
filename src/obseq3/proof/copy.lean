@@ -3467,12 +3467,36 @@ theorem copy_fresh_projchain_offset_simulation
     For an UNBOUND local dst every source shape is closed too
     (`copy_fresh_chainsrc_simulation` and the two
     `copy_fresh_projchain_*` leaves — regime B's prefix with each
-    source ending). The ONLY class left:
-    - NON-LOCAL dst (`(*p).f := copy s`): the dst `Borrow(Mut); Memcpy;
-      Die` is contiguous (BRIDGE 1 shape) but the SOURCE lowering runs
-      BEFORE the dst's in `compileStmtChecked`, so the leaf composes two
-      place lowerings and two cleanups. Composition work, not a
-      blocker. -/
+    source ending). The ONLY class left is the NON-LOCAL dst, and it is
+    NOT mere composition (docstring corrected 2026-09-03):
+
+    EVENT-ORDER MISMATCH. For `(*p).f := copy src` the two machines
+    perform the SAME events in DIFFERENT orders. mirlite (rhs-first,
+    Rust's order) runs: src resolution, the copy RANGE READ, then the
+    dst resolution (whose deref levels read their pointer cells), then
+    the write. The compiled code runs: src lowering, dst lowering, then
+    `Memcpy` — which performs the range read and the write together, so
+    the copy read lands AFTER the dst's pointer-cell reads. The read
+    must therefore commute past them, and SB reads do NOT commute in
+    general: a read through a tag pops Unique items above it, so at a
+    shared cell `read t₁; read t₂` can succeed where `read t₂; read t₁`
+    traps.
+
+    WHY IT IS NEVERTHELESS TRUE (the argument a future leaf must
+    formalize): the two reads can only interact at a SHARED CELL, i.e.
+    a pointer cell of the dst chain lying inside the source's τ-sized
+    range. Inside CoreProg (no `ptrCast`/`exposeAddr`) a cell holds a
+    pointer only where the layout says so, so such a cell is a
+    `PtrL σ` field of τ, making σ a strict subterm of τ; and the chain
+    continues from σ down to a `PtrL τ` it dereferences, making τ a
+    subterm of σ. `LayoutTy` is an inductive tree, so both cannot hold:
+    the ranges are DISJOINT by typing, and the reads commute cell-wise.
+    Formalizing it needs a memory well-typedness invariant that
+    `CompilerInv` does not currently carry (every `ptrVal` cell sits at
+    a `PtrL`-typed offset of its allocation). The cheaper alternative is
+    a COMPILER change: materialize the source into a temporary before
+    the dst lowering, so the two orders coincide. Both are decisions for
+    the human, not the proof. -/
 theorem copy_place_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}

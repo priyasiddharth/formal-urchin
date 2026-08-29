@@ -120,8 +120,18 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    keeps a zero-sized destination's base mapped), and the two
    `copy_fresh_projchain_*` leaves extend that to proj-topped sources —
    so an unbound destination accepts EVERY source shape. Remaining: the
-   NON-LOCAL destination only (`(*p).f := copy s`), where the compiled
-   order is src lowering, dst lowering, `Memcpy`, then both cleanups.
+   NON-LOCAL destination only (`(*p).f := copy s`) — and that class is
+   an EVENT-ORDER MISMATCH, not composition (assessment corrected
+   2026-09-03). mirlite performs the copy's range read BEFORE the dst
+   resolution (rhs-first, Rust's order); the compiled `Memcpy` performs
+   it AFTER the dst lowering's pointer-cell reads. SB reads do not
+   commute in general. They DO commute here, because a dst-chain
+   pointer cell inside the source's τ-range would force τ to contain
+   `PtrL σ` while σ reaches `PtrL τ` — impossible for an inductive
+   `LayoutTy` — but formalizing that needs a memory well-typedness
+   invariant `CompilerInv` does not carry, or a compiler change that
+   materializes the source into a temporary first. See
+   `copy_place_residual`'s docstring.
 4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested
