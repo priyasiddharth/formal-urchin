@@ -4,6 +4,30 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 — One Leaf Per Offset
+
+Fifty-ninth increment: the C-deref leaves collapse onto the mother lemma.
+`(*P).f := v` no longer cares what `*P` is made of — the whole pointer
+place is gated as a `PtrChain` and lowered by `ptrChain_lowering_sim` at
+`Mut`, so the leaf keeps only its own endgame: a bare `CStore` at offset
+zero (the projected resolution η-collapses onto the chain's), and the
+depth-1 `Borrow; CStore; Die` BRIDGE 1 shape otherwise, its bound supplied
+by the source write's own bounds check. The dispatcher's deref arm then
+went total by flattening the whole destination — the last non-chain
+spellings (`(*(s.f.g)).h`) normalize in. What remains of the projected
+residual is exactly one class: unbound roots.
+
+Two lessons with teeth. First, `omega` silently ignores any hypothesis
+whose comparison carries the `Word` abbrev as its type argument — the old
+proofs' habit of laundering bounds through `Nat.*` lemmas or grind was
+load-bearing. Second, a compiled flatten transfer cannot be stated for a
+variable destination at all (the statement compiler's match is stuck on
+the `.local` arm); transfers live at constructor-headed shapes.
+
+d52 pins `(**q).0/.1 := v`, d53 pins `(*(s.f.g)).1 := v`; both bite on a
+broken Borrow offset. Units 17/17 + 66/66, suite pass 82 | fail 0 of 123,
+axiom audit exact at three.
+
 ## 2026-09-02 — Every Star Normalizes
 
 Fifty-eighth increment: the flatten transfer travels to copy and ref, and

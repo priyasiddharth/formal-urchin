@@ -1158,6 +1158,56 @@ def d51_copy_ref_through_nested_ptr_field : IO Unit :=
      .assign (.deref qD51) (.constInit 9)]
     .ok "d51 copy and ref through nested ptr field"
 
+def pairD52L := obseq.LayoutTy.TupL [natL, natL]
+def ΓD52 : Ctx := [obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL pairD52L),
+  obseq.LayoutTy.PtrL pairD52L, pairD52L, natL]
+def qD52 : Place ΓD52 (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL pairD52L)) :=
+  .local ⟨⟨0, by decide⟩, rfl⟩
+def rD52 : Place ΓD52 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def sD52 : Place ΓD52 pairD52L := .local ⟨⟨2, by decide⟩, rfl⟩
+def yD52 : Place ΓD52 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: projected writes through a DEPTH-2 chain — `(**q).0 := v`
+    (zero offset) and `(**q).1 := w` (nonzero, BRIDGE 1). The C-deref
+    leaves collapsed onto the mother lemma (2026-09-03) gate the WHOLE
+    pointer place `*q` as a `PtrChain`, so interior `Load`s stack under
+    the projection's `Borrow`/`CStore`/`Die`. -/
+def d52_proj_write_through_chain : IO Unit :=
+  expectDiff ΓD52
+    [.assign (.proj sD52 (.field ⟨0, by decide⟩ .nil)) (.constInit 1),
+     .assign (.proj sD52 (.field ⟨1, by decide⟩ .nil)) (.constInit 2),
+     .assign rD52 (.ref .Mut false [] sD52),
+     .assign qD52 (.ref .Mut false [] rD52),
+     .assign (.proj (.deref (.deref qD52)) (.field ⟨0, by decide⟩ .nil))
+       (.constInit 7),
+     .assign (.proj (.deref (.deref qD52)) (.field ⟨1, by decide⟩ .nil))
+       (.constInit 9),
+     .assign yD52 (.copy (.proj sD52 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d52 proj write through chain"
+
+def pD53L := obseq.LayoutTy.PtrL pairD52L
+def innerD53L := obseq.LayoutTy.TupL [natL, pD53L]
+def sD53L := obseq.LayoutTy.TupL [natL, innerD53L]
+def ΓD53 : Ctx := [sD53L, pairD52L, natL]
+def sD53 : Place ΓD53 sD53L := .local ⟨⟨0, by decide⟩, rfl⟩
+def tD53 : Place ΓD53 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
+def yD53 : Place ΓD53 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- Positive: projected write through a NON-chain pointer place —
+    `(*(s.f.g)).1 := v`, whose base is a proj-of-proj the dispatcher
+    can only reach through the flatten transfer (2026-09-03: the
+    proj-dst deref arm made TOTAL). -/
+def d53_proj_write_through_flattened_ptr : IO Unit :=
+  expectDiff ΓD53
+    [.assign (.proj tD53 (.field ⟨1, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj (.proj sD53 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] tD53),
+     .assign (.proj (.deref (.proj (.proj sD53 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil))) (.field ⟨1, by decide⟩ .nil))
+       (.constInit 9),
+     .assign yD53 (.copy (.proj tD53 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d53 proj write through flattened ptr"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1222,7 +1272,9 @@ def allTests : List (IO Unit) := [
   d48_ref_through_ptr_field_dst,
   d49_ref_of_deref_ptr_field,
   d50_write_through_nested_ptr_field,
-  d51_copy_ref_through_nested_ptr_field]
+  d51_copy_ref_through_nested_ptr_field,
+  d52_proj_write_through_chain,
+  d53_proj_write_through_flattened_ptr]
 
 def runAll : IO Unit := do
   allTests.forM id

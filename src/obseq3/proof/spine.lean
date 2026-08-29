@@ -149,6 +149,23 @@ theorem preparePlaceAssign_proj_assoc
   | none => simp [mirlite.allocateRoot]
   | some r => rfl
 
+theorem resolvePlaceAcc_proj_base_ok
+    {Γ : Ctx} {σ τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ} {b : Place Γ σ} {path : PathTo σ τ}
+    {r : mirlite.PlaceRes} {p : M.State}
+    (h : mirlite.resolvePlaceAcc M s b = .ok (r, p)) :
+    mirlite.resolvePlaceAcc M s (.proj b path)
+      = .ok ({ r with addr := r.addr + PathTo.offset path }, p) := by
+  simp [mirlite.resolvePlaceAcc, h]
+
+theorem resolvePlaceAcc_proj_base_err
+    {Γ : Ctx} {σ τ : LayoutTy} {M : PermissionModel}
+    {s : mirlite.State M Γ} {b : Place Γ σ} {path : PathTo σ τ}
+    {e : String}
+    (h : mirlite.resolvePlaceAcc M s b = .error e) :
+    mirlite.resolvePlaceAcc M s (.proj b path) = .error e := by
+  simp [mirlite.resolvePlaceAcc, h]
+
 /-! ## Full flattening: EVERY place normalizes into the chain grammar
 
 `flattenPlace` recursively reassociates nested projections. Its output
@@ -1351,25 +1368,35 @@ theorem ptrChain_lowering_sim
 /-! ## Statement-level flatten congruences: the SOURCE cannot tell a
     statement from its dst/src-flattened spelling apart. -/
 
+/-- FULLY dst-generic: the source cannot tell a statement from its
+    dst-flattened spelling apart, for ANY dst and ANY rhs. -/
+theorem stepStmt_assign_dstflatten
+    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    (s : mirlite.State M Γ)
+    (dst : Place Γ τ) (rhs : RExpr Γ τ) :
+    mirlite.stepStmt M s (.assign dst rhs)
+      = mirlite.stepStmt M s (.assign (flattenPlace dst) rhs) := by
+  have h1 : ∀ st : mirlite.State M Γ,
+      mirlite.resolvePlaceAcc M st (flattenPlace dst)
+        = mirlite.resolvePlaceAcc M st dst :=
+    fun st => resolvePlaceAcc_flatten dst
+  have h2 : ∀ st : mirlite.State M Γ,
+      mirlite.resolvePlace? st (flattenPlace dst)
+        = mirlite.resolvePlace? (M := M) st dst :=
+    fun st => resolvePlace?_flatten dst
+  have h3 : mirlite.preparePlaceAssign M s (flattenPlace dst)
+      = mirlite.preparePlaceAssign M s dst :=
+    preparePlaceAssign_flatten dst
+  show mirlite.doAssign M s _ rhs = mirlite.doAssign M s _ rhs
+  simp only [mirlite.doAssign, h1, h2, h3]
+
 theorem stepStmt_assign_dstderef_flatten
     {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
     (s : mirlite.State M Γ)
     (P : Place Γ (obseq.LayoutTy.PtrL τ)) (rhs : RExpr Γ τ) :
     mirlite.stepStmt M s (.assign (.deref P) rhs)
-      = mirlite.stepStmt M s (.assign (.deref (flattenPlace P)) rhs) := by
-  have h1 : ∀ st : mirlite.State M Γ,
-      mirlite.resolvePlaceAcc M st (Place.deref (flattenPlace P))
-        = mirlite.resolvePlaceAcc M st (Place.deref P) :=
-    fun st => resolvePlaceAcc_flatten (Place.deref P)
-  have h2 : ∀ st : mirlite.State M Γ,
-      mirlite.resolvePlace? st (Place.deref (flattenPlace P))
-        = mirlite.resolvePlace? (M := M) st (Place.deref P) :=
-    fun st => resolvePlace?_flatten (Place.deref P)
-  have h3 : mirlite.preparePlaceAssign M s (Place.deref (flattenPlace P))
-      = mirlite.preparePlaceAssign M s (Place.deref P) :=
-    preparePlaceAssign_flatten (Place.deref P)
-  show mirlite.doAssign M s _ rhs = mirlite.doAssign M s _ rhs
-  simp only [mirlite.doAssign, h1, h2, h3]
+      = mirlite.stepStmt M s (.assign (.deref (flattenPlace P)) rhs) :=
+  stepStmt_assign_dstflatten s (.deref P) rhs
 
 theorem stepStmt_assign_copysrc_flatten
     {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}

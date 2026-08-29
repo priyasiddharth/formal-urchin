@@ -758,3 +758,20 @@ d51 (64/64).
 **Next-session pickup:** regime-B unbound roots (kills
 const_write_proj_nonlocal) or C-deref collapse+flatten (proj-dst
 gates); then copy/ref proj-topped and unbound classes.
+
+## 2026-09-03
+**Session:** (terminal, continued) — C-deref collapse + proj-dst deref arm total
+**Theme:** both C-deref leaves collapsed onto the mother at `Mut
+(.deref P)` (gate `PtrChain (.deref P)`; fragments restated over the
+opaque dst run; `resolvePlaceAcc_proj_base_ok/_err` keep the chain
+opaque); dispatcher deref arm TOTAL via
+`compileStmt_const_projderef_flatten_run/_value` +
+`PtrChain_flatten_deref`. Residual narrowed to UNBOUND ROOTS only.
+Potholes: omega ignores Word-typed hypotheses (launder through Nat.*
+lemmas or grind); pathOffset/PathTo.offset are distinct atoms;
+dst-generic compiled flatten transfers are unstatable (match stuck on
+the .local arm). d52+d53 (66/66), teeth via broken Borrow offset.
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 3.
+**Next-session pickup:** regime-B unbound roots (allocateRoot + the
+fresh-block C0/C1 endgames) → const_write_proj_nonlocal_residual to
+ZERO, whitelist 3 → 2; then copy/ref remaining classes.
