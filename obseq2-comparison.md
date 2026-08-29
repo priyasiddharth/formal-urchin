@@ -4,6 +4,27 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 (fifth) — Every Source, Into Nothing
+
+Sixty-third increment: an unbound copy destination now accepts every source
+spelling. The two new leaves are pure assembly — the allocation prefix from
+the previous increment's regime-B leaf, and the projection endgames from
+the bound-destination leaves — which is the payoff of having pushed both
+halves into shapes that compose. The zero-offset leaf came out of a
+mechanical transform of the chain-source one; the nonzero leaf is that same
+prefix with the borrow-copy-die ending spliced on.
+
+Two small Lean lessons. A chain of `emit_state_incr`s elaborates in term
+position but not through `refine … ?_`, because the expected type only
+becomes known once the whole chain is assembled. And register distinctness
+across the emit tower is not a `grind` fact: the monotonicity hypothesis
+talks about projections of a record built by `setPlaceInfo` over `emit`, so
+the bound has to be restated explicitly before arithmetic can see it.
+
+d58 pins field copies into destinations the statement itself allocates, at
+both offsets. Units 17/17 + 71/71, suite pass 82 | fail 0 of 123, axiom
+audit exact at two. Copy has one class left: non-local destinations.
+
 ## 2026-09-03 (fourth) — Copy Writes Into Nothing
 
 Sixty-second increment: copy's source leaves become one leaf, and copy

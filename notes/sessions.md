@@ -827,3 +827,19 @@ replaces can hit the wrong leaf. d57 (70/70), teeth via undersized Alloc.
 **Next-session pickup:** unbound dst with a PROJ-TOPPED src (same Alloc
 composition, projection endgames), then NON-LOCAL dst
 (`Borrow(Mut); Memcpy; Die`) → copy_place_residual to zero; then ref.
+
+## 2026-09-03 (fifth)
+**Session:** (terminal, continued) — copy: fresh dst with proj-topped srcs
+**Theme:** `copy_fresh_projchain_zero/offset_simulation` = regime-B
+prefix (abstract post-alloc state, extendBlock, root Alloc, mother at
+the post-alloc states) + the bound-dst projection endgames. With the
+chain-src leaf, an UNBOUND destination now accepts every source shape;
+`copy_place_residual` is down to NON-LOCAL destinations only. Potholes:
+`emit_state_incr` chains must stay term-mode (refine can't synthesize
+s2/instrs); register distinctness across the emit tower needs an
+explicit bound + injection/omega, not grind. d58 (71/71), teeth via
+mis-pointed Memcpy.
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 2.
+**Next-session pickup:** copy's NON-LOCAL dst (src lowering, then dst
+lowering, Memcpy, two cleanups) → copy_place_residual to ZERO; then
+ref's remaining classes.

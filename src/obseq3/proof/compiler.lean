@@ -117,9 +117,11 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    `copy_fresh_chainsrc_simulation` (regime B for copy: the root `Alloc`
    runs first, the mother lemma is then called at the POST-allocation
    states under both extended renames, and `AddrRenameMap.extendBlock`
-   keeps a zero-sized destination's base mapped). Remaining: unbound dst
-   with a proj-topped src, and non-local dst (contiguous BRIDGE 1 shape
-   — composition, no blocker).
+   keeps a zero-sized destination's base mapped), and the two
+   `copy_fresh_projchain_*` leaves extend that to proj-topped sources —
+   so an unbound destination accepts EVERY source shape. Remaining: the
+   NON-LOCAL destination only (`(*p).f := copy s`), where the compiled
+   order is src lowering, dst lowering, `Memcpy`, then both cleanups.
 4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested

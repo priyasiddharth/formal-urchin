@@ -1294,6 +1294,23 @@ def d57_copy_into_fresh_local : IO Unit :=
      .assign yD57 (.copy (.proj (.deref pD57) (.field ⟨0, by decide⟩ .nil)))]
     .ok "d57 copy into fresh local"
 
+def ΓD58 : Ctx := [pairD52L, natL, natL]
+def sD58 : Place ΓD58 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD58 : Place ΓD58 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def yD58 : Place ΓD58 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- Positive: copies from a FIELD into a destination that the statement
+    itself allocates — at zero offset (`Alloc; Memcpy`) and at nonzero
+    offset (`Alloc; Borrow(Shared); Memcpy; Die`). Regime B for copy
+    with a projected source, closed 2026-09-03. -/
+def d58_copy_field_into_fresh_local : IO Unit :=
+  expectDiff ΓD58
+    [.assign (.proj sD58 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj sD58 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign xD58 (.copy (.proj sD58 (.field ⟨0, by decide⟩ .nil))),
+     .assign yD58 (.copy (.proj sD58 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d58 copy field into fresh local"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1364,7 +1381,8 @@ def allTests : List (IO Unit) := [
   d54_fresh_root_proj_writes,
   d55_copy_from_proj_over_chain,
   d56_copy_from_nested_proj,
-  d57_copy_into_fresh_local]
+  d57_copy_into_fresh_local,
+  d58_copy_field_into_fresh_local]
 
 def runAll : IO Unit := do
   allTests.forM id
