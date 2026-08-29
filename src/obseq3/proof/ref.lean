@@ -1384,8 +1384,8 @@ theorem ref_deref_local_simulation
       obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
         h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
         h_pprm, h_pregmono, h_plabmono, -⟩ :=
-        loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
-          pRes permsP h_dres h_lbs h_prb h_sms h_psim h_pc h_instP
+        ptrChain_lowering_sim h_id_a h_wf_t h_spine.toPtrChain RefKind.Shared csPrefix s_osea
+          pRes permsP h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instP
       have h_stmtRun := compileStmt_ref_deref_run (cs := csPrefix) (pOut := pOut)
         kind prot mask h_piD h_pval h_pclean
       have h_len3 : ((emit (emit
@@ -1488,8 +1488,8 @@ theorem ref_deref_local_simulation
         simp [oseair.readWordSeq, h_find_tgt]
       -- §7 the retag transported: the fresh pair extends ρt
       have h_tbd2 : TagRenameBounded ρt permsP'.NextTag p2.NextTag := by
-        rw [sb_read_NextTag h_qread, h_pnt1, sb_read_NextTag h_read_tgt, h_pnt2]
-        exact h_tbd
+        rw [sb_read_NextTag h_qread, h_pnt1, sb_read_NextTag h_read_tgt]
+        exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_pnt2
       obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
         sb_ref_respects_PermSim h_psim2 h_wf_t h_tbd2 h_t h_tnw h_ref_src
       subst h_fresh_eq
@@ -2487,7 +2487,7 @@ theorem ref_local_projoffset_simulation
 `*P := &src` lowers, under the d34 MIR order, to the rhs `Borrow` FIRST,
 then the dst spine's `Load`s, then the final pointer `Load`, then the
 `RStore` of the borrow through it. The borrow temp `R cs.nextReg` must
-survive the spine — that is what `loadSpine_lowering_sim`'s register-frame
+survive the spine — that is what `ptrChain_lowering_sim`'s register-frame
 conjunct exists for. -/
 
 theorem compileStmt_ref_derefdst_run
@@ -2584,7 +2584,7 @@ theorem compileStmt_ref_derefdst_value
     local. Under the d34 MIR order (and the rhs-first source order that
     completed it) both machines run the retag FIRST, then the dst spine:
     fragment `[Borrow(src); spine Loads; Load; RStore]`. The borrow temp
-    crosses the spine via `loadSpine_lowering_sim`'s register-frame
+    crosses the spine via `ptrChain_lowering_sim`'s register-frame
     conjunct; the final store is BRIDGE 2 through the loaded tag, its
     bounds supplied by the source `writeResolvedPlace` check through
     `MemValSim`'s `o' = o ∧ s' = s`. One tag is minted on each side. -/
@@ -2865,7 +2865,7 @@ theorem ref_derefdst_local_simulation
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
       h_pprm, h_pregmono, h_plabmono, h_pframe⟩ :=
-      loadSpine_lowering_sim h_id_a h_wf_t' h_spine RefKind.Shared
+      ptrChain_lowering_sim h_id_a h_wf_t' h_spine.toPtrChain RefKind.Shared
         (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
           [Instr.Assgn (Register.R csPrefix.nextReg)
             (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)])
@@ -2875,7 +2875,7 @@ theorem ref_derefdst_local_simulation
               (obseq.TyVal.PTy,
                 [Val.Ptr bS.addr (0 + 0) (blockSize τ) s_osea.perms.NextTag]),
             pc := s_osea.pc + 1 }
-        pRes permsP h_dres h_lbs1 h_prb1 h_sms1 h_psim' h_pc1 h_instP
+        pRes permsP h_dres h_tbd' h_lbs1 h_prb1 h_sms1 h_psim' h_pc1 h_instP
     have h_stmtRun := compileStmt_ref_derefdst_run kind prot mask
       h_root h_piS rfl h_pval h_pclean
     -- §8 execute the Load through the transported pointer-cell read
@@ -3151,8 +3151,8 @@ theorem ref_derefdst_local_simulation
           exact h_pi'
         · show TagRenameBounded _ perms2.NextTag p3.NextTag
           rw [sb_write_NextTag h_useMut_src, sb_read_NextTag h_qread, h_pnt1,
-            sb_write_NextTag h_useMut_tgt, sb_read_NextTag h_read_tgt, h_pnt2]
-          exact h_tbd'
+            sb_write_NextTag h_useMut_tgt, sb_read_NextTag h_read_tgt]
+          exact TagRenameBounded.mono h_tbd' (Nat.le_refl _) h_pnt2
         · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
             oseair_writeWordSeq_addrStart, h_pmem]
           exact h_alloc

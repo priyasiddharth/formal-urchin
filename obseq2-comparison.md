@@ -4,6 +4,30 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-31 — The Pending Cleanup Pays Its Debt
+
+Fifty-second increment, and the campaign's long pole snaps: the spine mother
+lemma now walks pointer chains WITH projections. The discovery that made it
+tractable — spotted while planning, not proving — is that the compiler never
+owes more than one `Die` at a time: consecutive projections are reassociated
+into one, and every dereference settles the outstanding cleanup right after
+its `Load`. So the "pending-cleanup generalization" is not about lists of
+deferred deaths at all; it is one `Borrow(Shared); Load; Die` triple per
+projection level, always contiguous, which is the exact shape BRIDGE 1S
+cancels. The new induction case replays the closed depth-1 leaf's endgame
+one level down, and the lemma's interface barely moves: one added
+`TagRenameBounded` hypothesis, one `=` weakened to `≤` — the minted tags
+die, so even `PermSim` still holds at the unextended rename.
+
+Five consumers migrated in a single green build; the old spine lemma is
+retired. The four residuals are unchanged for now — the dispatchers still
+gate on the narrow spine predicate — but every one of them was waiting on
+this lemma, and the next increment is wiring, not theory.
+
+Units 17/17 + 56/56, suite pass 82 | fail 0 of 123, axiom audit exact.
+
+---
+
 ## 2026-08-30 (night) — A Reference Crosses the Spine
 
 Fifty-first increment, and the payoff of the order swap: `*P := &src` closes

@@ -660,3 +660,21 @@ narrowed, d43 (56/56), journal 2026-08-30-ref-derefdst-closed.md.
 **Status:** complete; all green; corpus 82/123 (0 fail); audit at 4.
 **Next-session pickup:** projected deref dsts (`(*p).f := &x`) or
 copy's non-local dst arms (transfer recipe ready).
+
+## 2026-08-31
+**Session:** (terminal, continued) — the deep-chain blocker's core
+**Theme:** `PtrChain` + `ptrChain_lowering_sim` land (plan increments
+1+2): the pending-cleanup spine generalization via one BRIDGE-1S
+triple per proj-under-deref level; pending list is provably ≤ 1 entry
+by the lowering's own discipline. Interface: +h_tbd, target counter
+`=`→`≤`, all else verbatim (PermSim at unextended ρt — the tags die).
+**Key outputs:** PtrChain, PtrChain.not_proj, LoadSpine.toPtrChain,
+ptrChain_lowering_sim (4 cases; derefProj = depth-1 endgame in the
+induction); 5 consumers migrated (h_pnt2 rewrites → mono closers);
+loadSpine_lowering_sim retired; journal
+2026-08-30-ptrchain-mother-lemma.md.
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 4
+(unchanged — coverage widens at wiring).
+**Next-session pickup:** the wiring increment — nonspine dispatchers
+on PtrChain, depth-1 proj-top leaves generalized to chain bases, d44
+witness (`*((*q).f) := v`), residual docstrings + compiler.lean audit.

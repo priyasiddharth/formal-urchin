@@ -1103,8 +1103,8 @@ theorem copy_deref_local_simulation
         obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
           h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
           h_pprm, h_pregmono, h_plabmono, -⟩ :=
-          loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
-            pRes permsP h_dres h_lbs h_prb h_sms h_psim h_pc h_instP
+          ptrChain_lowering_sim h_id_a h_wf_t h_spine.toPtrChain RefKind.Shared csPrefix s_osea
+            pRes permsP h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instP
         have h_stmtRun := compileStmt_copy_deref_run (cs := csPrefix) (pOut := pOut)
           h_piD h_pval h_pclean
         have h_len2 : ((emit (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared P) csPrefix) with
@@ -1319,8 +1319,8 @@ theorem copy_deref_local_simulation
               rw [sb_write_NextTag h_useMut_src', sb_read_NextTag h_read2_src,
                 sb_read_NextTag h_qread, h_pnt1,
                 sb_write_NextTag h_useMut_tgt, sb_read_NextTag h_read2_tgt,
-                sb_read_NextTag h_read_tgt, h_pnt2]
-              exact h_tbd
+                sb_read_NextTag h_read_tgt]
+              exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_pnt2
             · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
                 oseair_writeWordSeq_addrStart, h_pmem]
               exact h_alloc

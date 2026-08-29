@@ -502,7 +502,7 @@ theorem const_write_fresh_local_simulation
     place is the spine's `Load`s followed by one more `Load` (of the final
     pointer) and a `CStore` through it — stated over an opaque spine run,
     with the spine's value/cleanup facts supplied by
-    `loadSpine_lowering_sim`. -/
+    `ptrChain_lowering_sim`. -/
 theorem compileStmt_deref_run
     {Γ : Ctx} {P : Place Γ (obseq.LayoutTy.PtrL obseq.LayoutTy.NatL)}
     {cs : CompilerState}
@@ -1372,8 +1372,8 @@ theorem const_write_proj_deref_zero_simulation
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
       h_pprm, h_pregmono, h_plabmono, -⟩ :=
-      loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
-        pRes permsP h_dres h_lbs h_prb h_sms h_psim h_pc h_instP
+      ptrChain_lowering_sim h_id_a h_wf_t h_spine.toPtrChain RefKind.Shared csPrefix s_osea
+        pRes permsP h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instP
     rw [show path.offset = 0 from h_o] at h_write
     have h_stmtRunC := compileStmt_proj_deref_zero_run v h_o h_root h_pval h_pclean
     have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
@@ -1505,8 +1505,8 @@ theorem const_write_proj_deref_zero_simulation
           -- so no counter moved anywhere along the fragment
           show TagRenameBounded ρt perms'.NextTag p3.NextTag
           rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt,
-            sb_read_NextTag h_qread, sb_read_NextTag h_read_tgt, h_pnt1, h_pnt2]
-          exact h_tbd
+            sb_read_NextTag h_qread, sb_read_NextTag h_read_tgt, h_pnt1]
+          exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_pnt2
         · -- AllocLockstep: the fragment loads and stores, never allocates
           simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
             oseair_writeWordSeq_addrStart, h_pmem]
@@ -1694,8 +1694,8 @@ theorem const_write_proj_deref_simulation
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
       h_pprm, h_pregmono, h_plabmono, -⟩ :=
-      loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
-        pRes permsP h_dres h_lbs h_prb h_sms h_psim h_pc h_instP
+      ptrChain_lowering_sim h_id_a h_wf_t h_spine.toPtrChain RefKind.Shared csPrefix s_osea
+        pRes permsP h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instP
     have h_stmtRunC := compileStmt_proj_deref_run (cs := csPrefix) (pOut := pOut)
       v h_off h_root h_pval h_pclean
     have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
@@ -1832,8 +1832,8 @@ theorem const_write_proj_deref_simulation
           sb_write_respects_PermSim h_psim2 h_wf_t h_t h_tnw h_useMut_src
         obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Mut_ok_of_sb_write_ok h_useMut_tgt
         have h_tbd2 : TagRenameBounded ρt s_mir.perms.NextTag p2.NextTag := by
-          rw [sb_read_NextTag h_read_tgt, h_pnt2]
-          exact h_tbd
+          rw [sb_read_NextTag h_read_tgt]
+          exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_pnt2
         have h_unprot := freshTag_not_protected h_psim2 (by
           rw [sb_read_NextTag h_qread, h_pnt1]
           exact h_tbd2)
@@ -2003,13 +2003,13 @@ theorem const_write_proj_deref_simulation
         · show TagRenameBounded ρt perms''.NextTag q3.NextTag
           rw [sb_write_NextTag h_useMut_src, sb_read_NextTag h_qread, h_pnt1]
           refine TagRenameBounded.mono h_tbd (Nat.le_refl _) ?_
-          have hA : s_osea.perms.NextTag = p2.NextTag := by
-            rw [sb_read_NextTag h_read_tgt, h_pnt2]
+          have hA : s_osea.perms.NextTag ≤ p2.NextTag := by
+            rw [sb_read_NextTag h_read_tgt]
+            exact h_pnt2
           have hB : p2.NextTag ≤ q3.NextTag := by
             rw [← sb_write_NextTag h_useMut_tgt]
             exact h_ntle
-          rw [hA]
-          exact hB
+          exact Nat.le_trans hA hB
         · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
             oseair_writeWordSeq_addrStart, h_pmem]
           exact h_alloc
@@ -2425,7 +2425,7 @@ theorem const_write_proj_offset_simulation
 
 /-- REGIME D (spine), CLOSED: constant write through a dereferenced load
     spine — `*p := v`, `**q := v`, and every deeper all-deref shape at
-    once. The spine executes via `loadSpine_lowering_sim`; the final
+    once. The spine executes via `ptrChain_lowering_sim`; the final
     pointer is loaded (SB read matched by `resolvePlaceAcc`'s read at this
     level, transported by the `sb_read` BRIDGE-3 member; value recovered
     by `MemValSim` inversion); the `CStore` through it is BRIDGE 2 + the
@@ -2572,8 +2572,8 @@ theorem const_write_deref_spine_simulation
     obtain ⟨pOut, n1, s_mid, ptag, h_pval, h_pclean, h_prun, h_ppc, h_pmem, h_ppsim,
       h_pnt1, h_pnt2, h_plbs, h_pentry, h_prt, h_pnw, h_ple, h_prange, h_pbelow,
       h_pprm, h_pregmono, h_plabmono, -⟩ :=
-      loadSpine_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
-        pRes permsP h_qres h_lbs h_prb h_sms h_psim h_pc h_instP
+      ptrChain_lowering_sim h_id_a h_wf_t h_spine.toPtrChain RefKind.Shared csPrefix s_osea
+        pRes permsP h_qres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instP
     have h_stmtRunC := compileStmt_deref_run v h_root h_pval h_pclean
     have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
     -- pointer-place bounds from the dereferenceable check
@@ -2704,8 +2704,8 @@ theorem const_write_deref_spine_simulation
           -- so no counter moved anywhere along the fragment
           show TagRenameBounded ρt perms'.NextTag p3.NextTag
           rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt,
-            sb_read_NextTag h_qread, sb_read_NextTag h_read_tgt, h_pnt1, h_pnt2]
-          exact h_tbd
+            sb_read_NextTag h_qread, sb_read_NextTag h_read_tgt, h_pnt1]
+          exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_pnt2
         · -- AllocLockstep: the fragment loads and stores, never allocates
           simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
             oseair_writeWordSeq_addrStart, h_pmem]
@@ -2734,7 +2734,8 @@ theorem const_write_deref_spine_simulation
     Everything with ONE proj segment at the top of an otherwise
     local-rooted chain is CLOSED (`const_write_deref_proj_simulation`,
     `const_write_proj_deref_simulation`); the general chain needs the
-    pending-cleanup generalization of `loadSpine_lowering_sim` sketched in
+    pending-cleanup generalization (`ptrChain_lowering_sim`, landed
+    2026-08-30) that was once only sketched in
     the keystone refactor assessment. -/
 theorem const_write_deref_deep_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}

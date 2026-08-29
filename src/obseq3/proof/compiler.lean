@@ -66,7 +66,7 @@ the two facts the minting members need.
   Free at the closed sites — the three access ops leave `NextTag` alone
   (`sb_write_NextTag`/`sb_read_NextTag`/`sb_die_NextTag`), so regime A
   and the deref spine rewrite the bound through unchanged.
-  `loadSpine_lowering_sim` gained two counter-framing conjuncts for the
+  `ptrChain_lowering_sim` (né loadSpine) gained two counter-framing conjuncts for the
   same reason (the spine only reads).
 - `AllocLockstep s_mir.mem s_osea.mem` (ninth): the two bump allocators
   sit at the same watermark, so corresponding fresh allocations return
@@ -83,7 +83,11 @@ Remaining (4): every remaining sorry is blocked on a NAMED obligation.
    segment below another deref, proj-of-proj pointer places pending the
    flattening-transfer, zero-offset pointer fields, or a fresh root. The
    general chain needs the pending-cleanup generalization of
-   `loadSpine_lowering_sim` (keystone refactor assessment).
+   `loadSpine_lowering_sim` — LANDED 2026-08-30 as `ptrChain_lowering_sim`
+   (spine.lean): interior projections are Borrow(Shared); Load; Die
+   triples cancelled per level by BRIDGE 1S. Remaining here: wiring the
+   nonspine dispatchers onto `PtrChain` + proj-of-proj normalization
+   inside chains, unbound roots.
 2. `const_write_proj_nonlocal_residual` — NARROWED 2026-08-29: the
    FLATTENING RECURSION closes every nested projection tower — the
    closed leaves (C0/C1/C-deref/C-deref-zero/D-spine) are generalized
@@ -214,7 +218,7 @@ CLOSED in the leaf layer (2026-08-18):
 - ✔ REGIME D (load spines) `const_write_deref_spine_simulation`
   (2026-08-21, subsuming the same-day depth-1 proof): `*p := v`,
   `**q := v` and every deeper all-deref shape, via the spine mother
-  lemma `loadSpine_lowering_sim` (proof/spine.lean) — an induction over
+  lemma `ptrChain_lowering_sim` (proof/spine.lean) — an induction over
   `LoadSpine` places showing the compiled `Load` chain executes and
   ends with a register holding the ρ-renamed resolved pointer, with the
   threaded perms `PermSim`-related and everything else framed. Each
@@ -222,7 +226,7 @@ CLOSED in the leaf layer (2026-08-18):
   check (added 2026-08-21 to `resolvePlaceAcc` — the read-side mirror
   of `writeResolvedPlace`'s bounds check; validated: suite 77/117,
   differential 77/0/0, t15/d25 pin the OOB-deref alignment). Reusable
-  pieces: `loadSpine_lowering_sim`, `placeInputsMapped_of_resolveAcc`,
+  pieces: `ptrChain_lowering_sim`, `placeInputsMapped_of_resolveAcc`,
   `LocalBindingSim.placeRegMap_congr`, `runN_Assgn_Load_ptr_step`,
   `resolvePlaceAcc_deref_local_inversion`,
   `LocalBindingSim.insert_fresh_reg`, `RegMap.lookup_insert_self`/`_ne`
