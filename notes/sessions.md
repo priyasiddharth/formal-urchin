@@ -610,3 +610,13 @@ ref_local_projzero_simulation, dispatcher proj-dst arm, d40 (53/53).
 **Status:** complete; all green; audit at 4.
 **Next-session pickup:** the NONZERO field dst (BRIDGE 1 composition
 with the rhs ρt extension).
+
+## 2026-08-29 (cont. 4)
+**Session:** (terminal, continued) — ref non-local dst, part 2
+**Theme:** L→P closed (nonzero field dst) — the two-mint leaf; BRIDGE 1
+composed under the rhs-extended rename, first-try build.
+**Key outputs:** compileStmt_ref_projoffset_local_run/_value,
+ref_local_projoffset_simulation, dispatcher wiring, d41 (54/54).
+**Status:** complete; all green; audit at 4.
+**Next-session pickup:** ref dst flattening recursion (stmt0 triples)
++ deref dsts; or copy's non-local dst arms (same recipe).

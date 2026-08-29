@@ -4,6 +4,28 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-30 — Two Mints, One Statement
+
+Forty-eighth increment. The nonzero-offset field destination closes for ref —
+`t.f := &mut x` where the field sits past the tuple's head — and it is the
+first leaf whose target mints two tags in a single statement. The right-hand
+side's reference is the real one: it pairs with the source's own mint and
+extends the rename, exactly as in the local-destination regimes. The
+destination's `Borrow(Mut)` is a compiler phantom, and BRIDGE 1 cancels its
+ref-use-die triple down to the parent write the source actually performs —
+but this time the keystone runs UNDER the just-extended rename, its
+side-condition suppliers fed by the rhs member's own outputs. What the audit
+once feared as "interleaved-keystone commutation, a new proof pattern" is,
+after the lowering-order fix, nothing but sequencing: extend, then cancel.
+
+The leaf compiled on the first attempt — a quiet milestone for the template
+library. d41 exercises it end to end, storing the reference into the field
+and then writing through it.
+
+Units 17/17 + 54/54, suite pass 82 | fail 0 of 123.
+
+---
+
 ## 2026-08-29 (later night) — References Land in Fields
 
 Forty-seventh increment, and ref's dispatcher gains its first non-local

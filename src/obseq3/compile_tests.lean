@@ -931,6 +931,23 @@ def d40_ref_into_field_zero : IO Unit :=
      .assign (.deref (.proj tD40 (.field ⟨0, by decide⟩ .nil))) (.constInit 9)]
     .ok "d40 ref into field zero"
 
+/-- Differential: a reference stored into a NONZERO-offset field —
+    `t.1 := &mut x` with the pointer field second — the
+    `[BorrowS; BorrowM; RStore; Die]` fragment (BRIDGE 1 around the
+    store), then a write THROUGH the stored reference. -/
+def refField2L := obseq.LayoutTy.TupL [natL, ptrNat]
+def ΓD41 : Ctx := [refField2L, natL]
+def tD41 : Place ΓD41 refField2L := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD41 : Place ΓD41 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+
+def d41_ref_into_field_offset : IO Unit :=
+  expectDiff ΓD41
+    [.assign xD41 (.constInit 5),
+     .assign (.proj tD41 (.field ⟨0, by decide⟩ .nil)) (.constInit 1),
+     .assign (.proj tD41 (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] xD41),
+     .assign (.deref (.proj tD41 (.field ⟨1, by decide⟩ .nil))) (.constInit 9)]
+    .ok "d41 ref into field offset"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -984,7 +1001,8 @@ def allTests : List (IO Unit) := [
   d37_copy_through_pointer,
   d38_nested_proj_write,
   d39_deref_field_zero_write,
-  d40_ref_into_field_zero]
+  d40_ref_into_field_zero,
+  d41_ref_into_field_offset]
 
 def runAll : IO Unit := do
   allTests.forM id
