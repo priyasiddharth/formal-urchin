@@ -99,17 +99,20 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    lockstep, ρa extends by the IDENTITY over the whole fresh block via
    `AddrRenameMap.extendIdRange`, then the C0/C1 endgames land inside
    it). The axiom whitelist dropped to TWO sorries.
-3. `copy_place_residual` — NARROWED 2026-08-29 (later): regimes L→L,
-   P0→L, P→L (nonzero offset) and D→L (deref src through a load spine)
-   are CLOSED (`copy_local_local_simulation`, `copy_proj_zero_simulation`,
-   `copy_proj_offset_simulation`, `copy_deref_local_simulation`). D→L is
-   `[spine; Load; Memcpy]` — no Borrow, no Die, no keystone — with the
-   `Memcpy`'s source bound supplied by the copy-range dereferenceability
-   check (the read-side event fix, t17-pinned) through `MemValSim`'s
-   `o' = o ∧ s' = s`, and its nonoverlapping check by the overlap guard
-   via `resolvePlace?_of_resolveAcc`. Remaining: proj-of-proj and mixed
-   chains (reassociation transfer), unbound dst (regime-B), non-local
-   dst (contiguous BRIDGE 1 shape — composition, no blocker).
+3. `copy_place_residual` — NARROWED 2026-09-03: for a BOUND LOCAL dst
+   EVERY source shape is closed. The old P0→L/P→L leaves collapsed onto
+   the mother lemma at the chain base as
+   `copy_projchain_zero/offset_simulation` (gate `PtrChain B` for a src
+   `.proj B path`), which subsumes both the bound-local bases and
+   pointer chains (`y := copy (*p).f`); D→L stays
+   `copy_deref_local_simulation`; and the src flatten transfer
+   (`stepStmt_assign_copysrc_anyflatten` +
+   `compileStmt_copy_srcflatten_run/_value` + `flatten_proj_chainish`)
+   normalizes every remaining spelling — proj-of-proj included — into
+   one of them. The nonzero-offset endgame still slides the dst
+   `useMut` between BRIDGE 1S's phases by the overlap guard's
+   disjointness. Remaining: unbound dst (regime-B), non-local dst
+   (contiguous BRIDGE 1 shape — composition, no blocker).
 4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested

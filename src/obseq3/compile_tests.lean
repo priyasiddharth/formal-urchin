@@ -1229,6 +1229,49 @@ def d54_fresh_root_proj_writes : IO Unit :=
      .assign yD54 (.copy (.proj tD54 (.field ⟨0, by decide⟩ .nil)))]
     .ok "d54 fresh root proj writes"
 
+def ΓD55 : Ctx := [obseq.LayoutTy.PtrL pairD52L, pairD52L, natL, natL]
+def pD55 : Place ΓD55 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨0, by decide⟩, rfl⟩
+def sD55 : Place ΓD55 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
+def xD55 : Place ΓD55 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def yD55 : Place ΓD55 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: copies out of a projection over a POINTER chain —
+    `x := copy (*p).0` (zero offset) and `y := copy (*p).1` (nonzero:
+    `Borrow(Shared); Memcpy; Die`, the dst write sliding between
+    BRIDGE 1S's phases). Closed 2026-09-03 by collapsing the P0/P→L
+    leaves onto the mother lemma at the chain base. -/
+def d55_copy_from_proj_over_chain : IO Unit :=
+  expectDiff ΓD55
+    [.assign (.proj sD55 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj sD55 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign pD55 (.ref .Mut false [] sD55),
+     .assign xD55 (.copy (.proj (.deref pD55) (.field ⟨0, by decide⟩ .nil))),
+     .assign yD55 (.copy (.proj (.deref pD55) (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d55 copy from proj over chain"
+
+def innerD56L := obseq.LayoutTy.TupL [natL, natL]
+def sD56L := obseq.LayoutTy.TupL [natL, innerD56L]
+def ΓD56 : Ctx := [sD56L, natL, natL]
+def sD56 : Place ΓD56 sD56L := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD56 : Place ΓD56 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def yD56 : Place ΓD56 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- Positive: copies out of a PROJ-OF-PROJ source — `x := copy s.1.0`
+    and `y := copy s.1.1`. The nested spelling is flatten-normalized
+    into one projection over the chain base before the leaves see it
+    (the src flatten transfer, 2026-09-03). -/
+def d56_copy_from_nested_proj : IO Unit :=
+  expectDiff ΓD56
+    [.assign (.proj (.proj sD56 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨0, by decide⟩ .nil)) (.constInit 7),
+     .assign (.proj (.proj sD56 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil)) (.constInit 8),
+     .assign xD56 (.copy (.proj (.proj sD56 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨0, by decide⟩ .nil))),
+     .assign yD56 (.copy (.proj (.proj sD56 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d56 copy from nested proj"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1296,7 +1339,9 @@ def allTests : List (IO Unit) := [
   d51_copy_ref_through_nested_ptr_field,
   d52_proj_write_through_chain,
   d53_proj_write_through_flattened_ptr,
-  d54_fresh_root_proj_writes]
+  d54_fresh_root_proj_writes,
+  d55_copy_from_proj_over_chain,
+  d56_copy_from_nested_proj]
 
 def runAll : IO Unit := do
   allTests.forM id

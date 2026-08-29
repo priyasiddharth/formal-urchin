@@ -4,6 +4,29 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 (third) — Copy Reads Through Anything
+
+Sixty-first increment: with a bound local destination, `copy` now handles
+every source spelling. The two field-source leaves collapsed onto the
+mother lemma the same way the write leaves did — gate the whole base as a
+canonical chain, let the mother lower it, and keep only the leaf's own
+ending: one `Memcpy` at offset zero, or borrow-copy-die otherwise. That
+single pair now covers what used to be two separate regimes plus the
+uncovered `y := copy (*p).f`, and a source-side flatten transfer feeds it
+nested spellings like `s.1.0`. Net: 617 lines of subsumed proof deleted.
+
+Two Lean lessons worth keeping. `set` is a Mathlib tactic and this project
+has none, so it reads as an unknown tactic rather than a missing import.
+And a statement's evidence type mentions its own source place, so a
+flattening equation cannot be rewritten inside a hypothesis about that
+value — but it can be rewritten inside an EXISTENTIAL over it, because the
+existential hides the dependent type. That is now the shape all the value
+transfers take.
+
+d55 and d56 pin copies through a pointer chain and through a nested field
+path; both bite when the `Memcpy` is pointed at the wrong register. Units
+17/17 + 69/69, suite pass 82 | fail 0 of 123, axiom audit exact at two.
+
 ## 2026-09-03 (later) — The Second Sorry Dies
 
 Sixtieth increment: `const_write_proj_nonlocal_residual` is deleted and

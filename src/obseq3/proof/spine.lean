@@ -312,6 +312,27 @@ theorem flatten_chainish {Γ : Ctx} : {τ : LayoutTy} → (p : Place Γ τ) →
         rw [h_eq]
         rfl
 
+/-- A flattened PROJECTION is always exactly one projection over a
+    canonical chain (the `.inr` half of `flatten_chainish`, with the
+    impossible `.inl` half discharged: `projInto` always produces a
+    projection). -/
+theorem flatten_proj_chainish {Γ : Ctx} {σ τ : LayoutTy}
+    (b : Place Γ σ) (p : PathTo σ τ) :
+    ∃ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' τ),
+      flattenPlace (Place.proj b p) = .proj bb q ∧ PtrChain bb := by
+  rcases flatten_chainish b with h | ⟨σ'', b', q, h_eq, h_b'⟩
+  · refine ⟨_, flattenPlace b, p, ?_, h⟩
+    show projInto (flattenPlace b) p = _
+    have h_np := PtrChain.not_proj h
+    cases h_flat : flattenPlace b with
+    | proj bb qq => exact absurd h_flat (fun hh => h_np _ bb qq hh)
+    | «local» l => rfl
+    | deref pp => rfl
+  · refine ⟨_, b', q.append p, ?_, h_b'⟩
+    show projInto (flattenPlace b) p = _
+    rw [h_eq]
+    rfl
+
 /-- Every flattened DEREF place is a canonical chain — the fact that
     retires the non-chain fallbacks. -/
 theorem PtrChain_flatten_deref {Γ : Ctx} {τ : LayoutTy}
@@ -1412,6 +1433,24 @@ theorem stepStmt_assign_copysrc_flatten
       mirlite.resolvePlace? st (Place.deref (flattenPlace P))
         = mirlite.resolvePlace? (M := M) st (Place.deref P) :=
     fun st => resolvePlace?_flatten (Place.deref P)
+  show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
+  simp only [mirlite.doAssign, mirlite.evalRExpr, h1, h2]
+
+/-- Source-side flatten congruence for a copy SOURCE of any shape (the
+    deref case above is the instance the D→L arm uses). -/
+theorem stepStmt_assign_copysrc_anyflatten
+    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    (s : mirlite.State M Γ) (dst : Place Γ τ) (src : Place Γ τ) :
+    mirlite.stepStmt M s (.assign dst (.copy src))
+      = mirlite.stepStmt M s (.assign dst (.copy (flattenPlace src))) := by
+  have h1 : ∀ st : mirlite.State M Γ,
+      mirlite.resolvePlaceAcc M st (flattenPlace src)
+        = mirlite.resolvePlaceAcc M st src :=
+    fun st => resolvePlaceAcc_flatten src
+  have h2 : ∀ st : mirlite.State M Γ,
+      mirlite.resolvePlace? st (flattenPlace src)
+        = mirlite.resolvePlace? (M := M) st src :=
+    fun st => resolvePlace?_flatten src
   show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
   simp only [mirlite.doAssign, mirlite.evalRExpr, h1, h2]
 

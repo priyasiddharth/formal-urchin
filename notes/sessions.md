@@ -792,3 +792,21 @@ undersized root Alloc.
 non-local bases, unbound dst, non-local dst — BRIDGE 1 composition) and
 ref residual classes (proj-topped dsts over non-local bases, non-local
 srcs under non-local dsts, unbound roots) → drive to ZERO sorries.
+
+## 2026-09-03 (third)
+**Session:** (terminal, continued) — copy proj-src collapse
+**Theme:** `copy_projchain_zero/offset_simulation` (gate `PtrChain B`
+for src `.proj B path`) subsume the old bound-local-base P0/P→L leaves
+AND `y := copy (*p).f`; src flatten transfer
+(`stepStmt_assign_copysrc_anyflatten`, src-generic compiled pair,
+`flatten_proj_chainish`) makes the whole proj-src dispatcher arm TOTAL
+for bound dsts. 617 lines deleted. Potholes: `set` is Mathlib-only (not
+available here); dependent evidence types transport only under an
+EXISTENTIAL; record-update projections block `rw [if_pos]` (normalize
+with any real rewrite first). d55+d56 (69/69), teeth via mis-pointed
+Memcpy.
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 2.
+**Next-session pickup:** copy's UNBOUND dst (regime-B composition — the
+`extendIdRange` machinery is in place) and NON-LOCAL dst
+(`Borrow(Mut); Memcpy; Die`) → copy_place_residual to zero; then ref's
+classes.
