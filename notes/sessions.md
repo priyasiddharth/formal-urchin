@@ -690,3 +690,20 @@ sibling) pin the new coverage (58/58).
 **Next-session pickup:** proj-TOP bases (`*((*q).f) := v` — generalize
 const_write_deref_proj_simulation to chain bases via a mother-lemma
 call), then proj-of-proj normalization, unbound roots.
+
+## 2026-08-31 (cont. 2)
+**Session:** (terminal, continued) — chain-dst leaf; subsumption
+**Theme:** const_write_deref_chain_simulation (dst gated as
+`PtrChain (.deref P)`, mother lemma at Mut on the WHOLE dst) SUBSUMES
+the D-spine + depth-1 proj-top leaves (~750 lines deleted). Process
+documented per user request: durable note
+chain-leaves-gate-on-the-whole-place (4-step narrative + reusable
+heuristic).
+**Key outputs:** compileStmt_derefdst_run/_value, the chain-dst leaf,
+dispatcher regated, nonspine collapsed to 3 arms, 4 dead theorems
+removed, d46 (59/59), deep residual narrowed to proj-of-proj +
+unbound roots.
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 4.
+**Next-session pickup:** apply the same collapse to copy D→L and ref
+deref-src/deref-dst (they still hand-run the final Load); then
+proj-of-proj normalization inside chains; unbound roots.

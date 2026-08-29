@@ -1034,6 +1034,26 @@ def d45_ref_through_ptr_field_chain : IO Unit :=
        (.constInit 9)]
     .ok "d45 ref through ptr-field chain"
 
+def tD46L := obseq.LayoutTy.TupL [natL, ptrNat]
+def ΓD46 : Ctx := [tD46L, obseq.LayoutTy.PtrL tD46L, natL]
+def tD46 : Place ΓD46 tD46L := .local ⟨⟨0, by decide⟩, rfl⟩
+def qD46 : Place ΓD46 (obseq.LayoutTy.PtrL tD46L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def xD46 : Place ΓD46 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- Positive: write through the pointer FIELD of a DEREFERENCED struct —
+    `*((*q).f) := v`. The dst is a `PtrChain` whose projection sits over
+    a code-emitting base (`.deref q`), the shape the chain-dst leaf
+    (`const_write_deref_chain_simulation`, 2026-08-31) closed when it
+    subsumed the depth-1 `*(s.f) := v` leaf. -/
+def d46_write_through_deref_struct_field : IO Unit :=
+  expectDiff ΓD46
+    [.assign xD46 (.constInit 5),
+     .assign (.proj tD46 (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] xD46),
+     .assign qD46 (.ref .Mut false [] tD46),
+     .assign (.deref (.proj (.deref qD46) (.field ⟨1, by decide⟩ .nil)))
+       (.constInit 9)]
+    .ok "d46 write through deref-struct field"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1092,7 +1112,8 @@ def allTests : List (IO Unit) := [
   d42_ref_into_nested_field,
   d43_ref_through_loaded_ptr,
   d44_write_through_ptr_field_chain,
-  d45_ref_through_ptr_field_chain]
+  d45_ref_through_ptr_field_chain,
+  d46_write_through_deref_struct_field]
 
 def runAll : IO Unit := do
   allTests.forM id

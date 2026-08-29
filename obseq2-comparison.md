@@ -4,6 +4,34 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-31 (later still) — One Leaf Eats Two
+
+Fifty-fourth increment, and an unplanned collapse: the plan called for
+generalizing the depth-1 `*(s.f) := v` leaf's base from a bare local to a
+chain. Instead the leaf disappeared. The type-generalization the mother
+lemma's projection case had FORCED — a projection's base is a struct-typed
+dereference, so the lemma had to speak about places of every layout — turned
+out to make it instantiable at the statement's WHOLE destination, and
+`PtrChain (.deref P)` is definitionally the union of the all-spine class and
+the proj-top class. Called at `Mut` on the destination itself, the lemma
+performs the entire lowering including the final `Load`; what remains of a
+constant-write leaf is one `CStore`, BRIDGE 2, and the invariant rebuild.
+
+So one ~200-line leaf replaced the D-spine leaf, the depth-1 leaf, and
+their two fragment lemmas — about 750 lines deleted — and the dispatcher
+now asks one question: is the destination a chain? The process is written
+up as a durable note (`chain-leaves-gate-on-the-whole-place`): gate leaves
+on the largest place the mother lemma can swallow, because an induction's
+last case IS the leaf's endgame. Copy's and ref's deref leaves still
+hand-run their final `Load`s; the same collapse is waiting for them.
+
+d46 pins `*((*q).f) := v` — a shape that was residual this morning. Units
+17/17 + 59/59, suite pass 82 | fail 0 of 123, axiom audit exact; the
+const_write deep residual is down to proj-of-proj normalization and
+unbound roots.
+
+---
+
 ## 2026-08-31 (later) — Wiring the Chains
 
 Fifty-third increment: the mechanical half of the payoff. Every leaf and
