@@ -966,6 +966,27 @@ def d42_ref_into_nested_field : IO Unit :=
         (.field ⟨1, by decide⟩ .nil))) (.constInit 9)]
     .ok "d42 ref into nested field"
 
+def ptrPtrNat := obseq.LayoutTy.PtrL ptrNat
+def ΓD43 : Ctx := [ptrPtrNat, ptrNat, natL, natL]
+def qD43 : Place ΓD43 ptrPtrNat := .local ⟨⟨0, by decide⟩, rfl⟩
+def rD43 : Place ΓD43 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def xD43 : Place ΓD43 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def yD43 : Place ΓD43 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: a reference stored THROUGH a loaded pointer (`*q := &mut x`,
+    the deref-dst ref regime, closed 2026-08-30), then written through the
+    stored reference by a double-deref. Exercises the MIR order on both
+    machines: the `Borrow` runs BEFORE the dst spine's `Load`s. -/
+def d43_ref_through_loaded_ptr : IO Unit :=
+  expectDiff ΓD43
+    [.assign xD43 (.constInit 5),
+     .assign yD43 (.constInit 6),
+     .assign rD43 (.ref .Mut false [] yD43),
+     .assign qD43 (.ref .Mut false [] rD43),
+     .assign (.deref qD43) (.ref .Mut false [] xD43),
+     .assign (.deref (.deref qD43)) (.constInit 9)]
+    .ok "d43 ref through loaded ptr"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1021,7 +1042,8 @@ def allTests : List (IO Unit) := [
   d39_deref_field_zero_write,
   d40_ref_into_field_zero,
   d41_ref_into_field_offset,
-  d42_ref_into_nested_field]
+  d42_ref_into_nested_field,
+  d43_ref_through_loaded_ptr]
 
 def runAll : IO Unit := do
   allTests.forM id

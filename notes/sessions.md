@@ -647,3 +647,16 @@ log increment 50.
 fail); units 17/17 + 55/55; audit at 4.
 **Next-session pickup:** ref's deref dsts (`*p := &src` bare leaf +
 `(*p).f := &src`), dispatcher wiring, differential witness d43.
+
+## 2026-08-30 (cont. 2)
+**Session:** (terminal, continued) — ref deref dst + grind audit
+**Theme:** `*P := &src` closed over any load spine (the regime the
+rhs-first swap unblocked); loadSpine_lowering_sim gains a
+register-frame conjunct (borrow temp crosses the spine); grind audit
+of the delta since 09d5472 (10 sites collapsed, 1 rejection).
+**Key outputs:** compileStmt_ref_derefdst_run/_value,
+ref_derefdst_local_simulation, dispatcher deref-dst arm, residual
+narrowed, d43 (56/56), journal 2026-08-30-ref-derefdst-closed.md.
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 4.
+**Next-session pickup:** projected deref dsts (`(*p).f := &x`) or
+copy's non-local dst arms (transfer recipe ready).

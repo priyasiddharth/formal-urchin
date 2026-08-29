@@ -4,6 +4,35 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-30 (night) — A Reference Crosses the Spine
+
+Fifty-first increment, and the payoff of the order swap: `*P := &src` closes
+for every all-deref load spine — the first destination that must be READ
+before it can be written, holding a freshly minted reference the whole way.
+Under MIR order the borrow happens first, so the borrow's temporary register
+has to survive the spine's `Load`s; `loadSpine_lowering_sim` grew a
+register-frame conjunct saying the spine writes only fresh registers, and
+that one appended conjunct is the entire new theory the leaf needed.
+Everything else was composition: the retag transported first, the spine
+prelude instantiated at the post-retag state under the extended rename, the
+final store BRIDGE 2 through the loaded tag with its bounds paid by the
+source's own write check. d43 stores a reference through a loaded pointer
+and then writes through it twice-dereferenced; swapping the store's
+operands breaks the suite.
+
+Alongside, the requested grind audit of everything since the last sweep:
+ten manual chains collapsed — including the three C-deref injectivity
+dances the previous audit had explicitly left behind — with one honest
+rejection where grind cannot see through an extra state in the register-map
+chain. The catalogued potholes all appeared on schedule during the leaf
+(subst ate the wrong variable, `simp only [emit]` split an atom in two)
+and their catalogued antidotes all worked.
+
+Units 17/17 + 56/56, suite pass 82 | fail 0 of 123, axiom audit exact at
+the same four residuals.
+
+---
+
 ## 2026-08-30 (later still) — The Source Learns Rust's Order
 
 Fiftieth increment, and a flagged SEMANTICS CHANGE: `mirlite.doAssign` now
