@@ -810,3 +810,20 @@ Memcpy.
 `extendIdRange` machinery is in place) and NON-LOCAL dst
 (`Borrow(Mut); Memcpy; Die`) → copy_place_residual to zero; then ref's
 classes.
+
+## 2026-09-03 (fourth)
+**Session:** (terminal, continued) — copy: chain-src generalization + regime B
+**Theme:** `copy_chainsrc_local_simulation` (any `PtrChain src`) retires
+L→L (210 lines); `copy_fresh_chainsrc_simulation` closes UNBOUND
+destinations for chain sources (root Alloc, then the mother lemma at the
+POST-allocation states under extended renames). New:
+`AddrRenameMap.extendBlock` (ZST-safe block extension — extendIdRange
+alone misses an empty block's base) and `mirlite_readWordSeq_congr`.
+Potholes: keep the post-alloc state ABSTRACT (no record literal in a
+`cases` scrutinee); `show ….placeRegMap.lookup` blocks
+`getPlaceInfo_setPlaceInfo_ne` (use a `h_gp` transport); whole-file
+replaces can hit the wrong leaf. d57 (70/70), teeth via undersized Alloc.
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 2.
+**Next-session pickup:** unbound dst with a PROJ-TOPPED src (same Alloc
+composition, projection endgames), then NON-LOCAL dst
+(`Borrow(Mut); Memcpy; Die`) → copy_place_residual to zero; then ref.

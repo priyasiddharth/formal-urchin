@@ -1272,6 +1272,28 @@ def d56_copy_from_nested_proj : IO Unit :=
         (.field ⟨1, by decide⟩ .nil)))]
     .ok "d56 copy from nested proj"
 
+def ΓD57 : Ctx := [pairD52L, pairD52L, natL, natL, obseq.LayoutTy.PtrL pairD52L]
+def sD57 : Place ΓD57 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
+def tD57 : Place ΓD57 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
+def xD57 : Place ΓD57 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def yD57 : Place ΓD57 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+def pD57 : Place ΓD57 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨4, by decide⟩, rfl⟩
+
+/-- Positive: copies whose DESTINATION is unbound — the statement's own
+    execution allocates it (`Alloc` then `Memcpy`), for a local source
+    and for a source read through a pointer chain. Regime B for copy,
+    closed 2026-09-03; the address rename extends over the whole fresh
+    block. -/
+def d57_copy_into_fresh_local : IO Unit :=
+  expectDiff ΓD57
+    [.assign (.proj sD57 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj sD57 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign tD57 (.copy sD57),
+     .assign pD57 (.ref .Mut false [] sD57),
+     .assign xD57 (.copy (.proj tD57 (.field ⟨1, by decide⟩ .nil))),
+     .assign yD57 (.copy (.proj (.deref pD57) (.field ⟨0, by decide⟩ .nil)))]
+    .ok "d57 copy into fresh local"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1341,7 +1363,8 @@ def allTests : List (IO Unit) := [
   d53_proj_write_through_flattened_ptr,
   d54_fresh_root_proj_writes,
   d55_copy_from_proj_over_chain,
-  d56_copy_from_nested_proj]
+  d56_copy_from_nested_proj,
+  d57_copy_into_fresh_local]
 
 def runAll : IO Unit := do
   allTests.forM id

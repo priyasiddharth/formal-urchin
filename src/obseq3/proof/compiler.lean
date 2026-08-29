@@ -111,8 +111,15 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    normalizes every remaining spelling — proj-of-proj included — into
    one of them. The nonzero-offset endgame still slides the dst
    `useMut` between BRIDGE 1S's phases by the overlap guard's
-   disjointness. Remaining: unbound dst (regime-B), non-local dst
-   (contiguous BRIDGE 1 shape — composition, no blocker).
+   disjointness. The L→L leaf was retired too: a bound local source is
+   the base case of the chain grammar, so `copy_chainsrc_local_simulation`
+   owns it. UNBOUND destinations with a chain source are CLOSED by
+   `copy_fresh_chainsrc_simulation` (regime B for copy: the root `Alloc`
+   runs first, the mother lemma is then called at the POST-allocation
+   states under both extended renames, and `AddrRenameMap.extendBlock`
+   keeps a zero-sized destination's base mapped). Remaining: unbound dst
+   with a proj-topped src, and non-local dst (contiguous BRIDGE 1 shape
+   — composition, no blocker).
 4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested

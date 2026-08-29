@@ -4,6 +4,34 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 (fourth) — Copy Writes Into Nothing
+
+Sixty-second increment: copy's source leaves become one leaf, and copy
+learns to write into a destination that does not exist yet. The first half
+is bookkeeping with a nice payoff — a bound local is just the base case of
+the chain grammar, so the two-mapped-locals leaf was deletable outright
+once the chain leaf stopped insisting its source be a dereference. The
+second half is regime B for copy: the destination local is unbound, the
+statement's own execution allocates it, and the mother lemma then runs at
+the post-allocation states under both extended renames.
+
+That last part surfaced a gap worth recording. Extending the address
+rename over the destination's fresh block leaves a ZERO-SIZED
+destination's base address unmapped, because the block is empty — and the
+binding still needs its base. The write proofs never hit this, since a
+field path into a root proves the root is non-empty, but a copy
+destination can be any layout at all. The fix pairs the block extension
+with a single base pair.
+
+The session's most instructive mistake was mechanical: a whole-file
+replacement of a common tactic opening landed in the wrong proof, and the
+damage surfaced as a type error fifteen hundred lines away. Anchor edits
+on text unique to their target.
+
+d57 pins copies into freshly-allocated locals; it bites when the root
+allocation is undersized. Units 17/17 + 70/70, suite pass 82 | fail 0 of
+123, axiom audit exact at two.
+
 ## 2026-09-03 (third) — Copy Reads Through Anything
 
 Sixty-first increment: with a bound local destination, `copy` now handles

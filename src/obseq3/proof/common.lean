@@ -909,6 +909,49 @@ theorem IdentityOnDomain.extendIdRange {ρa : AddrRenameMap}
   intro x x' hx
   grind [AddrRenameMap.extendIdRange, IdentityOnDomain]
 
+/-- `readWordSeq` only observes memory through `find?`, so two memories
+    that agree there read alike (allocation bumps `addrStart`/`allocs`
+    but leaves the cell map untouched). -/
+theorem mirlite_readWordSeq_congr {m1 m2 : mirlite.Mem}
+    (h : ∀ a, mirlite.Mem.find? m1 a = mirlite.Mem.find? m2 a) :
+    ∀ (n : Nat) (a : Word), mirlite.readWordSeq m1 a n = mirlite.readWordSeq m2 a n
+  | 0, _ => rfl
+  | n + 1, a => by
+      simp only [mirlite.readWordSeq, h a]
+      cases mirlite.Mem.find? m2 a <;>
+        simp [mirlite_readWordSeq_congr h n (a + 1)]
+
+/-- A fresh block's identity extension that ALSO maps the block's base
+    when the block is EMPTY (a zero-sized local still has an address and
+    a binding, and `LocalBindingSim` asks for `ρa base = some base`).
+    `extendIdRange` alone leaves a ZST's base unmapped, since its range
+    `[base, base)` is empty. -/
+def AddrRenameMap.extendBlock (ρa : AddrRenameMap) (base : Word) (n : Nat) :
+    AddrRenameMap :=
+  (ρa.extend base base).extendIdRange base n
+
+theorem AddrRenameMap.extendBlock_base (ρa : AddrRenameMap) (base : Word) (n : Nat) :
+    ρa.extendBlock base n base = some base := by
+  by_cases h : base < base + n
+  · simp [AddrRenameMap.extendBlock, AddrRenameMap.extendIdRange, h]
+  · simp [AddrRenameMap.extendBlock, AddrRenameMap.extendIdRange, h,
+      AddrRenameMap.extend]
+
+theorem AddrRenameMap.extendBlock_mem {ρa : AddrRenameMap} {base : Word} {n k : Nat}
+    (h : k < n) : ρa.extendBlock base n (base + k) = some (base + k) :=
+  AddrRenameMap.extendIdRange_mem (Nat.le_add_right _ _) (Nat.add_lt_add_left h _)
+
+theorem AddrRenameIncr.extendBlock {ρa : AddrRenameMap}
+    (h_id : IdentityOnDomain ρa) (base : Word) (n : Nat) :
+    AddrRenameIncr ρa (ρa.extendBlock base n) :=
+  AddrRenameIncr.trans (AddrRenameIncr.extend_id h_id base)
+    (AddrRenameIncr.extendIdRange (IdentityOnDomain.extend_id h_id base) base n)
+
+theorem IdentityOnDomain.extendBlock {ρa : AddrRenameMap}
+    (h_id : IdentityOnDomain ρa) (base : Word) (n : Nat) :
+    IdentityOnDomain (ρa.extendBlock base n) :=
+  IdentityOnDomain.extendIdRange (IdentityOnDomain.extend_id h_id base) base n
+
 /-! ### Lockstep allocation
 
 Both machines allocate with the same bump allocator (`mirlite.allocate`
