@@ -4,6 +4,29 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-01 (later) — Three for Three
+
+Fifty-sixth increment: the last deref leaf falls in line. Ref's
+deref-source regime — the one whose lowering interposes a `Borrow` after the
+`Load` — collapses onto the mother lemma without the bind equation the plan
+expected to need: the borrow arm shares its whole prefix with the place
+lowering, so one case split on the inner value proves the fragment, and a
+pleasant discovery along the way is that the statement's run shape needs
+only the lowering's ok-ness, making the usual state-increment scaffolding
+unnecessary. `q := &mut *(s.f)` leaves the residual (d49).
+
+The mother lemma grew one more conjunct — the resolved allocation base is
+in the rename's domain — because a zero-sized referent makes the range
+conjunct vacuous exactly when the stored pointer's simulation needs the
+base. Every induction case had the fact lying around; only the statement
+had never asked for it.
+
+All three deref leaves now stand on `ptrChain_lowering_sim`; none of them
+hand-runs a `Load`. Units 17/17 + 62/62, suite pass 82 | fail 0 of 123,
+axiom audit exact.
+
+---
+
 ## 2026-09-01 — The Collapse Travels
 
 Fifty-fifth increment: the whole-place heuristic applied to its two named

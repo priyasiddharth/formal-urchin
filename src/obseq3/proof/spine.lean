@@ -262,7 +262,8 @@ theorem ptrChain_lowering_sim
         cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextReg ∧
         cs.nextLabel ≤ (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextLabel ∧
         (∀ r, RegisterBelow cs.nextReg r →
-          oseair.RegMap.lookup s_osea'.reg r = oseair.RegMap.lookup s_osea.reg r) := by
+          oseair.RegMap.lookup s_osea'.reg r = oseair.RegMap.lookup s_osea.reg r) ∧
+        ρa resolved.allocBase = some resolved.allocBase := by
   induction h_chain with
   | base loc =>
       intro kind cs s_osea resolved permsD h_res h_tbd h_lbs h_prb h_sms h_psim h_pc h_inst
@@ -280,7 +281,7 @@ theorem ptrChain_lowering_sim
         placeToRegChecked_local_existing (kind := kind) h_pi
       refine ⟨placeOut, 0, s_osea, tag, h_pval, by rw [h_pres],
         by simp [oseair.runN], ?_, rfl, h_psim, rfl, Nat.le_refl _, h_lbs, ?_, h_rt, h_nw,
-        Nat.le_refl _, ?_, ?_, ?_, ?_, ?_, fun _ _ => rfl⟩
+        Nat.le_refl _, ?_, ?_, ?_, ?_, ?_, fun _ _ => rfl, h_ra⟩
       · rw [h_prun]; exact h_pc
       · rw [h_pres, Nat.sub_self]
         exact h_entry
@@ -359,7 +360,7 @@ theorem ptrChain_lowering_sim
                 exact h_code
               obtain ⟨qOut, n1, s_mid, qtag, h_qval, h_qclean, h_qrun, h_qpc, h_qmem,
                 h_qpsim, h_qnt1, h_qnt2, h_qlbs, h_qentry, h_qrt, h_qnw, h_qle,
-                h_qrange, h_qbelow, h_qprm, h_qregmono, h_qlabmono, h_qframe⟩ :=
+                h_qrange, h_qbelow, h_qprm, h_qregmono, h_qlabmono, h_qframe, -⟩ :=
                 ih RefKind.Shared cs s_osea qRes permsQ h_qres h_tbd h_lbs h_prb h_sms
                   h_psim h_pc h_instQ
               -- concrete run/value of this level
@@ -443,7 +444,7 @@ theorem ptrChain_lowering_sim
               refine ⟨_, n1 + 1, _,  t2, h_valD, rfl,
                 (oseair_runN_add n1 1 s_osea compProg s_mid h_qrun).trans h_run1,
                 ?_, ?_, h_psim2, ?_, ?_, ?_, ?_, h_t, h_tnw, Nat.le_add_right b2 o2, ?_,
-                ?_, ?_, ?_, ?_, ?_⟩
+                ?_, ?_, ?_, ?_, ?_, h_b⟩
               · -- pc
                 show s_mid.pc + 1 = _
                 rw [h_qpc, h_runD]
@@ -565,7 +566,7 @@ theorem ptrChain_lowering_sim
                 exact h_code
               obtain ⟨bOut, n1, s_mid, btag, h_bval, h_bclean, h_brun, h_bpc, h_bmem,
                 h_bpsim, h_bnt1, h_bnt2, h_blbs, h_bentry, h_brt, h_bnw, h_ble,
-                h_brange, h_bbelow, h_bprm, h_bregmono, h_blabmono, h_bframe⟩ :=
+                h_brange, h_bbelow, h_bprm, h_bregmono, h_blabmono, h_bframe, -⟩ :=
                 ih RefKind.Shared cs s_osea bRes permsB h_bres h_tbd h_lbs h_prb h_sms
                   h_psim h_pc h_instB
               have h_po : pathOffset f = PathTo.offset f := rfl
@@ -654,7 +655,7 @@ theorem ptrChain_lowering_sim
                 refine ⟨_, n1 + 1, _, vt2, h_valD, rfl,
                   (oseair_runN_add n1 1 s_osea compProg s_mid h_brun).trans h_run1,
                   ?_, ?_, h_psim2, ?_, ?_, ?_, ?_, h_t, h_tnw, Nat.le_add_right vb2 vo2, ?_,
-                  ?_, ?_, ?_, ?_, ?_⟩
+                  ?_, ?_, ?_, ?_, ?_, h_b⟩
                 · show s_mid.pc + 1 = _
                   rw [h_bpc, h_runD]
                   simp [emit]
@@ -936,7 +937,7 @@ theorem ptrChain_lowering_sim
                 -- §conclusion: the minted tag DIED — `PermSim` at the same ρt
                 refine ⟨_, n1 + 1 + 1 + 1, _, vt2, h_valD, rfl, h_runC,
                   ?_, ?_, ?_, ?_, ?_, ?_, ?_, h_t, h_tnw, Nat.le_add_right vb2 vo2, ?_,
-                  ?_, ?_, ?_, ?_, ?_⟩
+                  ?_, ?_, ?_, ?_, ?_, h_b⟩
                 · show s_mid.pc + 1 + 1 + 1 = _
                   rw [h_bpc, h_runD]
                   simp [emit]

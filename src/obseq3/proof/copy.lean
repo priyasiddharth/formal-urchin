@@ -981,7 +981,7 @@ theorem copy_deref_local_simulation
       -- §3 the mother lemma on the WHOLE src place (through the Load)
       obtain ⟨sOut, n1, s_mid, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
-        h_sbelow, h_sprm, h_sregmono, h_slabmono, -⟩ :=
+        h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
         ptrChain_lowering_sim h_id_a h_wf_t h_spine RefKind.Shared csPrefix s_osea
           rs permsP' h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
       have h_stmtRun := compileStmt_copy_derefchain_run h_piD h_sval h_sclean

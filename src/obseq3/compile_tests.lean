@@ -1092,6 +1092,27 @@ def d48_ref_through_ptr_field_dst : IO Unit :=
        (.constInit 9)]
     .ok "d48 ref through ptr field dst"
 
+def ΓD49 : Ctx := [refField2L, natL, ptrNat, natL]
+def sD49 : Place ΓD49 refField2L := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD49 : Place ΓD49 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def qD49 : Place ΓD49 ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def yD49 : Place ΓD49 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: a reference TO the pointee of a pointer field —
+    `q := &mut *(s.f)`, then written through. The rhs's source place is
+    a proj-topped `PtrChain`, the shape the collapsed ref deref-src
+    leaf (mother lemma at `Shared` on the WHOLE source place,
+    2026-09-01) serves. -/
+def d49_ref_of_deref_ptr_field : IO Unit :=
+  expectDiff ΓD49
+    [.assign xD49 (.constInit 5),
+     .assign (.proj sD49 (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] xD49),
+     .assign qD49 (.ref .Mut false []
+       (.deref (.proj sD49 (.field ⟨1, by decide⟩ .nil)))),
+     .assign (.deref qD49) (.constInit 9),
+     .assign yD49 (.copy (.deref qD49))]
+    .ok "d49 ref of deref ptr field"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1153,7 +1174,8 @@ def allTests : List (IO Unit) := [
   d45_ref_through_ptr_field_chain,
   d46_write_through_deref_struct_field,
   d47_copy_through_ptr_field,
-  d48_ref_through_ptr_field_dst]
+  d48_ref_through_ptr_field_dst,
+  d49_ref_of_deref_ptr_field]
 
 def runAll : IO Unit := do
   allTests.forM id

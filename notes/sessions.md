@@ -723,3 +723,14 @@ narrowed.
 **Next-session pickup:** ref deref-src collapse (borrow-deref bind
 equation), proj-topped srcs/dsts over non-local bases, proj-of-proj
 normalization, unbound roots (regime-B → first residual to zero).
+
+## 2026-09-01 (cont.)
+**Session:** (terminal, continued) — deref-src collapse; three-for-three
+**Theme:** ref deref-src re-founded on the mother lemma (no bind
+equation needed — one inner-value case split proves the fragment; the
+statement run lemma needs only ok-ness, killing the incr dance). New
+mother conjunct: ρa allocBase identity (ZST-referent gap in h_drange).
+d49 `q := &mut *(s.f)` (62/62).
+**Status:** complete; all green; corpus 82/123 (0 fail); audit at 4.
+**Next-session pickup:** proj-topped srcs/dsts over non-local bases,
+proj-of-proj normalization, unbound roots (regime-B).
