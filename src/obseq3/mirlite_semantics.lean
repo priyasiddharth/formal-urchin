@@ -393,19 +393,22 @@ def doAssign
   match preparePlaceAssign M state dst with
   | .err msg => .err msg
   | .ok s1 =>
-  -- resolve the destination WITH accesses (deref levels read their
-  -- pointer cells), once, before the rhs — matching the compiled
-  -- fragment's order (dst lowering, then rhs code, then the store)
-  match resolvePlaceAcc M s1 dst with
+  -- Rust's documented evaluation order for assignment: the RHS first,
+  -- then the place. Reordered 2026-08-30 (the source-side completion of
+  -- the d34 lowering-order fix): with an event-ful rhs AND an event-ful
+  -- destination resolution (deref levels read their pointer cells), the
+  -- two orders genuinely differ — a retag can pop the tag a later spine
+  -- read needs — and the compiled code performs the rhs first.
+  match evalRExpr M s1 rhs with
+  | .err msg => .err msg
+  | .ok output =>
+  match resolvePlaceAcc M output.state dst with
   | .error e => .err e
   | .ok (resolved, permsD) =>
   -- MIR forbids overlapping place-to-place assignment (Miri lowers it
-  -- to a NONOVERLAPPING copy and flags overlap as UB). Added 2026-08-28:
-  -- the guard exists only in the `.copy` branch, checked with the
-  -- ACCESS-FREE resolver so no SB event is duplicated; it is what makes
-  -- the target `Memcpy`'s nonoverlapping check dischargeable — source
-  -- success supplies the disjointness the borrow-cleanup interleaving
-  -- needs (the d33 countermodel class).
+  -- to a NONOVERLAPPING copy and flags overlap as UB): the guard exists
+  -- only in the `.copy` branch, checked with the ACCESS-FREE resolver
+  -- so no SB event is duplicated (the d33 countermodel class).
   match rhs with
   | .copy src =>
       match resolvePlace? s1 src with
@@ -413,9 +416,15 @@ def doAssign
           if rs.addr < resolved.addr + blockSize τ ∧
              resolved.addr < rs.addr + blockSize τ then
             .err "copy of overlapping ranges"
-          else doAssignCont M s1 resolved permsD (.copy src)
-      | none => doAssignCont M s1 resolved permsD (.copy src)
-  | rhs => doAssignCont M s1 resolved permsD rhs
+          else
+            writeResolvedPlace M { output.state with perms := permsD }
+              resolved output.values output.values_len
+      | none =>
+          writeResolvedPlace M { output.state with perms := permsD }
+            resolved output.values output.values_len
+  | _ =>
+      writeResolvedPlace M { output.state with perms := permsD }
+        resolved output.values output.values_len
 
 /-- Read a runtime word for an `AllocLen`. A `fromPlace` read is a real
     SB read access through the place's tag. -/

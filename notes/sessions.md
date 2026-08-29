@@ -632,3 +632,18 @@ ref_proj_dst_simulation; dispatcher proj-dst arm = one call; d42
 **Status:** complete; all green; audit at 4.
 **Next-session pickup:** deref dst bases for ref ((*p).f := &x — spine
 composition), or copy's non-local dst arms (recipe ready).
+
+## 2026-08-30 (cont.)
+**Session:** (terminal, continued) — rhs-first doAssign swap
+**Theme:** SEMANTICS CHANGE (flagged): mirlite doAssign moved to
+Rust's rhs-before-place order — source-side completion of d34;
+prerequisite for ref's deref dsts (rhs retag vs dst-spine read don't
+commute). Repair sweep ~28 errors, all mechanical (dst match reduces
+late: h_envD, or hD1 in fresh-dst regime; copy guard moves post-read).
+**Key outputs:** doAssign swap (doAssignCont unreferenced); repairs in
+ref/copy/const_write; journal 2026-08-30-rhs-first-doassign.md; dev
+log increment 50.
+**Status:** complete; all green; corpus byte-identical 82/123 (0
+fail); units 17/17 + 55/55; audit at 4.
+**Next-session pickup:** ref's deref dsts (`*p := &src` bare leaf +
+`(*p).f := &src`), dispatcher wiring, differential witness d43.

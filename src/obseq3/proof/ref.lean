@@ -490,6 +490,7 @@ theorem ref_local_local_simulation
           simp only [Nat.add_zero]
           exact Nat.le_refl _) h_ref_tgt'
       -- §5 the pointer write: source side destructured, target via BRIDGE 2
+      simp only [h_envD] at h_step
       have h_w := h_step
       simp only [mirlite.writeResolvedPlace] at h_w
       split at h_w
@@ -802,6 +803,7 @@ theorem ref_fresh_dst_simulation
                 (Register.R (csPrefix.nextReg + 1)) srcReg kind prot mask (blockSize τ) 0
                 h_code2 h_entryS1 h_le2 h_ref_tgt'
               -- §9 the store: source side destructured, target via BRIDGE 2
+              simp only [hD1] at h_step
               have h_w := h_step
               simp only [mirlite.writeResolvedPlace] at h_w
               split at h_w
@@ -1096,6 +1098,7 @@ theorem ref_proj_local_simulation
         (Register.R csPrefix.nextReg) srcReg kind prot mask (blockSize τ)
         (pathOffset f) h_code1 h_entryS h_le2 h_ref_tgt'
       -- §5 the pointer store via BRIDGE 2
+      simp only [h_envD] at h_step
       have h_w := h_step
       simp only [mirlite.writeResolvedPlace] at h_w
       split at h_w
@@ -1541,6 +1544,7 @@ theorem ref_deref_local_simulation
         | R n =>
             have h_lt := h_prb _ _ _ h_piD
             grind [RegisterBelow]
+      simp only [h_envD] at h_step
       have h_w := h_step
       simp only [mirlite.writeResolvedPlace] at h_w
       split at h_w
@@ -1895,6 +1899,7 @@ theorem ref_local_projzero_simulation
           simp only [Nat.add_zero]
           exact Nat.le_refl _) h_ref_tgt'
       -- §5 the pointer write into the base block via BRIDGE 2
+      simp only [h_envD] at h_step
       have h_w := h_step
       simp only [mirlite.writeResolvedPlace] at h_w
       split at h_w
@@ -2164,6 +2169,7 @@ theorem ref_local_projoffset_simulation
           = some tagD := h_incr_t _ _ h_rtD
       -- §3 the dst write transported under ρt'; its Mut retag succeeds and
       -- BRIDGE 1 cancels the triple to the parent write
+      simp only [h_envD] at h_step
       have h_w := h_step
       simp only [mirlite.writeResolvedPlace] at h_w
       split at h_w
@@ -2669,11 +2675,7 @@ theorem CompilerInv_step_ref
                       rw [h_prep] at h_step
                       have hS1 : mirlite.Env.lookup s1.env srcLoc = none := by
                         rw [prepare_lookup_ne h_ne h_prep]; exact h_envS
-                      simp only [mirlite.resolvePlaceAcc] at h_step
-                      split at h_step
-                      · simp at h_step
-                      · simp [mirlite.doAssignCont, mirlite.evalRExpr,
-                          mirlite.resolvePlaceAcc, hS1] at h_step
+                      simp [mirlite.evalRExpr, mirlite.resolvePlaceAcc, hS1] at h_step
       | proj sbase f =>
           cases sbase with
           | «local» srcLoc =>

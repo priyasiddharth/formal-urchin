@@ -94,19 +94,18 @@ theorem copy_local_local_simulation
   simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont, mirlite.preparePlaceAssign,
     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc, h_envS,
     mirlite.evalRExpr] at h_step
-  -- the overlapping-assignment check: source success supplies the
-  -- DISJOINTNESS the target Memcpy's nonoverlapping check needs
-  by_cases h_ov : bS.addr < bD.addr + blockSize τ ∧
-      bD.addr < bS.addr + blockSize τ
-  · rw [if_pos h_ov] at h_step
-    simp at h_step
-  · rw [if_neg h_ov] at h_step
-    rw [if_neg (Nat.lt_irrefl (bS.addr + blockSize τ))] at h_step
-    cases h_read_src : MSB.read s_mir.perms bS.addr (blockSize τ) bS.tag with
-    | error e => rw [h_read_src] at h_step; simp at h_step
-    | ok perms' =>
+  rw [if_neg (Nat.lt_irrefl (bS.addr + blockSize τ))] at h_step
+  cases h_read_src : MSB.read s_mir.perms bS.addr (blockSize τ) bS.tag with
+  | error e => rw [h_read_src] at h_step; simp at h_step
+  | ok perms' =>
     rw [h_read_src] at h_step
-    simp only at h_step
+    simp only [h_envD] at h_step
+    -- the overlapping-assignment check (post-rhs, Rust order): source
+    -- success supplies the DISJOINTNESS the Memcpy check needs
+    by_cases h_ov : bS.addr < bD.addr + blockSize τ ∧
+        bD.addr < bS.addr + blockSize τ
+    case pos => rw [if_pos h_ov] at h_step; simp at h_step
+    rw [if_neg h_ov] at h_step
     -- §2 both events transported (BRIDGE 3 read + write members)
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_psim h_wf_t h_rtS h_nwS h_read_src
@@ -310,22 +309,21 @@ theorem copy_proj_zero_simulation
   simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont, mirlite.preparePlaceAssign,
     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc, h_envS,
     mirlite.evalRExpr, h_off] at h_step
-  by_cases h_ov : bS.addr + 0 < bD.addr + blockSize τ ∧
-      bD.addr < bS.addr + 0 + blockSize τ
-  · rw [if_pos h_ov] at h_step
-    simp at h_step
-  · rw [if_neg h_ov] at h_step
-    rw [if_neg (Nat.not_lt.mpr (show bS.addr + 0 + blockSize τ
-        ≤ bS.addr + blockSize σb by
-      have h_fit := PathTo.offset_add_size_le f
-      show bS.addr + 0 + layoutSize τ ≤ bS.addr + layoutSize σb
-      have h_fit' : f.offset + layoutSize τ ≤ layoutSize σb := h_fit
-      grind))] at h_step
-    cases h_read_src : MSB.read s_mir.perms (bS.addr + 0) (blockSize τ) bS.tag with
-    | error e => rw [h_read_src] at h_step; simp at h_step
-    | ok perms' =>
+  rw [if_neg (Nat.not_lt.mpr (show bS.addr + 0 + blockSize τ
+      ≤ bS.addr + blockSize σb by
+    have h_fit := PathTo.offset_add_size_le f
+    show bS.addr + 0 + layoutSize τ ≤ bS.addr + layoutSize σb
+    have h_fit' : f.offset + layoutSize τ ≤ layoutSize σb := h_fit
+    grind))] at h_step
+  cases h_read_src : MSB.read s_mir.perms (bS.addr + 0) (blockSize τ) bS.tag with
+  | error e => rw [h_read_src] at h_step; simp at h_step
+  | ok perms' =>
     rw [h_read_src] at h_step
-    simp only at h_step
+    simp only [h_envD] at h_step
+    by_cases h_ov : bS.addr + 0 < bD.addr + blockSize τ ∧
+        bD.addr < bS.addr + 0 + blockSize τ
+    case pos => rw [if_pos h_ov] at h_step; simp at h_step
+    rw [if_neg h_ov] at h_step
     -- §2 both events transported (BRIDGE 3 read + write members)
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_psim h_wf_t h_rtS h_nwS h_read_src
@@ -543,23 +541,22 @@ theorem copy_proj_offset_simulation
     mirlite.preparePlaceAssign,
     mirlite.resolvePlace?, h_envD, mirlite.resolvePlaceAcc, h_envS,
     mirlite.evalRExpr] at h_step
-  by_cases h_ov : bS.addr + pathOffset f < bD.addr + blockSize τ ∧
-      bD.addr < bS.addr + pathOffset f + blockSize τ
-  · rw [if_pos h_ov] at h_step
-    simp at h_step
-  · rw [if_neg h_ov] at h_step
-    rw [if_neg (Nat.not_lt.mpr (show bS.addr + pathOffset f + blockSize τ
-        ≤ bS.addr + blockSize σb by
-      have h_fit := PathTo.offset_add_size_le f
-      show bS.addr + pathOffset f + layoutSize τ ≤ bS.addr + layoutSize σb
-      have h_fit' : f.offset + layoutSize τ ≤ layoutSize σb := h_fit
-      grind))] at h_step
-    cases h_read_src : MSB.read s_mir.perms (bS.addr + pathOffset f)
-        (blockSize τ) bS.tag with
-    | error e => rw [h_read_src] at h_step; simp at h_step
-    | ok perms' =>
+  rw [if_neg (Nat.not_lt.mpr (show bS.addr + pathOffset f + blockSize τ
+      ≤ bS.addr + blockSize σb by
+    have h_fit := PathTo.offset_add_size_le f
+    show bS.addr + pathOffset f + layoutSize τ ≤ bS.addr + layoutSize σb
+    have h_fit' : f.offset + layoutSize τ ≤ layoutSize σb := h_fit
+    grind))] at h_step
+  cases h_read_src : MSB.read s_mir.perms (bS.addr + pathOffset f)
+      (blockSize τ) bS.tag with
+  | error e => rw [h_read_src] at h_step; simp at h_step
+  | ok perms' =>
     rw [h_read_src] at h_step
-    simp only at h_step
+    simp only [h_envD] at h_step
+    by_cases h_ov : bS.addr + pathOffset f < bD.addr + blockSize τ ∧
+        bD.addr < bS.addr + pathOffset f + blockSize τ
+    case pos => rw [if_pos h_ov] at h_step; simp at h_step
+    rw [if_neg h_ov] at h_step
     -- §2 the parent read + dst write transport (BRIDGE 3)
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_psim h_wf_t h_rtS h_nwS h_read_src
@@ -955,65 +952,53 @@ theorem copy_deref_local_simulation
   cases h_dres : mirlite.resolvePlaceAcc MSB s_mir P with
   | error e =>
       simp only [h_dres] at h_step
-      split at h_step <;> first
-        | (split at h_step <;> simp at h_step)
-        | simp at h_step
+      simp at h_step
   | ok pr =>
   obtain ⟨pRes, permsP⟩ := pr
   simp only [h_dres] at h_step
   by_cases h_qb : pRes.addr < pRes.allocBase ∨
       pRes.addr ≥ pRes.allocBase + pRes.allocSize
   · rw [if_pos h_qb] at h_step
-    split at h_step <;> first
-      | (split at h_step <;> simp at h_step)
-      | simp at h_step
+    simp at h_step
   · rw [if_neg h_qb] at h_step
     cases h_qread : MSB.read permsP pRes.addr 1 pRes.tag with
     | error e =>
         simp only [h_qread] at h_step
-        split at h_step <;> first
-          | (split at h_step <;> simp at h_step)
-          | simp at h_step
+        simp at h_step
     | ok permsP' =>
     simp only [h_qread] at h_step
     cases h_qfind : mirlite.Mem.find? s_mir.mem pRes.addr with
     | none =>
         simp only [h_qfind] at h_step
-        split at h_step <;> first
-          | (split at h_step <;> simp at h_step)
-          | simp at h_step
+        simp at h_step
     | some mv =>
     cases mv with
     | undef =>
         simp only [h_qfind] at h_step
-        split at h_step <;> first
-          | (split at h_step <;> simp at h_step)
-          | simp at h_step
+        simp at h_step
     | word w0 =>
         simp only [h_qfind] at h_step
-        split at h_step <;> first
-          | (split at h_step <;> simp at h_step)
-          | simp at h_step
+        simp at h_step
     | ptrVal b o sz t =>
     simp only [h_qfind] at h_step
-    -- reduce the overlap guard via the pure/access agreement at P
-    rw [resolvePlace?_of_resolveAcc h_dres] at h_step
-    simp only [h_qfind] at h_step
-    by_cases h_ov : b + o < bD.addr + blockSize τ ∧
-        bD.addr < b + o + blockSize τ
-    · rw [if_pos h_ov] at h_step
+    -- the copy-range dereferenceability check
+    by_cases h_fit : b + o + blockSize τ > b + sz
+    · rw [if_pos h_fit] at h_step
       simp at h_step
-    · rw [if_neg h_ov] at h_step
-      -- the copy-range dereferenceability check
-      by_cases h_fit : b + o + blockSize τ > b + sz
-      · rw [if_pos h_fit] at h_step
+    · rw [if_neg h_fit] at h_step
+      cases h_read2_src : MSB.read permsP' (b + o) (blockSize τ) t with
+      | error e => rw [h_read2_src] at h_step; simp at h_step
+      | ok perms₂ =>
+      rw [h_read2_src] at h_step
+      simp only [h_envD] at h_step
+      -- reduce the overlap guard via the pure/access agreement at P
+      rw [resolvePlace?_of_resolveAcc h_dres] at h_step
+      simp only [h_qfind] at h_step
+      by_cases h_ov : b + o < bD.addr + blockSize τ ∧
+          bD.addr < b + o + blockSize τ
+      · rw [if_pos h_ov] at h_step
         simp at h_step
-      · rw [if_neg h_fit] at h_step
-        cases h_read2_src : MSB.read permsP' (b + o) (blockSize τ) t with
-        | error e => rw [h_read2_src] at h_step; simp at h_step
-        | ok perms₂ =>
-        rw [h_read2_src] at h_step
-        simp only at h_step
+      · rw [if_neg h_ov] at h_step
         -- §2 compiler-side scaffolding: the statement lowers
         have h_mapped : PlaceInputsMapped csPrefix P :=
           placeInputsMapped_of_resolveAcc h_lbs h_dres

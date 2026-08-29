@@ -3115,12 +3115,12 @@ theorem CompilerInv_step_constWrite
   | err msg =>
       simp [h_prep] at h_step
   | ok s_pre =>
-      simp only [h_prep] at h_step
+      simp only [h_prep, mirlite.evalRExpr] at h_step
       cases h_res : mirlite.resolvePlaceAcc MSB s_pre dst with
       | error e => simp [h_res] at h_step
       | ok pr =>
           obtain ⟨resolved, permsD⟩ := pr
-          simp only [h_res, mirlite.evalRExpr] at h_step
+          simp only [h_res] at h_step
           obtain ⟨csPrefix', stmtOut, h_csAt', h_stmtOut⟩ :=
             const_write_stmt_evidence (s_pre := s_pre) v h_inv_full h_prep
           exact const_write_resolved_simulation compProg v h_comp h_inv_full h_stmt h_prep h_res

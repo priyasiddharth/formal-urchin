@@ -4,6 +4,32 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-30 (later still) — The Source Learns Rust's Order
+
+Fiftieth increment, and a flagged SEMANTICS CHANGE: `mirlite.doAssign` now
+evaluates the right-hand side before resolving the destination place —
+Rust's documented assignment order, which Miri follows. The old
+destination-first order was ours alone, a leftover convenience. It survived
+this long because the two orders only disagree when the destination carries
+a deref spine AND the right-hand side raises events: a retag minted by the
+rhs can pop a tag a later destination-spine read needs. That configuration
+is precisely ref's deref destinations — the next leaves in line — so the
+swap is the source-side completion of the d34 lowering-order arc (the
+compiler moved to MIR order two days ago; the source now matches).
+
+The evidence that reachable behavior is untouched: the conformance corpus
+is byte-identical across the swap (82 pass, 0 fail of 123), units hold at
+17/17 + 55/55, and the axiom audit is exact at the same four residuals.
+
+The repair sweep was ~28 errors, all mechanical and all of one shape: the
+destination-resolution match now sits ABOVE the write in the inverted step
+term, so each leaf reduces it late (with `h_envD` — or `hD1` in the
+fresh-destination regime, where resolution runs on the already-set
+environment) and the copy leaves' overlap guard moves after the read
+inversion, where the source now checks it.
+
+---
+
 ## 2026-08-30 (later) — The Recipe Travels: Ref's Destinations Flatten
 
 Forty-ninth increment, and the shortest of the campaign — evidence that the
