@@ -1654,6 +1654,63 @@ theorem getPlaceInfo_setPlaceInfo_ne (cs : CompilerState) {idx idx' : Nat}
     · exact absurd (eq_of_beq h_eq) h
   simp [setPlaceInfo, getPlaceInfo, List.lookup, hb]
 
+/-! ## `csnorm` — a NORMAL FORM for compiler states
+
+    The same compiled `CompilerState` is reachable by several
+    definitionally-equal spellings: `emit`/`setPlaceInfo`/`freshReg`
+    build record updates, and a proof may hold `(emit s l).nextReg`
+    where the goal says `s.nextReg`. `rw` and `simp only [h]` need a
+    SYNTACTIC match, so the two never meet and the mismatch reads as
+    "did not find an occurrence" rather than as a spelling problem.
+
+    These projection lemmas collapse every spelling to one: counters and
+    maps are pushed down to the underlying state, so a state is
+    identified by what it DOES, not by how it was written. They are all
+    `rfl`. Use them as `simp only [csnorm] at h ⊢` at the boundary where
+    a hypothesis meets a differently-elaborated goal — deliberately, and
+    on both sides, so the two normalize together.
+
+    They are deliberately NOT global `@[simp]`: that would change the
+    normal form inside every existing leaf, several of which depend on
+    the current one. See durable/transport-compiled-states-by-defeq.md
+    for the complementary move (transport by defeq when you only need to
+    move ONE hypothesis across). -/
+
+theorem emit_nextReg (cs : CompilerState) (l : List Instr) :
+    (emit cs l).nextReg = cs.nextReg := rfl
+
+theorem emit_nextLabel (cs : CompilerState) (l : List Instr) :
+    (emit cs l).nextLabel = cs.nextLabel + l.length := rfl
+
+theorem emit_placeRegMap (cs : CompilerState) (l : List Instr) :
+    (emit cs l).placeRegMap = cs.placeRegMap := rfl
+
+theorem setPlaceInfo_nextReg (cs : CompilerState) (i : Nat)
+    (v : PlaceInfo) : (setPlaceInfo cs i v).nextReg = cs.nextReg := rfl
+
+theorem setPlaceInfo_nextLabel (cs : CompilerState) (i : Nat)
+    (v : PlaceInfo) : (setPlaceInfo cs i v).nextLabel = cs.nextLabel := rfl
+
+theorem setPlaceInfo_code (cs : CompilerState) (i : Nat)
+    (v : PlaceInfo) : (setPlaceInfo cs i v).code = cs.code := rfl
+
+theorem freshReg_fst (cs : CompilerState) :
+    (freshReg cs).fst = Register.R cs.nextReg := rfl
+
+theorem freshReg_snd (cs : CompilerState) :
+    (freshReg cs).snd = { cs with nextReg := cs.nextReg + 1 } := rfl
+
+open Lean Parser.Tactic in
+/-- Normalize compiler-state spellings. Use on BOTH sides of a
+    boundary: `csnorm at h ⊢`. -/
+syntax (name := csnormTac) "csnorm" (location)? : tactic
+
+macro_rules
+  | `(tactic| csnorm $[$loc:location]?) =>
+    `(tactic| simp only [emit_nextReg, emit_nextLabel, emit_placeRegMap,
+        setPlaceInfo_nextReg, setPlaceInfo_nextLabel, setPlaceInfo_code,
+        freshReg_fst, freshReg_snd] $[$loc:location]?)
+
 /-- A `nextReg` bump touches only the register counter. -/
 theorem getPlaceInfo_setNextReg (cs : CompilerState) (n idx : Nat) :
     getPlaceInfo { cs with nextReg := n } idx = getPlaceInfo cs idx := rfl

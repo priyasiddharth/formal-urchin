@@ -44,3 +44,12 @@ Related: [[flatten-one-place-at-a-time]] (companion discipline — one
 state spelling per proof, which this note does NOT replace: keep the
 spelling stable *within* a proof, and use defeq transport only at the
 boundary where a hypothesis meets a differently-elaborated goal).
+
+## Addendum 2026-08-30 — prefer `csnorm` when you control both sides
+
+[[csnorm-a-normal-form-for-compiler-states]] normalizes the spellings
+outright, which is strictly better than transporting when both the
+hypothesis and the goal are yours to rewrite. Defeq transport remains
+the move when the target spelling is fixed by someone else's statement
+(a fragment's `h_dval`, a mother lemma's `cs` argument), and it is still
+what makes `have h' : <my spelling> := h` legal in the first place.

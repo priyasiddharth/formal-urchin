@@ -1364,3 +1364,35 @@ notes/CLAUDE.md say so too.
 82); audit exact at 2, `[axioms]` untouched.
 **Next-session pickup:** the twin, then the recursive dispatcher, then
 witnesses and teeth.
+
+## 2026-08-30 (twelfth)
+**Session:** (terminal, continued) — `csnorm`, a normal form for
+compiler states
+**Theme:** the spelling problem that has cost time in three consecutive
+increments now has a tool. `csnorm` (common.lean) is eight `rfl`
+projection lemmas — `emit`/`setPlaceInfo`/`freshReg` pushed down to the
+underlying state — plus a tactic macro, used as `csnorm at h ⊢` so both
+sides normalize together.
+**Measured on the twin's structure:** the zero-destination leaf's three
+`StateIncr` towers had needed two auxiliary hypotheses whose statements
+were the destination state pasted verbatim out of a `trace_state` dump
+(3188 and 3148 characters). Both are now deleted; each tower is
+`have h_d := h_dval0; csnorm at h_d ⊢; simp only [h_d]`. Nine lines of
+pasted spelling gone, leaf still green.
+**Deliberately opt-in:** not global `@[simp]`, which would change the
+normal form inside every existing leaf. A tactic macro rather than
+`register_simp_attr` because that command needs `import Lean`, which
+this project does not take.
+**Limits, recorded:** `csnorm` normalizes SPELLINGS, not content —
+`cleanupInstrs sOut.result.cleanup` vs `[Die …]` differ by `h_sclean`,
+a proof, so that boundary still needs an explicit rewrite first. And
+`grind` is the wrong tool for this family: these are hypotheses failing
+to MATCH, not goals failing to close.
+**Still open:** the nonzero-destination twin. `csnorm` makes its three
+towers easy, but its write phase is genuine new content — the BRIDGE 1
+endgame against the Borrow/Load/Die tower — which no normalization
+helps with.
+**Status:** green; 17/17 + 84/84; corpus 82/123 (0 fail, osea matched
+82); audit exact at 2, `[axioms]` untouched.
+**Next-session pickup:** the twin's write phase, then the recursive
+dispatcher, then witnesses and teeth.

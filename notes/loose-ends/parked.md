@@ -536,6 +536,12 @@ the two post-mother towers — and every other occurrence of the
 destination state in the leaf (the mother's `cs` argument, `h_prmCS2`,
 `h_lbs1`, `h_prb1`) has to be normalized to the SAME spelling or the
 later `rw`s miss.
+**Tooling 2026-08-30:** `csnorm` (see
+durable/csnorm-a-normal-form-for-compiler-states.md) removes the
+traced-spelling step entirely — each tower is now
+`have h_d := h_dval0; csnorm at h_d ⊢; simp only [h_d]`. Use it for the
+twin's towers; it will NOT help with the twin's write phase, which is
+content rather than spelling.
 **Still open:** the NONZERO-destination-offset twin, and the wiring.
 The twin is NOT a rename of the zero leaf: its write phase must come
 from `copy_projdst_offset_chainsrc_simulation`'s §8 (BRIDGE 1,
