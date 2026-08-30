@@ -1437,6 +1437,22 @@ def d64_copy_projsrc_into_deref_dst : IO Unit :=
      .assign zD64 (.copy xD64)]
     .ok "d64 copy proj src into deref dst"
 
+/-- Positive: a copy whose SOURCE is proj-topped at NONZERO offset
+    under a deref destination (`*p := copy t.1`). The projection mints
+    its own `Borrow(Shared)`, the copy loads through it, and the
+    projection's cleanup `Die` retires it — all before the destination
+    lowers, so BRIDGE 1S is contiguous. Closed 2026-09-03 by
+    `copy_chaindst_projsrc_offset_simulation`. -/
+def d65_copy_projsrc_offset_into_deref_dst : IO Unit :=
+  expectDiff ΓD64
+    [.assign (.proj tD64 (.field ⟨0, by decide⟩ .nil)) (.constInit 5),
+     .assign (.proj tD64 (.field ⟨1, by decide⟩ .nil)) (.constInit 6),
+     .assign xD64 (.constInit 0),
+     .assign pD64 (.ref .Mut false [] xD64),
+     .assign (.deref pD64) (.copy (.proj tD64 (.field ⟨1, by decide⟩ .nil))),
+     .assign zD64 (.copy xD64)]
+    .ok "d65 copy proj src at offset into deref dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1514,7 +1530,8 @@ def allTests : List (IO Unit) := [
   d61_copy_into_flattened_deref_dst,
   d62_copy_into_proj_deref_dst,
   d63_copy_into_proj_deref_dst_offset,
-  d64_copy_projsrc_into_deref_dst]
+  d64_copy_projsrc_into_deref_dst,
+  d65_copy_projsrc_offset_into_deref_dst]
 
 def runAll : IO Unit := do
   allTests.forM id

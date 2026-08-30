@@ -143,8 +143,13 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    endgame, with the loaded temporary surviving the `Borrow`'s insert.
    A proj-topped flattened SOURCE under a deref destination is closed at
    ZERO offset the same way (`copy_chaindst_projsrc_zero_simulation`,
-   d64). Remaining: that source at NONZERO offset (BRIDGE 1S around the
-   READ), and projected destinations over a LOCAL base.
+   d64) and at NONZERO offset by
+   `copy_chaindst_projsrc_offset_simulation` (d65), where the source
+   projection's `Borrow(Shared)` and its cleanup `Die` bracket the READ
+   — BRIDGE 1S, contiguous, because both retire before the destination
+   lowering starts, so the destination mother simply runs at the
+   post-`Die` states. The DEREF-destination arm is therefore TOTAL.
+   Remaining: projected destinations over a LOCAL base.
 4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested
