@@ -862,3 +862,23 @@ notes/2026-09-03-copy-nonlocal-dst-order.md.
 change) for copy's last class; meanwhile ref's classes (proj-topped
 dsts over non-local bases, non-local srcs under non-local dsts, unbound
 roots) are independent and can proceed.
+
+## 2026-09-03 (discussion)
+**Session:** (terminal, same day as the copy increments) — Q&A on ZSTs,
+rename extensions, and raw-pointer provenance. No proof delta.
+**Theme:** three user questions about `AddrRenameMap.extendBlock`,
+coincident ZST addresses, and whether a raw-pointer local has a unique
+tag. Each answer was checked against source rather than recalled, and
+each turned out to be durable.
+**Key outputs:** durable/empty-blocks-need-a-separate-base-fact.md (the
+range-vacuity hole and the three leaves it has bitten),
+durable/zst-locals-share-addresses-harmlessly.md,
+durable/raw-pointer-provenance-is-the-wildcard-tag.md,
+journal/2026-09-03-zst-addresses-and-wildcard-provenance.md.
+**Critical corrections:** none from the user, but one self-correction
+recorded — durable/rho-maps-are-identity-on-domain.md is v2-scoped; in
+obseq3 ρt is NOT identity and `PermSim` (listed there as a rejected
+alternative) is the adopted design. Scope caveat appended in place
+rather than superseding.
+**Status:** complete.
+**Next-session pickup:** unchanged — see the preceding entries.
