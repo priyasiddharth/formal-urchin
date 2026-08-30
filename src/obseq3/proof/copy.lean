@@ -4163,6 +4163,99 @@ theorem copy_fresh_projchain_offset_simulation
           exact Nat.le_trans h_sregmono (Nat.le_trans (Nat.le_succ _) (Nat.le_succ _))
       · simp at h_w
 
+/-! ## NON-LOCAL destination: the fragment composes TWO place lowerings.
+
+`compileStmtChecked`'s general assign arm runs the rhs pre-phase (the
+source lowering AND, since the temp-assignment lowering, the `Load` that
+performs the read) BEFORE the destination lowering, then stores. With
+both places cleanup-free the whole statement is
+`[src code; Load; dst code; RStore]`. -/
+
+theorem compileStmt_copy_chaindst_run
+    {Γ : Ctx} {τ : LayoutTy}
+    {P : Place Γ (obseq.LayoutTy.PtrL τ)} {src : Place Γ τ}
+    {cs : CompilerState}
+    {sOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared src)}
+    {dOut : ResultWithEvidence PtrResult
+      (PlaceToRegEvidence RefKind.Mut (Place.deref P))}
+    (h_root : CompilerM.run (ensurePlaceRoot (Place.deref P)) cs = cs)
+    (h_sval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) cs
+      = Except.ok sOut)
+    (h_sclean : sOut.result.cleanup = [])
+    (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.deref P))
+      (emit
+        { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).nextReg + 1,
+          nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).nextLabel,
+          code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).code,
+          placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).placeRegMap }
+        [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).nextReg)
+          (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])
+      = Except.ok dOut)
+    (h_dclean : dOut.result.cleanup = []) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.deref P) (.copy src))) cs
+      = emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
+          (emit
+            { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).nextReg + 1,
+              nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).nextLabel,
+              code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).code,
+              placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).placeRegMap }
+            [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).nextReg)
+              (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
+          [Instr.RStore (layoutToTyVal τ)
+            (Register.R (CheckedCompilerM.run
+              (placeToRegChecked RefKind.Shared src) cs).nextReg)
+            dOut.result.reg] := by
+  simp only [compileStmtChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+    h_root, h_sval]
+  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+    cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+    List.append_nil]
+  split
+  · rename_i o h_d
+    have h_oeq : dOut = o := Except.ok.inj (h_dval ▸ h_d)
+    subst h_oeq
+    simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, emit_nil]
+  · rename_i e h_d
+    exact absurd h_d (by rw [h_dval]; simp)
+
+theorem compileStmt_copy_chaindst_value
+    {Γ : Ctx} {τ : LayoutTy}
+    {P : Place Γ (obseq.LayoutTy.PtrL τ)} {src : Place Γ τ}
+    {cs : CompilerState}
+    {sOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared src)}
+    {dOut : ResultWithEvidence PtrResult
+      (PlaceToRegEvidence RefKind.Mut (Place.deref P))}
+    (h_root : CompilerM.run (ensurePlaceRoot (Place.deref P)) cs = cs)
+    (h_sval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) cs
+      = Except.ok sOut)
+    (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.deref P))
+      (emit
+        { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).nextReg + 1,
+          nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).nextLabel,
+          code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).code,
+          placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).placeRegMap }
+        ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs).nextReg)
+            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]
+          ++ cleanupInstrs sOut.result.cleanup))
+      = Except.ok dOut) :
+    ∃ so, CheckedCompilerM.value
+      (compileStmtChecked (Stmt.assign (.deref P) (.copy src))) cs
+      = Except.ok so := by
+  simp only [compileStmtChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+    h_root, h_sval]
+  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  split
+  · exact ⟨_, rfl⟩
+  · rename_i e h_d
+    exact absurd h_d (by rw [h_dval]; simp)
+
 /-- RESIDUAL (sorried), NARROWED 2026-09-03 (temp-assignment
     lowering): for a BOUND or UNBOUND LOCAL destination every source
     shape is closed — chain sources by

@@ -166,6 +166,88 @@ theorem resolvePlaceAcc_proj_base_err
     mirlite.resolvePlaceAcc M s (.proj b path) = .error e := by
   simp [mirlite.resolvePlaceAcc, h]
 
+/-- A CHAIN's lowering never touches `placeRegMap`: it only LOOKS UP
+    locals. The mother lemma carries this as an output conjunct, but the
+    standalone form is needed BEFORE the mother can be invoked — to
+    transfer `PlaceInputsMapped` past a lowering, which is what licenses
+    the SECOND lowering in a two-place statement (a non-local
+    destination). Induction on the chain, not on the place: the chain
+    grammar has no proj-of-proj, so the recursion is structural. -/
+theorem PtrChain.placeToRegChecked_placeRegMap {Γ : Ctx} {τ : LayoutTy}
+    {p : Place Γ τ} (h : PtrChain p) :
+    ∀ (kind : RefKind) (cs : CompilerState),
+      (CheckedCompilerM.run (placeToRegChecked kind p) cs).placeRegMap
+        = cs.placeRegMap := by
+  induction h with
+  | base loc =>
+      intro kind cs
+      simp only [placeToRegChecked, CheckedCompilerM.run, CompilerM.run]
+      split <;> rfl
+  | deref h_p ih =>
+      intro kind cs
+      rename_i τ' pp
+      rw [show placeToRegChecked (Γ := Γ) kind (Place.deref pp)
+          = (do
+              let ptrOut ← placeToRegChecked RefKind.Shared pp
+              let ptrRes := ptrOut.result
+              let loadedReg ← CheckedCompilerM.lift freshRegM
+              let _ ← CheckedCompilerM.lift
+                (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+              let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+              pure {
+                result := { reg := loadedReg, cleanup := [] },
+                evidence := PlaceToRegEvidence.deref pp ptrRes loadedReg ptrOut.evidence
+              }) from by simp only [placeToRegChecked]]
+      rw [CheckedCompilerM.run_bind]
+      cases h_v : CheckedCompilerM.value (placeToRegChecked RefKind.Shared pp) cs with
+      | error e => exact ih RefKind.Shared cs
+      | ok a =>
+          simp only [CheckedCompilerM.run_bind, CheckedCompilerM.run_lift,
+            CheckedCompilerM.value_lift, CheckedCompilerM.run_pure]
+          simp only [CompilerM.run, freshRegM, freshReg, emitM, emit]
+          exact ih RefKind.Shared cs
+  | derefProj f h_b ih =>
+      intro kind cs
+      rename_i σ τ' b
+      have h_inner : ∀ (k : RefKind) (cs' : CompilerState),
+          (CheckedCompilerM.run (placeToRegChecked k (Place.proj b f)) cs').placeRegMap
+            = cs'.placeRegMap := by
+        intro k cs'
+        rw [placeToRegChecked_proj_root_eq f (h_b.not_proj), CheckedCompilerM.run_bind]
+        cases h_v : CheckedCompilerM.value (placeToRegChecked k b) cs' with
+        | error e => exact ih k cs'
+        | ok a =>
+            by_cases h_o : pathOffset f = 0
+            · simp only [h_o, dif_pos, CheckedCompilerM.run_pure]
+              exact ih k cs'
+            · simp only [dif_neg h_o, CheckedCompilerM.run_bind,
+                CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+                CheckedCompilerM.run_pure]
+              simp only [CompilerM.run, freshRegM, freshReg, emitM, emit]
+              exact ih k cs'
+      rw [show placeToRegChecked (Γ := Γ) kind (Place.deref (Place.proj b f))
+          = (do
+              let ptrOut ← placeToRegChecked RefKind.Shared (Place.proj b f)
+              let ptrRes := ptrOut.result
+              let loadedReg ← CheckedCompilerM.lift freshRegM
+              let _ ← CheckedCompilerM.lift
+                (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+              let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+              pure {
+                result := { reg := loadedReg, cleanup := [] },
+                evidence := PlaceToRegEvidence.deref (Place.proj b f) ptrRes loadedReg
+                  ptrOut.evidence
+              }) from by simp only [placeToRegChecked]]
+      rw [CheckedCompilerM.run_bind]
+      cases h_v : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (Place.proj b f)) cs with
+      | error e => exact h_inner RefKind.Shared cs
+      | ok a =>
+          simp only [CheckedCompilerM.run_bind, CheckedCompilerM.run_lift,
+            CheckedCompilerM.value_lift, CheckedCompilerM.run_pure]
+          simp only [CompilerM.run, freshRegM, freshReg, emitM, emit]
+          exact h_inner RefKind.Shared cs
+
 /-! ## Full flattening: EVERY place normalizes into the chain grammar
 
 `flattenPlace` recursively reassociates nested projections. Its output

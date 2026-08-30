@@ -909,6 +909,20 @@ theorem IdentityOnDomain.extendIdRange {ρa : AddrRenameMap}
   intro x x' hx
   grind [AddrRenameMap.extendIdRange, IdentityOnDomain]
 
+/-- `PlaceInputsMapped` only reads `placeRegMap`, so it transfers across
+    any state that keeps the map (an `emit`, a `nextReg` bump). -/
+theorem PlaceInputsMapped.placeRegMap_congr {Γ : Ctx} {cs cs' : CompilerState}
+    (h : cs'.placeRegMap = cs.placeRegMap) :
+    ∀ {τ : LayoutTy} (p : Place Γ τ), PlaceInputsMapped cs p → PlaceInputsMapped cs' p
+  | _, .local loc, h_m => by
+      obtain ⟨reg, layout, h_look⟩ := h_m
+      refine ⟨reg, layout, ?_⟩
+      show getPlaceInfo cs' loc.idx.1 = _
+      simp only [getPlaceInfo, h]
+      exact h_look
+  | _, .proj base _, h_m => PlaceInputsMapped.placeRegMap_congr h base h_m
+  | _, .deref pp, h_m => PlaceInputsMapped.placeRegMap_congr h pp h_m
+
 /-- Reading `n` cells yields `n` values (both machines). -/
 theorem oseair_readWordSeq_length :
     ∀ (n : Nat) (m : oseair.Mem) (addr : Word),
