@@ -56,6 +56,34 @@ read and the destination chain's pointer-cell read land on the SAME cell
 the compiler and the semantics both support it today, so this is a live
 miscompilation for programs the frontier work will eventually cover.
 
+## Confirmed against the real toolchain (Miri, rustc 1.91.0 nightly)
+
+Both claims were RUN, not inferred:
+
+1. The witness shape, transliterated to Rust, executes CLEAN under Miri
+   with Stacked Borrows:
+   ```rust
+   let mut x: usize = 5;
+   let mut p: *mut usize = &mut x;
+   let q: *mut *mut usize = &mut p;
+   unsafe {
+       let q2: *mut *mut usize = &mut *q;    // Unique reborrow of p's cell
+       let r: *mut usize = q2 as *mut usize; // same cell, viewed as usize
+       **q = *r;
+   }
+   ```
+   `cargo +nightly miri run` prints and exits 0. Its MIR is
+   ```
+   _11 = (*_9);                  // the source read, into a temp
+   _27 = deref_copy (*_4);       // THEN the destination chain's pointer read
+   (*_27) = move _11;
+   ```
+   So Miri accepts exactly the program our compiled code traps on: this
+   is bad codegen against Rust, not only against mirlite.
+
+2. The EXACT overlap `*p = *p` (same address, same length) also runs
+   clean under Miri, and its MIR is `_5 = (*_2); (*_2) = move _5`.
+
 ## What rustc does (checked, not recalled)
 
 `rustc -Zunpretty=mir` on `unsafe fn g(s: &mut (usize, *mut usize), v: *const usize) { *s.1 = *v; }`
