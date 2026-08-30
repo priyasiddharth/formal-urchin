@@ -467,38 +467,15 @@ arm; d34 flipped to `expectDiff .ok` with reversion teeth. The
 interleaving obstacle is gone from the non-local-dst residuals; what
 remains of those is the separation/overlap analysis.
 
-## copy: proj-topped SOURCE at nonzero offset under a deref dst
-**Status:** parked 2026-09-03
-**Context:** `*p := copy s.f` with the field at a nonzero offset is the
-last deref-destination class in `copy_place_residual`. Everything
-around it is closed: the zero-offset case is
-`copy_chaindst_projsrc_zero_simulation` (d64), and the mirror image on
-the destination side is `copy_projdst_offset_chainsrc_simulation` (d63).
-The dispatcher already routes here — `flatten_chainish` splits the
-deref-dst arm, and the `by_cases h_o : pathOffset spath = 0` else-branch
-is the only path left into the residual for deref destinations.
-**Why parked:** the leaf is a merge of two ~600-line proofs and the
-session had already landed three increments.
-**To resume:**
-1. Two compiled fragments, `compileStmt_copy_chaindst_projsrc_offset_
-   run/_value`. Model the SOURCE tower on
-   `compileStmt_copy_projchain_offset_run` (`Borrow(Shared)` at
-   `CS0.nextReg`, then `[Load tmp0 tmpS, Die tmpS]` at `CS0.nextReg+1`)
-   and the DESTINATION half on `compileStmt_copy_chaindst_run`. NOTE:
-   the goal carries a `let __src := …` binder from the `do` block, so
-   `rw [h_dval]` does NOT fire — use `split` + `Except.ok.inj (h_dval ▸
-   h_d)`, the way `compileStmt_copy_chaindst_run` does.
-2. The leaf: take `copy_chaindst_projsrc_zero_simulation` for §1-§7 and
-   splice `copy_projchain_offset_simulation`'s §4-§8 (BRIDGE 1S:
-   `sb_ref_read_die_cancels` around the READ, then Borrow/Load/Die
-   execute) in place of the bare `Load`. The destination mother then
-   runs from the post-`Die` state.
-3. Witness d65 (`*p := copy t.1`) + teeth, then the usual validation
-   (`lake build Core Obseq3 Obseq3Proof Conformance`, `sb_conformance
-   --unit`, the corpus, `scripts/audit_axioms.sh`).
-**Effort estimate:** ~half-day of build-fix cycles.
-**References:** journal/2026-09-03-projected-dst-recursion.md,
-durable/flatten-one-place-at-a-time.md.
+## copy: proj-topped SOURCE at nonzero offset under a deref dst (CLOSED 2026-09-03)
+`copy_chaindst_projsrc_offset_simulation` (d65) closes `*p := copy s.f`
+off zero, so `copy_place_residual` names no deref destination at all —
+that whole arm of the dispatcher is total. The resume recipe held up:
+§1-§5 and §8-§11 from the d64 leaf, §6-§7 spliced from
+`copy_projchain_offset_simulation`'s BRIDGE 1S phase. What the recipe
+did NOT anticipate was that the work would be term-SHAPE work rather
+than proof work — see journal/2026-09-03-projsrc-offset-bridge1s.md and
+durable/transport-compiled-states-by-defeq.md.
 
 ## copy: PROJECTED destination over a LOCAL base
 **Status:** parked 2026-09-03

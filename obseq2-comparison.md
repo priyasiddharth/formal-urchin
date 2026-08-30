@@ -4,6 +4,68 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 (eleventh) — The Shape of the Term Is the Work
+
+Seventieth increment: a copy whose source is a projection at a nonzero
+offset, written through a pointer — `*p := copy s.f` — closes. With it
+the deref-destination arm of the copy dispatcher is total: no spelling
+of a non-local destination is left unproved. (The sixty-ninth
+increment, the same source at offset zero, landed without a log entry;
+it is recorded in notes/sessions.md.)
+
+The parked note called this "a merge of two ~600-line proofs," and that
+estimate was right about the structure and wrong about where the time
+would go. The merge itself was almost clerical. The zero-offset leaf
+supplies everything except the read; the nonzero-offset local-destination
+proof supplies the read, bracketed by the projection's own borrow and
+its cleanup kill. They fit together because of an accident of ordering
+that is worth stating plainly: both the borrow and the kill live inside
+the right-hand side's pre-phase, so they surround the read with nothing
+between them. The keystone lemma about a borrow-read-die triple applies
+directly, and what it returns — a permission simulation at the state
+after the kill — is exactly the argument the destination's lowering
+lemma wants. There is no commutation argument anywhere in the proof,
+because nothing needs to commute.
+
+What actually consumed the session was the shape of the terms. Three
+times the proof failed for reasons that had nothing to do with the
+mathematics. A record update written as `{ X with f := v }` elaborates
+to a `let` binding when it appears in a hypothesis and to a flat literal
+when the same state appears in a goal, so rewriting one into the other
+finds no occurrence. Structure fields that begin a new line must sit at
+the same column as their siblings, and when they do not, the parser
+reports an unexpected identifier rather than an indentation problem.
+And a chain of five state-monotonicity steps leaves enough
+metavariables that the unifier cannot reconcile a half-applied emit
+tower with a record literal — it either gives up with a type mismatch
+or exhausts its heartbeat budget deciding.
+
+All three have the same remedy, which is now written down: stop trying
+to make spellings match, and transport across the difference by
+definitional equality instead. A type ascription moves a hypothesis
+into whatever spelling the statement uses, and a trailing `rfl` absorbs
+whatever is left. The long chain gets split at a state that can be
+named, so both halves become ground comparisons. Raising the elaborator's
+heartbeat limit also made the proof go through, and that was the
+tempting fix; it was worth checking that it was the wrong one. Once the
+chain is split the declaration compiles well inside the default budget.
+The heartbeats were never measuring the size of the proof — they were
+measuring how long the unifier spent failing.
+
+One methodological note about the witness. The conformance harness
+compares verdicts, not values: it asks whether both machines agree that
+a program is well-defined or undefined at the same statement. A
+mutation that makes the compiler copy the wrong field therefore does not
+bite, because both machines still say "fine." The tooth has to induce
+undefined behaviour, and the one that fits is oversizing the
+projection's borrow — and restricting that mutation to shared borrows
+makes it discriminating, since the offset-zero witness takes a branch
+that emits no borrow at all. The new witness flips; the old one does
+not. That is the sharpest kind of reversion test: it fails exactly the
+proof obligation the new leaf discharges.
+
+---
+
 ## 2026-09-03 (tenth) — The Other Half of the Sandwich
 
 Sixty-eighth increment: projected copy destinations close at nonzero

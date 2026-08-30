@@ -1020,3 +1020,42 @@ audit exact at 2.
 1S around the READ — merge `copy_projchain_offset_simulation`'s source
 half into the two-mother skeleton), then projected dsts over a LOCAL
 base. Then ref.
+
+## 2026-09-03 (seventh)
+**Session:** (terminal) — proj-topped sources at NONZERO offset; the
+deref-dst arm goes TOTAL
+**Theme:** `copy_chaindst_projsrc_offset_simulation` (d65) closes
+`*p := copy s.f` off zero. §1–§5/§8–§11 are d64's leaf; §6–§7 are
+`copy_projchain_offset_simulation`'s BRIDGE 1S phase spliced in where
+d64 had a bare `Load`. The splice needs no commutation argument: the
+projection's `Borrow(Shared)` and its cleanup `Die` both sit in the rhs
+pre-phase, so they bracket the READ contiguously and
+`sb_ref_read_die_cancels`' `PermSim ρt perms₂ q3` drops straight into
+the destination mother's argument slot. `copy_place_residual` now names
+only PROJECTED destinations over a LOCAL base.
+**Key lesson:** the work was term SHAPE, not mathematics. Transport
+compiled states by DEFEQ (`have h' : … := h` + a trailing `rfl`), never
+by `rw`/`▸` — `{ X with … }` elaborates to a `let` in hypotheses but a
+flat literal in goals. Structure-instance fields on new lines must
+share a column. Five-step `StateIncr` chains must be split at a named
+state or the unifier dies. Written up in
+journal/2026-09-03-projsrc-offset-bridge1s.md and
+durable/transport-compiled-states-by-defeq.md.
+**Potholes:** a heartbeat timeout here was a SYMPTOM of the doomed
+unification, not of proof size — after splitting the chain the leaf
+compiles at the default 200000, so no `set_option` was kept;
+`expectDiff` compares
+VERDICTS not values, so teeth must induce UB — an oversized
+`RefKind.Shared` projection borrow is discriminating (d64 passes, d65
+flips to `ub 4`).
+**Environment:** the machine had NO Lean toolchain (no `lake`, no
+`~/.elan`) and no `lean-lsp-mcp` venv; both were reinstalled this
+session (elan + lean4 v4.28.0, `lean-lsp-mcp` 0.30.0). `lakefile.lean`
+has no `require`, so `lake-manifest.json`'s mathlib entry is stale and
+the build is self-contained (~2 min from scratch).
+**Status:** complete; all green; 17/17 + 78/78; corpus 82/123 (0 fail,
+osea matched 82); audit exact at 2, `[axioms]` untouched.
+**Next-session pickup:** copy's last class — a PROJECTED destination
+over a LOCAL base (`t.f := copy y`), mirroring
+`const_write_proj_zero/offset_simulation` with the copy leaf's source
+pre-phase in front — then ref's classes.
