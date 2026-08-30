@@ -1256,3 +1256,33 @@ osea matched 82); audit exact at 2, `[axioms]` untouched.
 **Next-session pickup:** copy's LAST class — a proj-topped flattened
 source under a projected destination, composing BRIDGE 1S (source) with
 BRIDGE 1 (destination); then ref's classes.
+
+## 2026-08-30 (ninth)
+**Session:** (terminal, continued) — the source lowering becomes a
+PACKAGE; half the last copy class falls out
+**Theme:** a proj-topped source at ZERO offset under a projected
+destination is closed (d70/d71) with NO new leaf. `LoweringSim` names
+`ptrChain_lowering_sim`'s twenty-conjunct conclusion and
+`LoweringSimAny` makes it rename-polymorphic (regime-B leaves run the
+source lowering at EXTENDED renames and a post-allocation state, so a
+package fixed at `ρa, ρt, s_mir` cannot serve them — the first draft got
+that wrong). `PtrChain.loweringSimAny` is two lines;
+`LoweringSimAny.projZero` is ~35 and compiled first try. Four leaves
+were then re-gated on the package instead of `PtrChain src` — three
+edits each — and the dispatcher's proj-dst arm now splits with
+`flatten_chainish` and feeds the projZero package.
+**Key lesson:** the parked recipe (generalize the projsrc leaves, splice
+BRIDGE 1S with BRIDGE 1) is right for the NONZERO half and unnecessary
+for the zero half, because at zero offset the source projection is
+state-neutral and cleanup-free — there is nothing to splice. Checking
+why a hypothesis is there before writing the proof it seems to demand
+has now paid twice running.
+**The boundary:** a package promises `placeOut.result.cleanup = []`. A
+nonzero-offset projection emits a `Borrow` and leaves a `Die`, so it
+cannot supply one; that half still needs two real leaves, and the
+parked entry is narrowed to exactly it with a recipe.
+**Status:** complete; all green; 17/17 + 84/84; corpus 82/123 (0 fail,
+osea matched 82); audit exact at 2, `[axioms]` untouched.
+**Next-session pickup:** the nonzero-offset half — generalize
+`compileStmt_copy_projdst_{zero,offset}_run` to a non-empty source
+cleanup, then splice BRIDGE 1S into the two projdst leaves. Then ref.

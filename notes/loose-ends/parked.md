@@ -487,33 +487,37 @@ recipe (mirror `const_write_proj_*`) would have worked but was more
 work than necessary — see
 journal/2026-08-30-projected-local-destinations.md.
 
-## copy: PROJ-TOPPED source under a PROJECTED destination
-**Status:** parked 2026-08-30
-**Context:** the LAST class in `copy_place_residual`.
-`CompilerInv_step_copy`'s proj-dst arm splits on
-`PtrChain (flattenPlace src)`; the negative branch — the flattened
-source is a projection over a chain — has always fallen to the
-residual, and no earlier parked entry named it. Everything else in copy
-is closed.
-**Why parked:** it is a composition of two endgames that both exist but
-have never appeared in the same leaf: the DESTINATION projection's
-BRIDGE 1 (`sb_ref_use_die_cancels` around the `RStore`, d63/d67) and
-the SOURCE projection's BRIDGE 1S (`sb_ref_read_die_cancels` around the
-`Load`, d65). Four offset combinations, though the zero-offset ones
-collapse.
+## copy: PROJ-TOPPED source at NONZERO offset under a PROJECTED destination
+**Status:** parked 2026-08-30 (narrowed from the whole class)
+**Context:** the LAST class in `copy_place_residual`. The ZERO-offset
+half closed on 2026-08-30 without a new leaf: naming the mother lemma's
+conclusion (`LoweringSim` / `LoweringSimAny`) and gating the leaves on
+the PACKAGE rather than on `PtrChain src` lets a zero-offset projection
+over a chain plug straight in (`LoweringSimAny.projZero`, d70/d71).
+See durable/lowering-sim-as-a-package.md.
+**Why the rest is parked:** a package must promise
+`placeOut.result.cleanup = []`. At NONZERO offset the source projection
+emits a `Borrow(Shared)` and leaves a cleanup `Die`, so it cannot
+supply one, and the extra instruction plus its BRIDGE 1S cancellation
+are the consumer's business. Two real leaves, one per DESTINATION
+offset.
 **To resume:**
-1. Generalize `copy_chaindst_projsrc_zero/offset_simulation` from a
-   `.deref P` destination to `Place.proj dbase dpath` — the same
-   `h_bound`/`h_np` generalization that worked for the destination
-   leaves this session.
-2. Splice: §1-§5 from the proj-dst leaves (destination side), §6-§7
-   from the projsrc leaves (BRIDGE 1S around the READ), §8 from the
-   proj-dst offset leaf (BRIDGE 1 around the write). The two bridges do
-   NOT interleave — the source borrow retires in the rhs pre-phase,
-   before the destination lowering starts.
-3. Witnesses `*p.f := copy s.g` at each offset pair, teeth by
-   oversizing each projection borrow in turn.
-**Effort estimate:** ~a day; two leaves plus the dispatcher rewiring.
-**References:** journal/2026-08-30-projected-local-destinations.md,
+1. Generalize `compileStmt_copy_projdst_zero_run` and
+   `compileStmt_copy_projdst_offset_run` from `h_sclean :
+   sOut.result.cleanup = []` to the general `[Load] ++ cleanupInstrs
+   sOut.result.cleanup` shape their `_value` twins already carry; the
+   current callers then instantiate the cleanup to `[]`.
+2. Each leaf = `copy_projdst_{zero,offset}_chainsrc_simulation` with
+   `copy_chaindst_projsrc_offset_simulation`'s §6-§7 (BRIDGE 1S:
+   `sb_ref_read_die_cancels` around the READ, then Borrow/Load/Die
+   execute) spliced in where the bare `Load` is. The source borrow
+   retires in the rhs pre-phase, BEFORE the destination lowering, so
+   the two bridges never interleave.
+3. Witnesses `(*p).f := copy s.g` and `t.f := copy s.g` with g off
+   zero; teeth by oversizing the `Shared` projection borrow (d70 takes
+   the no-borrow branch, so it stays passing and the tooth is
+   discriminating).
+**Effort estimate:** ~a day.
+**References:** journal/2026-08-30-lowering-sim-package.md,
 journal/2026-08-30-projsrc-offset-bridge1s.md,
-durable/transport-compiled-states-by-defeq.md.
+durable/lowering-sim-as-a-package.md.

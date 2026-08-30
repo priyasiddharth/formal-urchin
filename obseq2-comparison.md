@@ -4,6 +4,51 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-30 (thirteenth) — Ask What the Hypothesis Is For
+
+Seventy-second increment: a copy whose source is a projection and whose
+destination is also a projection closes, provided the source's field
+sits at offset zero. Half of copy's last shape, and it needed no new
+proof at all.
+
+The pattern is the same one as the previous increment, one level up.
+There, a leaf was *spelled* for a pointer dereference while only being
+*gated* on something much weaker. Here, four leaves ask for a hypothesis
+— that the source place is a canonical pointer chain — and then use it
+for exactly one thing: to invoke the lemma that says how a chain lowers,
+and to consume the twenty facts that lemma returns. Nothing else in any
+of those proofs cares that the source is a chain.
+
+So the conclusion got a name. A source place now supplies a *package*:
+the compiled lowering succeeds, it emits no cleanup, it executes on the
+target, the result register holds the renamed resolved pointer, memory
+is untouched, the register map is unchanged, counters are monotone, and
+so on. A chain supplies one — that is the old lemma, restated. And a
+projection at offset zero over a chain supplies one too, because at
+offset zero the projection adds a zero to an address and a no-op to the
+compiled code. That second fact is thirty-five lines and it compiled on
+the first attempt, which is the sort of thing that happens when an
+abstraction is cut along a real joint.
+
+One wrinkle was worth the correction it forced. The leaves that
+allocate a destination before lowering the source run that lowering
+under *extended* renamings, at a state that does not exist yet when the
+statement begins. A package pinned to one renaming cannot serve them.
+Making the package polymorphic in the renamings costs nothing — the
+chain lemma never mentions them in its hypotheses — but the first draft
+pinned them, and four call sites said so immediately.
+
+Where this stops is as interesting as where it goes. A package promises
+an empty cleanup. A projection at a *nonzero* offset does not have one:
+it borrows the field, and that borrow has to be killed afterwards. The
+killing is not part of lowering the place; it is the consumer's
+business, and it has to be cancelled against the read it brackets. So
+the remaining half of the shape still needs real proofs, and the parked
+note now says so precisely rather than prescribing work that turns out
+to be unnecessary — which is what it did for the half that just closed.
+
+---
+
 ## 2026-08-30 (twelfth) — Spelled, Not Gated
 
 Seventy-first increment: a copy into a projected destination whose base
