@@ -57,3 +57,40 @@ so the shortcut cannot be mis-taken. d62 pins the behaviour end to end
 
 **Validation:** full build green; 17/17 + 75/75; corpus 82 pass / 0 fail
 / 123; `scripts/audit_axioms.sh` exact at 2 sorries.
+
+## Addendum — the NONZERO offset closes too (same day)
+
+[OBS 2026-09-03] `copy_projdst_offset_chainsrc_simulation` closes
+`(*p).1 := copy y` (d63), so the projected-destination arm is complete
+for deref bases at both offsets.
+
+It went together faster than the zero case, and the reason is worth
+recording: the two halves came from two DIFFERENT existing proofs and
+neither needed rethinking. §1–§7 (invert the source, both mother-lemma
+calls, the code-inclusion bookkeeping) are the zero leaf's, minus the
+`+ 0` collapse. §8 is `const_write_proj_deref_simulation`'s BRIDGE 1
+endgame — `sb_ref_use_die_cancels` around the write — with `CStore
+[Val.Dat v]` swapped for `RStore` of the temp register's value list.
+Three genuinely new obligations, all small:
+
+- the loaded temporary must survive the projection's `Borrow` insert as
+  well as the destination lowering: `RegMap.lookup_insert_ne` on top of
+  the mother's register-frame conjunct, with the disequality from
+  `S0.nextReg < CS1.nextReg ≤ D.nextReg`;
+- the SB `ref` comes back with length `(readWordSeq …).length` where the
+  `Borrow` step wants `blockSize τ` — one `mirlite_readWordSeq_length`
+  rewrite, in the direction that keeps the hypothesis untouched;
+- the StateIncr towers must keep the projection OPAQUE (at nonzero
+  offset the zero bridge does not apply), so they are stated at the
+  proj place and one `h_incrProj` (`run base ⊑ run proj`, by
+  `CheckedCompilerM.incr` after the bind unfold) links the destination
+  mother's base-state facts back in.
+
+Pothole repeat: `{ { s with … } with … }` — a record update OVER a
+record update — fails to elaborate ("`q1` has type `AccessPerms` but is
+expected to have type `PermissionModel.State ?m`"). Flatten it into one
+update naming every field. That is the fourth distinct manifestation of
+the record-sugar problem in this file.
+
+**Validation:** 17/17 + 76/76; corpus 82/0; audit exact at 2.
+

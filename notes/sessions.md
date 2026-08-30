@@ -979,7 +979,24 @@ and durable/flatten-one-place-at-a-time.md.
 **Status:** complete; all green; 17/17 + 75/75; corpus 82/123 (0 fail);
 audit exact at 2.
 **Next-session pickup:** copy's residual is now (a) proj-topped
-flattened SOURCES under a deref dst, (b) projected dsts at NONZERO
-offset (the BRIDGE 1 endgame on the destination half), (c) projected
-dsts over a LOCAL base. Then ref.
+flattened SOURCES under a deref dst, (b) projected dsts over a LOCAL
+base. Then ref.
 
+## 2026-09-03 (twelfth)
+**Session:** (terminal, continued) — projected dsts at nonzero offset
+**Theme:** `copy_projdst_offset_chainsrc_simulation` (d63) completes the
+projected-destination arm for deref bases: §1–§7 from the zero leaf,
+§8 from const_write's BRIDGE 1 endgame with `RStore` in place of
+`CStore`. New obligations were only the temp register surviving the
+`Borrow`'s insert (`RegMap.lookup_insert_ne` over the mother's register
+frame), a `mirlite_readWordSeq_length` direction fix on the SB `ref`,
+and keeping the projection OPAQUE in the StateIncr towers (`h_incrProj`
+links the base-state facts back).
+**Key lesson:** nested record updates `{ { s with … } with … }` do not
+elaborate — flatten to one update. Fourth manifestation of the
+record-sugar pothole in copy.lean.
+**Status:** complete; all green; 17/17 + 76/76; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** copy's residual is proj-topped flattened
+SOURCES under a deref dst, and projected dsts over a LOCAL base. Then
+ref.

@@ -135,14 +135,14 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    steps, source then destination, composed at the dispatcher; d61).
    PROJECTED destinations then get their own recursive dispatcher
    (`copy_projdst_simulation`): nested projections peel with the
-   associativity transfers, and a deref base at ZERO offset is closed by
-   `copy_projdst_zero_chainsrc_simulation` (d62) — the projection costs
-   a `+ 0` on the resolved address and a `pure` on the compiled side, so
-   the two-mother skeleton carries over unchanged.
+   associativity transfers, and a deref base is closed at BOTH offsets —
+   `copy_projdst_zero_chainsrc_simulation` (d62), where the projection
+   costs a `+ 0` on the resolved address and a `pure` on the compiled
+   side, and `copy_projdst_offset_chainsrc_simulation` (d63), where it
+   wraps the `RStore` in its own `Borrow(Mut)`/`Die` — the BRIDGE 1
+   endgame, with the loaded temporary surviving the `Borrow`'s insert.
    Remaining: proj-topped flattened SOURCES under a deref destination,
-   projected destinations at NONZERO offset, and projected destinations
-   over a LOCAL base — each wraps the same skeleton in that projection's
-   own `Borrow`/`Die`.
+   and projected destinations over a LOCAL base.
 4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested

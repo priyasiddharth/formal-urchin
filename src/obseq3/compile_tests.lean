@@ -1403,6 +1403,20 @@ def d62_copy_into_proj_deref_dst : IO Unit :=
      .assign zD62 (.copy (.proj tD62 (.field ⟨0, by decide⟩ .nil)))]
     .ok "d62 copy into proj deref dst"
 
+/-- Positive: a copy into a PROJECTED deref destination at NONZERO
+    offset (`(*p).1 := copy y`) — the projection's own `Borrow(Mut)`
+    before the `RStore` and its `Die` after (the BRIDGE 1 endgame).
+    Closed 2026-09-03 by `copy_projdst_offset_chainsrc_simulation`. -/
+def d63_copy_into_proj_deref_dst_offset : IO Unit :=
+  expectDiff ΓD62
+    [.assign (.proj tD62 (.field ⟨0, by decide⟩ .nil)) (.constInit 1),
+     .assign (.proj tD62 (.field ⟨1, by decide⟩ .nil)) (.constInit 2),
+     .assign yD62 (.constInit 8),
+     .assign pD62 (.ref .Mut false [] tD62),
+     .assign (.proj (.deref pD62) (.field ⟨1, by decide⟩ .nil)) (.copy yD62),
+     .assign zD62 (.copy (.proj tD62 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d63 copy into proj deref dst at offset"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1478,7 +1492,8 @@ def allTests : List (IO Unit) := [
   d59_copy_read_precedes_dst_chain,
   d60_copy_into_deref_dst,
   d61_copy_into_flattened_deref_dst,
-  d62_copy_into_proj_deref_dst]
+  d62_copy_into_proj_deref_dst,
+  d63_copy_into_proj_deref_dst_offset]
 
 def runAll : IO Unit := do
   allTests.forM id

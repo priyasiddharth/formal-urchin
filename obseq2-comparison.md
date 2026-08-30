@@ -4,6 +4,38 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 (tenth) — The Other Half of the Sandwich
+
+Sixty-eighth increment: projected copy destinations close at nonzero
+offset too, so `(*p).f := copy src` is proved for every field of every
+canonical pointer chain.
+
+The interesting thing about this increment is how little of it was new.
+The statement's first half — invert the source, run both place lowerings,
+carry the loaded value in a register — is last increment's leaf verbatim.
+The second half — borrow the field, write, kill the borrow — is the
+constant-write proof's endgame from three increments ago, with the store
+instruction swapped. What had to be discovered was only where the two
+halves rub: the loaded temporary has to survive not just the destination
+lowering but also the borrow's own register insert, and the permission
+model hands back a borrow whose length is phrased in terms of the value
+list rather than the layout.
+
+That is what the accumulated bookkeeping is for. The register-frame
+conjunct the mother lemma already carried answers the first; a single
+length rewrite answers the second. Neither needed a new lemma.
+
+One recurring irritation earned another line in the notes: a record
+update applied to a record update does not elaborate here, and the error
+points at a permission-model metavariable rather than at the syntax.
+Writing the state out once, naming every field, is the fix — the fourth
+time that has come up in this file.
+
+All green: 17/17 + 76/76 units, corpus 82 pass / 0 fail, audit exact at
+two sorries.
+
+---
+
 ## 2026-09-03 (ninth) — A Projection Is Not a Detour
 
 Sixty-seventh increment: projected copy destinations get their own
