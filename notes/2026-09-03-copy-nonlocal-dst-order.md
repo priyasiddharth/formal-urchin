@@ -28,7 +28,53 @@ image: the source succeeds and the target traps, which is exactly a
 missed refinement — so a proof of this class cannot just transport the
 two reads independently.
 
-## Why the class is nevertheless TRUE
+## The divergence is REAL — witness (2026-09-03, executable)
+
+`notes/2026-09-03-copy-order-witness.lean` runs the differential harness
+on
+
+```
+x  := 5
+p  := &mut x
+q  := &mut p          -- q points at the cell holding p
+q2 := &mut *q         -- Unique reborrow of THAT cell, tag above q's
+r  := ptrCast q2      -- same cell, viewed as *mut Nat, carrying q2's tag
+**q := copy *r
+```
+
+and reports **source `.ok`, target `.ub` at the copy**. The copy's range
+read and the destination chain's pointer-cell read land on the SAME cell
+(p's storage) through different tags:
+
+- mirlite: read through `t(q2)` (top of the stack) succeeds; THEN the
+  chain reads through `t(q)`, popping the Unique `t(q2)` above it. Fine.
+- compiled: the chain's read through `t(q)` runs FIRST and pops
+  `t(q2)`; the `Memcpy`'s read through `t(q2)` then finds no such tag
+  and traps.
+
+`ptrCast` is outside CoreProg, so the CLOSED theorem is unaffected — but
+the compiler and the semantics both support it today, so this is a live
+miscompilation for programs the frontier work will eventually cover.
+
+## What rustc does (checked, not recalled)
+
+`rustc -Zunpretty=mir` on `unsafe fn g(s: &mut (usize, *mut usize), v: *const usize) { *s.1 = *v; }`
+(rustc 1.91.0) gives
+
+```
+bb2: {
+    _3 = (*_2);                                  // the source read, into a TEMP
+    _4 = deref_copy ((*_1).1: *mut usize);       // THEN the destination chain
+    ...
+}
+bb1: { (*_4) = move _3; }                        // then the store
+```
+
+So rustc materializes the copied value into a temporary and reads it
+BEFORE evaluating the destination place. mirlite's rhs-first order is
+faithful to that; OUR COMPILER is the outlier.
+
+## Why the class is nevertheless TRUE inside CoreProg
 The two reads can only interact at a shared cell: a dst-chain pointer
 cell lying inside the source's τ-sized range. Within CoreProg (no
 `ptrCast`, no `exposeAddr`) a cell holds a pointer only where the layout
@@ -39,15 +85,22 @@ subterm of σ. `LayoutTy` is an inductive tree, so both cannot hold. The
 ranges are disjoint BY TYPING, and cell-wise disjoint reads commute.
 
 ## What closing it would cost
-Two options, both decisions for the human:
-1. **Invariant strengthening.** Carry memory well-typedness in
-   `CompilerInv`: every `ptrVal` cell sits at a `PtrL`-typed offset of
-   its allocation. Then derive the disjointness above and add a
-   read-read commutation lemma to the keystone layer.
-2. **Compiler change.** Materialize the copy's source into a temporary
-   before the dst lowering, so both orders coincide. Cheaper for the
-   proof; changes emitted code (and needs a temp buffer for arbitrary
-   layouts, i.e. more than a register).
+Two options, both decisions for the human — but the witness above tilts
+the choice:
+1. **Compiler change (now the recommended one).** Materialize the copy's
+   source into a temporary before the dst lowering, exactly as rustc
+   does. Fixes the live `ptrCast` divergence, makes the orders coincide
+   so the CoreProg proof needs no commutation argument at all, and is
+   the faithful shape. Cost: oseair needs a temp BUFFER for arbitrary
+   layouts (a register holds one word), so this is an `Alloc`-and-two-
+   `Memcpy`s lowering or a new instruction — emitted code changes for
+   every copy.
+2. **Invariant strengthening only.** Carry memory well-typedness in
+   `CompilerInv` (every `ptrVal` cell sits at a `PtrL`-typed offset of
+   its allocation), derive the disjointness above, and add a read-read
+   commutation lemma. Closes the CoreProg class without touching the
+   compiler — but leaves the `ptrCast` divergence in place for the
+   frontier.
 
 Note that `const_write` and `ref` do NOT have this problem: `constInit`
 raises no source event, and `ref`'s retag IS emitted in the pre-phase,

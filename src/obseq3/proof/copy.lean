@@ -3482,8 +3482,17 @@ theorem copy_fresh_projchain_offset_simulation
     shared cell `read t₁; read t₂` can succeed where `read t₂; read t₁`
     traps.
 
-    WHY IT IS NEVERTHELESS TRUE (the argument a future leaf must
-    formalize): the two reads can only interact at a SHARED CELL, i.e.
+    THE DIVERGENCE IS REAL OUTSIDE CoreProg: with `ptrCast` a reborrow
+    can put the copy's tag ABOVE the chain's on the SAME cell, and the
+    differential harness then reports source `.ok` / target `.ub` (see
+    `notes/2026-09-03-copy-order-witness.lean`). rustc itself reads the
+    source into a TEMPORARY before evaluating the destination place
+    (checked with `-Zunpretty=mir`), so mirlite's order is the faithful
+    one and the compiler is the outlier.
+
+    WHY IT IS NEVERTHELESS TRUE INSIDE CoreProg (the argument a future
+    leaf must formalize): the two reads can only interact at a SHARED
+    CELL, i.e.
     a pointer cell of the dst chain lying inside the source's τ-sized
     range. Inside CoreProg (no `ptrCast`/`exposeAddr`) a cell holds a
     pointer only where the layout says so, so such a cell is a
