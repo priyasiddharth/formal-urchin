@@ -1425,3 +1425,48 @@ with a nonzero-offset projected source has no leaf.
 **Next-session pickup:** the recursive dispatcher, then witnesses and
 teeth; then the fresh-root × projsrc-offset combination if the residual
 is to close.
+
+## 2026-08-30 (fourteenth)
+**Session:** terminal — MIRLite inference-rule expansion
+**Theme:** expanded the Typst artifact from four to six pages, using two new
+pages to make MIRLite's executable operational semantics readable as rules.
+**Key outputs:** `mirlite-oseair-correctness.typ` and rebuilt PDF; page 2
+contains `ACC-LOCAL`, `ACC-PROJ`, and `ACC-DEREF` plus the pure-resolution
+contrast; page 3 contains `E-CONST`, `E-COPY`, `E-REF`, `WRITE`, and
+`S-ASSIGN`; journal entry
+`journal/2026-08/2026-08-30-mirlite-inference-rules.md`.
+**Critical scope choice:** the rules are explicitly a derived presentation of
+the successful branches of `resolvePlaceAcc`, `evalRExpr`,
+`writeResolvedPlace`, and `doAssign`, not a second inductive semantics. They
+make permission threading and RHS-before-destination evaluation order
+visible without overstating what is mechanized.
+**Status:** complete — Typst 0.15.1 build and a 110-PPI visual inspection
+confirmed exactly six A4 pages with no overflow. The earlier four-page note
+is retained and marked superseded; pre-existing proof changes were untouched.
+
+## 2026-08-30 (fourteenth)
+**Session:** (terminal, continued) — the recursive dispatcher; copy's
+residual reaches ONE branch
+**Theme:** `copy_projdst_projsrc_offset_simulation` mirrors
+`copy_projdst_simulation` for the source shape that cannot supply a
+`LoweringSim` package. It compiled first try, and wiring it into
+`CompilerInv_step_copy` leaves `copy_place_residual` with a single call
+site: an UNBOUND local root with a nonzero-offset projected source.
+Also landed the three compiled fragments that branch needs — all three
+compiled first try.
+**Attempted and withdrawn:** the two regime-B leaves for that branch.
+The mechanical half went in cleanly; 9 errors remained, in three known
+classes (tower arities, the post-`Die` mother state and its spelling
+propagation, and the BRIDGE 1S write phase). Rather than leave the tree
+broken or add a sorry, the incomplete leaf was removed and the parked
+entry now carries the error classes so the next attempt starts from
+them instead of rediscovering them.
+**Honest note on pacing:** this is the third increment in a row where
+the leaf-sized piece did not land inside the session. The leaves are
+600-800 lines each and take 10-15 build iterations; that is the unit of
+work, and planning should treat one leaf as one increment rather than
+assuming two fit together.
+**Status:** green; 17/17 + 84/84; corpus 82/123 (0 fail, osea matched
+82); audit exact at 2, `[axioms]` untouched.
+**Next-session pickup:** the two fresh leaves, from the parked error
+classes; then delete `copy_place_residual` and take the pin 2 → 1.

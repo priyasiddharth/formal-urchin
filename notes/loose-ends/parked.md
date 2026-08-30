@@ -487,36 +487,49 @@ recipe (mirror `const_write_proj_*`) would have worked but was more
 work than necessary — see
 journal/2026-08-30-projected-local-destinations.md.
 
-## copy: PROJ-TOPPED source at NONZERO offset — BOTH LEAVES DONE, wiring left
-**Status:** narrowed 2026-08-30 to the dispatcher only
-**Done:** three compiled fragments
-(`compileStmt_copy_projdst_{zero,offset}_projsrc_offset_run` and the
-destination-offset-agnostic `..._projsrc_offset_value`) and BOTH leaves,
-`copy_projdst_zero_projsrc_offset_simulation` and
-`copy_projdst_offset_projsrc_offset_simulation`. The nonzero-destination
-twin is the zero leaf's §1–§8 with the BRIDGE 1 endgame in place of the
-bare `RStore`: `sb_ref_use_die_cancels` around the write, three code
-facts (Borrow at `s_mid2.pc`, RStore at +1, Die at +2), and the final
-`LocalBindingSim` framing the destination borrow register out with
-`LocalBindingSim.insert_fresh_reg h_dlbs h_prb1 h_dregmono rfl`.
-`csnorm` carried the three `StateIncr` towers with no traced spellings
-at all; the potholes that remained were content, not spelling — the
-`PtrRegisterEntry`-is-not-a-simp-target one (keep a `h_lookupD2` twin
-and use it in `writeThroughPtr`'s `simp` AND in `runN_RStore_step`), and
-`omega` needing BOTH sides normalized (`simp only [emit] at h1 h_eq'`,
-or the two atoms differ).
-**Left:** the DISPATCHER. `CompilerInv_step_copy`'s proj-dst arm still
-sends every nonzero-offset source to the residual. Wiring needs a
-recursive `copy_projdst_projsrc_offset_simulation` mirroring
-`copy_projdst_simulation`: peel nested destination projections with the
-associativity transfers, then `by_cases` on the DESTINATION offset and
-call the matching leaf. A bound local base and a deref base both work;
-an UNBOUND local root with a nonzero-offset projected source has no
-leaf, so it stays residual and `copy_place_residual` does NOT close on
-this increment alone.
-**Effort estimate:** ~half a day for the dispatcher, plus witnesses
-(`(*p).f := copy s.g` and `t.f := copy s.g`, g off zero, at both
-destination offsets) and teeth (oversize the `Shared` projection
-borrow — d70 takes the no-borrow branch, so it stays passing).
+## copy: the LAST branch — fresh root × nonzero-offset projected source
+**Status:** narrowed 2026-08-30; `copy_place_residual` has ONE call site
+**Where:** `copy_projdst_projsrc_offset_simulation`, the
+`| «local» loc | none` branch — an UNBOUND local root with a source that
+flattens to `.proj B spath`, `pathOffset spath ≠ 0`. Everything else in
+copy routes to a leaf.
+**Done and committed:** the recursive dispatcher
+`copy_projdst_projsrc_offset_simulation` (compiled first try), the two
+bound-root leaves it calls, and the THREE compiled fragments this last
+branch needs —
+`compileStmt_copy_projlocal_fresh_projsrc_offset_{zero,offset}_run` plus
+the destination-offset-agnostic `..._value`. All three compiled first
+try. Only the two regime-B LEAVES are missing.
+**What the leaves are:** `copy_projlocal_fresh_{zero,offset}_simulation`
+with the source phase replaced by BRIDGE 1S — mother lemma on `B`, then
+`Borrow(Shared)`/`Load`/`Die`, then the destination write. Derive from
+the fresh leaves (keep their regime-B machinery — ρ extensions,
+post-alloc `LocalBindingSim`, the `AllocLockstep` bookkeeping — verbatim)
+and splice in §6–§7 of `copy_projdst_zero_projsrc_offset_simulation`.
+**Attempted 2026-08-30, removed rather than left broken.** The
+mechanical part went in cleanly (header, `resolvePlaceAcc_proj_base_ok`
+with the offset in the fit check and the read, the fragment calls, the
+mother on `B`). What remained was 9 errors in exactly three known
+classes:
+1. TOWER ARITIES (3 sites): the source projection adds a `freshReg` and
+   an `emit`, so each `StateIncr` chain grows by two steps. Fix by
+   inspection, not by guessing — the tail is `emit_state_incr <S1V>` in
+   the fresh-zero parent and needs a longer chain.
+2. The mother-lemma call and its `cs` argument (2 sites): the
+   post-`Die` compiler state replaces the post-`Load` one, and EVERY
+   other mention of it in the leaf must be normalized to the same
+   spelling (`h_prmCS2`, `h_lbs1`, `h_prb1`) or the later `rw`s miss
+   one at a time.
+3. The WRITE phase (4 sites): BRIDGE 1S around the READ, the three
+   source code facts, and the read address gaining `+ pathOffset spath`
+   in the memory and invariant sections.
+Use `csnorm` for class 1 and 2 boundaries; it does NOT help class 3,
+which is content.
+**Effort estimate:** ~10-15 build iterations per leaf, two leaves.
+**Then:** wire the fresh branch, DELETE `copy_place_residual`, update
+`scripts/axiom_whitelist.txt` from 2 sorries to 1 IN THE SAME COMMIT,
+and add witnesses (`t.f := copy s.g` with `t` fresh and `g` off zero, at
+both destination offsets) plus teeth (oversize the `Shared` projection
+borrow).
 **References:** journal/2026-08-30-lowering-sim-package.md,
 durable/csnorm-a-normal-form-for-compiler-states.md.

@@ -1,5 +1,9 @@
 # Four-page MIRLite → OSEA-IR overview
 
+[SUPERSEDED → `2026-08-30-mirlite-inference-rules.md`] The artifact was
+subsequently expanded to six pages by adding two MIRLite inference-rule
+pages. This entry records the earlier four-page state.
+
 [OBS] Drafted `mirlite-oseair-correctness.typ`, a four-page artifact overview
 organized as one page each for MIRLite semantics, OSEA-IR semantics, the
 compiler, and the compiler-correctness proof.
