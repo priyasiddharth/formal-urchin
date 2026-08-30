@@ -900,3 +900,25 @@ audit exact at 2.
 **Next-session pickup:** copy's NON-LOCAL dst — now plain composition
 (two place lowerings + two cleanups) with no ordering obstacle; then
 ref's classes.
+
+## 2026-09-03 (eighth)
+**Session:** (terminal, continued) — non-local dst: groundwork landed, leaf in flight
+**Theme:** with the ordering obstacle gone, started the last copy class.
+LANDED (green): `compileStmt_copy_chaindst_run/_value` (the fragment for
+a deref dst over the OPAQUE runs of BOTH lowerings — the value form is
+stated over the GENERAL src cleanup, since the cleanup is only known
+after the mother lemma), `PlaceInputsMapped.placeRegMap_congr`,
+`PtrChain.placeToRegChecked_placeRegMap` (a chain's lowering never
+touches placeRegMap — needed BEFORE the mother can run, to transfer
+mapped-ness past the first lowering; induction on the CHAIN, whose
+grammar has no proj-of-proj), and `emit_tower_incr₃`.
+NOT LANDED: the leaf body itself. Its first half (source mother call +
+Load transport) compiled; the second half (dst mother at the post-read
+states, then RStore) is plumbing-heavy — the statement's emit tower
+interleaves with a bind on the DST value, so `StateIncr` chains need
+their intermediate states pinned. Removed rather than left sorried.
+**Status:** all green; 17/17 + 72/72; corpus 82/123 (0 fail); audit at 2.
+**Next-session pickup:** finish `copy_chaindst_chainsrc_simulation` —
+the shape is settled (two mother calls, the temp register surviving the
+dst lowering by the mother's register-frame conjunct); what remains is
+the StateIncr/code-inclusion plumbing for the dst lowering at CS1.

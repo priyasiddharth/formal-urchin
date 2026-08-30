@@ -923,6 +923,17 @@ theorem PlaceInputsMapped.placeRegMap_congr {Γ : Ctx} {cs cs' : CompilerState}
   | _, .proj base _, h_m => PlaceInputsMapped.placeRegMap_congr h base h_m
   | _, .deref pp, h_m => PlaceInputsMapped.placeRegMap_congr h pp h_m
 
+/-- Three successive `emit`s grow the state. Stating the tower once
+    keeps call sites from having to spell out each intermediate state:
+    with `cs` and the lists explicit, elaboration is deterministic
+    (a bare `StateIncr.trans` chain of `emit_state_incr`s leaves the
+    intermediate states as metavariables and fails). -/
+theorem emit_tower_incr₃ (cs : CompilerState) (l1 l2 l3 : List Instr) :
+    StateIncr cs (emit (emit (emit cs l1) l2) l3) :=
+  StateIncr.trans (emit_state_incr cs l1)
+    (StateIncr.trans (emit_state_incr (emit cs l1) l2)
+      (emit_state_incr (emit (emit cs l1) l2) l3))
+
 /-- Reading `n` cells yields `n` values (both machines). -/
 theorem oseair_readWordSeq_length :
     ∀ (n : Nat) (m : oseair.Mem) (addr : Word),
