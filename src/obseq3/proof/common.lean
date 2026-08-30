@@ -1260,6 +1260,40 @@ theorem placeToRegChecked_proj_root_eq
   | proj b q => exact absurd rfl (h_np _ b q)
   | deref pp => simp only [placeToRegChecked]
 
+
+/-- At ZERO offset the projection layer emits nothing: the lowering of
+    `base.f` runs the base's lowering and then a `pure`, so the compiler
+    state is the base lowering's state exactly. -/
+theorem placeToRegChecked_proj_zero_run
+    {Γ : Ctx} {σ τ : LayoutTy}
+    {kind : RefKind} {base : Place Γ σ} (path : PathTo σ τ)
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      base = b.proj q → False)
+    (h_o : pathOffset path = 0) (cs : CompilerState) :
+    CheckedCompilerM.run (placeToRegChecked kind (.proj base path)) cs
+      = CheckedCompilerM.run (placeToRegChecked kind base) cs := by
+  rw [placeToRegChecked_proj_root_eq path h_np, CheckedCompilerM.run_bind]
+  cases h : CheckedCompilerM.value (placeToRegChecked kind base) cs with
+  | ok a => simp [h_o, CheckedCompilerM.run_pure]
+  | error e => rfl
+
+/-- ... and its result is the base's result, so a lowering that succeeds
+    on the base succeeds on the projection with the SAME register. -/
+theorem placeToRegChecked_proj_zero_value
+    {Γ : Ctx} {σ τ : LayoutTy}
+    {kind : RefKind} {base : Place Γ σ} (path : PathTo σ τ)
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      base = b.proj q → False)
+    (h_o : pathOffset path = 0) {cs : CompilerState}
+    {o : ResultWithEvidence PtrResult (PlaceToRegEvidence kind base)}
+    (h : CheckedCompilerM.value (placeToRegChecked kind base) cs = Except.ok o) :
+    CheckedCompilerM.value (placeToRegChecked kind (.proj base path)) cs
+      = Except.ok
+        { result := o.result,
+          evidence := PlaceToRegEvidence.projZero base path o.result o.evidence h_o } := by
+  rw [placeToRegChecked_proj_root_eq path h_np, CheckedCompilerM.value_bind, h]
+  simp [h_o, CheckedCompilerM.value_pure]
+
 /-- The reassociation arm's equation. -/
 theorem placeToRegChecked_proj_assoc_eq
     {Γ : Ctx} {ρ σ τ : LayoutTy}

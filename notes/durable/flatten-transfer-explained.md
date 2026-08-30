@@ -53,3 +53,6 @@ spellings with a `show ... from rfl` rewrite first.
 journal 2026-09-01-first-residual-dies.md, spine.lean (flattenPlace,
 flatten_chainish, PtrChain_flatten_deref),
 const_write.lean (compileStmt_derefdst_flatten_run/_value).
+
+When a statement lowers TWO places, shape the transfer per
+[[flatten-one-place-at-a-time]] — one place per lemma, composed.

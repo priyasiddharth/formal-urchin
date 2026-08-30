@@ -1383,6 +1383,26 @@ def d61_copy_into_flattened_deref_dst : IO Unit :=
         (.field ⟨1, by decide⟩ .nil))))]
     .ok "d61 copy into flattened deref dst"
 
+def ΓD62 : Ctx := [obseq.LayoutTy.PtrL pairD52L, pairD52L, natL, natL]
+def pD62 : Place ΓD62 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨0, by decide⟩, rfl⟩
+def tD62 : Place ΓD62 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
+def yD62 : Place ΓD62 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def zD62 : Place ΓD62 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: a copy into a PROJECTED deref destination at ZERO offset
+    (`(*p).0 := copy y`), then the read back. Closed 2026-09-03 by
+    `copy_projdst_zero_chainsrc_simulation` through the recursive
+    proj-dst dispatcher (`copy_projdst_simulation`). -/
+def d62_copy_into_proj_deref_dst : IO Unit :=
+  expectDiff ΓD62
+    [.assign (.proj tD62 (.field ⟨0, by decide⟩ .nil)) (.constInit 1),
+     .assign (.proj tD62 (.field ⟨1, by decide⟩ .nil)) (.constInit 2),
+     .assign yD62 (.constInit 7),
+     .assign pD62 (.ref .Mut false [] tD62),
+     .assign (.proj (.deref pD62) (.field ⟨0, by decide⟩ .nil)) (.copy yD62),
+     .assign zD62 (.copy (.proj tD62 (.field ⟨0, by decide⟩ .nil)))]
+    .ok "d62 copy into proj deref dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1457,7 +1477,8 @@ def allTests : List (IO Unit) := [
   d58_copy_field_into_fresh_local,
   d59_copy_read_precedes_dst_chain,
   d60_copy_into_deref_dst,
-  d61_copy_into_flattened_deref_dst]
+  d61_copy_into_flattened_deref_dst,
+  d62_copy_into_proj_deref_dst]
 
 def runAll : IO Unit := do
   allTests.forM id

@@ -4,6 +4,45 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 (ninth) — A Projection Is Not a Detour
+
+Sixty-seventh increment: projected copy destinations get their own
+recursive dispatcher, and `(*p).0 := copy y` is proved.
+
+The shape `(*p).f := copy src` looks like the deref-destination case with
+an extra field selection, and at zero offset it very nearly is: the
+projection contributes `+ 0` to the resolved address on the source side
+and a `pure` on the compiled side. What it does NOT allow is reusing the
+deref leaf by rewriting places, because the two spellings have different
+TYPES — `*p` is a place of the pointee layout, `(*p).f` a place of the
+field's. The write width differs accordingly, and the destination
+register still points at the whole pointee block. That combination is
+fine because the write-through bridge was already layout-generic: it
+takes its bound from the source write's own check rather than from the
+register's block size.
+
+The general lesson from the increment is about state-neutral wrappers.
+Unfolding the projection layer inside the compiled-state bookkeeping
+turns the destination state into a case split whose two branches are
+identical — and none of the code-inclusion lemmas can see through a
+match. Rather than split, we proved the two-line fact that the wrapper
+does not move the state at all (and that it preserves the result
+register), then rewrote with it. The projection stays opaque, and the
+deref leaf's bookkeeping applies word for word. It is the same discipline
+as last increment's "flatten one place at a time": keep the thing you are
+not reasoning about closed.
+
+Nested projections peel through the associativity transfers, so the
+recursion always reaches a constructor-headed base. What is left for copy
+is the mirror image of what has been done twice now: the projection's own
+`Borrow`/`Die` around the source half (`*p := copy s.f`), and around the
+destination half at nonzero offset (`(*p).1 := copy y`).
+
+All green: 17/17 + 75/75 units, corpus 82 pass / 0 fail, audit exact at
+two sorries.
+
+---
+
 ## 2026-09-03 (eighth) — Both Places Normalize
 
 Sixty-sixth increment: the deref-destination arm goes total for every

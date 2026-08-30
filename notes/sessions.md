@@ -959,3 +959,27 @@ audit exact at 2.
 **Next-session pickup:** copy's residual is down to proj-topped
 FLATTENED SOURCES under a deref dst, and PROJECTED dsts — each wraps
 the same two-mother skeleton in that projection's Borrow/Die. Then ref.
+
+## 2026-09-03 (eleventh)
+**Session:** (terminal, continued) — projected copy destinations
+**Theme:** `copy_projdst_zero_chainsrc_simulation` (the two-mother leaf
+one projection layer deep) plus `copy_projdst_simulation`, a recursive
+dispatcher for projected dsts that peels nesting with the associativity
+transfers (`stepStmt_assign_dst_proj_assoc` is new). Four
+`compileStmt_copy_projderefdst_*flatten_*` transfers lifted verbatim
+from the deref-dst four. `copy_place_residual` now takes the stmt0
+triple so the recursion can fall back into it. d62 pins
+`(*p).0 := copy y`.
+**Key lesson:** a state-NEUTRAL wrapper (the zero-offset projection)
+should be bridged, not unfolded — `placeToRegChecked_proj_zero_run/
+_value` in common.lean keep it opaque inside StateIncr proofs, where
+unfolding produces an identical-branch `match` no emit-tower lemma can
+see. Written up in journal/2026-09-03-projected-dst-recursion.md
+and durable/flatten-one-place-at-a-time.md.
+**Status:** complete; all green; 17/17 + 75/75; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** copy's residual is now (a) proj-topped
+flattened SOURCES under a deref dst, (b) projected dsts at NONZERO
+offset (the BRIDGE 1 endgame on the destination half), (c) projected
+dsts over a LOCAL base. Then ref.
+

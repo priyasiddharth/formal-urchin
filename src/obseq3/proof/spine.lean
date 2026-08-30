@@ -1493,6 +1493,26 @@ theorem stepStmt_assign_dstflatten
   show mirlite.doAssign M s _ rhs = mirlite.doAssign M s _ rhs
   simp only [mirlite.doAssign, h1, h2, h3]
 
+theorem stepStmt_assign_dst_proj_assoc
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy} {M : PermissionModel}
+    (s : mirlite.State M Γ)
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (p : PathTo σ2 τ) (rhs : RExpr Γ τ) :
+    mirlite.stepStmt M s (.assign (.proj (.proj b q) p) rhs)
+      = mirlite.stepStmt M s (.assign (.proj b (q.append p)) rhs) := by
+  have h1 : ∀ st : mirlite.State M Γ,
+      mirlite.resolvePlaceAcc M st (Place.proj (Place.proj b q) p)
+        = mirlite.resolvePlaceAcc M st (Place.proj b (q.append p)) :=
+    fun st => resolvePlaceAcc_proj_assoc b q p
+  have h2 : ∀ st : mirlite.State M Γ,
+      mirlite.resolvePlace? st (Place.proj (Place.proj b q) p)
+        = mirlite.resolvePlace? (M := M) st (Place.proj b (q.append p)) :=
+    fun st => resolvePlace?_proj_assoc b q p
+  have h3 : mirlite.preparePlaceAssign M s (Place.proj (Place.proj b q) p)
+      = mirlite.preparePlaceAssign M s (Place.proj b (q.append p)) :=
+    preparePlaceAssign_proj_assoc b q p
+  show mirlite.doAssign M s _ rhs = mirlite.doAssign M s _ rhs
+  simp only [mirlite.doAssign, h1, h2, h3]
+
 theorem stepStmt_assign_dstderef_flatten
     {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
     (s : mirlite.State M Γ)
