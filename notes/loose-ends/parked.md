@@ -500,6 +500,20 @@ branch needs —
 `compileStmt_copy_projlocal_fresh_projsrc_offset_{zero,offset}_run` plus
 the destination-offset-agnostic `..._value`. All three compiled first
 try. Only the two regime-B LEAVES are missing.
+**Progress 2026-08-30 (later):** the ZERO-destination-offset leaf,
+`copy_projlocal_fresh_projsrc_offset_zero_simulation`, is PROVED and
+WIRED. `copy_place_residual` is now reached only at NONZERO destination
+offset. What worked, in order: (i) tokenize the post-alloc source state
+and rewrite the whole source phase structurally rather than patching
+`rw` chains — the `Load`-only state becomes the `Borrow`/`Load`/`Die`
+tower, and every standalone `Register.R CS0.nextReg` becomes the LOAD
+target `Register.R PS.nextReg` (split the leaf at `subst h_sOut_eq`:
+`sOut0` before, `sOut` after); (ii) write the whole write phase fresh
+rather than editing it; (iii) `csnorm at h1 h_eq' ⊢` for every `omega`
+that compares two `emit`-laden atoms. The one non-obvious failure was
+the `h_incrS1V` tower: its simp set inherited no source
+`placeToRegChecked_proj_root_eq`, because the parent's source was
+package-supplied — add it plus `dif_neg h_so`.
 **What the leaves are:** `copy_projlocal_fresh_{zero,offset}_simulation`
 with the source phase replaced by BRIDGE 1S — mother lemma on `B`, then
 `Borrow(Shared)`/`Load`/`Die`, then the destination write. Derive from

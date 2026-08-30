@@ -1470,3 +1470,30 @@ assuming two fit together.
 82); audit exact at 2, `[axioms]` untouched.
 **Next-session pickup:** the two fresh leaves, from the parked error
 classes; then delete `copy_place_residual` and take the pin 2 → 1.
+
+## 2026-08-30 (fifteenth)
+**Session:** (terminal, continued) — one leaf, as planned
+**Theme:** `copy_projlocal_fresh_projsrc_offset_zero_simulation` is
+proved and wired: an UNBOUND local root, destination offset zero, with
+a source that flattens to a projection at nonzero offset.
+`copy_place_residual` is now reached only at NONZERO destination offset.
+**Method that worked** (worth repeating for the twin): rewrite the
+source phase STRUCTURALLY rather than patching `rw` chains — tokenize
+the post-alloc source state, turn the `Load`-only state into the
+`Borrow`/`Load`/`Die` tower, and remap every standalone
+`Register.R CS0.nextReg` to the LOAD target `Register.R PS.nextReg`,
+splitting the leaf at `subst h_sOut_eq` (`sOut0` before, `sOut` after).
+Then write the write phase fresh rather than editing it. `csnorm at h1
+h_eq'` fixed every `omega` that was comparing two `emit`-laden atoms.
+**One non-obvious failure:** the `h_incrS1V` tower inherited no source
+`placeToRegChecked_proj_root_eq` from its parent, because the parent's
+source was package-supplied. Adding it plus `dif_neg h_so` was the last
+error.
+**Pacing:** one leaf per increment, as resolved last time, and it
+landed.
+**Status:** green; 17/17 + 84/84; corpus 82/123 (0 fail, osea matched
+82); audit exact at 2, `[axioms]` untouched.
+**Next-session pickup:** the NONZERO-destination twin — same recipe with
+the BRIDGE 1 write phase from `copy_projdst_offset_projsrc_offset_
+simulation` §9 — then delete `copy_place_residual` and take the pin
+2 → 1.
