@@ -1,4 +1,4 @@
-# 2026-09-03 — C-deref collapse: the proj-dst deref arm goes total
+# 2026-08-29 — C-deref collapse: the proj-dst deref arm goes total
 
 ## What happened
 The two C-deref leaves (`const_write_proj_deref_zero_simulation`,

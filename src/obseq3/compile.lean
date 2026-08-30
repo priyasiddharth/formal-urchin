@@ -567,7 +567,7 @@ def compileRExprPreChecked
       -- `Memcpy` at store time instead put it AFTER the destination
       -- lowering's own pointer reads, which is observable under Stacked
       -- Borrows (a chain read pops the source's tag) — see
-      -- notes/2026-09-03-copy-nonlocal-dst-order.md. The temp is a
+      -- notes/2026-08-29-copy-nonlocal-dst-order.md. The temp is a
       -- REGISTER, not an allocation: registers hold whole value lists,
       -- so nothing perturbs the allocator watermarks.
       let srcOut ← placeToRegChecked RefKind.Shared src

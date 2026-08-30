@@ -653,7 +653,7 @@ theorem placeInputsMapped_of_resolveAcc
 
 /-- Pointer-CHAIN lowering simulation — the pending-cleanup
     generalization of the retired `loadSpine_lowering_sim` (subsumed
-    2026-08-30). Interior projections
+    2026-08-29). Interior projections
     lower to a contiguous `Borrow(Shared); Load; Die` triple whose net
     stack effect BRIDGE 1S cancels to the parent pointer-cell read the
     source performs at that deref, so the conclusion still reports an

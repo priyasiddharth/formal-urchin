@@ -728,7 +728,7 @@ theorem compileStmt_proj_deref_value
     h_root, h_dval, dif_neg h_off]
   exact ⟨_, rfl⟩
 
-/-- REGIME C-deref-ZERO, COLLAPSED 2026-08-29 (2026-09-03: onto the
+/-- REGIME C-deref-ZERO, COLLAPSED 2026-08-29 (2026-08-29: onto the
     mother lemma): `(*P).f := v` at ZERO offset for ANY canonical chain
     `*P` — the projection passes the loaded register through, so the
     mother lemma at `Mut` on `.deref P` delivers the write register and
@@ -955,7 +955,7 @@ theorem const_write_proj_deref_zero_simulation
     · simp at h_w
 
 
-/-- REGIME C-deref, COLLAPSED 2026-09-03 onto the mother lemma:
+/-- REGIME C-deref, COLLAPSED 2026-08-29 onto the mother lemma:
     `(*P).f := v` at NONZERO offset for ANY canonical chain `*P`. The
     mother lemma at `Mut` on `.deref P` delivers the base pointer
     register; the statement adds `Borrow(Mut); CStore; Die` — the
@@ -2525,7 +2525,7 @@ theorem compileStmt_derefdst_value
     h_root, h_dval]
   exact ⟨_, rfl⟩
 
-/-- REGIME D over full chains, CLOSED 2026-08-31: `*P := v` for every
+/-- REGIME D over full chains, CLOSED 2026-08-29: `*P := v` for every
     dst that is a `PtrChain` — all-deref spines AND proj-topped pointer
     places over chain bases (`*((*q).f) := v`, `*(s.f) := v`) in one
     leaf. The mother lemma at `Mut` on the WHOLE dst delivers the

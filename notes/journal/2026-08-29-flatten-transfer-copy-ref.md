@@ -1,4 +1,4 @@
-# 2026-09-02 — Flatten transfer across copy/ref; all deref arms TOTAL
+# 2026-08-29 — Flatten transfer across copy/ref; all deref arms TOTAL
 
 ## What closed
 The flatten transfer (see [[flatten-transfer-explained]]) applied to

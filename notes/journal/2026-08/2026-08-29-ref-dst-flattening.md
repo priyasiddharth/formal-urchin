@@ -1,4 +1,4 @@
-# 2026-08-30 — Ref's dst-flattening recursion
+# 2026-08-29 — Ref's dst-flattening recursion
 
 ## What closed
 `ref_proj_dst_simulation`: nested projection DESTINATIONS of any depth

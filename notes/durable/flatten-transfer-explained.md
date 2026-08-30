@@ -1,6 +1,6 @@
 # What a "flatten transfer" is
 
-[FACT, 2026-09-01] A *flatten transfer* is the lemma pair that lets a
+[FACT, 2026-08-29] A *flatten transfer* is the lemma pair that lets a
 simulation proof about the FLATTENED spelling of a statement stand in
 for the statement the program actually contains.
 
@@ -50,7 +50,7 @@ normalize `flattenPlace (p.deref)` ↔ `(flattenPlace p).deref`
 spellings with a `show ... from rfl` rewrite first.
 
 **Refs**: [[chain-leaves-gate-on-the-whole-place]],
-journal 2026-09-01-first-residual-dies.md, spine.lean (flattenPlace,
+journal 2026-08-29-first-residual-dies.md, spine.lean (flattenPlace,
 flatten_chainish, PtrChain_flatten_deref),
 const_write.lean (compileStmt_derefdst_flatten_run/_value).
 

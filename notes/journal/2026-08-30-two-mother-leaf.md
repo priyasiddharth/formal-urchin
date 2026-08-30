@@ -1,4 +1,4 @@
-# 2026-09-03 (ninth) — the two-mother leaf: non-local destinations
+# 2026-08-30 (ninth) — the two-mother leaf: non-local destinations
 
 ## What happened
 `copy_chaindst_chainsrc_simulation` closes `*Q := copy src` for a

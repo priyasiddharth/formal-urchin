@@ -1,4 +1,4 @@
-# 2026-09-03 (seventh) — the temp-assignment lowering (COMPILER + SEMANTICS CHANGE)
+# 2026-08-30 (seventh) — the temp-assignment lowering (COMPILER + SEMANTICS CHANGE)
 
 Approved by the human after the divergence witness and the rustc/Miri
 evidence. Three coordinated changes plus the proof repair.
@@ -46,7 +46,7 @@ New helpers in common.lean: `oseair_readWordSeq_length`,
 ## Validation
 Full build; 17/17 + 72/72 (d59 is the new regression pin); corpus
 82 pass / 0 fail / 123; audit exact at 2. The witness
-notes/2026-09-03-copy-order-witness.lean now passes (both machines ok).
+notes/2026-08-30-copy-order-witness.lean now passes (both machines ok).
 
 ## State
 `copy_place_residual`'s last class (non-local destination) is now

@@ -1,4 +1,4 @@
-# 2026-08-30 — mirlite doAssign goes rhs-first (SEMANTICS CHANGE, flagged)
+# 2026-08-29 — mirlite doAssign goes rhs-first (SEMANTICS CHANGE, flagged)
 
 ## What changed
 `mirlite.doAssign` now evaluates in Rust's documented assignment

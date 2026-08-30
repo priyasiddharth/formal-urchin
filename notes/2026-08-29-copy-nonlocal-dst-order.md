@@ -8,7 +8,7 @@ note records why, so no future increment starts on the false premise.
 ## The mismatch
 Both machines perform the same events; the ORDER differs.
 
-- mirlite `doAssign` (rhs-first since 2026-08-30, Rust's documented
+- mirlite `doAssign` (rhs-first since 2026-08-29, Rust's documented
   order): prepare dst root → `evalRExpr` (src resolution + the copy's
   RANGE READ) → dst resolution (each deref level READS its pointer
   cell) → overlap guard → write.
@@ -28,9 +28,9 @@ image: the source succeeds and the target traps, which is exactly a
 missed refinement — so a proof of this class cannot just transport the
 two reads independently.
 
-## The divergence is REAL — witness (2026-09-03, executable)
+## The divergence is REAL — witness (2026-08-30, executable)
 
-`notes/2026-09-03-copy-order-witness.lean` runs the differential harness
+`notes/2026-08-30-copy-order-witness.lean` runs the differential harness
 on
 
 ```

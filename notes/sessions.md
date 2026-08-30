@@ -545,7 +545,7 @@ the parked assoclist tradeoff realized. Three routes written up
 user decision requested.
 **Status:** paused at the fork; no code changed.
 
-## 2026-08-29 (early)
+## 2026-08-28 (early)
 **Session:** (terminal, continued) — the quotient, the slide, the leaf
 **Theme:** route (a) executed: find?-quotient PermSim (StackMapSim) +
 disjoint-range commutation; nonzero-offset copy P-src CLOSED.
@@ -559,7 +559,7 @@ disjoint-range commutation; nonzero-offset copy P-src CLOSED.
 - copy.lean: compileStmt_copy_proj_offset_run/_value,
   copy_proj_offset_simulation; dispatcher fully split on pathOffset;
   d36 differential (49/49).
-- journal 2026-08-29-copy-p-offset-closed.md (incl. new potholes:
+- journal 2026-08-28-copy-p-offset-closed.md (incl. new potholes:
   grind spelling-atoms, mid-script assert loses earlier edits,
   of_cells op-pinning).
 **Critical corrections:** lean_verify served a stale sorryAx report
@@ -568,7 +568,7 @@ right after rebuild — cross-checked with #print axioms.
 **Next-session pickup:** copy deref-src (spine composition over the
 same pieces), or the non-local-dst BRIDGE-1 compositions.
 
-## 2026-08-29 (cont.)
+## 2026-08-28 (cont.)
 **Session:** (terminal, continued) — copy deref-src
 **Theme:** the read-side event fix (copy-range dereferenceability) +
 regime D→L closed; copy done on all spine-shaped sources.
@@ -578,7 +578,7 @@ regime D→L closed; copy done on all spine-shaped sources.
   shape first); three one-line if_neg repairs in the closed leaves.
 - resolvePlace?_of_resolveAcc (spine.lean); copy_deref_local_simulation
   + fragment lemmas; dispatcher split on LoadSpine; d37 differential.
-- journal 2026-08-29-copy-deref-closed.md; audit entry 3 narrowed.
+- journal 2026-08-28-copy-deref-closed.md; audit entry 3 narrowed.
 **Critical corrections:** none new (inverse-edit teeth rule held).
 **Status:** complete. Audit at 4; units 17/17 + 50/50; suite 82/123;
 axiom audit exact.
@@ -586,7 +586,7 @@ axiom audit exact.
 remaining class, shared across all three dispatchers), or const_write
 deref-deep (pending-cleanup spine generalization).
 
-## 2026-08-29 (cont. 2)
+## 2026-08-28 (cont. 2)
 **Session:** (terminal, continued) — non-local dst class, part 1
 **Theme:** the flattening recursion (stmt0-generalized leaves +
 reassociation mirrored source-side) + the zero-offset deref leaf;
@@ -621,7 +621,7 @@ ref_local_projoffset_simulation, dispatcher wiring, d41 (54/54).
 **Next-session pickup:** ref dst flattening recursion (stmt0 triples)
 + deref dsts; or copy's non-local dst arms (same recipe).
 
-## 2026-08-30
+## 2026-08-29
 **Session:** (terminal, continued) — ref dst flattening
 **Theme:** nested projection dsts closed for ref via the ported
 statement-transfer recursion; transfer lemmas relocated to common.
@@ -633,7 +633,7 @@ ref_proj_dst_simulation; dispatcher proj-dst arm = one call; d42
 **Next-session pickup:** deref dst bases for ref ((*p).f := &x — spine
 composition), or copy's non-local dst arms (recipe ready).
 
-## 2026-08-30 (cont.)
+## 2026-08-29 (cont.)
 **Session:** (terminal, continued) — rhs-first doAssign swap
 **Theme:** SEMANTICS CHANGE (flagged): mirlite doAssign moved to
 Rust's rhs-before-place order — source-side completion of d34;
@@ -641,14 +641,14 @@ prerequisite for ref's deref dsts (rhs retag vs dst-spine read don't
 commute). Repair sweep ~28 errors, all mechanical (dst match reduces
 late: h_envD, or hD1 in fresh-dst regime; copy guard moves post-read).
 **Key outputs:** doAssign swap (doAssignCont unreferenced); repairs in
-ref/copy/const_write; journal 2026-08-30-rhs-first-doassign.md; dev
+ref/copy/const_write; journal 2026-08-29-rhs-first-doassign.md; dev
 log increment 50.
 **Status:** complete; all green; corpus byte-identical 82/123 (0
 fail); units 17/17 + 55/55; audit at 4.
 **Next-session pickup:** ref's deref dsts (`*p := &src` bare leaf +
 `(*p).f := &src`), dispatcher wiring, differential witness d43.
 
-## 2026-08-30 (cont. 2)
+## 2026-08-29 (cont. 2)
 **Session:** (terminal, continued) — ref deref dst + grind audit
 **Theme:** `*P := &src` closed over any load spine (the regime the
 rhs-first swap unblocked); loadSpine_lowering_sim gains a
@@ -656,12 +656,12 @@ register-frame conjunct (borrow temp crosses the spine); grind audit
 of the delta since 09d5472 (10 sites collapsed, 1 rejection).
 **Key outputs:** compileStmt_ref_derefdst_run/_value,
 ref_derefdst_local_simulation, dispatcher deref-dst arm, residual
-narrowed, d43 (56/56), journal 2026-08-30-ref-derefdst-closed.md.
+narrowed, d43 (56/56), journal 2026-08-29-ref-derefdst-closed.md.
 **Status:** complete; all green; corpus 82/123 (0 fail); audit at 4.
 **Next-session pickup:** projected deref dsts (`(*p).f := &x`) or
 copy's non-local dst arms (transfer recipe ready).
 
-## 2026-08-31
+## 2026-08-29
 **Session:** (terminal, continued) — the deep-chain blocker's core
 **Theme:** `PtrChain` + `ptrChain_lowering_sim` land (plan increments
 1+2): the pending-cleanup spine generalization via one BRIDGE-1S
@@ -672,14 +672,14 @@ by the lowering's own discipline. Interface: +h_tbd, target counter
 ptrChain_lowering_sim (4 cases; derefProj = depth-1 endgame in the
 induction); 5 consumers migrated (h_pnt2 rewrites → mono closers);
 loadSpine_lowering_sim retired; journal
-2026-08-30-ptrchain-mother-lemma.md.
+2026-08-29-ptrchain-mother-lemma.md.
 **Status:** complete; all green; corpus 82/123 (0 fail); audit at 4
 (unchanged — coverage widens at wiring).
 **Next-session pickup:** the wiring increment — nonspine dispatchers
 on PtrChain, depth-1 proj-top leaves generalized to chain bases, d44
 witness (`*((*q).f) := v`), residual docstrings + compiler.lean audit.
 
-## 2026-08-31 (cont.)
+## 2026-08-29 (cont.)
 **Session:** (terminal, continued) — chain wiring
 **Theme:** dispatchers + leaves re-gated LoadSpine → PtrChain (one
 mechanical pass, first build green); LoadSpine retired; all-chain
@@ -691,7 +691,7 @@ sibling) pin the new coverage (58/58).
 const_write_deref_proj_simulation to chain bases via a mother-lemma
 call), then proj-of-proj normalization, unbound roots.
 
-## 2026-08-31 (cont. 2)
+## 2026-08-29 (cont. 2)
 **Session:** (terminal, continued) — chain-dst leaf; subsumption
 **Theme:** const_write_deref_chain_simulation (dst gated as
 `PtrChain (.deref P)`, mother lemma at Mut on the WHOLE dst) SUBSUMES
@@ -708,7 +708,7 @@ unbound roots.
 deref-src/deref-dst (they still hand-run the final Load); then
 proj-of-proj normalization inside chains; unbound roots.
 
-## 2026-09-01
+## 2026-08-29
 **Session:** (terminal, continued) — the collapse travels
 **Theme:** copy D→L + ref deref-dst re-founded on the whole-place
 mother lemma (Shared on the src / Mut on the dst from post-Borrow);
@@ -724,7 +724,7 @@ narrowed.
 equation), proj-topped srcs/dsts over non-local bases, proj-of-proj
 normalization, unbound roots (regime-B → first residual to zero).
 
-## 2026-09-01 (cont.)
+## 2026-08-29 (cont.)
 **Session:** (terminal, continued) — deref-src collapse; three-for-three
 **Theme:** ref deref-src re-founded on the mother lemma (no bind
 equation needed — one inner-value case split proves the fragment; the
@@ -735,7 +735,7 @@ d49 `q := &mut *(s.f)` (62/62).
 **Next-session pickup:** proj-topped srcs/dsts over non-local bases,
 proj-of-proj normalization, unbound roots (regime-B).
 
-## 2026-09-01 (cont. 2)
+## 2026-08-29 (cont. 2)
 **Session:** (terminal, continued) — flattenPlace; FIRST RESIDUAL DIES
 **Theme:** flattenPlace + congruence family (source ops + compiled
 lowering agree with the flattening); flatten_chainish → every deref
@@ -747,7 +747,7 @@ the same commit). d50 (63/63).
 gates + copy/ref dispatchers (cheap); then regime-B unbound roots →
 kill const_write_proj_nonlocal_residual.
 
-## 2026-09-02
+## 2026-08-29
 **Session:** (terminal, continued) — flatten transfer to copy/ref
 **Theme:** all deref dispatch arms TOTAL for bound roots: 3 source
 statement congruences, stmt0 surgery on the 3 collapsed leaves,
@@ -759,7 +759,7 @@ d51 (64/64).
 const_write_proj_nonlocal) or C-deref collapse+flatten (proj-dst
 gates); then copy/ref proj-topped and unbound classes.
 
-## 2026-09-03
+## 2026-08-29
 **Session:** (terminal, continued) — C-deref collapse + proj-dst deref arm total
 **Theme:** both C-deref leaves collapsed onto the mother at `Mut
 (.deref P)` (gate `PtrChain (.deref P)`; fragments restated over the
@@ -776,7 +776,7 @@ the .local arm). d52+d53 (66/66), teeth via broken Borrow offset.
 fresh-block C0/C1 endgames) → const_write_proj_nonlocal_residual to
 ZERO, whitelist 3 → 2; then copy/ref remaining classes.
 
-## 2026-09-03 (later)
+## 2026-08-29 (later)
 **Session:** (terminal, continued) — regime B-proj closes the second residual
 **Theme:** `const_write_proj_nonlocal_residual` DELETED (whitelist 3→2).
 Fresh fragments (`compileStmt_proj_fresh_zero_run/_offset_run/_value`)
@@ -793,7 +793,7 @@ non-local bases, unbound dst, non-local dst — BRIDGE 1 composition) and
 ref residual classes (proj-topped dsts over non-local bases, non-local
 srcs under non-local dsts, unbound roots) → drive to ZERO sorries.
 
-## 2026-09-03 (third)
+## 2026-08-29 (third)
 **Session:** (terminal, continued) — copy proj-src collapse
 **Theme:** `copy_projchain_zero/offset_simulation` (gate `PtrChain B`
 for src `.proj B path`) subsume the old bound-local-base P0/P→L leaves
@@ -811,7 +811,7 @@ Memcpy.
 (`Borrow(Mut); Memcpy; Die`) → copy_place_residual to zero; then ref's
 classes.
 
-## 2026-09-03 (fourth)
+## 2026-08-29 (fourth)
 **Session:** (terminal, continued) — copy: chain-src generalization + regime B
 **Theme:** `copy_chainsrc_local_simulation` (any `PtrChain src`) retires
 L→L (210 lines); `copy_fresh_chainsrc_simulation` closes UNBOUND
@@ -828,7 +828,7 @@ replaces can hit the wrong leaf. d57 (70/70), teeth via undersized Alloc.
 composition, projection endgames), then NON-LOCAL dst
 (`Borrow(Mut); Memcpy; Die`) → copy_place_residual to zero; then ref.
 
-## 2026-09-03 (fifth)
+## 2026-08-29 (fifth)
 **Session:** (terminal, continued) — copy: fresh dst with proj-topped srcs
 **Theme:** `copy_fresh_projchain_zero/offset_simulation` = regime-B
 prefix (abstract post-alloc state, extendBlock, root Alloc, mother at
@@ -844,7 +844,7 @@ mis-pointed Memcpy.
 lowering, Memcpy, two cleanups) → copy_place_residual to ZERO; then
 ref's remaining classes.
 
-## 2026-09-03 (sixth)
+## 2026-08-29 (sixth)
 **Session:** (terminal, continued) — the last copy class is an ORDER mismatch
 **Theme:** investigated `copy_place_residual`'s remaining class
 (non-local dst) and CORRECTED the standing assessment: it is not
@@ -856,14 +856,14 @@ still TRUE — a dst-chain pointer cell inside the source range would need
 closing it needs either a memory well-typedness invariant in
 CompilerInv or a compiler change (materialize the source into a temp
 before the dst lowering). Durable note:
-notes/2026-09-03-copy-nonlocal-dst-order.md.
+notes/2026-08-29-copy-nonlocal-dst-order.md.
 **Status:** analysis only; no proof change; all green; audit at 2.
 **Next-session pickup:** HUMAN DECISION needed (invariant vs compiler
 change) for copy's last class; meanwhile ref's classes (proj-topped
 dsts over non-local bases, non-local srcs under non-local dsts, unbound
 roots) are independent and can proceed.
 
-## 2026-09-03 (discussion)
+## 2026-08-30 (discussion)
 **Session:** (terminal, same day as the copy increments) — Q&A on ZSTs,
 rename extensions, and raw-pointer provenance. No proof delta.
 **Theme:** three user questions about `AddrRenameMap.extendBlock`,
@@ -874,7 +874,7 @@ each turned out to be durable.
 range-vacuity hole and the three leaves it has bitten),
 durable/zst-locals-share-addresses-harmlessly.md,
 durable/raw-pointer-provenance-is-the-wildcard-tag.md,
-journal/2026-09-03-zst-addresses-and-wildcard-provenance.md.
+journal/2026-08-30-zst-addresses-and-wildcard-provenance.md.
 **Critical corrections:** none from the user, but one self-correction
 recorded — durable/rho-maps-are-identity-on-domain.md is v2-scoped; in
 obseq3 ρt is NOT identity and `PermSim` (listed there as a rejected
@@ -883,7 +883,7 @@ rather than superseding.
 **Status:** complete.
 **Next-session pickup:** unchanged — see the preceding entries.
 
-## 2026-09-03 (seventh)
+## 2026-08-30 (seventh)
 **Session:** (terminal, continued) — the temp-assignment lowering
 **Theme:** COMPILER + SEMANTICS change, human-approved. copy lowers to
 `Load` into a fresh REGISTER (the read, in the rhs pre-phase) then
@@ -901,7 +901,7 @@ audit exact at 2.
 (two place lowerings + two cleanups) with no ordering obstacle; then
 ref's classes.
 
-## 2026-09-03 (eighth)
+## 2026-08-30 (eighth)
 **Session:** (terminal, continued) — non-local dst: groundwork landed, leaf in flight
 **Theme:** with the ordering obstacle gone, started the last copy class.
 LANDED (green): `compileStmt_copy_chaindst_run/_value` (the fragment for
@@ -923,7 +923,7 @@ the shape is settled (two mother calls, the temp register surviving the
 dst lowering by the mother's register-frame conjunct); what remains is
 the StateIncr/code-inclusion plumbing for the dst lowering at CS1.
 
-## 2026-09-03 (ninth)
+## 2026-08-30 (ninth)
 **Session:** (terminal, continued) — the two-mother leaf
 **Theme:** `copy_chaindst_chainsrc_simulation` closes `*Q := copy src`
 for chain dst AND chain src — the first leaf composing TWO mother calls
@@ -943,7 +943,7 @@ needing a FLATTEN first — write the compiled transfer for `assign
 (.deref pp) (.copy src)`, same four-way agree alignment as the others —
 and (b) PROJECTED dsts (the same skeleton inside the dst's Borrow/Die).
 
-## 2026-09-03 (tenth)
+## 2026-08-30 (tenth)
 **Session:** (terminal, continued) — deref-dst flatten transfer
 **Theme:** `compileStmt_copy_derefdst_srcflatten_*` +
 `..._dstflatten_*` make the deref-destination arm total for every
@@ -960,7 +960,7 @@ audit exact at 2.
 FLATTENED SOURCES under a deref dst, and PROJECTED dsts — each wraps
 the same two-mother skeleton in that projection's Borrow/Die. Then ref.
 
-## 2026-09-03 (eleventh)
+## 2026-08-30 (eleventh)
 **Session:** (terminal, continued) — projected copy destinations
 **Theme:** `copy_projdst_zero_chainsrc_simulation` (the two-mother leaf
 one projection layer deep) plus `copy_projdst_simulation`, a recursive
@@ -974,7 +974,7 @@ triple so the recursion can fall back into it. d62 pins
 should be bridged, not unfolded — `placeToRegChecked_proj_zero_run/
 _value` in common.lean keep it opaque inside StateIncr proofs, where
 unfolding produces an identical-branch `match` no emit-tower lemma can
-see. Written up in journal/2026-09-03-projected-dst-recursion.md
+see. Written up in journal/2026-08-30-projected-dst-recursion.md
 and durable/flatten-one-place-at-a-time.md.
 **Status:** complete; all green; 17/17 + 75/75; corpus 82/123 (0 fail);
 audit exact at 2.
@@ -982,7 +982,7 @@ audit exact at 2.
 flattened SOURCES under a deref dst, (b) projected dsts over a LOCAL
 base. Then ref.
 
-## 2026-09-03 (twelfth)
+## 2026-08-30 (twelfth)
 **Session:** (terminal, continued) — projected dsts at nonzero offset
 **Theme:** `copy_projdst_offset_chainsrc_simulation` (d63) completes the
 projected-destination arm for deref bases: §1–§7 from the zero leaf,
@@ -1001,7 +1001,7 @@ audit exact at 2.
 SOURCES under a deref dst, and projected dsts over a LOCAL base. Then
 ref.
 
-## 2026-09-03 (thirteenth)
+## 2026-08-30 (thirteenth)
 **Session:** (terminal, continued) — proj-topped sources, zero offset
 **Theme:** `copy_chaindst_projsrc_zero_simulation` (d64) closes
 `*p := copy t.0`. The same two bridges that carried the destination
@@ -1021,7 +1021,7 @@ audit exact at 2.
 half into the two-mother skeleton), then projected dsts over a LOCAL
 base. Then ref.
 
-## 2026-09-03 (seventh)
+## 2026-08-30 (seventh)
 **Session:** (terminal) — proj-topped sources at NONZERO offset; the
 deref-dst arm goes TOTAL
 **Theme:** `copy_chaindst_projsrc_offset_simulation` (d65) closes
@@ -1039,7 +1039,7 @@ by `rw`/`▸` — `{ X with … }` elaborates to a `let` in hypotheses but a
 flat literal in goals. Structure-instance fields on new lines must
 share a column. Five-step `StateIncr` chains must be split at a named
 state or the unifier dies. Written up in
-journal/2026-09-03-projsrc-offset-bridge1s.md and
+journal/2026-08-30-projsrc-offset-bridge1s.md and
 durable/transport-compiled-states-by-defeq.md.
 **Potholes:** a heartbeat timeout here was a SYMPTOM of the doomed
 unification, not of proof size — after splitting the chain the leaf
@@ -1059,3 +1059,200 @@ osea matched 82); audit exact at 2, `[axioms]` untouched.
 over a LOCAL base (`t.f := copy y`), mirroring
 `const_write_proj_zero/offset_simulation` with the copy leaf's source
 pre-phase in front — then ref's classes.
+## 2026-08-30 (eighth)
+**Session:** (terminal, continued) — non-local dst: groundwork landed, leaf in flight
+**Theme:** with the ordering obstacle gone, started the last copy class.
+LANDED (green): `compileStmt_copy_chaindst_run/_value` (the fragment for
+a deref dst over the OPAQUE runs of BOTH lowerings — the value form is
+stated over the GENERAL src cleanup, since the cleanup is only known
+after the mother lemma), `PlaceInputsMapped.placeRegMap_congr`,
+`PtrChain.placeToRegChecked_placeRegMap` (a chain's lowering never
+touches placeRegMap — needed BEFORE the mother can run, to transfer
+mapped-ness past the first lowering; induction on the CHAIN, whose
+grammar has no proj-of-proj), and `emit_tower_incr₃`.
+NOT LANDED: the leaf body itself. Its first half (source mother call +
+Load transport) compiled; the second half (dst mother at the post-read
+states, then RStore) is plumbing-heavy — the statement's emit tower
+interleaves with a bind on the DST value, so `StateIncr` chains need
+their intermediate states pinned. Removed rather than left sorried.
+**Status:** all green; 17/17 + 72/72; corpus 82/123 (0 fail); audit at 2.
+**Next-session pickup:** finish `copy_chaindst_chainsrc_simulation` —
+the shape is settled (two mother calls, the temp register surviving the
+dst lowering by the mother's register-frame conjunct); what remains is
+the StateIncr/code-inclusion plumbing for the dst lowering at CS1.
+
+## 2026-08-30 (ninth)
+**Session:** (terminal, continued) — the two-mother leaf
+**Theme:** `copy_chaindst_chainsrc_simulation` closes `*Q := copy src`
+for chain dst AND chain src — the first leaf composing TWO mother calls
+(source lowering, READ, destination lowering, write). Enablers: the
+mother's register-frame conjunct carries the temp across the second
+lowering; `PtrChain.placeToRegChecked_placeRegMap` supplies mapped-ness
+BEFORE any mother runs; the value fragment quantifies over the general
+source cleanup. Potholes: StateIncr chains over emit towers need every
+state pinned (helper `emit_tower_incr₃`); hand-written cleanup lambdas
+need annotated binders; the Load's and the dst lowering's code-inclusion
+facts live at different states. Grind pass: 3 chains condensed (601 →
+596 lines). d60 + teeth (RStore pointed at the source register).
+**Status:** complete; all green; 17/17 + 73/73; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** copy's residual now names only (a) deref dsts
+needing a FLATTEN first — write the compiled transfer for `assign
+(.deref pp) (.copy src)`, same four-way agree alignment as the others —
+and (b) PROJECTED dsts (the same skeleton inside the dst's Borrow/Die).
+
+## 2026-08-30 (tenth)
+**Session:** (terminal, continued) — deref-dst flatten transfer
+**Theme:** `compileStmt_copy_derefdst_srcflatten_*` +
+`..._dstflatten_*` make the deref-destination arm total for every
+spelling whose FLATTENED source is a chain (d61: `*(s.f.g) := copy y`).
+Key lesson: do NOT flatten both places in one lemma — the nested split
+leaves the two sides' states spelled differently and the alignment
+rewrites stop firing; two single-split lemmas compose cleanly. Second:
+pick one spelling of the post-Load state per proof (unfolding
+CompilerM.run/emitM moves it to `(ensurePlaceRoot _ cs).snd.val` form)
+and make every later `cases` scrutinee match it.
+**Status:** complete; all green; 17/17 + 74/74; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** copy's residual is down to proj-topped
+FLATTENED SOURCES under a deref dst, and PROJECTED dsts — each wraps
+the same two-mother skeleton in that projection's Borrow/Die. Then ref.
+
+## 2026-08-30 (eleventh)
+**Session:** (terminal, continued) — projected copy destinations
+**Theme:** `copy_projdst_zero_chainsrc_simulation` (the two-mother leaf
+one projection layer deep) plus `copy_projdst_simulation`, a recursive
+dispatcher for projected dsts that peels nesting with the associativity
+transfers (`stepStmt_assign_dst_proj_assoc` is new). Four
+`compileStmt_copy_projderefdst_*flatten_*` transfers lifted verbatim
+from the deref-dst four. `copy_place_residual` now takes the stmt0
+triple so the recursion can fall back into it. d62 pins
+`(*p).0 := copy y`.
+**Key lesson:** a state-NEUTRAL wrapper (the zero-offset projection)
+should be bridged, not unfolded — `placeToRegChecked_proj_zero_run/
+_value` in common.lean keep it opaque inside StateIncr proofs, where
+unfolding produces an identical-branch `match` no emit-tower lemma can
+see. Written up in journal/2026-08-30-projected-dst-recursion.md
+and durable/flatten-one-place-at-a-time.md.
+**Status:** complete; all green; 17/17 + 75/75; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** copy's residual is now (a) proj-topped
+flattened SOURCES under a deref dst, (b) projected dsts over a LOCAL
+base. Then ref.
+
+## 2026-08-30 (twelfth)
+**Session:** (terminal, continued) — projected dsts at nonzero offset
+**Theme:** `copy_projdst_offset_chainsrc_simulation` (d63) completes the
+projected-destination arm for deref bases: §1–§7 from the zero leaf,
+§8 from const_write's BRIDGE 1 endgame with `RStore` in place of
+`CStore`. New obligations were only the temp register surviving the
+`Borrow`'s insert (`RegMap.lookup_insert_ne` over the mother's register
+frame), a `mirlite_readWordSeq_length` direction fix on the SB `ref`,
+and keeping the projection OPAQUE in the StateIncr towers (`h_incrProj`
+links the base-state facts back).
+**Key lesson:** nested record updates `{ { s with … } with … }` do not
+elaborate — flatten to one update. Fourth manifestation of the
+record-sugar pothole in copy.lean.
+**Status:** complete; all green; 17/17 + 76/76; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** copy's residual is proj-topped flattened
+SOURCES under a deref dst, and projected dsts over a LOCAL base. Then
+ref.
+
+## 2026-08-30 (thirteenth)
+**Session:** (terminal, continued) — proj-topped sources, zero offset
+**Theme:** `copy_chaindst_projsrc_zero_simulation` (d64) closes
+`*p := copy t.0`. The same two bridges that carried the destination
+projection carry the source one, at `Shared`: the tower proofs never
+unfold the projection, they rewrite `run (proj B path) = run B` and use
+`value (proj) = ok ⟨o.result, …⟩`. The dispatcher's deref-dst arm now
+splits with `flatten_chainish`, which is exactly the dichotomy
+(flattened place is a chain, or a proj over a chain).
+**Key lesson:** collapsing the `+ 0` on a SOURCE resolution cannot be
+done by rewriting the record (`motive is not type correct` — the
+resolved place feeds a dependent read); rewrite the OFFSET instead
+(`simp only [h_o', Nat.add_zero]`) and let structure eta do the rest.
+**Status:** complete; all green; 17/17 + 77/77; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** proj-topped sources at NONZERO offset (BRIDGE
+1S around the READ — merge `copy_projchain_offset_simulation`'s source
+half into the two-mother skeleton), then projected dsts over a LOCAL
+base. Then ref.
+
+## 2026-08-30 (seventh)
+**Session:** (terminal) — proj-topped sources at NONZERO offset; the
+deref-dst arm goes TOTAL
+**Theme:** `copy_chaindst_projsrc_offset_simulation` (d65) closes
+`*p := copy s.f` off zero. §1–§5/§8–§11 are d64's leaf; §6–§7 are
+`copy_projchain_offset_simulation`'s BRIDGE 1S phase spliced in where
+d64 had a bare `Load`. The splice needs no commutation argument: the
+projection's `Borrow(Shared)` and its cleanup `Die` both sit in the rhs
+pre-phase, so they bracket the READ contiguously and
+`sb_ref_read_die_cancels`' `PermSim ρt perms₂ q3` drops straight into
+the destination mother's argument slot. `copy_place_residual` now names
+only PROJECTED destinations over a LOCAL base.
+**Key lesson:** the work was term SHAPE, not mathematics. Transport
+compiled states by DEFEQ (`have h' : … := h` + a trailing `rfl`), never
+by `rw`/`▸` — `{ X with … }` elaborates to a `let` in hypotheses but a
+flat literal in goals. Structure-instance fields on new lines must
+share a column. Five-step `StateIncr` chains must be split at a named
+state or the unifier dies. Written up in
+journal/2026-08-30-projsrc-offset-bridge1s.md and
+durable/transport-compiled-states-by-defeq.md.
+**Potholes:** a heartbeat timeout here was a SYMPTOM of the doomed
+unification, not of proof size — after splitting the chain the leaf
+compiles at the default 200000, so no `set_option` was kept;
+`expectDiff` compares
+VERDICTS not values, so teeth must induce UB — an oversized
+`RefKind.Shared` projection borrow is discriminating (d64 passes, d65
+flips to `ub 4`).
+**Environment:** the machine had NO Lean toolchain (no `lake`, no
+`~/.elan`) and no `lean-lsp-mcp` venv; both were reinstalled this
+session (elan + lean4 v4.28.0, `lean-lsp-mcp` 0.30.0). `lakefile.lean`
+has no `require`, so `lake-manifest.json`'s mathlib entry is stale and
+the build is self-contained (~2 min from scratch).
+**Status:** complete; all green; 17/17 + 78/78; corpus 82/123 (0 fail,
+osea matched 82); audit exact at 2, `[axioms]` untouched.
+**Next-session pickup:** copy's last class — a PROJECTED destination
+over a LOCAL base (`t.f := copy y`), mirroring
+`const_write_proj_zero/offset_simulation` with the copy leaf's source
+pre-phase in front — then ref's classes.
+
+## 2026-08-30 (eighth)
+**Session:** (terminal, continued) — projected destinations over a
+LOCAL base; copy is down to ONE class
+**Theme:** `t.f := copy y` closes at both offsets for both root states
+(d66–d69). The BOUND half cost NO new proof: nothing in
+`copy_projdst_zero/offset_chainsrc_simulation` used the `deref` shape,
+so generalizing the destination base from `.deref P` to any canonical
+chain base makes a bound local (`PtrChain.base`) fall out. The only
+genuine difference is `preparePlaceAssign`, whose `allocateRoot` branch
+is contradictory for a deref root but REACHABLE for a local one — so
+the leaves now take an `h_bound` hypothesis instead of deriving it. The
+four compiled fragments and the source-flatten transfer generalized the
+same way (the latter renamed `compileStmt_copy_projdst_srcflatten_*`;
+it was never deref-specific, only deref-spelled). The UNBOUND half is
+real regime-B work: two new leaves that allocate the σ-sized root, run
+the source mother lemma at the POST-allocation states under
+`extendBlock`/`extend`, then write at `+ 0` or through the fresh root
+register's own `Borrow(Mut)`/`Die`.
+**Key lesson:** before writing a leaf a parked note asks for, check
+whether an existing leaf is accidentally SPELLED for one shape rather
+than gated on it. Two ~600-line proofs were avoided by a rename plus
+one hypothesis.
+**Correction to the record:** the parked note claimed the local-base
+class was all that remained of copy. It was not — the proj-dst arm's
+`¬PtrChain (flattenPlace src)` branch has always routed PROJ-TOPPED
+sources under projected destinations to the residual. That is now the
+sole remaining class and is parked with a resume recipe.
+**Potholes:** `PtrRegisterEntry` is not a `rw`/`simp` target (keep the
+lookup equation and ascribe); BRIDGE 1's `addrStart + (0 + pathOffset)`
+and mirlite's `addrStart + PathTo.offset` are defeq but distinct atoms
+— rewrite the GOAL, not the hypothesis; `TagRenameBounded.mono` needs
+its bounds in one `exact`. The long-`StateIncr`-chain pothole recurred
+twice and the durable note's prescribed fix worked verbatim both times.
+**Status:** complete; all green; 17/17 + 82/82; corpus 82/123 (0 fail,
+osea matched 82); audit exact at 2, `[axioms]` untouched.
+**Next-session pickup:** copy's LAST class — a proj-topped flattened
+source under a projected destination, composing BRIDGE 1S (source) with
+BRIDGE 1 (destination); then ref's classes.

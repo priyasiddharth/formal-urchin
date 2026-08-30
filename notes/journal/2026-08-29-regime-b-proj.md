@@ -1,4 +1,4 @@
-# 2026-09-03 (later) — Regime B-proj: the second sorry dies
+# 2026-08-29 (later) — Regime B-proj: the second sorry dies
 
 ## What happened
 `const_write_proj_nonlocal_residual` is DELETED — whitelist 3 → 2.

@@ -1,4 +1,4 @@
-# 2026-08-29 (cont. 2) — The flattening recursion + the zero-offset deref leaf
+# 2026-08-28 (cont. 2) — The flattening recursion + the zero-offset deref leaf
 
 ## What closed (const_write, the non-local-dst class begins)
 1. **stmt0-generalization**: the five closed const-write leaves

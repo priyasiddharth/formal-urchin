@@ -1480,7 +1480,7 @@ theorem compileStmt_ref_derefsrc_flatten_value
       simp only [hO]
       exact ⟨_, rfl⟩
 
-/-- REGIME D→L (src side) over full chains, COLLAPSED 2026-09-01
+/-- REGIME D→L (src side) over full chains, COLLAPSED 2026-08-29
     (originally closed 2026-08-28 for load spines): `dst := &kind *P`
     for every src with `PtrChain (.deref P)` — spines, proj-topped
     pointer places (`x := &*(s.f)`), interior projections at any
@@ -2769,8 +2769,8 @@ theorem compileStmt_ref_derefdst_flatten_value
           simp only [hO]
           exact ⟨_, rfl⟩
 
-/-- REGIME D-dst over full chains, COLLAPSED 2026-08-31 (originally
-    closed 2026-08-30 for load spines): `*P := &kind src` for every dst
+/-- REGIME D-dst over full chains, COLLAPSED 2026-08-29 (originally
+    closed 2026-08-29 for load spines): `*P := &kind src` for every dst
     with `PtrChain (.deref P)` — spines, proj-topped pointer places
     (`*(s.f) := &x`), interior projections at any depth; src a bound
     local. MIR order runs the retag FIRST; the mother lemma at `Mut` on
@@ -3124,13 +3124,13 @@ theorem ref_derefdst_local_simulation
         omega
     · simp at h_w
 
-/-- RESIDUAL (sorried), NARROWED 2026-08-30: after the dst-flattening
+/-- RESIDUAL (sorried), NARROWED 2026-08-29: after the dst-flattening
     recursion (`ref_proj_dst_simulation` — nested projection dsts of
     any depth reassociate on both machines and land in the closed
     field-dst leaves, stmt0-threaded). Remaining:
     - proj-TOPPED dsts over non-local bases (`(*p).f := &x`) — the
       deref-dst and deref-src arms are otherwise TOTAL for bound
-      locals (flatten transfer, 2026-09-01; d51);
+      locals (flatten transfer, 2026-08-29; d51);
     - non-local srcs under non-local dsts (proj/deref src places);
     - non-spine deref srcs, proj-of-proj srcs, unbound dst roots. -/
 theorem ref_place_residual

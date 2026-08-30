@@ -305,7 +305,7 @@ def t16_junk_sized_pointer_retag : IO Unit := do
 
 /-- The read-side twin of t16: the same forged junk-SIZED pointer
     (`ptrVal b o 0 t` at a u64 pointee), but consumed by a COPY instead
-    of a retag. The copy-range dereferenceability check (2026-08-29)
+    of a retag. The copy-range dereferenceability check (2026-08-28)
     must reject it — pre-check, the wide SB read succeeded cell-wise
     and the target Memcpy diverged. -/
 def ΓK : Ctx := [natL, ptrNat, natL]

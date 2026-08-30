@@ -4,7 +4,59 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
-## 2026-09-03 (eleventh) — The Shape of the Term Is the Work
+## 2026-08-30 (twelfth) — Spelled, Not Gated
+
+Seventy-first increment: a copy into a projected destination whose base
+is a plain local — `t.f := copy y` — closes at both offsets, whether or
+not the local has been initialized yet. Copy is now down to a single
+unproved shape.
+
+The parked note for this class prescribed writing two more leaves of
+about six hundred lines each, mirroring the constant-write proofs with
+the copy's source phase in front. That turned out to be unnecessary,
+and the reason is worth stating carefully, because it is a mistake this
+development could make again.
+
+The two leaves that handle a projected destination were written when
+the only projected destinations that mattered had a pointer
+dereference underneath. They were therefore written with the
+dereference spelled out everywhere the destination appears. But nothing
+in either proof ever *uses* the fact that the base is a dereference.
+The destination's lowering goes through the chain lemma, which is
+generic over the whole chain grammar, and a bound local is the base
+case of that grammar. The proofs were spelled for one shape while being
+gated on a much weaker property. Replacing the spelling with a variable
+made both leaves accept a local base unchanged.
+
+Exactly one thing genuinely differs, and it is worth having found it.
+When the destination's root is a dereference, the source machine's
+"prepare the destination" step can never allocate — the old proofs
+discharged that branch as a contradiction. When the root is a local, it
+can allocate, and that is precisely the uninitialized case. So the
+generalized leaves now take, as a hypothesis, the fact that preparation
+is a no-op; the dereference callers supply the old contradiction, and
+the local caller supplies the binding. A hypothesis where there had
+been a proof.
+
+The uninitialized case is then real work, and it got two new leaves:
+allocate the whole base-sized root, run the source lemma at the states
+after that allocation under both extended renamings, and only then
+write — either directly, or through a borrow of the field that is
+killed immediately after. The allocation is sized by the base's layout
+while the write is sized by the field's, and what makes the write land
+inside the block is a typing fact, not a check.
+
+A correction to the record. The parked note said this was the last
+class in copy. It was not. The dispatcher has always sent one more
+shape to the unproved leaf — a source that is itself a projection, when
+the destination is also a projection — and no note had ever named it.
+It is named now, with a recipe: the two bridging arguments it needs
+both exist and, because the source's borrow retires before the
+destination's lowering begins, they do not interleave.
+
+---
+
+## 2026-08-30 (eleventh) — The Shape of the Term Is the Work
 
 Seventieth increment: a copy whose source is a projection at a nonzero
 offset, written through a pointer — `*p := copy s.f` — closes. With it
@@ -66,7 +118,7 @@ proof obligation the new leaf discharges.
 
 ---
 
-## 2026-09-03 (tenth) — The Other Half of the Sandwich
+## 2026-08-30 (tenth) — The Other Half of the Sandwich
 
 Sixty-eighth increment: projected copy destinations close at nonzero
 offset too, so `(*p).f := copy src` is proved for every field of every
@@ -98,7 +150,7 @@ two sorries.
 
 ---
 
-## 2026-09-03 (ninth) — A Projection Is Not a Detour
+## 2026-08-30 (ninth) — A Projection Is Not a Detour
 
 Sixty-seventh increment: projected copy destinations get their own
 recursive dispatcher, and `(*p).0 := copy y` is proved.
@@ -137,7 +189,7 @@ two sorries.
 
 ---
 
-## 2026-09-03 (eighth) — Both Places Normalize
+## 2026-08-30 (eighth) — Both Places Normalize
 
 Sixty-sixth increment: the deref-destination arm goes total for every
 spelling whose flattened source is a chain. The transfer flattens the
@@ -159,7 +211,7 @@ equal form.
 d61 pins a copy through a doubly-nested pointer field and back. Units
 17/17 + 74/74, suite pass 82 | fail 0 of 123, axiom audit exact at two.
 
-## 2026-09-03 (seventh) — Two Mothers, One Statement
+## 2026-08-30 (seventh) — Two Mothers, One Statement
 
 Sixty-fifth increment: a copy can now write to a destination that is
 itself computed by pointer chasing. This is the first proof in the
@@ -189,7 +241,7 @@ d60 pins copies into a dereferenced destination; it bites when the store
 is pointed at the source pointer instead. Units 17/17 + 73/73, suite pass
 82 | fail 0 of 123, axiom audit exact at two.
 
-## 2026-09-03 (sixth) — The Copy Gets a Temporary
+## 2026-08-30 (sixth) — The Copy Gets a Temporary
 
 Sixty-fourth increment, and the first in a while to change the compiler
 rather than the proofs. A copy now reads its value into a register during
@@ -218,7 +270,7 @@ d59 pins the divergence permanently. Units 17/17 + 72/72, suite pass 82 |
 fail 0 of 123, axiom audit exact at two. Copy's last class is now ordinary
 composition work.
 
-## 2026-09-03 (fifth) — Every Source, Into Nothing
+## 2026-08-29 (fifth) — Every Source, Into Nothing
 
 Sixty-third increment: an unbound copy destination now accepts every source
 spelling. The two new leaves are pure assembly — the allocation prefix from
@@ -239,7 +291,7 @@ d58 pins field copies into destinations the statement itself allocates, at
 both offsets. Units 17/17 + 71/71, suite pass 82 | fail 0 of 123, axiom
 audit exact at two. Copy has one class left: non-local destinations.
 
-## 2026-09-03 (fourth) — Copy Writes Into Nothing
+## 2026-08-29 (fourth) — Copy Writes Into Nothing
 
 Sixty-second increment: copy's source leaves become one leaf, and copy
 learns to write into a destination that does not exist yet. The first half
@@ -267,7 +319,7 @@ d57 pins copies into freshly-allocated locals; it bites when the root
 allocation is undersized. Units 17/17 + 70/70, suite pass 82 | fail 0 of
 123, axiom audit exact at two.
 
-## 2026-09-03 (third) — Copy Reads Through Anything
+## 2026-08-29 (third) — Copy Reads Through Anything
 
 Sixty-first increment: with a bound local destination, `copy` now handles
 every source spelling. The two field-source leaves collapsed onto the
@@ -290,7 +342,7 @@ d55 and d56 pin copies through a pointer chain and through a nested field
 path; both bite when the `Memcpy` is pointed at the wrong register. Units
 17/17 + 69/69, suite pass 82 | fail 0 of 123, axiom audit exact at two.
 
-## 2026-09-03 (later) — The Second Sorry Dies
+## 2026-08-29 (later) — The Second Sorry Dies
 
 Sixtieth increment: `const_write_proj_nonlocal_residual` is deleted and
 the whitelist drops to two. The last class was unbound roots — `s.f := v`
@@ -315,7 +367,7 @@ to one cell makes the field-1 borrow fall off the block, and the witness
 sees the target trap where the source doesn't. Units 17/17 + 67/67, suite
 pass 82 | fail 0 of 123, axiom audit exact at two.
 
-## 2026-09-03 — One Leaf Per Offset
+## 2026-08-29 — One Leaf Per Offset
 
 Fifty-ninth increment: the C-deref leaves collapse onto the mother lemma.
 `(*P).f := v` no longer cares what `*P` is made of — the whole pointer
@@ -339,7 +391,7 @@ d52 pins `(**q).0/.1 := v`, d53 pins `(*(s.f.g)).1 := v`; both bite on a
 broken Borrow offset. Units 17/17 + 66/66, suite pass 82 | fail 0 of 123,
 axiom audit exact at three.
 
-## 2026-09-02 — Every Star Normalizes
+## 2026-08-29 — Every Star Normalizes
 
 Fifty-eighth increment: the flatten transfer travels to copy and ref, and
 with it every deref arm in every dispatcher is TOTAL for bound roots — any
@@ -358,7 +410,7 @@ d51 pins `y := copy *(s.f.g)` and `q := &mut *(s.f.g)`. Units 17/17 +
 
 ---
 
-## 2026-09-01 (night) — The First Sorry Dies
+## 2026-08-29 (night) — The First Sorry Dies
 
 Fifty-seventh increment, and the campaign crosses a line it has never
 crossed: a residual is DELETED, not narrowed. The instrument is
@@ -378,7 +430,7 @@ the residual was named for. Units 17/17 + 63/63, suite pass 82 | fail 0 of
 
 ---
 
-## 2026-09-01 (later) — Three for Three
+## 2026-08-29 (later) — Three for Three
 
 Fifty-sixth increment: the last deref leaf falls in line. Ref's
 deref-source regime — the one whose lowering interposes a `Borrow` after the
@@ -401,7 +453,7 @@ axiom audit exact.
 
 ---
 
-## 2026-09-01 — The Collapse Travels
+## 2026-08-29 — The Collapse Travels
 
 Fifty-fifth increment: the whole-place heuristic applied to its two named
 candidates. Copy's deref-source leaf and ref's deref-destination leaf both
@@ -424,7 +476,7 @@ Units 17/17 + 61/61, suite pass 82 | fail 0 of 123, axiom audit exact.
 
 ---
 
-## 2026-08-31 (later still) — One Leaf Eats Two
+## 2026-08-29 (later still) — One Leaf Eats Two
 
 Fifty-fourth increment, and an unplanned collapse: the plan called for
 generalizing the depth-1 `*(s.f) := v` leaf's base from a bare local to a
@@ -452,7 +504,7 @@ unbound roots.
 
 ---
 
-## 2026-08-31 (later) — Wiring the Chains
+## 2026-08-29 (later) — Wiring the Chains
 
 Fifty-third increment: the mechanical half of the payoff. Every leaf and
 dispatcher that gated on the old all-deref spine predicate now gates on
@@ -471,7 +523,7 @@ Units 17/17 + 58/58, suite pass 82 | fail 0 of 123, axiom audit exact.
 
 ---
 
-## 2026-08-31 — The Pending Cleanup Pays Its Debt
+## 2026-08-29 — The Pending Cleanup Pays Its Debt
 
 Fifty-second increment, and the campaign's long pole snaps: the spine mother
 lemma now walks pointer chains WITH projections. The discovery that made it
@@ -495,7 +547,7 @@ Units 17/17 + 56/56, suite pass 82 | fail 0 of 123, axiom audit exact.
 
 ---
 
-## 2026-08-30 (night) — A Reference Crosses the Spine
+## 2026-08-29 (night) — A Reference Crosses the Spine
 
 Fifty-first increment, and the payoff of the order swap: `*P := &src` closes
 for every all-deref load spine — the first destination that must be READ
@@ -524,7 +576,7 @@ the same four residuals.
 
 ---
 
-## 2026-08-30 (later still) — The Source Learns Rust's Order
+## 2026-08-29 (later still) — The Source Learns Rust's Order
 
 Fiftieth increment, and a flagged SEMANTICS CHANGE: `mirlite.doAssign` now
 evaluates the right-hand side before resolving the destination place —
@@ -550,7 +602,7 @@ inversion, where the source now checks it.
 
 ---
 
-## 2026-08-30 (later) — The Recipe Travels: Ref's Destinations Flatten
+## 2026-08-29 (later) — The Recipe Travels: Ref's Destinations Flatten
 
 Forty-ninth increment, and the shortest of the campaign — evidence that the
 statement-transfer recursion has become a recipe rather than a project.
@@ -572,7 +624,7 @@ writes through it), suite pass 82 | fail 0 of 123.
 
 ---
 
-## 2026-08-30 — Two Mints, One Statement
+## 2026-08-29 — Two Mints, One Statement
 
 Forty-eighth increment. The nonzero-offset field destination closes for ref —
 `t.f := &mut x` where the field sits past the tuple's head — and it is the
@@ -620,7 +672,7 @@ Units 17/17 + 53/53, suite pass 82 | fail 0 of 123.
 
 ---
 
-## 2026-08-29 (night) — Towers Flatten: the Statement-Transfer Recursion
+## 2026-08-28 (night) — Towers Flatten: the Statement-Transfer Recursion
 
 Forty-sixth increment. Nested projection destinations — `s.f.g := v` at any
 depth — close by recursion, and the instrument is a small abstraction with a
@@ -651,7 +703,7 @@ suite pass 82 | fail 0 of 123.
 
 ---
 
-## 2026-08-29 (later) — Copies Through Pointers, and the Read-Side Twin
+## 2026-08-28 (later) — Copies Through Pointers, and the Read-Side Twin
 
 Forty-fifth increment. `dst := copy *p` closes for every load spine, and the
 leaf is almost anticlimactic: the deref place-lowering carries no cleanup, so
@@ -680,7 +732,7 @@ Units 17/17 + 50/50, suite pass 82 | fail 0 of 123.
 
 ---
 
-## 2026-08-29 — The Quotient and the Slide: Nonzero-Offset Copies Close
+## 2026-08-28 — The Quotient and the Slide: Nonzero-Offset Copies Close
 
 Forty-fourth increment, and the deepest plumbing change since the keystones.
 The nonzero-offset field copy `[Borrow(Shared); Memcpy; Die]` needed its die

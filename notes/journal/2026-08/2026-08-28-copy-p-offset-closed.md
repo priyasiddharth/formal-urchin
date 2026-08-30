@@ -1,4 +1,4 @@
-# 2026-08-29 — Copy P→L (nonzero offset) closed: the quotient + the slide
+# 2026-08-28 — Copy P→L (nonzero offset) closed: the quotient + the slide
 
 ## What closed
 `copy_proj_offset_simulation`: `dst := copy src.f` at a real field

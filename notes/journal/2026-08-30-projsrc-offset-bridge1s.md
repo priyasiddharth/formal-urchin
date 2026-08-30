@@ -1,6 +1,6 @@
 # Proj-topped copy sources at nonzero offset: the deref-dst arm goes total
 
-[OBS 2026-09-03] `*p := copy s.f` with the field OFF ZERO is closed by
+[OBS 2026-08-30] `*p := copy s.f` with the field OFF ZERO is closed by
 `copy_chaindst_projsrc_offset_simulation` (d65). With it,
 `copy_place_residual` no longer names any deref destination: the whole
 deref-dst arm of `CompilerInv_step_copy` is total, and the only
@@ -82,5 +82,5 @@ flips to `target verdict ub 4, source agrees ok`. That is precisely the
 `[axioms]` block untouched.
 
 **References:** the parked entry this closes (removed from
-notes/loose-ends/parked.md), journal/2026-09-03-projected-dst-recursion.md,
+notes/loose-ends/parked.md), journal/2026-08-30-projected-dst-recursion.md,
 durable/flatten-one-place-at-a-time.md.

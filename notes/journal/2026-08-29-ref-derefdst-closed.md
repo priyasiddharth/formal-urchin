@@ -1,4 +1,4 @@
-# 2026-08-30 — Ref's deref dst closed (`*P := &src`); grind audit of the delta
+# 2026-08-29 — Ref's deref dst closed (`*P := &src`); grind audit of the delta
 
 ## What closed
 `ref_derefdst_local_simulation`: `*P := &kind src` for any all-deref

@@ -1,4 +1,4 @@
-# 2026-09-01 — flattenPlace; the FIRST residual dies (4 → 3 sorries)
+# 2026-08-29 — flattenPlace; the FIRST residual dies (4 → 3 sorries)
 
 ## What closed
 `const_write_deref_deep_residual` is DELETED, along with its nonspine

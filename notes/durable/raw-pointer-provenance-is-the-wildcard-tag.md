@@ -3,7 +3,7 @@
 Load this when a lemma's `(tag == wildcardTag) = false` side condition
 looks gratuitous, or when reasoning about `exposeAddr`/`fromExposed`.
 
-[FACT, 2026-09-03] **Two tags, routinely conflated.**
+[FACT, 2026-08-30] **Two tags, routinely conflated.**
 1. *The local's storage tag.* A local of pointer layout `PtrL τ` is
    allocated like any other: `allocateBase` → `own` → `freshTag`. So the
    VARIABLE `p` has a unique tag governing accesses to the pointer-sized
@@ -18,7 +18,7 @@ looks gratuitous, or when reasoning about `exposeAddr`/`fromExposed`.
    (int-to-ptr) produces `wildcardTag` — deliberately NOT unique
    (src/obseq3/mirlite_semantics.lean, `.fromExposed` arm).
 
-[FACT, 2026-09-03] **Wildcard resolution is per-cell and optimistic.**
+[FACT, 2026-08-30] **Wildcard resolution is per-cell and optimistic.**
 An access through tag 0 is not looked up in the stack:
 `readCellContent`/`writeCellContent` test `tag == wildcardTag` and call
 `resolveWildcardIn exposed stack`, which scans the cell's stack top-down
@@ -29,7 +29,7 @@ cast (`exposeAddr` reads the pointer and exposes ITS tag; exposing the
 wildcard is a no-op). No exposed tag grants it ⇒ UB.
 → src/obseq3/sb.lean:169, 226, 265, 327
 
-[FACT, 2026-09-03] **Why the transport lemmas demand non-wildcard.**
+[FACT, 2026-08-30] **Why the transport lemmas demand non-wildcard.**
 `sb_read/write/ref_respects_PermSim` and the mother lemma's
 `ρt resolved.tag = some tres` + `(resolved.tag == wildcardTag) = false`
 conjuncts move ONE SPECIFIC tag across ρt. A wildcard access has no

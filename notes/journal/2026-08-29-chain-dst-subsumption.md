@@ -1,4 +1,4 @@
-# 2026-08-31 — The chain-dst leaf; D-spine and proj-top SUBSUMED
+# 2026-08-29 — The chain-dst leaf; D-spine and proj-top SUBSUMED
 
 ## What closed
 `const_write_deref_chain_simulation`: `*P := v` for every dst that is

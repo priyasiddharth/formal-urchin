@@ -1,6 +1,6 @@
 # Compiled states: transport by DEFEQ, never by `rw`
 
-[FACT, 2026-09-03] When a lemma's hypothesis and the goal both mention
+[FACT, 2026-08-30] When a lemma's hypothesis and the goal both mention
 the same compiled `CompilerState` but you wrote it one way and the
 elaborator produced another, do NOT try to make the spellings match.
 Transport the hypothesis across the difference with a type ascription

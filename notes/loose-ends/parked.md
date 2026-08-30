@@ -467,28 +467,53 @@ arm; d34 flipped to `expectDiff .ok` with reversion teeth. The
 interleaving obstacle is gone from the non-local-dst residuals; what
 remains of those is the separation/overlap analysis.
 
-## copy: proj-topped SOURCE at nonzero offset under a deref dst (CLOSED 2026-09-03)
+## copy: proj-topped SOURCE at nonzero offset under a deref dst (CLOSED 2026-08-30)
 `copy_chaindst_projsrc_offset_simulation` (d65) closes `*p := copy s.f`
 off zero, so `copy_place_residual` names no deref destination at all —
 that whole arm of the dispatcher is total. The resume recipe held up:
 §1-§5 and §8-§11 from the d64 leaf, §6-§7 spliced from
 `copy_projchain_offset_simulation`'s BRIDGE 1S phase. What the recipe
 did NOT anticipate was that the work would be term-SHAPE work rather
-than proof work — see journal/2026-09-03-projsrc-offset-bridge1s.md and
+than proof work — see journal/2026-08-30-projsrc-offset-bridge1s.md and
 durable/transport-compiled-states-by-defeq.md.
 
-## copy: PROJECTED destination over a LOCAL base
-**Status:** parked 2026-09-03
-**Context:** `t.f := copy y` — the `local` case of
-`copy_projdst_simulation`. Unlike the deref bases (now closed at both
-offsets) this one also has the fresh-root subcase, where
-`ensurePlaceRoot` allocates before the rhs runs.
-**Why parked:** lower value than the deref classes; no witness in the
-corpus depends on it yet.
-**To resume:** mirror `const_write_proj_zero_simulation` /
-`const_write_proj_offset_simulation` (which do exactly this shape for a
-constant rhs) on the destination half, with the copy leaf's source
-pre-phase in front.
-**Effort estimate:** ~half-day.
-**References:** src/obseq3/proof/const_write.lean:1338 and :1477.
+## copy: PROJECTED destination over a LOCAL base (CLOSED 2026-08-30)
+Both offsets and both root states. The BOUND root cost no new proof:
+`copy_projdst_zero/offset_chainsrc_simulation` generalize from a
+`.deref P` base to any canonical chain base, and a bound local IS one
+(d66/d67). The UNBOUND root needed two real regime-B leaves,
+`copy_projlocal_fresh_zero/offset_simulation` (d68/d69). The resume
+recipe (mirror `const_write_proj_*`) would have worked but was more
+work than necessary — see
+journal/2026-08-30-projected-local-destinations.md.
 
+## copy: PROJ-TOPPED source under a PROJECTED destination
+**Status:** parked 2026-08-30
+**Context:** the LAST class in `copy_place_residual`.
+`CompilerInv_step_copy`'s proj-dst arm splits on
+`PtrChain (flattenPlace src)`; the negative branch — the flattened
+source is a projection over a chain — has always fallen to the
+residual, and no earlier parked entry named it. Everything else in copy
+is closed.
+**Why parked:** it is a composition of two endgames that both exist but
+have never appeared in the same leaf: the DESTINATION projection's
+BRIDGE 1 (`sb_ref_use_die_cancels` around the `RStore`, d63/d67) and
+the SOURCE projection's BRIDGE 1S (`sb_ref_read_die_cancels` around the
+`Load`, d65). Four offset combinations, though the zero-offset ones
+collapse.
+**To resume:**
+1. Generalize `copy_chaindst_projsrc_zero/offset_simulation` from a
+   `.deref P` destination to `Place.proj dbase dpath` — the same
+   `h_bound`/`h_np` generalization that worked for the destination
+   leaves this session.
+2. Splice: §1-§5 from the proj-dst leaves (destination side), §6-§7
+   from the projsrc leaves (BRIDGE 1S around the READ), §8 from the
+   proj-dst offset leaf (BRIDGE 1 around the write). The two bridges do
+   NOT interleave — the source borrow retires in the rhs pre-phase,
+   before the destination lowering starts.
+3. Witnesses `*p.f := copy s.g` at each offset pair, teeth by
+   oversizing each projection borrow in turn.
+**Effort estimate:** ~a day; two leaves plus the dispatcher rewiring.
+**References:** journal/2026-08-30-projected-local-destinations.md,
+journal/2026-08-30-projsrc-offset-bridge1s.md,
+durable/transport-compiled-states-by-defeq.md.

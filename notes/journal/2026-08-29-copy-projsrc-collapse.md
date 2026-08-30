@@ -1,4 +1,4 @@
-# 2026-09-03 (third) — copy's proj-sources collapse onto the chain base
+# 2026-08-29 (third) — copy's proj-sources collapse onto the chain base
 
 ## What happened
 `copy_place_residual` narrowed to DST-shape classes only: for a bound

@@ -1,4 +1,4 @@
-# 2026-08-29 (cont.) — Copy D→L closed; the read-side event fix
+# 2026-08-28 (cont.) — Copy D→L closed; the read-side event fix
 
 ## The event fix (semantics, both flagged and pinned)
 mirlite's `.copy` gains the range-dereferenceability check — the

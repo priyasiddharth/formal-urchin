@@ -1,6 +1,6 @@
 # Projected copy destinations: recursion + a zero-offset leaf
 
-[OBS 2026-09-03] `(*p).0 := copy y` — a PROJECTED destination — is now
+[OBS 2026-08-30] `(*p).0 := copy y` — a PROJECTED destination — is now
 closed at zero offset, and the whole projected-destination arm has a
 recursive dispatcher instead of a flat residual.
 
@@ -60,7 +60,7 @@ so the shortcut cannot be mis-taken. d62 pins the behaviour end to end
 
 ## Addendum — the NONZERO offset closes too (same day)
 
-[OBS 2026-09-03] `copy_projdst_offset_chainsrc_simulation` closes
+[OBS 2026-08-30] `copy_projdst_offset_chainsrc_simulation` closes
 `(*p).1 := copy y` (d63), so the projected-destination arm is complete
 for deref bases at both offsets.
 

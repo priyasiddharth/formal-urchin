@@ -32,7 +32,7 @@ renaming" is doing work the invariant already did. Destructures of
 
 ## Scope caveat — v2 only; obseq3 kept HALF of this
 
-[FACT, 2026-09-03] Everything above is stated for v2 (`src/obseq2/`).
+[FACT, 2026-08-30] Everything above is stated for v2 (`src/obseq2/`).
 In **obseq3** only the ADDRESS half survived. `CompilerInv` there
 carries `IdentityOnDomain ρa` and `TagRenameWF ρt` — NOT identity on
 tags — because the two machines' tag counters diverge (an interior
@@ -41,7 +41,7 @@ real renaming: `sb_own_respects_PermSim` returns
 `ρt.extend src.NextTag tgt.NextTag` with the two `NextTag`s different,
 and `TagRenameBounded` is what relates the counters.
 
-[FACT, 2026-09-03] Consequently the alternative this note records as
+[FACT, 2026-08-30] Consequently the alternative this note records as
 REJECTED — "a `PermSim` relation" — is exactly what obseq3 ADOPTED
 (`PermSim ρt src tgt` = StackMapSim ∧ protFrames ∧ exposed ∧
 `src.NextTag ≤ tgt.NextTag`), with `sb_read/write/ref_respects_PermSim`

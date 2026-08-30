@@ -394,7 +394,7 @@ def doAssign
   | .err msg => .err msg
   | .ok s1 =>
   -- Rust's documented evaluation order for assignment: the RHS first,
-  -- then the place. Reordered 2026-08-30 (the source-side completion of
+  -- then the place. Reordered 2026-08-29 (the source-side completion of
   -- the d34 lowering-order fix): with an event-ful rhs AND an event-ful
   -- destination resolution (deref levels read their pointer cells), the
   -- two orders genuinely differ — a retag can pop the tag a later spine
@@ -405,7 +405,7 @@ def doAssign
   match resolvePlaceAcc M output.state dst with
   | .error e => .err e
   | .ok (resolved, permsD) =>
-  -- OVERLAP IS ALLOWED (2026-09-03, SEMANTICS CHANGE, flagged). The old
+  -- OVERLAP IS ALLOWED (2026-08-30, SEMANTICS CHANGE, flagged). The old
   -- `.copy` guard rejected overlapping place-to-place assignment because
   -- the compiler lowered a copy to a nonoverlapping `Memcpy`. Rust does
   -- NOT forbid it: rustc reads the value into a TEMPORARY first

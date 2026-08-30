@@ -1,6 +1,6 @@
 # Flatten transfers: ONE place per lemma, never both at once
 
-[FACT, 2026-09-03] When a statement lowers TWO places (a non-local
+[FACT, 2026-08-30] When a statement lowers TWO places (a non-local
 destination with a place-valued rhs — `*Q := copy src`), write the
 flatten transfer as TWO single-split lemmas that compose, never as one
 lemma that flattens both places.

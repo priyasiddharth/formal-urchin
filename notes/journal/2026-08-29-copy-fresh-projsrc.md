@@ -1,4 +1,4 @@
-# 2026-09-03 (fifth) — copy: unbound destinations, every source shape
+# 2026-08-29 (fifth) — copy: unbound destinations, every source shape
 
 ## What happened
 `copy_place_residual` narrowed to ONE class. Two new leaves close an

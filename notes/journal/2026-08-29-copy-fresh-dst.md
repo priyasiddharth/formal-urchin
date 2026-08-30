@@ -1,4 +1,4 @@
-# 2026-09-03 (fourth) — copy: one source leaf, and fresh destinations
+# 2026-08-29 (fourth) — copy: one source leaf, and fresh destinations
 
 ## What happened
 Two steps on `copy_place_residual`.

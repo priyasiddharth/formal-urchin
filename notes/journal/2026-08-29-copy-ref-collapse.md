@@ -1,4 +1,4 @@
-# 2026-08-31 — The collapse travels: copy D→L and ref deref-dst
+# 2026-08-29 — The collapse travels: copy D→L and ref deref-dst
 
 ## What closed
 Both leaves re-founded on the whole-place mother lemma, per the

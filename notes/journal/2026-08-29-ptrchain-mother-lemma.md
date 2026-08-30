@@ -1,4 +1,4 @@
-# 2026-08-30 — The blocker falls: `ptrChain_lowering_sim` (pending-cleanup spine)
+# 2026-08-29 — The blocker falls: `ptrChain_lowering_sim` (pending-cleanup spine)
 
 ## What closed
 The deep-chain blocker's core. `PtrChain` (spine.lean): canonical

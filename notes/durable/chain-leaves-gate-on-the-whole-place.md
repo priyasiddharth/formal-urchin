@@ -1,6 +1,6 @@
 # Gate leaves on the WHOLE place the mother lemma can swallow
 
-[FACT, 2026-08-31] `const_write_deref_chain_simulation` subsumed BOTH
+[FACT, 2026-08-29] `const_write_deref_chain_simulation` subsumed BOTH
 the D-spine leaf (`*spine := v`, ~300 lines) and the depth-1 proj-top
 leaf (`*(s.f) := v`, ~400 lines + two fragment lemmas) — net deletion
 of ~750 lines for one ~200-line leaf. The process that got there, in
@@ -49,5 +49,5 @@ the final Load — each could shrink the same way when next touched.
 
 **Consumers/refs:** const_write.lean (chain-dst leaf + dispatcher),
 spine.lean (`PtrChain`, `ptrChain_lowering_sim`),
-journal 2026-08-30-ptrchain-mother-lemma.md,
-journal 2026-08-31-chain-dst-subsumption.md.
+journal 2026-08-29-ptrchain-mother-lemma.md,
+journal 2026-08-29-chain-dst-subsumption.md.

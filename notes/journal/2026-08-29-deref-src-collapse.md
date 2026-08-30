@@ -1,4 +1,4 @@
-# 2026-09-01 — Three-for-three: ref deref-src collapses; the base-fact conjunct
+# 2026-08-29 — Three-for-three: ref deref-src collapses; the base-fact conjunct
 
 ## What closed
 `ref_deref_local_simulation` re-founded on the whole-place mother

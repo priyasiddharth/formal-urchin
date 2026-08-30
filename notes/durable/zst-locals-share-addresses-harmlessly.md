@@ -3,7 +3,7 @@
 Load this before "fixing" the allocator, or when a proof seems to want
 distinct locals to have distinct addresses.
 
-[FACT, 2026-09-03] **The behavior.** `mirlite.allocate m sz` returns
+[FACT, 2026-08-30] **The behavior.** `mirlite.allocate m sz` returns
 `m.addrStart` and bumps the watermark by `sz`
 (src/obseq3/mirlite_semantics.lean:86-88). With `sz = 0` the watermark
 does NOT move, so a ZST local allocated at 100 is followed by the next
@@ -12,7 +12,7 @@ local — ZST or not — ALSO at 100. Both machines do this identically
 refinement is undisturbed by construction: whatever coincidence the
 source exhibits, the target exhibits at the same address.
 
-[FACT, 2026-09-03] **Three independent reasons it is benign**, worth
+[FACT, 2026-08-30] **Three independent reasons it is benign**, worth
 keeping apart because they fail differently:
 
 1. *Memory.* Addresses matter only through the cells they name, and a
@@ -32,7 +32,7 @@ keeping apart because they fail differently:
    Two locals at 100 both need `ρa 100 = some 100`, and since the
    extension is the identity they AGREE rather than conflict.
 
-[FACT, 2026-09-03] **The one place it could have bitten, and doesn't:**
+[FACT, 2026-08-30] **The one place it could have bitten, and doesn't:**
 copy's overlap guard rejects `dst := copy src` when the ranges
 intersect, and a ZST source and destination can sit at the same address.
 But the guard is `rs.addr < d + blockSize τ ∧ d < rs.addr + blockSize τ`
@@ -40,7 +40,7 @@ But the guard is `rs.addr < d + blockSize τ ∧ d < rs.addr + blockSize τ`
 overlap, so the copy proceeds and copies zero words. Same for the write
 bounds check.
 
-[FACT, 2026-09-03] This matches the reference semantics: in Rust,
+[FACT, 2026-08-30] This matches the reference semantics: in Rust,
 zero-sized allocations may share addresses. Compiler correctness does
 not need ZSTs to have distinct addresses — it needs the two machines to
 agree, and they do, cell for cell and tag for tag.
