@@ -1417,6 +1417,26 @@ def d63_copy_into_proj_deref_dst_offset : IO Unit :=
      .assign zD62 (.copy (.proj tD62 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d63 copy into proj deref dst at offset"
 
+def ΓD64 : Ctx := [obseq.LayoutTy.PtrL natL, pairD52L, natL, natL]
+def pD64 : Place ΓD64 (obseq.LayoutTy.PtrL natL) := .local ⟨⟨0, by decide⟩, rfl⟩
+def tD64 : Place ΓD64 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
+def xD64 : Place ΓD64 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def zD64 : Place ΓD64 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: a copy whose SOURCE is proj-topped at ZERO offset under a
+    deref destination (`*p := copy t.0`). Closed 2026-09-03 by
+    `copy_chaindst_projsrc_zero_simulation` — the two-mother skeleton
+    with the READ one projection layer deeper. -/
+def d64_copy_projsrc_into_deref_dst : IO Unit :=
+  expectDiff ΓD64
+    [.assign (.proj tD64 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj tD64 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign xD64 (.constInit 0),
+     .assign pD64 (.ref .Mut false [] xD64),
+     .assign (.deref pD64) (.copy (.proj tD64 (.field ⟨0, by decide⟩ .nil))),
+     .assign zD64 (.copy xD64)]
+    .ok "d64 copy proj src into deref dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1493,7 +1513,8 @@ def allTests : List (IO Unit) := [
   d60_copy_into_deref_dst,
   d61_copy_into_flattened_deref_dst,
   d62_copy_into_proj_deref_dst,
-  d63_copy_into_proj_deref_dst_offset]
+  d63_copy_into_proj_deref_dst_offset,
+  d64_copy_projsrc_into_deref_dst]
 
 def runAll : IO Unit := do
   allTests.forM id

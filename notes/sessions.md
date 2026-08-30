@@ -1000,3 +1000,23 @@ audit exact at 2.
 **Next-session pickup:** copy's residual is proj-topped flattened
 SOURCES under a deref dst, and projected dsts over a LOCAL base. Then
 ref.
+
+## 2026-09-03 (thirteenth)
+**Session:** (terminal, continued) — proj-topped sources, zero offset
+**Theme:** `copy_chaindst_projsrc_zero_simulation` (d64) closes
+`*p := copy t.0`. The same two bridges that carried the destination
+projection carry the source one, at `Shared`: the tower proofs never
+unfold the projection, they rewrite `run (proj B path) = run B` and use
+`value (proj) = ok ⟨o.result, …⟩`. The dispatcher's deref-dst arm now
+splits with `flatten_chainish`, which is exactly the dichotomy
+(flattened place is a chain, or a proj over a chain).
+**Key lesson:** collapsing the `+ 0` on a SOURCE resolution cannot be
+done by rewriting the record (`motive is not type correct` — the
+resolved place feeds a dependent read); rewrite the OFFSET instead
+(`simp only [h_o', Nat.add_zero]`) and let structure eta do the rest.
+**Status:** complete; all green; 17/17 + 77/77; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** proj-topped sources at NONZERO offset (BRIDGE
+1S around the READ — merge `copy_projchain_offset_simulation`'s source
+half into the two-mother skeleton), then projected dsts over a LOCAL
+base. Then ref.

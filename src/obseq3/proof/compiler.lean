@@ -141,8 +141,10 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    side, and `copy_projdst_offset_chainsrc_simulation` (d63), where it
    wraps the `RStore` in its own `Borrow(Mut)`/`Die` — the BRIDGE 1
    endgame, with the loaded temporary surviving the `Borrow`'s insert.
-   Remaining: proj-topped flattened SOURCES under a deref destination,
-   and projected destinations over a LOCAL base.
+   A proj-topped flattened SOURCE under a deref destination is closed at
+   ZERO offset the same way (`copy_chaindst_projsrc_zero_simulation`,
+   d64). Remaining: that source at NONZERO offset (BRIDGE 1S around the
+   READ), and projected destinations over a LOCAL base.
 4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested
