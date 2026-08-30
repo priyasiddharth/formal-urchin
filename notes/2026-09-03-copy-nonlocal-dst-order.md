@@ -56,6 +56,36 @@ read and the destination chain's pointer-cell read land on the SAME cell
 the compiler and the semantics both support it today, so this is a live
 miscompilation for programs the frontier work will eventually cover.
 
+## Exactly where oseair breaks (instruction-level trace)
+
+The witness's copy statement (`**q := copy *r`) compiles to labels
+14–17. Traced against `oseair.step`:
+
+```
+ 14: R9  := Load PTy R8      -- src place: load r's VALUE (ptr to cell(p), tag 7 = q2's)
+ 15: R10 := Load PTy R3      -- dst chain: load q's value  (ptr to cell(p), tag = q's)
+ 16: R11 := Load PTy R10     -- dst chain: READ cell(p) through q's tag  → pops tag 7
+ 17: Memcpy R11 R9 NatTy     -- the copy: READ cell(p) through tag 7     → TRAP
+```
+
+```
+SOURCE finished ok at pc=6
+TARGET TRAPS at pc=17
+  instruction: Instr.Memcpy (Register.R 11) (Register.R 9) NatTy
+  error: sb-read: tag 7 does not exist in the borrow stack at 1 (disabled) (cell offset 1)
+```
+
+Label 14 only computes the source ADDRESS; the source's RANGE READ does
+not happen until the `Memcpy` at 17. Label 16 — the destination chain's
+own dereference of the same cell — runs in between and pops the Unique
+tag 7 that the source read needs. mirlite performs that range read
+inside `evalRExpr`, i.e. BEFORE the destination resolution, so tag 7 is
+still live there.
+
+With the `Load`/`RStore` lowering the order becomes 14, then the range
+read (`Load NatTy R9`), then 15–16, then `RStore` — the source read
+moves back ahead of the chain, matching mirlite and rustc.
+
 ## Confirmed against the real toolchain (Miri, rustc 1.91.0 nightly)
 
 Both claims were RUN, not inferred:
