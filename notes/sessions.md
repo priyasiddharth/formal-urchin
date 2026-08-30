@@ -1396,3 +1396,32 @@ helps with.
 82); audit exact at 2, `[axioms]` untouched.
 **Next-session pickup:** the twin's write phase, then the recursive
 dispatcher, then witnesses and teeth.
+
+## 2026-08-30 (thirteenth)
+**Session:** (terminal, continued) — the twin's write phase; both leaves
+of the last copy class are proved
+**Theme:** `copy_projdst_offset_projsrc_offset_simulation` closes. It is
+the zero-destination leaf's §1–§8 with the BRIDGE 1 endgame replacing
+the bare `RStore`: `sb_ref_use_die_cancels` around the write, three code
+facts (Borrow at `s_mid2.pc`, RStore at +1, Die at +2), and a final
+`LocalBindingSim` that frames the destination borrow register out with
+`insert_fresh_reg h_dlbs h_prb1 h_dregmono rfl`.
+**csnorm paid off exactly where predicted.** The three `StateIncr`
+towers needed no traced spellings at all — only their ARITIES changed
+(the destination projection adds a `freshReg` and an `emit`), which is
+content, not spelling. Every remaining pothole was content too:
+`PtrRegisterEntry` is not a simp target (keep an `h_lookupD2` twin and
+use it in `writeThroughPtr`'s `simp` AND in `runN_RStore_step`), and
+`omega` needs BOTH sides normalized or the two `emit`-laden atoms differ
+(`simp only [emit] at h1 h_eq'`).
+**Not delivered:** the dispatcher. `CompilerInv_step_copy` still sends
+every nonzero-offset source to the residual; wiring needs a recursive
+`copy_projdst_projsrc_offset_simulation` that peels nested destination
+projections and then picks a leaf by destination offset. Note that even
+with it, `copy_place_residual` will NOT close: an UNBOUND local root
+with a nonzero-offset projected source has no leaf.
+**Status:** green; 17/17 + 84/84; corpus 82/123 (0 fail, osea matched
+82); audit exact at 2, `[axioms]` untouched.
+**Next-session pickup:** the recursive dispatcher, then witnesses and
+teeth; then the fresh-root × projsrc-offset combination if the residual
+is to close.

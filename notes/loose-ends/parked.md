@@ -487,86 +487,36 @@ recipe (mirror `const_write_proj_*`) would have worked but was more
 work than necessary — see
 journal/2026-08-30-projected-local-destinations.md.
 
-## copy: PROJ-TOPPED source at NONZERO offset under a PROJECTED destination
-**Status:** parked 2026-08-30 (narrowed from the whole class)
-**Context:** the LAST class in `copy_place_residual`. The ZERO-offset
-half closed on 2026-08-30 without a new leaf: naming the mother lemma's
-conclusion (`LoweringSim` / `LoweringSimAny`) and gating the leaves on
-the PACKAGE rather than on `PtrChain src` lets a zero-offset projection
-over a chain plug straight in (`LoweringSimAny.projZero`, d70/d71).
-See durable/lowering-sim-as-a-package.md.
-**Why the rest is parked:** a package must promise
-`placeOut.result.cleanup = []`. At NONZERO offset the source projection
-emits a `Borrow(Shared)` and leaves a cleanup `Die`, so it cannot
-supply one, and the extra instruction plus its BRIDGE 1S cancellation
-are the consumer's business. Two real leaves, one per DESTINATION
-offset.
-**Progress 2026-08-30:** step 1 is DONE and committed — the compiled
-side exists. `compileStmt_copy_projdst_zero_projsrc_offset_run`,
-`compileStmt_copy_projdst_offset_projsrc_offset_run` and the shared,
-destination-offset-agnostic
-`compileStmt_copy_projdst_projsrc_offset_value` spell the source tower
-out as `Borrow(Shared)`/`Load`/`Die` and the destination half as the
-existing projdst fragments do. Only the LEAVES remain.
-**Known obstacle (cost an afternoon, do not rediscover):** the leaf's
-three `StateIncr` towers do not close the way the parent's do. With a
-PROJECTED destination the compiled term carries an extra
-`Except.ok { result := a.result, evidence := PlaceToRegEvidence.projZero … }`
-layer, so a single `split` leaves a second match behind, and `split <;>
-split` / `repeat' split` still leave a third occurrence inside the
-emitted instruction list. Resolving the destination value with
-`simp only [h_dval0]` is the right move, but it needs `h_dval0` stated
-in the goal's normal form — which for these towers is the MIXED
-spelling `{ nextReg := N + 1 + 1, nextLabel := PS.nextLabel, code :=
-PS.code, placeRegMap := PS.placeRegMap }` (nextReg reduced, the rest
-not). Read the goal with a `trace_state` in the tower and copy the
-spelling out of the build log before writing `h_dval0`; guessing it
-costs an iteration each time. See
-durable/transport-compiled-states-by-defeq.md.
-**Progress 2026-08-30 (later):** the ZERO-destination-offset leaf,
-`copy_projdst_zero_projsrc_offset_simulation`, is PROVED and in the
-file (not yet wired — see below). The tower obstacle above is SOLVED,
-and the method is worth reusing: put a `trace_state` in the tower, run
-`lake build`, and lift the state spelling verbatim out of the build log
-into a `have h_dv0 : … := h_dval0` (defeq transport, no proof needed);
-then `simp only [h_dv0]` fires and the tower closes with no `split` at
-all. Two spellings were needed — the value-flavoured one for the
-pre-mother tower and a run-flavoured one derived with `h_sclean` for
-the two post-mother towers — and every other occurrence of the
-destination state in the leaf (the mother's `cs` argument, `h_prmCS2`,
-`h_lbs1`, `h_prb1`) has to be normalized to the SAME spelling or the
-later `rw`s miss.
-**Tooling 2026-08-30:** `csnorm` (see
-durable/csnorm-a-normal-form-for-compiler-states.md) removes the
-traced-spelling step entirely — each tower is now
-`have h_d := h_dval0; csnorm at h_d ⊢; simp only [h_d]`. Use it for the
-twin's towers; it will NOT help with the twin's write phase, which is
-content rather than spelling.
-**Still open:** the NONZERO-destination-offset twin, and the wiring.
-The twin is NOT a rename of the zero leaf: its write phase must come
-from `copy_projdst_offset_chainsrc_simulation`'s §8 (BRIDGE 1,
-`sb_ref_use_die_cancels` around the `RStore`), and every compiled-state
-spelling inside that §8 is the chain-source one — it has to be rewritten
-against the Borrow/Load/Die tower, not substituted.
-**Wiring note:** the zero leaf cannot be routed on its own.
-`CompilerInv_step_copy`'s proj-dst arm delegates to
-`copy_projdst_simulation`, which recurses on the destination base and
-now takes a source PACKAGE; a nonzero-offset source has no package, so
-routing it needs a parallel recursive dispatcher that peels nested
-destination projections and then picks between the two leaves by
-destination offset. Build that once BOTH leaves exist.
-**To resume:**
-1. Each leaf = `copy_projdst_{zero,offset}_chainsrc_simulation` with
-   `copy_chaindst_projsrc_offset_simulation`'s §6-§7 (BRIDGE 1S:
-   `sb_ref_read_die_cancels` around the READ, then Borrow/Load/Die
-   execute) spliced in where the bare `Load` is. The source borrow
-   retires in the rhs pre-phase, BEFORE the destination lowering, so
-   the two bridges never interleave.
-2. Witnesses `(*p).f := copy s.g` and `t.f := copy s.g` with g off
-   zero; teeth by oversizing the `Shared` projection borrow (d70 takes
-   the no-borrow branch, so it stays passing and the tooth is
-   discriminating).
-**Effort estimate:** ~a day.
+## copy: PROJ-TOPPED source at NONZERO offset — BOTH LEAVES DONE, wiring left
+**Status:** narrowed 2026-08-30 to the dispatcher only
+**Done:** three compiled fragments
+(`compileStmt_copy_projdst_{zero,offset}_projsrc_offset_run` and the
+destination-offset-agnostic `..._projsrc_offset_value`) and BOTH leaves,
+`copy_projdst_zero_projsrc_offset_simulation` and
+`copy_projdst_offset_projsrc_offset_simulation`. The nonzero-destination
+twin is the zero leaf's §1–§8 with the BRIDGE 1 endgame in place of the
+bare `RStore`: `sb_ref_use_die_cancels` around the write, three code
+facts (Borrow at `s_mid2.pc`, RStore at +1, Die at +2), and the final
+`LocalBindingSim` framing the destination borrow register out with
+`LocalBindingSim.insert_fresh_reg h_dlbs h_prb1 h_dregmono rfl`.
+`csnorm` carried the three `StateIncr` towers with no traced spellings
+at all; the potholes that remained were content, not spelling — the
+`PtrRegisterEntry`-is-not-a-simp-target one (keep a `h_lookupD2` twin
+and use it in `writeThroughPtr`'s `simp` AND in `runN_RStore_step`), and
+`omega` needing BOTH sides normalized (`simp only [emit] at h1 h_eq'`,
+or the two atoms differ).
+**Left:** the DISPATCHER. `CompilerInv_step_copy`'s proj-dst arm still
+sends every nonzero-offset source to the residual. Wiring needs a
+recursive `copy_projdst_projsrc_offset_simulation` mirroring
+`copy_projdst_simulation`: peel nested destination projections with the
+associativity transfers, then `by_cases` on the DESTINATION offset and
+call the matching leaf. A bound local base and a deref base both work;
+an UNBOUND local root with a nonzero-offset projected source has no
+leaf, so it stays residual and `copy_place_residual` does NOT close on
+this increment alone.
+**Effort estimate:** ~half a day for the dispatcher, plus witnesses
+(`(*p).f := copy s.g` and `t.f := copy s.g`, g off zero, at both
+destination offsets) and teeth (oversize the `Shared` projection
+borrow — d70 takes the no-borrow branch, so it stays passing).
 **References:** journal/2026-08-30-lowering-sim-package.md,
-journal/2026-08-30-projsrc-offset-bridge1s.md,
-durable/lowering-sim-as-a-package.md.
+durable/csnorm-a-normal-form-for-compiler-states.md.
