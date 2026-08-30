@@ -762,7 +762,7 @@ def d32_field_copy_zero_offset : IO Unit :=
      .assign yD32 (.copy (.proj tupD32 (.field ⟨0, by decide⟩ .nil)))]
     .ok "d32 field copy zero offset"
 
-/-- FIXED-BUG witness, REWRITTEN 2026-09-03 (the temp-assignment
+/-- FIXED-BUG witness, REWRITTEN 2026-08-30 (the temp-assignment
     lowering). This hand-forged state — `y : natL` re-bound INSIDE
     `tup : pairL`'s block, cell 1's stack `[Ref 4, MutRef 3, Own 1]`,
     `tup.tag := 4`, `y.tag := 3` — used to make `y := copy tup.1`
@@ -855,7 +855,7 @@ def d34_deref_dst_temp_killed_by_rhs_spine : IO Unit := do
   expectDiff ΓD34 prog .ok "d34 deref dst temp survives rhs spine"
 
 /-- Differential: the exact self-copy `x := copy x` — REWRITTEN
-    2026-09-03. It used to be UB on both machines (mirlite's overlap
+    2026-08-30. It used to be UB on both machines (mirlite's overlap
     guard, oseair's `Memcpy` nonoverlapping check). Rust permits it:
     rustc reads into a temporary first (`_5 = (*_2); (*_2) = move _5`,
     checked on rustc 1.91.0), and Miri runs it clean. Both machines now
@@ -976,7 +976,7 @@ def xD43 : Place ΓD43 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 def yD43 : Place ΓD43 natL := .local ⟨⟨3, by decide⟩, rfl⟩
 
 /-- Positive: a reference stored THROUGH a loaded pointer (`*q := &mut x`,
-    the deref-dst ref regime, closed 2026-08-30), then written through the
+    the deref-dst ref regime, closed 2026-08-29), then written through the
     stored reference by a double-deref. Exercises the MIR order on both
     machines: the `Borrow` runs BEFORE the dst spine's `Load`s. -/
 def d43_ref_through_loaded_ptr : IO Unit :=
@@ -999,7 +999,7 @@ def xD44 : Place ΓD44 natL := .local ⟨⟨2, by decide⟩, rfl⟩
     `*(*(s.f)) := v`. The dst's pointer place is a `PtrChain` with an
     interior projection (`.deref (.proj s f)`), the first shape the
     pending-cleanup spine generalization routes to a closed leaf
-    (2026-08-31): its lowering is `Borrow(Shared); Load; Die; Load;
+    (2026-08-29): its lowering is `Borrow(Shared); Load; Die; Load;
     CStore`, the triple cancelled by BRIDGE 1S. -/
 def d44_write_through_ptr_field_chain : IO Unit :=
   expectDiff ΓD44
@@ -1045,7 +1045,7 @@ def xD46 : Place ΓD46 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 /-- Positive: write through the pointer FIELD of a DEREFERENCED struct —
     `*((*q).f) := v`. The dst is a `PtrChain` whose projection sits over
     a code-emitting base (`.deref q`), the shape the chain-dst leaf
-    (`const_write_deref_chain_simulation`, 2026-08-31) closed when it
+    (`const_write_deref_chain_simulation`, 2026-08-29) closed when it
     subsumed the depth-1 `*(s.f) := v` leaf. -/
 def d46_write_through_deref_struct_field : IO Unit :=
   expectDiff ΓD46
@@ -1063,7 +1063,7 @@ def yD47 : Place ΓD47 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 
 /-- Positive: copy THROUGH a pointer field — `y := copy *(s.f)`. The
     src is a proj-topped `PtrChain`, the shape the collapsed copy leaf
-    (mother lemma on the WHOLE source place, 2026-08-31) serves. -/
+    (mother lemma on the WHOLE source place, 2026-08-29) serves. -/
 def d47_copy_through_ptr_field : IO Unit :=
   expectDiff ΓD47
     [.assign xD47 (.constInit 5),
@@ -1081,7 +1081,7 @@ def yD48 : Place ΓD48 natL := .local ⟨⟨3, by decide⟩, rfl⟩
 /-- Positive: a reference stored THROUGH a pointer-to-pointer FIELD —
     `*(t.f) := &mut y`, then written through double-deref. The dst is a
     proj-topped `PtrChain`, the shape the collapsed ref deref-dst leaf
-    (mother lemma at `Mut` on the WHOLE dst, 2026-08-31) serves. -/
+    (mother lemma at `Mut` on the WHOLE dst, 2026-08-29) serves. -/
 def d48_ref_through_ptr_field_dst : IO Unit :=
   expectDiff ΓD48
     [.assign xD48 (.constInit 5),
@@ -1104,7 +1104,7 @@ def yD49 : Place ΓD49 natL := .local ⟨⟨3, by decide⟩, rfl⟩
     `q := &mut *(s.f)`, then written through. The rhs's source place is
     a proj-topped `PtrChain`, the shape the collapsed ref deref-src
     leaf (mother lemma at `Shared` on the WHOLE source place,
-    2026-09-01) serves. -/
+    2026-08-29) serves. -/
 def d49_ref_of_deref_ptr_field : IO Unit :=
   expectDiff ΓD49
     [.assign xD49 (.constInit 5),
@@ -1125,7 +1125,7 @@ def yD50 : Place ΓD50 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 /-- Positive: write through a DOUBLY-nested pointer field —
     `*(s.f.g) := v`. The dst's pointer place is a proj-of-proj
     spelling, normalized by `flattenPlace` into the chain grammar
-    (2026-09-01, the increment that retired the deep residual). -/
+    (2026-08-29, the increment that retired the deep residual). -/
 def d50_write_through_nested_ptr_field : IO Unit :=
   expectDiff ΓD50
     [.assign xD50 (.constInit 5),
@@ -1145,7 +1145,7 @@ def qD51 : Place ΓD51 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
 
 /-- Positive: copy AND ref through a doubly-nested pointer field —
     `y := copy *(s.f.g)` and `q := &mut *(s.f.g)`. The proj-of-proj
-    src spellings are flatten-normalized (2026-09-01 flatten transfer
+    src spellings are flatten-normalized (2026-08-29 flatten transfer
     across the copy/ref dispatchers, which made the deref arms TOTAL). -/
 def d51_copy_ref_through_nested_ptr_field : IO Unit :=
   expectDiff ΓD51
@@ -1171,7 +1171,7 @@ def yD52 : Place ΓD52 natL := .local ⟨⟨3, by decide⟩, rfl⟩
 
 /-- Positive: projected writes through a DEPTH-2 chain — `(**q).0 := v`
     (zero offset) and `(**q).1 := w` (nonzero, BRIDGE 1). The C-deref
-    leaves collapsed onto the mother lemma (2026-09-03) gate the WHOLE
+    leaves collapsed onto the mother lemma (2026-08-29) gate the WHOLE
     pointer place `*q` as a `PtrChain`, so interior `Load`s stack under
     the projection's `Borrow`/`CStore`/`Die`. -/
 def d52_proj_write_through_chain : IO Unit :=
@@ -1197,7 +1197,7 @@ def yD53 : Place ΓD53 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 
 /-- Positive: projected write through a NON-chain pointer place —
     `(*(s.f.g)).1 := v`, whose base is a proj-of-proj the dispatcher
-    can only reach through the flatten transfer (2026-09-03: the
+    can only reach through the flatten transfer (2026-08-29: the
     proj-dst deref arm made TOTAL). -/
 def d53_proj_write_through_flattened_ptr : IO Unit :=
   expectDiff ΓD53
@@ -1220,7 +1220,7 @@ def yD54 : Place ΓD54 natL := .local ⟨⟨3, by decide⟩, rfl⟩
     `s.1 := v` with `s` unbound (regime B-proj, nonzero offset: the
     root `Alloc` must size the WHOLE tuple, then `Borrow; CStore; Die`
     lands inside it) and `t.0 := w` with `t` unbound (zero offset:
-    `Alloc; CStore` at the block base). Closed 2026-09-03, the
+    `Alloc; CStore` at the block base). Closed 2026-08-29, the
     increment that killed `const_write_proj_nonlocal_residual`. -/
 def d54_fresh_root_proj_writes : IO Unit :=
   expectDiff ΓD54
@@ -1240,7 +1240,7 @@ def yD55 : Place ΓD55 natL := .local ⟨⟨3, by decide⟩, rfl⟩
 /-- Positive: copies out of a projection over a POINTER chain —
     `x := copy (*p).0` (zero offset) and `y := copy (*p).1` (nonzero:
     `Borrow(Shared); Memcpy; Die`, the dst write sliding between
-    BRIDGE 1S's phases). Closed 2026-09-03 by collapsing the P0/P→L
+    BRIDGE 1S's phases). Closed 2026-08-29 by collapsing the P0/P→L
     leaves onto the mother lemma at the chain base. -/
 def d55_copy_from_proj_over_chain : IO Unit :=
   expectDiff ΓD55
@@ -1261,7 +1261,7 @@ def yD56 : Place ΓD56 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 /-- Positive: copies out of a PROJ-OF-PROJ source — `x := copy s.1.0`
     and `y := copy s.1.1`. The nested spelling is flatten-normalized
     into one projection over the chain base before the leaves see it
-    (the src flatten transfer, 2026-09-03). -/
+    (the src flatten transfer, 2026-08-29). -/
 def d56_copy_from_nested_proj : IO Unit :=
   expectDiff ΓD56
     [.assign (.proj (.proj sD56 (.field ⟨1, by decide⟩ .nil))
@@ -1284,7 +1284,7 @@ def pD57 : Place ΓD57 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨4, by deci
 /-- Positive: copies whose DESTINATION is unbound — the statement's own
     execution allocates it (`Alloc` then `Memcpy`), for a local source
     and for a source read through a pointer chain. Regime B for copy,
-    closed 2026-09-03; the address rename extends over the whole fresh
+    closed 2026-08-29; the address rename extends over the whole fresh
     block. -/
 def d57_copy_into_fresh_local : IO Unit :=
   expectDiff ΓD57
@@ -1304,7 +1304,7 @@ def yD58 : Place ΓD58 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 /-- Positive: copies from a FIELD into a destination that the statement
     itself allocates — at zero offset (`Alloc; Memcpy`) and at nonzero
     offset (`Alloc; Borrow(Shared); Memcpy; Die`). Regime B for copy
-    with a projected source, closed 2026-09-03. -/
+    with a projected source, closed 2026-08-29. -/
 def d58_copy_field_into_fresh_local : IO Unit :=
   expectDiff ΓD58
     [.assign (.proj sD58 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
@@ -1321,7 +1321,7 @@ def qD59 : Place ΓD59 ppNatD59 := .local ⟨⟨2, by decide⟩, rfl⟩
 def q2D59 : Place ΓD59 ppNatD59 := .local ⟨⟨3, by decide⟩, rfl⟩
 def rD59 : Place ΓD59 ptrNat := .local ⟨⟨4, by decide⟩, rfl⟩
 
-/-- REGRESSION (the temp-assignment lowering, 2026-09-03): the copy's
+/-- REGRESSION (the temp-assignment lowering, 2026-08-30): the copy's
     source cell is ALSO a pointer cell that the destination chain must
     read, and the source's tag is a reborrow ABOVE the chain's on that
     cell. Under the old `Memcpy` lowering the chain's read ran FIRST and
@@ -1347,7 +1347,7 @@ def qD60 : Place ΓD60 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
 
 /-- Positive: a copy whose DESTINATION is non-local — `*p := copy y`
     and `*p := copy *q`, the two-mother-lemma leaf
-    (`copy_chaindst_chainsrc_simulation`, 2026-09-03): the source is
+    (`copy_chaindst_chainsrc_simulation`, 2026-08-30): the source is
     lowered and READ, then the destination chain is lowered, then the
     store. -/
 def d60_copy_into_deref_dst : IO Unit :=
@@ -1370,7 +1370,7 @@ def tD61 : Place ΓD61 pairD52L := .local ⟨⟨3, by decide⟩, rfl⟩
 /-- Positive: a copy into a deref destination whose pointer place is a
     PROJ-OF-PROJ (`*(s.f.g) := copy x`) and out of a nested source —
     both places are flatten-normalized before the two-mother leaf sees
-    them (the deref-dst flatten transfer, 2026-09-03). -/
+    them (the deref-dst flatten transfer, 2026-08-30). -/
 def d61_copy_into_flattened_deref_dst : IO Unit :=
   expectDiff ΓD61
     [.assign xD61 (.constInit 5),
@@ -1390,7 +1390,7 @@ def yD62 : Place ΓD62 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 def zD62 : Place ΓD62 natL := .local ⟨⟨3, by decide⟩, rfl⟩
 
 /-- Positive: a copy into a PROJECTED deref destination at ZERO offset
-    (`(*p).0 := copy y`), then the read back. Closed 2026-09-03 by
+    (`(*p).0 := copy y`), then the read back. Closed 2026-08-30 by
     `copy_projdst_zero_chainsrc_simulation` through the recursive
     proj-dst dispatcher (`copy_projdst_simulation`). -/
 def d62_copy_into_proj_deref_dst : IO Unit :=
@@ -1406,7 +1406,7 @@ def d62_copy_into_proj_deref_dst : IO Unit :=
 /-- Positive: a copy into a PROJECTED deref destination at NONZERO
     offset (`(*p).1 := copy y`) — the projection's own `Borrow(Mut)`
     before the `RStore` and its `Die` after (the BRIDGE 1 endgame).
-    Closed 2026-09-03 by `copy_projdst_offset_chainsrc_simulation`. -/
+    Closed 2026-08-30 by `copy_projdst_offset_chainsrc_simulation`. -/
 def d63_copy_into_proj_deref_dst_offset : IO Unit :=
   expectDiff ΓD62
     [.assign (.proj tD62 (.field ⟨0, by decide⟩ .nil)) (.constInit 1),
@@ -1424,7 +1424,7 @@ def xD64 : Place ΓD64 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 def zD64 : Place ΓD64 natL := .local ⟨⟨3, by decide⟩, rfl⟩
 
 /-- Positive: a copy whose SOURCE is proj-topped at ZERO offset under a
-    deref destination (`*p := copy t.0`). Closed 2026-09-03 by
+    deref destination (`*p := copy t.0`). Closed 2026-08-30 by
     `copy_chaindst_projsrc_zero_simulation` — the two-mother skeleton
     with the READ one projection layer deeper. -/
 def d64_copy_projsrc_into_deref_dst : IO Unit :=
@@ -1441,7 +1441,7 @@ def d64_copy_projsrc_into_deref_dst : IO Unit :=
     under a deref destination (`*p := copy t.1`). The projection mints
     its own `Borrow(Shared)`, the copy loads through it, and the
     projection's cleanup `Die` retires it — all before the destination
-    lowers, so BRIDGE 1S is contiguous. Closed 2026-09-03 by
+    lowers, so BRIDGE 1S is contiguous. Closed 2026-08-30 by
     `copy_chaindst_projsrc_offset_simulation`. -/
 def d65_copy_projsrc_offset_into_deref_dst : IO Unit :=
   expectDiff ΓD64
@@ -1452,6 +1452,60 @@ def d65_copy_projsrc_offset_into_deref_dst : IO Unit :=
      .assign (.deref pD64) (.copy (.proj tD64 (.field ⟨1, by decide⟩ .nil))),
      .assign zD64 (.copy xD64)]
     .ok "d65 copy proj src at offset into deref dst"
+
+/-- Positive: a copy into a PROJECTED destination over a BOUND LOCAL
+    base, at ZERO offset (`t.0 := copy y`). Closed 2026-08-30 by
+    generalizing `copy_projdst_zero_chainsrc_simulation` from a deref
+    base to any canonical chain base — a bound local IS one
+    (`PtrChain.base`). -/
+def d66_copy_into_proj_local_dst : IO Unit :=
+  expectDiff ΓD62
+    [.assign (.proj tD62 (.field ⟨0, by decide⟩ .nil)) (.constInit 1),
+     .assign (.proj tD62 (.field ⟨1, by decide⟩ .nil)) (.constInit 2),
+     .assign yD62 (.constInit 7),
+     .assign (.proj tD62 (.field ⟨0, by decide⟩ .nil)) (.copy yD62),
+     .assign zD62 (.copy (.proj tD62 (.field ⟨0, by decide⟩ .nil)))]
+    .ok "d66 copy into proj local dst"
+
+/-- Positive: the same at NONZERO offset (`t.1 := copy y`) — the
+    destination projection mints its own `Borrow(Mut)` before the
+    `RStore` and kills it after. -/
+def d67_copy_into_proj_local_dst_offset : IO Unit :=
+  expectDiff ΓD62
+    [.assign (.proj tD62 (.field ⟨0, by decide⟩ .nil)) (.constInit 1),
+     .assign (.proj tD62 (.field ⟨1, by decide⟩ .nil)) (.constInit 2),
+     .assign yD62 (.constInit 9),
+     .assign (.proj tD62 (.field ⟨1, by decide⟩ .nil)) (.copy yD62),
+     .assign zD62 (.copy (.proj tD62 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d67 copy into proj local dst at offset"
+
+def ΓD68 : Ctx := [pairD52L, natL, natL]
+def tD68 : Place ΓD68 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
+def yD68 : Place ΓD68 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def zD68 : Place ΓD68 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- Positive: a copy into a PROJECTED destination whose LOCAL root is
+    UNBOUND, at ZERO offset (`t.0 := copy y` with `t` fresh) — regime
+    B-proj for copy. `ensurePlaceRoot` allocates the whole σ-sized root
+    before the rhs pre-phase runs. Closed 2026-08-30 by
+    `copy_projlocal_fresh_zero_simulation`. -/
+def d68_copy_into_fresh_proj_local : IO Unit :=
+  expectDiff ΓD68
+    [.assign yD68 (.constInit 7),
+     .assign (.proj tD68 (.field ⟨0, by decide⟩ .nil)) (.copy yD68),
+     .assign zD68 (.copy (.proj tD68 (.field ⟨0, by decide⟩ .nil)))]
+    .ok "d68 copy into fresh proj local"
+
+/-- Positive: the same at NONZERO offset (`t.1 := copy y` with `t`
+    fresh) — the root `Alloc`, the source read, then the fresh root
+    register's own `Borrow(Mut)`/`RStore`/`Die` (BRIDGE 1). Closed
+    2026-08-30 by `copy_projlocal_fresh_offset_simulation`. -/
+def d69_copy_into_fresh_proj_local_offset : IO Unit :=
+  expectDiff ΓD68
+    [.assign yD68 (.constInit 8),
+     .assign (.proj tD68 (.field ⟨1, by decide⟩ .nil)) (.copy yD68),
+     .assign zD68 (.copy (.proj tD68 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d69 copy into fresh proj local at offset"
 
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
@@ -1531,7 +1585,11 @@ def allTests : List (IO Unit) := [
   d62_copy_into_proj_deref_dst,
   d63_copy_into_proj_deref_dst_offset,
   d64_copy_projsrc_into_deref_dst,
-  d65_copy_projsrc_offset_into_deref_dst]
+  d65_copy_projsrc_offset_into_deref_dst,
+  d66_copy_into_proj_local_dst,
+  d67_copy_into_proj_local_dst_offset,
+  d68_copy_into_fresh_proj_local,
+  d69_copy_into_fresh_proj_local_offset]
 
 def runAll : IO Unit := do
   allTests.forM id

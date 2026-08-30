@@ -79,7 +79,7 @@ the two facts the minting members need.
   allocations agree, and the property survives them.
 
 Remaining (2): every remaining sorry is blocked on a NAMED obligation.
-1. ✔ `const_write_deref_deep_residual` — RETIRED 2026-09-01, the first
+1. ✔ `const_write_deref_deep_residual` — RETIRED 2026-08-29, the first
    residual to die. The pending-cleanup generalization landed as
    `ptrChain_lowering_sim`; `flattenPlace` + its congruence family
    (spine.lean) then normalized EVERY deref dst into the chain grammar
@@ -87,7 +87,7 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    shape through `const_write_deref_chain_simulation` and never falls
    back. The residual and its nonspine dispatcher were deleted; the
    axiom whitelist dropped to THREE sorries.
-2. ✔ `const_write_proj_nonlocal_residual` — RETIRED 2026-09-03, the
+2. ✔ `const_write_proj_nonlocal_residual` — RETIRED 2026-08-29, the
    second residual to die. The two C-deref leaves COLLAPSED onto the
    mother lemma at `Mut (.deref P)` (gate `PtrChain (.deref P)` — any
    depth, proj-interiors included); the proj-dst dispatcher's deref arm
@@ -99,7 +99,7 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    lockstep, ρa extends by the IDENTITY over the whole fresh block via
    `AddrRenameMap.extendIdRange`, then the C0/C1 endgames land inside
    it). The axiom whitelist dropped to TWO sorries.
-3. `copy_place_residual` — NARROWED 2026-09-03: for a BOUND LOCAL dst
+3. `copy_place_residual` — NARROWED 2026-08-29: for a BOUND LOCAL dst
    EVERY source shape is closed. The old P0→L/P→L leaves collapsed onto
    the mother lemma at the chain base as
    `copy_projchain_zero/offset_simulation` (gate `PtrChain B` for a src
@@ -121,7 +121,7 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    `copy_fresh_projchain_*` leaves extend that to proj-topped sources —
    so an unbound destination accepts EVERY source shape. The
    event-ORDER obstacle that blocked the last class is GONE as of
-   2026-09-03: the copy lowering now materializes the value in a
+   2026-08-30: the copy lowering now materializes the value in a
    REGISTER during the rhs pre-phase (`Load` then `RStore`), exactly as
    rustc does, so the read precedes the destination lowering on both
    machines. That also removed mirlite's overlapping-assignment guard
@@ -149,8 +149,16 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    — BRIDGE 1S, contiguous, because both retire before the destination
    lowering starts, so the destination mother simply runs at the
    post-`Die` states. The DEREF-destination arm is therefore TOTAL.
-   Remaining: projected destinations over a LOCAL base.
-4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
+   PROJECTED destinations over a LOCAL base close too: for a BOUND root
+   by GENERALIZING the two proj-dst leaves from `.deref P` to any
+   canonical chain base — a bound local is one — which cost a
+   hypothesis (`preparePlaceAssign` is a no-op) rather than a proof
+   (d66/d67); for an UNBOUND root by regime B-proj, allocating the
+   σ-sized root and running the source mother lemma at the
+   post-allocation states under both extended renames (d68/d69).
+   Remaining: a PROJ-TOPPED flattened source under a PROJECTED
+   destination — the two BRIDGE halves exist but are not composed.
+4. `ref_place_residual` — NARROWED 2026-08-29: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested
    projection destinations of any depth reassociate on both machines
