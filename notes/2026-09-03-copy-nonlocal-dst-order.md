@@ -74,6 +74,25 @@ So rustc materializes the copied value into a temporary and reads it
 BEFORE evaluating the destination place. mirlite's rhs-first order is
 faithful to that; OUR COMPILER is the outlier.
 
+## The same missing temp ALSO makes our copy stricter than Rust
+
+Separate symptom, same cause. mirlite's `doAssign` rejects a copy whose
+source and destination ranges overlap ("copy of overlapping ranges"),
+and oseair's `Memcpy` carries a nonoverlapping precondition; d35 pins
+`x := copy x` as UB on both machines. But rustc's temporary makes an
+overlapping assignment WELL-DEFINED — `_3 = (*_2); (*_1) = move _3`
+reads before it writes. So our model is stricter than Rust on this
+program. That is sound for the refinement (we only relate
+source-successful runs) but it is a fidelity gap, and introducing the
+temp would close it: the overlap guard could then go away entirely.
+
+NOT the same thing as the witness above. In that witness the source
+range (the cell holding `p`) and the destination range (the cell
+holding `x`) are DISJOINT — the guard correctly does not fire, and the
+source runs clean. The collision there is between the source range and
+a pointer cell the destination chain reads on its way, which no overlap
+guard covers.
+
 ## Why the class is nevertheless TRUE inside CoreProg
 The two reads can only interact at a shared cell: a dst-chain pointer
 cell lying inside the source's τ-sized range. Within CoreProg (no

@@ -857,8 +857,19 @@ def d34_deref_dst_temp_killed_by_rhs_spine : IO Unit := do
 /-- Differential: the REACHABLE overlapping assignment — an exact
     self-copy `x := copy x` — is UB on BOTH machines at the same
     statement: mirlite's `doAssign` overlap guard and oseair's
-    `Memcpy` nonoverlapping check (MIR lowers assignment to a
-    nonoverlapping copy; Miri flags overlap). -/
+    `Memcpy` nonoverlapping check.
+
+    JUSTIFICATION CORRECTED 2026-09-03. The old text claimed "MIR lowers
+    assignment to a nonoverlapping copy; Miri flags overlap". That is
+    FALSE: rustc lowers `*a = *b` through a TEMPORARY
+    (`_3 = (*_2); (*_1) = move _3` — checked on rustc 1.91.0 with
+    `-Zmir-opt-level=0 -Cdebug-assertions=off`), so an overlapping
+    assignment is WELL-DEFINED in Rust. Our two machines agree with each
+    other, so the refinement is unaffected, but both are STRICTER than
+    Rust here — the same missing temporary that causes the event-order
+    divergence in `notes/2026-09-03-copy-nonlocal-dst-order.md`. Adding
+    the temp would make this program defined on both machines and let
+    the overlap guard go. -/
 def d35_self_copy_is_ub : IO Unit :=
   expectDiff ΓA
     [.assign xA (.constInit 7),
