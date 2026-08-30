@@ -1571,4 +1571,147 @@ theorem stepStmt_assign_refsrc_flatten
   show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
   simp only [mirlite.doAssign, mirlite.evalRExpr, h1]
 
+/-! ## Source lowerings as a PACKAGE
+
+    Every copy leaf lowers its source by calling `ptrChain_lowering_sim`
+    and then consuming its twenty-odd conjuncts. That is the only use a
+    leaf makes of `PtrChain src`, so naming the conclusion lets a leaf
+    take the PACKAGE as a hypothesis and accept any source shape that
+    can produce one — not just a canonical chain. At ZERO offset a
+    projection over a chain produces one, which is what
+    `projZero_lowering_sim` below supplies. -/
+
+def LoweringSim {Γ : Ctx}
+    (ρa : AddrRenameMap) (ρt : TagRenameMap)
+    (s_mir : mirlite.State MSB Γ) (compProg : oseair.Prog)
+    {τ : LayoutTy} (p : Place Γ τ) : Prop :=
+  IdentityOnDomain ρa → TagRenameWF ρt →
+  ∀ (kind : RefKind) (cs : CompilerState) (s_osea : oseair.State MSB)
+    (resolved : mirlite.PlaceRes) (permsD : MSB.State),
+    mirlite.resolvePlaceAcc MSB s_mir p = .ok (resolved, permsD) →
+    TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag →
+    LocalBindingSim ρa ρt s_mir.env s_osea cs →
+    PlaceRegMapBound cs →
+    SourceMemSim ρa ρt s_mir.mem s_osea.mem →
+    PermSim ρt s_mir.perms s_osea.perms →
+    s_osea.pc = cs.nextLabel →
+    (∀ q instr, q < (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextLabel →
+      (CheckedCompilerM.run (placeToRegChecked kind p) cs).code q = some instr →
+      compProg q = some instr) →
+    ∃ (placeOut : ResultWithEvidence PtrResult (PlaceToRegEvidence kind p))
+      (n : Nat) (s_osea' : oseair.State MSB) (tres : Tag),
+      CheckedCompilerM.value (placeToRegChecked kind p) cs = Except.ok placeOut ∧
+      placeOut.result.cleanup = [] ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      s_osea'.pc = (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextLabel ∧
+      s_osea'.mem = s_osea.mem ∧
+      PermSim ρt permsD s_osea'.perms ∧
+      permsD.NextTag = s_mir.perms.NextTag ∧
+      s_osea.perms.NextTag ≤ s_osea'.perms.NextTag ∧
+      LocalBindingSim ρa ρt s_mir.env s_osea' cs ∧
+      PtrRegisterEntry s_osea'.reg placeOut.result.reg resolved.allocBase
+        (resolved.addr - resolved.allocBase) resolved.allocSize tres ∧
+      ρt resolved.tag = some tres ∧
+      (resolved.tag == wildcardTag) = false ∧
+      resolved.allocBase ≤ resolved.addr ∧
+      (∀ k, k < resolved.allocSize → ∃ a', ρa (resolved.allocBase + k) = some a') ∧
+      RegisterBelow (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextReg
+        placeOut.result.reg ∧
+      (CheckedCompilerM.run (placeToRegChecked kind p) cs).placeRegMap = cs.placeRegMap ∧
+      cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextReg ∧
+      cs.nextLabel ≤ (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextLabel ∧
+      (∀ r, RegisterBelow cs.nextReg r →
+        oseair.RegMap.lookup s_osea'.reg r = oseair.RegMap.lookup s_osea.reg r) ∧
+      ρa resolved.allocBase = some resolved.allocBase
+
+/-- A canonical chain supplies the package: this IS the mother lemma. -/
+theorem PtrChain.loweringSim {Γ : Ctx}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir : mirlite.State MSB Γ} {compProg : oseair.Prog}
+    {τ : LayoutTy} {p : Place Γ τ} (h : PtrChain p) :
+    LoweringSim ρa ρt s_mir compProg p :=
+  fun h_id_a h_wf_t => ptrChain_lowering_sim h_id_a h_wf_t h
+
+/-- At ZERO offset a projection over a place that already supplies the
+    package supplies it too. The projection contributes a `+ 0` on the
+    resolved address (which collapses) and a `pure` on the compiled side
+    (which the two zero-offset bridges make invisible), so every conjunct
+    transports by rewriting `run (proj B spath) cs = run B cs`. -/
+theorem LoweringSim.projZero {Γ : Ctx}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir : mirlite.State MSB Γ} {compProg : oseair.Prog}
+    {σ τ : LayoutTy} {B : Place Γ σ} {spath : PathTo σ τ}
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      B = b.proj q → False)
+    (h_o : pathOffset spath = 0)
+    (h : LoweringSim ρa ρt s_mir compProg B) :
+    LoweringSim ρa ρt s_mir compProg (Place.proj B spath) := by
+  intro h_id_a h_wf_t kind cs s_osea resolved permsD h_res h_tbd h_lbs h_prb
+    h_sms h_psim h_pc h_inst
+  have h_pr := placeToRegChecked_proj_zero_run (kind := kind) spath h_np h_o cs
+  cases h_bres : mirlite.resolvePlaceAcc MSB s_mir B with
+  | error e => rw [resolvePlaceAcc_proj_base_err h_bres] at h_res; simp at h_res
+  | ok pr =>
+  obtain ⟨rb, permsB⟩ := pr
+  rw [resolvePlaceAcc_proj_base_ok h_bres] at h_res
+  have h_o' : PathTo.offset spath = 0 := h_o
+  simp only [h_o', Nat.add_zero, Except.ok.injEq, Prod.mk.injEq] at h_res
+  obtain ⟨h_r1, h_r2⟩ := h_res
+  subst h_r1
+  subst h_r2
+  obtain ⟨placeOut, n, s', tres, h_val, h_clean, h_run, h_pc', h_mem, h_ps,
+    h_nt1, h_nt2, h_lbs', h_entry, h_rt, h_nw, h_le, h_dom, h_below, h_prm,
+    h_regmono, h_labmono, h_frame, h_rabase⟩ :=
+    h h_id_a h_wf_t kind cs s_osea rb permsB h_bres h_tbd h_lbs h_prb h_sms
+      h_psim h_pc (by rw [h_pr] at h_inst; exact h_inst)
+  refine ⟨_, n, s', tres,
+    placeToRegChecked_proj_zero_value spath h_np h_o h_val, h_clean, h_run,
+    ?_, h_mem, h_ps, h_nt1, h_nt2, h_lbs', h_entry, h_rt, h_nw, h_le, h_dom,
+    ?_, ?_, ?_, ?_, h_frame, h_rabase⟩
+  · rw [h_pr]; exact h_pc'
+  · rw [h_pr]; exact h_below
+  · rw [h_pr]; exact h_prm
+  · rw [h_pr]; exact h_regmono
+  · rw [h_pr]; exact h_labmono
+
+/-- The package at ANY renames and source state. Leaves that allocate
+    before lowering the source (regime B) run the source lemma at
+    EXTENDED renames and a post-allocation state, so they need this
+    stronger, rename-polymorphic form; `PtrChain` supplies it because
+    the chain lemma never mentions the renames in its hypotheses. -/
+def LoweringSimAny {Γ : Ctx} (compProg : oseair.Prog)
+    {τ : LayoutTy} (p : Place Γ τ) : Prop :=
+  ∀ (ρa : AddrRenameMap) (ρt : TagRenameMap) (s_mir : mirlite.State MSB Γ),
+    LoweringSim ρa ρt s_mir compProg p
+
+theorem PtrChain.loweringSimAny {Γ : Ctx} {compProg : oseair.Prog}
+    {τ : LayoutTy} {p : Place Γ τ} (h : PtrChain p) :
+    LoweringSimAny compProg p :=
+  fun _ _ _ => h.loweringSim
+
+theorem LoweringSimAny.projZero {Γ : Ctx} {compProg : oseair.Prog}
+    {σ τ : LayoutTy} {B : Place Γ σ} {spath : PathTo σ τ}
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      B = b.proj q → False)
+    (h_o : pathOffset spath = 0)
+    (h : LoweringSimAny compProg B) :
+    LoweringSimAny compProg (Place.proj B spath) :=
+  fun ρa ρt s_mir => LoweringSim.projZero h_np h_o (h ρa ρt s_mir)
+
+/-- A zero-offset projection over a chain leaves `placeRegMap` alone,
+    exactly as the chain does — the companion fact the leaves need
+    BEFORE they may invoke the package. -/
+theorem projZero_placeRegMap {Γ : Ctx} {σ τ : LayoutTy}
+    {B : Place Γ σ} {spath : PathTo σ τ} {kind : RefKind}
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      B = b.proj q → False)
+    (h_o : pathOffset spath = 0)
+    (h_B : ∀ cs, (CheckedCompilerM.run (placeToRegChecked kind B) cs).placeRegMap
+      = cs.placeRegMap) :
+    ∀ cs, (CheckedCompilerM.run (placeToRegChecked kind (Place.proj B spath))
+      cs).placeRegMap = cs.placeRegMap := by
+  intro cs
+  rw [placeToRegChecked_proj_zero_run spath h_np h_o cs]
+  exact h_B cs
+
 end obseq3.proof

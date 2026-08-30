@@ -1507,6 +1507,33 @@ def d69_copy_into_fresh_proj_local_offset : IO Unit :=
      .assign zD68 (.copy (.proj tD68 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d69 copy into fresh proj local at offset"
 
+/-- Positive: a PROJ-TOPPED source at ZERO offset under a PROJECTED
+    destination (`(*p).1 := copy t.0`). Closed 2026-08-30 by the
+    `LoweringSim` package: a zero-offset projection over a chain
+    supplies the same source-lowering package a chain does
+    (`LoweringSimAny.projZero`), so the projected-destination leaves
+    accept it unchanged. -/
+def d70_projsrc_zero_into_proj_dst : IO Unit :=
+  expectDiff ΓD62
+    [.assign (.proj tD62 (.field ⟨0, by decide⟩ .nil)) (.constInit 4),
+     .assign (.proj tD62 (.field ⟨1, by decide⟩ .nil)) (.constInit 5),
+     .assign pD62 (.ref .Mut false [] tD62),
+     .assign (.proj (.deref pD62) (.field ⟨1, by decide⟩ .nil))
+       (.copy (.proj tD62 (.field ⟨0, by decide⟩ .nil))),
+     .assign zD62 (.copy (.proj tD62 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d70 proj src at zero into proj dst"
+
+/-- The same over a LOCAL destination base (`t.0 := copy s.0`), which
+    goes through the bound-root branch of the same dispatcher. -/
+def d71_projsrc_zero_into_proj_local : IO Unit :=
+  expectDiff ΓD64
+    [.assign (.proj tD64 (.field ⟨0, by decide⟩ .nil)) (.constInit 6),
+     .assign (.proj tD64 (.field ⟨1, by decide⟩ .nil)) (.constInit 7),
+     .assign (.proj tD64 (.field ⟨1, by decide⟩ .nil))
+       (.copy (.proj tD64 (.field ⟨0, by decide⟩ .nil))),
+     .assign zD64 (.copy (.proj tD64 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d71 proj src at zero into proj local"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1589,7 +1616,9 @@ def allTests : List (IO Unit) := [
   d66_copy_into_proj_local_dst,
   d67_copy_into_proj_local_dst_offset,
   d68_copy_into_fresh_proj_local,
-  d69_copy_into_fresh_proj_local_offset]
+  d69_copy_into_fresh_proj_local_offset,
+  d70_projsrc_zero_into_proj_dst,
+  d71_projsrc_zero_into_proj_local]
 
 def runAll : IO Unit := do
   allTests.forM id

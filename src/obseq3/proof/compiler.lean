@@ -156,8 +156,13 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    (d66/d67); for an UNBOUND root by regime B-proj, allocating the
    σ-sized root and running the source mother lemma at the
    post-allocation states under both extended renames (d68/d69).
-   Remaining: a PROJ-TOPPED flattened source under a PROJECTED
-   destination — the two BRIDGE halves exist but are not composed.
+   A PROJ-TOPPED source under a projected destination closes at ZERO
+   offset by naming the mother lemma's conclusion (`LoweringSimAny`) and
+   gating the leaves on that PACKAGE rather than on `PtrChain src`; a
+   zero-offset projection over a chain supplies one (d70/d71).
+   Remaining: that source at NONZERO offset, where the projection emits
+   a `Borrow(Shared)` and leaves a `Die`, so it cannot supply a package
+   and the BRIDGE 1S cancellation belongs to the consumer.
 4. `ref_place_residual` — NARROWED 2026-08-29: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested

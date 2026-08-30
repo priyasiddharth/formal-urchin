@@ -6863,7 +6863,9 @@ theorem copy_projlocal_fresh_zero_simulation
     {τ σ : LayoutTy}
     {loc : Local Γ σ} {path : PathTo σ τ} {src : Place Γ τ}
     (compProg : oseair.Prog)
-    (h_chain : PtrChain src)
+    (h_slower : LoweringSimAny compProg src)
+    (h_sprm0 : ∀ cs, (CheckedCompilerM.run
+      (placeToRegChecked RefKind.Shared src) cs).placeRegMap = cs.placeRegMap)
     (h_o : pathOffset path = 0)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
@@ -7055,7 +7057,7 @@ theorem copy_projlocal_fresh_zero_simulation
       (placeInputsMapped_of_localBindingSim_resolvePlace h_lbs1
         (resolvePlace?_of_resolveAcc h_sres))
     have h_prmS : (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).placeRegMap = (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)).placeRegMap :=
-      h_chain.placeToRegChecked_placeRegMap RefKind.Shared (setPlaceInfo
+      h_sprm0 (setPlaceInfo
           (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
             [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
           loc.idx.1 (Register.R csPrefix.nextReg, σ))
@@ -7169,7 +7171,7 @@ theorem copy_projlocal_fresh_zero_simulation
     obtain ⟨sOut, n1, s_mid, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
       h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
-      ptrChain_lowering_sim h_id_a' h_wf_t' h_chain RefKind.Shared (setPlaceInfo
+      h_slower _ _ _ h_id_a' h_wf_t' RefKind.Shared (setPlaceInfo
           (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
             [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
           loc.idx.1 (Register.R csPrefix.nextReg, σ)) { s_osea with
@@ -7433,7 +7435,9 @@ theorem copy_projlocal_fresh_offset_simulation
     {τ σ : LayoutTy}
     {loc : Local Γ σ} {path : PathTo σ τ} {src : Place Γ τ}
     (compProg : oseair.Prog)
-    (h_chain : PtrChain src)
+    (h_slower : LoweringSimAny compProg src)
+    (h_sprm0 : ∀ cs, (CheckedCompilerM.run
+      (placeToRegChecked RefKind.Shared src) cs).placeRegMap = cs.placeRegMap)
     (h_o : pathOffset path ≠ 0)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
@@ -7623,7 +7627,7 @@ theorem copy_projlocal_fresh_offset_simulation
       (placeInputsMapped_of_localBindingSim_resolvePlace h_lbs1
         (resolvePlace?_of_resolveAcc h_sres))
     have h_prmS : (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).placeRegMap = (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)).placeRegMap :=
-      h_chain.placeToRegChecked_placeRegMap RefKind.Shared (setPlaceInfo
+      h_sprm0 (setPlaceInfo
           (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
             [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
           loc.idx.1 (Register.R csPrefix.nextReg, σ))
@@ -7741,7 +7745,7 @@ theorem copy_projlocal_fresh_offset_simulation
     obtain ⟨sOut, n1, s_mid, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
       h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
-      ptrChain_lowering_sim h_id_a' h_wf_t' h_chain RefKind.Shared (setPlaceInfo
+      h_slower _ _ _ h_id_a' h_wf_t' RefKind.Shared (setPlaceInfo
           (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
             [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
           loc.idx.1 (Register.R csPrefix.nextReg, σ)) { s_osea with
@@ -8694,7 +8698,9 @@ theorem copy_projdst_zero_chainsrc_simulation
       s = s_mir ∧ ∃ r0,
         mirlite.resolvePlace? s_mir (Place.proj dbase path) = some r0)
     (h_o : pathOffset path = 0)
-    (h_schain : PtrChain src)
+    (h_slower : LoweringSimAny compProg src)
+    (h_sprm0 : ∀ cs, (CheckedCompilerM.run
+      (placeToRegChecked RefKind.Shared src) cs).placeRegMap = cs.placeRegMap)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     {stmt0 : Stmt Γ}
@@ -8767,7 +8773,7 @@ theorem copy_projdst_zero_chainsrc_simulation
     obtain ⟨sOut0, h_sval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
       (cs := csPrefix) (kind := RefKind.Shared) h_mappedS
     have h_prmS : (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap = csPrefix.placeRegMap :=
-      h_schain.placeToRegChecked_placeRegMap RefKind.Shared csPrefix
+      h_sprm0 csPrefix
     obtain ⟨dOut0, h_dval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
       (cs := (emit
         { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
@@ -8840,7 +8846,7 @@ theorem copy_projdst_zero_chainsrc_simulation
     obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
       h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
-      ptrChain_lowering_sim h_id_a h_wf_t h_schain RefKind.Shared csPrefix s_osea
+      h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csPrefix s_osea
         rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
     have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
       Nat.add_sub_cancel' h_sle
@@ -9296,7 +9302,9 @@ theorem copy_projdst_offset_chainsrc_simulation
       s = s_mir ∧ ∃ r0,
         mirlite.resolvePlace? s_mir (Place.proj dbase path) = some r0)
     (h_o : pathOffset path ≠ 0)
-    (h_schain : PtrChain src)
+    (h_slower : LoweringSimAny compProg src)
+    (h_sprm0 : ∀ cs, (CheckedCompilerM.run
+      (placeToRegChecked RefKind.Shared src) cs).placeRegMap = cs.placeRegMap)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     {stmt0 : Stmt Γ}
@@ -9363,7 +9371,7 @@ theorem copy_projdst_offset_chainsrc_simulation
     obtain ⟨sOut0, h_sval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
       (cs := csPrefix) (kind := RefKind.Shared) h_mappedS
     have h_prmS : (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap = csPrefix.placeRegMap :=
-      h_schain.placeToRegChecked_placeRegMap RefKind.Shared csPrefix
+      h_sprm0 csPrefix
     obtain ⟨dOut0, h_dval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
       (cs := (emit
         { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
@@ -9435,7 +9443,7 @@ theorem copy_projdst_offset_chainsrc_simulation
     obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
       h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
-      ptrChain_lowering_sim h_id_a h_wf_t h_schain RefKind.Shared csPrefix s_osea
+      h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csPrefix s_osea
         rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
     have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
       Nat.add_sub_cancel' h_sle
@@ -10354,11 +10362,17 @@ theorem copy_projdst_offset_chainsrc_simulation
     both extended renames, and then write — at `+ 0`, or through the
     fresh root register's own `Borrow(Mut)`/`Die` (d68/d69).
 
-    Remaining: the flattened SOURCE is PROJ-TOPPED under a PROJECTED
-    destination — the one branch of `CompilerInv_step_copy`'s proj-dst
-    arm that `PtrChain (flattenPlace src)` rules out. Both halves exist
-    (the destination projection's BRIDGE 1 endgame, the source
-    projection's BRIDGE 1S prefix); they have not been composed. -/
+    A PROJ-TOPPED flattened source under a projected destination is
+    closed at ZERO offset by the LOWERING PACKAGE: `LoweringSimAny`
+    names the mother lemma's conclusion, and `LoweringSimAny.projZero`
+    shows a zero-offset projection over a chain supplies one, so the
+    projected-destination leaves accept it with no new proof (d70/d71).
+
+    Remaining: that source at NONZERO offset. A package must promise an
+    EMPTY cleanup, and a nonzero-offset projection emits a
+    `Borrow(Shared)` and leaves a `Die`, so the extra instruction and
+    its BRIDGE 1S cancellation belong to the consumer — two leaves, one
+    per destination offset. -/
 theorem copy_place_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -10402,7 +10416,10 @@ theorem copy_projdst_simulation
     {s_osea : oseair.State MSB}
     {τ σ : LayoutTy} {base : Place Γ σ} {path : PathTo σ τ} {src : Place Γ τ}
     (compProg : oseair.Prog)
-    (h_sch : PtrChain (flattenPlace src))
+    (h_slower : LoweringSimAny compProg (flattenPlace src))
+    (h_sprm0 : ∀ cs, (CheckedCompilerM.run
+      (placeToRegChecked RefKind.Shared (flattenPlace src)) cs).placeRegMap
+      = cs.placeRegMap)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     {stmt0 : Stmt Γ}
@@ -10460,14 +10477,18 @@ theorem copy_projdst_simulation
           · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
               copy_projdst_zero_chainsrc_simulation (dbase := Place.local loc)
                 (path := path) (src := flattenPlace src) compProg
-                (PtrChain.base loc) h_bound h_o h_sch h_comp h_inv h_stmt
+                (PtrChain.base loc) h_bound h_o h_slower
+                h_sprm0
+                h_comp h_inv h_stmt
                 h_run0' h_val0' h_step
             exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa,
               TagRenameIncr.refl ρt, h_run, h_inv'⟩
           · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
               copy_projdst_offset_chainsrc_simulation (dbase := Place.local loc)
                 (path := path) (src := flattenPlace src) compProg
-                (PtrChain.base loc) h_bound h_o h_sch h_comp h_inv h_stmt
+                (PtrChain.base loc) h_bound h_o h_slower
+                h_sprm0
+                h_comp h_inv h_stmt
                 h_run0' h_val0' h_step
             exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa,
               TagRenameIncr.refl ρt, h_run, h_inv'⟩
@@ -10491,9 +10512,13 @@ theorem copy_projdst_simulation
             exact h_val0 cs so2 h2
           by_cases h_o : pathOffset path = 0
           · exact copy_projlocal_fresh_zero_simulation (src := flattenPlace src)
-              compProg h_sch h_o h_comp h_inv h_stmt h_run0' h_val0' h_envD h_step
+              compProg h_slower
+              h_sprm0
+              h_o h_comp h_inv h_stmt h_run0' h_val0' h_envD h_step
           · exact copy_projlocal_fresh_offset_simulation (src := flattenPlace src)
-              compProg h_sch h_o h_comp h_inv h_stmt h_run0' h_val0' h_envD h_step
+              compProg h_slower
+              h_sprm0
+              h_o h_comp h_inv h_stmt h_run0' h_val0' h_envD h_step
   | proj b q ih =>
       refine ih
         (fun cs => (h_run0 cs).trans
@@ -10523,7 +10548,9 @@ theorem copy_projdst_simulation
                 cases h_prep
                 exact ⟨rfl, r0, h_r0⟩
               · simp [mirlite.allocateRoot] at h_prep)
-            h_o h_sch h_comp h_inv h_stmt
+            h_o h_slower
+                h_sprm0
+                h_comp h_inv h_stmt
             (fun cs => (h_run0 cs).trans
               ((compileStmt_copy_projdst_srcflatten_run (Place.deref pp) path src cs).trans
                 (compileStmt_copy_projderefdst_dstflatten_run pp path
@@ -10554,7 +10581,9 @@ theorem copy_projdst_simulation
                 cases h_prep
                 exact ⟨rfl, r0, h_r0⟩
               · simp [mirlite.allocateRoot] at h_prep)
-            h_o h_sch h_comp h_inv h_stmt
+            h_o h_slower
+                h_sprm0
+                h_comp h_inv h_stmt
             (fun cs => (h_run0 cs).trans
               ((compileStmt_copy_projdst_srcflatten_run (Place.deref pp) path src cs).trans
                 (compileStmt_copy_projderefdst_dstflatten_run pp path
@@ -10693,14 +10722,25 @@ theorem CompilerInv_step_copy
                 (fun cs so h => compileStmt_copy_derefsrc_flatten_value cs so h)
                 h_envD h_step
   | proj dbase dpath =>
-      -- CLOSED for a deref base at zero offset; the recursion peels any
-      -- nesting first
-      by_cases h_sch : PtrChain (flattenPlace src)
+      -- the recursion peels any nesting first; the source only has to
+      -- SUPPLY the lowering package, which a chain does and a
+      -- zero-offset projection over a chain does too
+      rcases flatten_chainish src with h_sch | ⟨σs, B, spath, h_seq, h_B⟩
       · exact copy_projdst_simulation (base := dbase) (path := dpath)
-          (src := src) compProg h_sch h_comp h_inv h_stmt
-          (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
-      · exact copy_place_residual compProg h_comp h_inv h_stmt
-          (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
+          (src := src) compProg h_sch.loweringSimAny
+          (fun cs => h_sch.placeToRegChecked_placeRegMap RefKind.Shared cs)
+          h_comp h_inv h_stmt (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
+      · by_cases h_o : pathOffset spath = 0
+        · refine copy_projdst_simulation (base := dbase) (path := dpath)
+            (src := src) compProg ?_ ?_
+            h_comp h_inv h_stmt (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
+          · rw [h_seq]
+            exact LoweringSimAny.projZero h_B.not_proj h_o h_B.loweringSimAny
+          · rw [h_seq]
+            exact projZero_placeRegMap h_B.not_proj h_o
+              (fun cs => h_B.placeToRegChecked_placeRegMap RefKind.Shared cs)
+        · exact copy_place_residual compProg h_comp h_inv h_stmt
+            (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
   | deref pp =>
       -- FLATTEN both places, then the two-mother leaf owns every
       -- spelling whose flattened source is a chain
