@@ -1339,6 +1339,27 @@ def d59_copy_read_precedes_dst_chain : IO Unit :=
      .assign (.deref (.deref qD59)) (.copy (.deref rD59))]
     .ok "d59 copy read precedes dst chain"
 
+def ΓD60 : Ctx := [natL, natL, ptrNat, ptrNat]
+def xD60 : Place ΓD60 natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def yD60 : Place ΓD60 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def pD60 : Place ΓD60 ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def qD60 : Place ΓD60 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: a copy whose DESTINATION is non-local — `*p := copy y`
+    and `*p := copy *q`, the two-mother-lemma leaf
+    (`copy_chaindst_chainsrc_simulation`, 2026-09-03): the source is
+    lowered and READ, then the destination chain is lowered, then the
+    store. -/
+def d60_copy_into_deref_dst : IO Unit :=
+  expectDiff ΓD60
+    [.assign xD60 (.constInit 4),
+     .assign yD60 (.constInit 7),
+     .assign pD60 (.ref .Mut false [] xD60),
+     .assign qD60 (.ref .Shared false [] yD60),
+     .assign (.deref pD60) (.copy yD60),
+     .assign (.deref pD60) (.copy (.deref qD60))]
+    .ok "d60 copy into deref dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1411,7 +1432,8 @@ def allTests : List (IO Unit) := [
   d56_copy_from_nested_proj,
   d57_copy_into_fresh_local,
   d58_copy_field_into_fresh_local,
-  d59_copy_read_precedes_dst_chain]
+  d59_copy_read_precedes_dst_chain,
+  d60_copy_into_deref_dst]
 
 def runAll : IO Unit := do
   allTests.forM id

@@ -4,6 +4,36 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 (seventh) — Two Mothers, One Statement
+
+Sixty-fifth increment: a copy can now write to a destination that is
+itself computed by pointer chasing. This is the first proof in the
+development that runs the whole place-lowering machine twice inside one
+statement — source first, then the read, then the destination, then the
+store — and it only lines up because last increment moved the read into
+the right-hand-side phase.
+
+Three things carried it. The temporary holding the copied value has to
+survive the destination's own lowering, and that is exactly what the
+mother lemma's register-frame conjunct says, instantiated at a register
+that is below the second lowering's starting point by construction. The
+second lowering also needs to know its root is still mapped, which the
+first lowering's output would tell us — except it is needed *before* any
+mother lemma has run, so it became a standalone lemma proved by induction
+on the chain grammar rather than the place. And the statement's value
+fact is needed before we know the source lowering leaves no cleanup, so
+that fragment quantifies over the cleanup while its sibling, used later,
+assumes it away.
+
+The plumbing lesson worth writing down: a chain of state-growth facts over
+emitted instructions does not elaborate with holes, because the
+intermediate states stay unknown until the outer type is fixed. Pin them,
+or use a helper that takes them explicitly.
+
+d60 pins copies into a dereferenced destination; it bites when the store
+is pointed at the source pointer instead. Units 17/17 + 73/73, suite pass
+82 | fail 0 of 123, axiom audit exact at two.
+
 ## 2026-09-03 (sixth) — The Copy Gets a Temporary
 
 Sixty-fourth increment, and the first in a while to change the compiler

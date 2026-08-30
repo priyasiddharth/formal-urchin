@@ -125,9 +125,15 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    REGISTER during the rhs pre-phase (`Load` then `RStore`), exactly as
    rustc does, so the read precedes the destination lowering on both
    machines. That also removed mirlite's overlapping-assignment guard
-   (Rust permits overlap) and is pinned by d59. Remaining: the
-   NON-LOCAL destination only (`(*p).f := copy s`) — now genuine
-   composition work (two place lowerings and two cleanups in one leaf).
+   (Rust permits overlap) and is pinned by d59. A DEREF destination with
+   a chain source is then closed by
+   `copy_chaindst_chainsrc_simulation` — the first leaf composing TWO
+   mother-lemma calls, with the READ between them, the temporary
+   surviving the destination lowering by the mother's register-frame
+   conjunct (d60). Remaining: deref destinations needing a FLATTEN first
+   (the compiled transfer for this statement shape is unwritten) and
+   PROJECTED destinations (the same skeleton inside the destination's
+   own `Borrow`/`Die`).
 4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested

@@ -922,3 +922,23 @@ their intermediate states pinned. Removed rather than left sorried.
 the shape is settled (two mother calls, the temp register surviving the
 dst lowering by the mother's register-frame conjunct); what remains is
 the StateIncr/code-inclusion plumbing for the dst lowering at CS1.
+
+## 2026-09-03 (ninth)
+**Session:** (terminal, continued) — the two-mother leaf
+**Theme:** `copy_chaindst_chainsrc_simulation` closes `*Q := copy src`
+for chain dst AND chain src — the first leaf composing TWO mother calls
+(source lowering, READ, destination lowering, write). Enablers: the
+mother's register-frame conjunct carries the temp across the second
+lowering; `PtrChain.placeToRegChecked_placeRegMap` supplies mapped-ness
+BEFORE any mother runs; the value fragment quantifies over the general
+source cleanup. Potholes: StateIncr chains over emit towers need every
+state pinned (helper `emit_tower_incr₃`); hand-written cleanup lambdas
+need annotated binders; the Load's and the dst lowering's code-inclusion
+facts live at different states. Grind pass: 3 chains condensed (601 →
+596 lines). d60 + teeth (RStore pointed at the source register).
+**Status:** complete; all green; 17/17 + 73/73; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** copy's residual now names only (a) deref dsts
+needing a FLATTEN first — write the compiled transfer for `assign
+(.deref pp) (.copy src)`, same four-way agree alignment as the others —
+and (b) PROJECTED dsts (the same skeleton inside the dst's Borrow/Die).
