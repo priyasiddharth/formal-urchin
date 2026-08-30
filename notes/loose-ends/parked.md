@@ -501,19 +501,36 @@ emits a `Borrow(Shared)` and leaves a cleanup `Die`, so it cannot
 supply one, and the extra instruction plus its BRIDGE 1S cancellation
 are the consumer's business. Two real leaves, one per DESTINATION
 offset.
+**Progress 2026-08-30:** step 1 is DONE and committed — the compiled
+side exists. `compileStmt_copy_projdst_zero_projsrc_offset_run`,
+`compileStmt_copy_projdst_offset_projsrc_offset_run` and the shared,
+destination-offset-agnostic
+`compileStmt_copy_projdst_projsrc_offset_value` spell the source tower
+out as `Borrow(Shared)`/`Load`/`Die` and the destination half as the
+existing projdst fragments do. Only the LEAVES remain.
+**Known obstacle (cost an afternoon, do not rediscover):** the leaf's
+three `StateIncr` towers do not close the way the parent's do. With a
+PROJECTED destination the compiled term carries an extra
+`Except.ok { result := a.result, evidence := PlaceToRegEvidence.projZero … }`
+layer, so a single `split` leaves a second match behind, and `split <;>
+split` / `repeat' split` still leave a third occurrence inside the
+emitted instruction list. Resolving the destination value with
+`simp only [h_dval0]` is the right move, but it needs `h_dval0` stated
+in the goal's normal form — which for these towers is the MIXED
+spelling `{ nextReg := N + 1 + 1, nextLabel := PS.nextLabel, code :=
+PS.code, placeRegMap := PS.placeRegMap }` (nextReg reduced, the rest
+not). Read the goal with a `trace_state` in the tower and copy the
+spelling out of the build log before writing `h_dval0`; guessing it
+costs an iteration each time. See
+durable/transport-compiled-states-by-defeq.md.
 **To resume:**
-1. Generalize `compileStmt_copy_projdst_zero_run` and
-   `compileStmt_copy_projdst_offset_run` from `h_sclean :
-   sOut.result.cleanup = []` to the general `[Load] ++ cleanupInstrs
-   sOut.result.cleanup` shape their `_value` twins already carry; the
-   current callers then instantiate the cleanup to `[]`.
-2. Each leaf = `copy_projdst_{zero,offset}_chainsrc_simulation` with
+1. Each leaf = `copy_projdst_{zero,offset}_chainsrc_simulation` with
    `copy_chaindst_projsrc_offset_simulation`'s §6-§7 (BRIDGE 1S:
    `sb_ref_read_die_cancels` around the READ, then Borrow/Load/Die
    execute) spliced in where the bare `Load` is. The source borrow
    retires in the rhs pre-phase, BEFORE the destination lowering, so
    the two bridges never interleave.
-3. Witnesses `(*p).f := copy s.g` and `t.f := copy s.g` with g off
+2. Witnesses `(*p).f := copy s.g` and `t.f := copy s.g` with g off
    zero; teeth by oversizing the `Shared` projection borrow (d70 takes
    the no-borrow branch, so it stays passing and the tooth is
    discriminating).

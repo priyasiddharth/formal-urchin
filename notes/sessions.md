@@ -3,6 +3,22 @@
 Curated index of significant sessions, newest first. For a cold start,
 read the most recent entry.
 
+## 2026-08-30 — four-page artifact overview
+**Session:** terminal
+**Theme:** concise MIRLite → OSEA-IR semantics, compiler, and correctness
+overview in Typst.
+**Key outputs:** `mirlite-oseair-correctness.typ` and compiled PDF; one page
+per topic, joined by the nonzero-field constant-write case
+`Borrow(Mut); CStore; Die`; journal entry
+`journal/2026-08/2026-08-30-four-page-overview.md`.
+**Critical scope choices:** describes live obseq3, not the v1 `paper.md`;
+separates full compiler coverage from `CoreProg`; states successful-run
+forward simulation only; names both audited residual sorries instead of
+claiming an axiom-free proof.
+**Status:** complete — Typst 0.15.1 build and visual inspection confirmed
+exactly four A4 pages. Pre-existing `src/obseq3/proof/copy.lean` changes were
+left untouched.
+
 ## 2026-06-16 → 2026-07-01
 **Session:** `6cb17359` (VSCode)
 **Theme:** const_write sorry removal — reconstruct-vs-port decision,
@@ -1286,3 +1302,33 @@ osea matched 82); audit exact at 2, `[axioms]` untouched.
 **Next-session pickup:** the nonzero-offset half — generalize
 `compileStmt_copy_projdst_{zero,offset}_run` to a non-empty source
 cleanup, then splice BRIDGE 1S into the two projdst leaves. Then ref.
+
+## 2026-08-30 (tenth)
+**Session:** (terminal, continued) — the compiled side of the last copy
+class; the leaves do not land
+**Theme:** three fragments for `.assign (.proj dbase dpath) (.copy
+(.proj B spath))` with the source field off zero —
+`compileStmt_copy_projdst_zero_projsrc_offset_run`, its `offset` twin,
+and the destination-offset-agnostic
+`compileStmt_copy_projdst_projsrc_offset_value`. They spell the source
+tower as `Borrow(Shared)`/`Load`/`Die` and reuse the projdst
+destination half. All three compile.
+**Not delivered:** the two LEAVES. Deriving
+`copy_projdst_zero_projsrc_offset_simulation` from
+`copy_chaindst_projsrc_offset_simulation` (change the destination) got
+§1–§2 right, but the three `StateIncr` towers would not close: a
+projected destination adds an `Except.ok { … projZero … }` layer, so one
+`split` leaves a second match, and `repeat' split` still leaves a third
+occurrence inside the emitted instruction list. The fix is
+`simp only [h_dval0]`, which needs `h_dval0` in the goal's MIXED normal
+form — recorded in the parked entry with the instruction to read it out
+of a `trace_state` rather than guess. The half-built leaf was REMOVED
+rather than left broken or `sorry`-ed; the fragments stay.
+**Housekeeping:** a concurrent terminal session added a Typst four-page
+overview and its own sessions entry at the TOP of this file. Note the
+inconsistency: the header says "newest first" but every entry below is
+oldest-first, so the two conventions are now both present. Worth a
+decision.
+**Status:** green; 17/17 + 84/84; corpus 82/123 (0 fail, osea matched
+82); audit exact at 2, `[axioms]` untouched.
+**Next-session pickup:** the two leaves, from the parked recipe.
