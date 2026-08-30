@@ -58,3 +58,24 @@ Full build green; 17/17 + 73/73; corpus 82/0/123; audit exact at 2.
 `copy_place_residual` now names only: deref destinations that need
 FLATTENING first (the compiled transfer for this statement shape is
 unwritten — mechanical), and PROJECTED destinations.
+
+## Addendum — the deref-dst flatten transfer (same day)
+`compileStmt_copy_derefdst_srcflatten_run/_value` and
+`..._dstflatten_run/_value` complete the arm: the dispatcher flattens
+the source, then the destination, then calls the two-mother leaf, so
+every deref-destination spelling whose flattened source is a chain is
+covered (d61: `*(s.f.g) := copy y` and the copy back out).
+
+The lesson that cost the iterations: do NOT attempt both flattenings in
+one lemma. The nested case split leaves the two sides' states spelled
+differently at every branch, and the alignment rewrites stop firing.
+Two single-split lemmas compose cleanly — for the source step the
+destination lowering is literally the same place at equal states (so the
+ok/ok case closes by `simp only [hO, hF, h_sres, h_sagr]`), and for the
+destination step the source pre-phase is untouched.
+
+Second lesson: pick ONE spelling of the post-`Load` state per proof and
+stay in it. Unfolding `CompilerM.run`/`emitM` rewrites the state to
+`(ensurePlaceRoot _ cs).snd.val`-flavoured terms, and every later `cases`
+scrutinee must match that, or the match never reduces and the closers
+report "no progress".

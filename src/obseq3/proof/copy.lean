@@ -4256,6 +4256,228 @@ theorem compileStmt_copy_chaindst_value
   · rename_i e h_d
     exact absurd h_d (by rw [h_dval]; simp)
 
+/-! ## Flatten transfer for a DEREF destination with a copy rhs. Two
+    single-split steps compose: flatten the SOURCE (the destination
+    lowering is then the same place at equal states), then flatten the
+    DESTINATION (the source pre-phase is untouched). -/
+
+theorem compileStmt_copy_derefdst_srcflatten_run
+    {Γ : Ctx} {τ : LayoutTy}
+    (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τ) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.deref pp) (.copy src))) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.deref pp) (.copy (flattenPlace src)))) cs := by
+  obtain ⟨h_sagr, h_sagv⟩ := placeToRegChecked_flatten_agree src RefKind.Shared (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs)
+  simp only [compileStmtChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+  cases hO : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
+  | error eO =>
+      cases hF : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (flattenPlace src)) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
+      | error eF =>
+          simp only [hO, hF]
+          exact h_sagr.symm
+      | ok oF =>
+          exfalso
+          rw [hO, hF] at h_sagv
+          simp [Except.map] at h_sagv
+  | ok oO =>
+      cases hF : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (flattenPlace src)) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
+      | error eF =>
+          exfalso
+          rw [hO, hF] at h_sagv
+          simp [Except.map] at h_sagv
+      | ok oF =>
+          have h_sres : oF.result = oO.result := by
+            rw [hO, hF] at h_sagv
+            simpa [Except.map] using h_sagv
+          simp only [hO, hF, h_sres, h_sagr]
+
+theorem compileStmt_copy_derefdst_srcflatten_value
+    {Γ : Ctx} {τ : LayoutTy}
+    (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τ) (cs : CompilerState)
+    (h_ex : ∃ so, CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.deref pp) (.copy (flattenPlace src)))) cs
+      = Except.ok so) :
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.deref pp) (.copy src))) cs
+      = Except.ok so' := by
+  obtain ⟨so, h_so⟩ := h_ex
+  obtain ⟨h_sagr, h_sagv⟩ := placeToRegChecked_flatten_agree src RefKind.Shared (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs)
+  simp only [compileStmtChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure] at h_so ⊢
+  cases hO : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
+  | error eO =>
+      exfalso
+      cases hF : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (flattenPlace src)) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
+      | error eF =>
+          rw [hF] at h_so
+          simp at h_so
+      | ok oF =>
+          rw [hO, hF] at h_sagv
+          simp [Except.map] at h_sagv
+  | ok oO =>
+      cases hF : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (flattenPlace src)) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
+      | error eF =>
+          exfalso
+          rw [hO, hF] at h_sagv
+          simp [Except.map] at h_sagv
+      | ok oF =>
+          have h_sres : oF.result = oO.result := by
+            rw [hO, hF] at h_sagv
+            simpa [Except.map] using h_sagv
+          simp only [hO]
+          rw [hF] at h_so
+          simp only [h_sres, h_sagr] at h_so
+          split
+          · exact ⟨_, rfl⟩
+          · rename_i eDO h_dO
+            exfalso
+            simp only [h_dO] at h_so
+            simp at h_so
+
+theorem compileStmt_copy_derefdst_dstflatten_run
+    {Γ : Ctx} {τ : LayoutTy}
+    (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τ) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.deref pp) (.copy src))) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.deref (flattenPlace pp)) (.copy src))) cs := by
+  have h_er : ensurePlaceRoot (Place.deref (flattenPlace pp))
+      = ensurePlaceRoot (Place.deref pp) := ensurePlaceRoot_flatten (Place.deref pp)
+  simp only [compileStmtChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_er]
+  cases hS : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
+  | error eS => simp only [hS]
+  | ok oS =>
+      simp only [hS, CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      obtain ⟨h_dagr, h_dagv⟩ := placeToRegChecked_flatten_agree
+        (Place.deref pp) RefKind.Mut (emit
+          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1,
+            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextLabel,
+            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).code,
+            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).placeRegMap }
+          ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
+              (Rhs.Load (layoutToTyVal τ) oS.result.reg)]
+            ++ cleanupInstrs oS.result.cleanup))
+      rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl]
+        at h_dagr h_dagv
+      cases hDO : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.deref pp))
+          (emit
+            { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1,
+              nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextLabel,
+              code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).code,
+              placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).placeRegMap }
+            ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
+                (Rhs.Load (layoutToTyVal τ) oS.result.reg)]
+              ++ cleanupInstrs oS.result.cleanup)) with
+      | error eDO =>
+          cases hDF : CheckedCompilerM.value
+              (placeToRegChecked RefKind.Mut (Place.deref (flattenPlace pp)))
+              (emit
+                { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1,
+                  nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextLabel,
+                  code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).code,
+                  placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).placeRegMap }
+                ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
+                    (Rhs.Load (layoutToTyVal τ) oS.result.reg)]
+                  ++ cleanupInstrs oS.result.cleanup)) with
+          | error eDF =>
+              exact h_dagr.symm
+          | ok oDF =>
+              exfalso
+              rw [hDO, hDF] at h_dagv
+              simp [Except.map] at h_dagv
+      | ok oDO =>
+          cases hDF : CheckedCompilerM.value
+              (placeToRegChecked RefKind.Mut (Place.deref (flattenPlace pp)))
+              (emit
+                { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1,
+                  nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextLabel,
+                  code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).code,
+                  placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).placeRegMap }
+                ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
+                    (Rhs.Load (layoutToTyVal τ) oS.result.reg)]
+                  ++ cleanupInstrs oS.result.cleanup)) with
+          | error eDF =>
+              exfalso
+              rw [hDO, hDF] at h_dagv
+              simp [Except.map] at h_dagv
+          | ok oDF =>
+              have h_dres : oDF.result = oDO.result := by
+                rw [hDO, hDF] at h_dagv
+                simpa [Except.map] using h_dagv
+              simp only [h_dres, h_dagr]
+
+theorem compileStmt_copy_derefdst_dstflatten_value
+    {Γ : Ctx} {τ : LayoutTy}
+    (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τ) (cs : CompilerState)
+    (h_ex : ∃ so, CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.deref (flattenPlace pp)) (.copy src))) cs
+      = Except.ok so) :
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.deref pp) (.copy src))) cs
+      = Except.ok so' := by
+  obtain ⟨so, h_so⟩ := h_ex
+  have h_er : ensurePlaceRoot (Place.deref (flattenPlace pp))
+      = ensurePlaceRoot (Place.deref pp) := ensurePlaceRoot_flatten (Place.deref pp)
+  simp only [compileStmtChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_er] at h_so ⊢
+  cases hS : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
+  | error eS =>
+      exfalso
+      rw [hS] at h_so
+      simp at h_so
+  | ok oS =>
+      rw [hS] at h_so
+      simp only [hS, CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+        at h_so ⊢
+      obtain ⟨h_dagr, h_dagv⟩ := placeToRegChecked_flatten_agree
+        (Place.deref pp) RefKind.Mut (emit
+          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1,
+            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextLabel,
+            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).code,
+            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).placeRegMap }
+          ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
+              (Rhs.Load (layoutToTyVal τ) oS.result.reg)]
+            ++ cleanupInstrs oS.result.cleanup))
+      rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl]
+        at h_dagr h_dagv
+      split
+      · exact ⟨_, rfl⟩
+      · rename_i eDO h_dO
+        exfalso
+        cases h_dF : CheckedCompilerM.value
+            (placeToRegChecked RefKind.Mut (Place.deref (flattenPlace pp)))
+            (emit
+              { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1,
+                nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextLabel,
+                code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).code,
+                placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).placeRegMap }
+              ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
+                  (Rhs.Load (layoutToTyVal τ) oS.result.reg)]
+                ++ cleanupInstrs oS.result.cleanup)) with
+        | ok oDF =>
+            rw [h_dO, h_dF] at h_dagv
+            simp [Except.map] at h_dagv
+        | error eDF =>
+            simp only [h_dF] at h_so
+            simp at h_so
+
 /-- NON-LOCAL destination, CLOSED 2026-09-03: `*Q := copy src` for a
     canonical-chain destination and source. The first leaf that composes
     TWO mother-lemma calls. The rhs pre-phase lowers the source and the
@@ -4859,20 +5081,22 @@ theorem copy_chaindst_chainsrc_simulation
     proj-topped sources by the four `copy_*projchain_*` leaves, all
     reached through the src flatten transfer.
 
-    For a DEREF destination the CHAIN/CHAIN case is now closed by
-    `copy_chaindst_chainsrc_simulation` — the first leaf composing TWO
-    mother-lemma calls, with the READ between them (which is only
-    mirlite's order because of the temp-assignment lowering; the
-    event-order obstacle that used to block this class is gone, and d59
-    pins the divergence it caused).
+    For a DEREF destination, EVERY spelling whose flattened source is a
+    chain is closed: both places normalize first
+    (`compileStmt_copy_derefdst_srcflatten_run/_value` then
+    `compileStmt_copy_derefdst_dstflatten_run/_value`, composed at the
+    dispatcher), and `copy_chaindst_chainsrc_simulation` — the first
+    leaf composing TWO mother-lemma calls, with the READ between them —
+    finishes. That order is mirlite's only because of the
+    temp-assignment lowering; d59 pins the divergence the old order
+    caused, d60/d61 the positive coverage.
 
     Remaining:
-    - a deref destination whose destination or source needs FLATTENING
-      first: the compiled transfer for THIS statement shape (deref dst
-      with a copy rhs) is not written yet — mechanical, the same
-      four-way agree alignment as the others;
-    - a PROJECTED destination (`(*p).f := copy s`), which wraps the same
-      skeleton in the destination's own `Borrow`/`Die`. -/
+    - a deref destination whose flattened SOURCE is proj-topped
+      (`*p := copy s.f`): needs the projection's `Borrow`/`Die` around
+      the source half of the same skeleton;
+    - a PROJECTED destination (`(*p).f := copy s`): the same, on the
+      destination half. -/
 theorem copy_place_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -5017,17 +5241,24 @@ theorem CompilerInv_step_copy
                 h_envD h_step
   | proj _ _ => exact copy_place_residual compProg h_comp h_inv h_stmt h_step
   | deref pp =>
-      -- CLOSED when BOTH places are already canonical chains: the
-      -- two-mother leaf owns it. (Flattening the pair needs a compiled
-      -- transfer for this statement shape, which the residual still
-      -- names.)
-      by_cases h_dch : PtrChain (Place.deref pp)
-      case neg => exact copy_place_residual compProg h_comp h_inv h_stmt h_step
-      by_cases h_sch : PtrChain src
-      · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
-          copy_chaindst_chainsrc_simulation (P := pp) compProg
-            h_dch h_sch h_comp h_inv h_stmt
-            (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
+      -- FLATTEN both places, then the two-mother leaf owns every
+      -- spelling whose flattened source is a chain
+      by_cases h_sch : PtrChain (flattenPlace src)
+      · rw [stepStmt_assign_dstflatten, stepStmt_assign_copysrc_anyflatten] at h_step
+        rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl]
+          at h_step
+        obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
+          copy_chaindst_chainsrc_simulation (P := flattenPlace pp)
+            (src := flattenPlace src) compProg
+            (PtrChain_flatten_deref pp) h_sch h_comp h_inv h_stmt
+            (fun cs =>
+              ((compileStmt_copy_derefdst_srcflatten_run pp src cs).trans
+                (compileStmt_copy_derefdst_dstflatten_run pp (flattenPlace src) cs)))
+            (fun cs so h =>
+              compileStmt_copy_derefdst_srcflatten_value pp src cs
+                (compileStmt_copy_derefdst_dstflatten_value pp (flattenPlace src) cs
+                  ⟨so, h⟩))
+            h_step
         exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
           h_run, h_inv'⟩
       · exact copy_place_residual compProg h_comp h_inv h_stmt h_step

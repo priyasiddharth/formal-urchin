@@ -942,3 +942,20 @@ audit exact at 2.
 needing a FLATTEN first — write the compiled transfer for `assign
 (.deref pp) (.copy src)`, same four-way agree alignment as the others —
 and (b) PROJECTED dsts (the same skeleton inside the dst's Borrow/Die).
+
+## 2026-09-03 (tenth)
+**Session:** (terminal, continued) — deref-dst flatten transfer
+**Theme:** `compileStmt_copy_derefdst_srcflatten_*` +
+`..._dstflatten_*` make the deref-destination arm total for every
+spelling whose FLATTENED source is a chain (d61: `*(s.f.g) := copy y`).
+Key lesson: do NOT flatten both places in one lemma — the nested split
+leaves the two sides' states spelled differently and the alignment
+rewrites stop firing; two single-split lemmas compose cleanly. Second:
+pick one spelling of the post-Load state per proof (unfolding
+CompilerM.run/emitM moves it to `(ensurePlaceRoot _ cs).snd.val` form)
+and make every later `cases` scrutinee match it.
+**Status:** complete; all green; 17/17 + 74/74; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** copy's residual is down to proj-topped
+FLATTENED SOURCES under a deref dst, and PROJECTED dsts — each wraps
+the same two-mother skeleton in that projection's Borrow/Die. Then ref.

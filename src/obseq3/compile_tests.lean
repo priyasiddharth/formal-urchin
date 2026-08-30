@@ -1360,6 +1360,29 @@ def d60_copy_into_deref_dst : IO Unit :=
      .assign (.deref pD60) (.copy (.deref qD60))]
     .ok "d60 copy into deref dst"
 
+def sD61L := obseq.LayoutTy.TupL [natL, innerD50L]
+def ΓD61 : Ctx := [sD61L, natL, natL, pairD52L]
+def sD61 : Place ΓD61 sD61L := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD61 : Place ΓD61 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def yD61 : Place ΓD61 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def tD61 : Place ΓD61 pairD52L := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: a copy into a deref destination whose pointer place is a
+    PROJ-OF-PROJ (`*(s.f.g) := copy x`) and out of a nested source —
+    both places are flatten-normalized before the two-mother leaf sees
+    them (the deref-dst flatten transfer, 2026-09-03). -/
+def d61_copy_into_flattened_deref_dst : IO Unit :=
+  expectDiff ΓD61
+    [.assign xD61 (.constInit 5),
+     .assign yD61 (.constInit 6),
+     .assign (.proj (.proj sD61 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] xD61),
+     .assign (.deref (.proj (.proj sD61 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil))) (.copy yD61),
+     .assign xD61 (.copy (.deref (.proj (.proj sD61 (.field ⟨1, by decide⟩ .nil))
+        (.field ⟨1, by decide⟩ .nil))))]
+    .ok "d61 copy into flattened deref dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1433,7 +1456,8 @@ def allTests : List (IO Unit) := [
   d57_copy_into_fresh_local,
   d58_copy_field_into_fresh_local,
   d59_copy_read_precedes_dst_chain,
-  d60_copy_into_deref_dst]
+  d60_copy_into_deref_dst,
+  d61_copy_into_flattened_deref_dst]
 
 def runAll : IO Unit := do
   allTests.forM id

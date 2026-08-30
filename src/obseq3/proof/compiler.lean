@@ -130,10 +130,12 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    `copy_chaindst_chainsrc_simulation` — the first leaf composing TWO
    mother-lemma calls, with the READ between them, the temporary
    surviving the destination lowering by the mother's register-frame
-   conjunct (d60). Remaining: deref destinations needing a FLATTEN first
-   (the compiled transfer for this statement shape is unwritten) and
-   PROJECTED destinations (the same skeleton inside the destination's
-   own `Borrow`/`Die`).
+   conjunct (d60). The deref-dst FLATTEN transfer then generalizes that
+   to every spelling whose flattened source is a chain (two single-split
+   steps, source then destination, composed at the dispatcher; d61).
+   Remaining: proj-topped flattened SOURCES under a deref destination,
+   and PROJECTED destinations — each wraps the same skeleton in that
+   projection's own `Borrow`/`Die`.
 4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested

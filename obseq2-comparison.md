@@ -4,6 +4,28 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 (eighth) — Both Places Normalize
+
+Sixty-sixth increment: the deref-destination arm goes total for every
+spelling whose flattened source is a chain. The transfer flattens the
+source, then the destination, then hands off to the two-mother leaf, so
+`*(s.f.g) := copy y` and its read-back are covered without the leaf
+knowing anything about nested field paths.
+
+The instructive part was a failed attempt. Flattening both places inside a
+single lemma means a nested case split, and at every branch the two sides'
+compiler states end up spelled differently — the alignment rewrites simply
+stop firing. Split into two single-split lemmas and each one is easy: when
+only the source moves, the destination lowering is literally the same
+place at equal states; when only the destination moves, the source phase
+is untouched. The related discipline is to pick one spelling of the
+intermediate state per proof and keep every later case scrutinee in it,
+because unfolding the monad's run moves that state into a different but
+equal form.
+
+d61 pins a copy through a doubly-nested pointer field and back. Units
+17/17 + 74/74, suite pass 82 | fail 0 of 123, axiom audit exact at two.
+
 ## 2026-09-03 (seventh) — Two Mothers, One Statement
 
 Sixty-fifth increment: a copy can now write to a destination that is
