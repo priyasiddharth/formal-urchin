@@ -1,23 +1,7 @@
 # Sessions log
 
-Curated index of significant sessions, newest first. For a cold start,
-read the most recent entry.
-
-## 2026-08-30 — four-page artifact overview
-**Session:** terminal
-**Theme:** concise MIRLite → OSEA-IR semantics, compiler, and correctness
-overview in Typst.
-**Key outputs:** `mirlite-oseair-correctness.typ` and compiled PDF; one page
-per topic, joined by the nonzero-field constant-write case
-`Borrow(Mut); CStore; Die`; journal entry
-`journal/2026-08/2026-08-30-four-page-overview.md`.
-**Critical scope choices:** describes live obseq3, not the v1 `paper.md`;
-separates full compiler coverage from `CoreProg`; states successful-run
-forward simulation only; names both audited residual sorries instead of
-claiming an axiom-free proof.
-**Status:** complete — Typst 0.15.1 build and visual inspection confirmed
-exactly four A4 pages. Pre-existing `src/obseq3/proof/copy.lean` changes were
-left untouched.
+Curated index of significant sessions, OLDEST FIRST — append new
+entries at the END. For a cold start, read the LAST entry.
 
 ## 2026-06-16 → 2026-07-01
 **Session:** `6cb17359` (VSCode)
@@ -1332,3 +1316,51 @@ decision.
 **Status:** green; 17/17 + 84/84; corpus 82/123 (0 fail, osea matched
 82); audit exact at 2, `[axioms]` untouched.
 **Next-session pickup:** the two leaves, from the parked recipe.
+
+## 2026-08-30 — four-page artifact overview
+**Session:** terminal
+**Theme:** concise MIRLite → OSEA-IR semantics, compiler, and correctness
+overview in Typst.
+**Key outputs:** `mirlite-oseair-correctness.typ` and compiled PDF; one page
+per topic, joined by the nonzero-field constant-write case
+`Borrow(Mut); CStore; Die`; journal entry
+`journal/2026-08/2026-08-30-four-page-overview.md`.
+**Critical scope choices:** describes live obseq3, not the v1 `paper.md`;
+separates full compiler coverage from `CoreProg`; states successful-run
+forward simulation only; names both audited residual sorries instead of
+claiming an axiom-free proof.
+**Status:** complete — Typst 0.15.1 build and visual inspection confirmed
+exactly four A4 pages. Pre-existing `src/obseq3/proof/copy.lean` changes were
+left untouched.
+
+## 2026-08-30 (eleventh)
+**Session:** (terminal, continued) — the tower obstacle falls; one of
+the two leaves lands
+**Theme:** `copy_projdst_zero_projsrc_offset_simulation` is PROVED —
+a projected destination at zero offset with a proj-topped source at
+nonzero offset. The obstacle that stopped the previous attempt is
+solved, and the method generalizes: put a `trace_state` in the
+`StateIncr` tower, build, and lift the state spelling VERBATIM out of
+the build log into `have h_dv0 : … := h_dval0` (defeq transport — no
+proof obligation). `simp only [h_dv0]` then fires and the tower closes
+with no `split` at all, which also sidesteps the nested-match problem
+entirely. Two spellings were needed: value-flavoured for the pre-mother
+tower, and a run-flavoured one derived through `h_sclean` for the two
+post-mother towers. Then every other occurrence of that state in the
+leaf — the destination mother's `cs` argument, `h_prmCS2`, `h_lbs1`,
+`h_prb1` — must be normalized to the same spelling, or the later `rw`s
+miss one at a time.
+**Not delivered:** the nonzero-destination twin and the dispatcher
+wiring. The twin is not a rename: its write phase is BRIDGE 1 from
+`copy_projdst_offset_chainsrc_simulation` §8, whose every compiled-state
+spelling is the chain-source one. And the zero leaf cannot be wired
+alone — routing a package-less source needs a parallel recursive
+dispatcher that only makes sense once both leaves exist. Both recorded
+in the parked entry.
+**Convention:** sessions.md is now explicitly OLDEST FIRST (header
+fixed, the concurrent session's entry moved to the end); CLAUDE.md and
+notes/CLAUDE.md say so too.
+**Status:** green; 17/17 + 84/84; corpus 82/123 (0 fail, osea matched
+82); audit exact at 2, `[axioms]` untouched.
+**Next-session pickup:** the twin, then the recursive dispatcher, then
+witnesses and teeth.

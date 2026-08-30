@@ -523,6 +523,32 @@ not). Read the goal with a `trace_state` in the tower and copy the
 spelling out of the build log before writing `h_dval0`; guessing it
 costs an iteration each time. See
 durable/transport-compiled-states-by-defeq.md.
+**Progress 2026-08-30 (later):** the ZERO-destination-offset leaf,
+`copy_projdst_zero_projsrc_offset_simulation`, is PROVED and in the
+file (not yet wired — see below). The tower obstacle above is SOLVED,
+and the method is worth reusing: put a `trace_state` in the tower, run
+`lake build`, and lift the state spelling verbatim out of the build log
+into a `have h_dv0 : … := h_dval0` (defeq transport, no proof needed);
+then `simp only [h_dv0]` fires and the tower closes with no `split` at
+all. Two spellings were needed — the value-flavoured one for the
+pre-mother tower and a run-flavoured one derived with `h_sclean` for
+the two post-mother towers — and every other occurrence of the
+destination state in the leaf (the mother's `cs` argument, `h_prmCS2`,
+`h_lbs1`, `h_prb1`) has to be normalized to the SAME spelling or the
+later `rw`s miss.
+**Still open:** the NONZERO-destination-offset twin, and the wiring.
+The twin is NOT a rename of the zero leaf: its write phase must come
+from `copy_projdst_offset_chainsrc_simulation`'s §8 (BRIDGE 1,
+`sb_ref_use_die_cancels` around the `RStore`), and every compiled-state
+spelling inside that §8 is the chain-source one — it has to be rewritten
+against the Borrow/Load/Die tower, not substituted.
+**Wiring note:** the zero leaf cannot be routed on its own.
+`CompilerInv_step_copy`'s proj-dst arm delegates to
+`copy_projdst_simulation`, which recurses on the destination base and
+now takes a source PACKAGE; a nonzero-offset source has no package, so
+routing it needs a parallel recursive dispatcher that peels nested
+destination projections and then picks between the two leaves by
+destination offset. Build that once BOTH leaves exist.
 **To resume:**
 1. Each leaf = `copy_projdst_{zero,offset}_chainsrc_simulation` with
    `copy_chaindst_projsrc_offset_simulation`'s §6-§7 (BRIDGE 1S:

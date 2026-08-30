@@ -13,8 +13,9 @@ empirical/  [EMP]  — repeated observations, version-stamped
 journal/    [OBS] [HYP] — dated single events, YYYY-MM dirs
 weekly/ monthly/     — digests
 loose-ends/parked.md — parked work with resume context
-sessions.md          — index of significant sessions (read latest
-                       entry first when starting a session)
+sessions.md          — chronological index, always oldest first;
+                       append at end and read the last entry first
+                       when starting a session
 ```
 
 ## Project-stable conventions
