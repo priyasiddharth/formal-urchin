@@ -909,6 +909,25 @@ theorem IdentityOnDomain.extendIdRange {ρa : AddrRenameMap}
   intro x x' hx
   grind [AddrRenameMap.extendIdRange, IdentityOnDomain]
 
+/-- Reading `n` cells yields `n` values (both machines). -/
+theorem oseair_readWordSeq_length :
+    ∀ (n : Nat) (m : oseair.Mem) (addr : Word),
+      (oseair.readWordSeq m addr n).length = n
+  | 0, _, _ => rfl
+  | n + 1, m, addr => by
+      simp only [oseair.readWordSeq]
+      cases oseair.Mem.find? m addr <;>
+        simp [oseair_readWordSeq_length n m (addr + 1)]
+
+theorem mirlite_readWordSeq_length :
+    ∀ (n : Nat) (m : mirlite.Mem) (addr : Word),
+      (mirlite.readWordSeq m addr n).length = n
+  | 0, _, _ => rfl
+  | n + 1, m, addr => by
+      simp only [mirlite.readWordSeq]
+      cases mirlite.Mem.find? m addr <;>
+        simp [mirlite_readWordSeq_length n m (addr + 1)]
+
 /-- `readWordSeq` only observes memory through `find?`, so two memories
     that agree there read alike (allocation bumps `addrStart`/`allocs`
     but leaves the cell map untouched). -/
@@ -2022,7 +2041,7 @@ theorem runN_Assgn_Load_ptr_step
     {b o sz : Word} {t : Tag} {p2 : AccessPerms}
     (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.Load ty preg)))
     (h_entry : PtrRegisterEntry s.reg preg b o sz t)
-    (h_lt : o < sz)
+    (h_lt : o + obseq.typeSize ty ≤ sz)
     (h_read : MSB.read s.perms (b + o) (obseq.typeSize ty) t = .ok p2) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
       { s with perms := p2,
@@ -2031,10 +2050,11 @@ theorem runN_Assgn_Load_ptr_step
                pc := s.pc + 1 } := by
   have h_lookup : oseair.RegMap.lookup s.reg preg
       = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
-  have h_bounds : ((b + o < b) || (b + o ≥ b + sz)) = false := by
+  have h_bounds : ((b + o < b) || (b + o + obseq.typeSize ty > b + sz)) = false := by
     simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
-    exact ⟨Nat.not_lt.mpr (Nat.le_add_right b o),
-           Nat.not_le.mpr (Nat.add_lt_add_left h_lt b)⟩
+    refine ⟨Nat.not_lt.mpr (Nat.le_add_right b o), Nat.not_lt.mpr ?_⟩
+    rw [Nat.add_assoc]
+    exact Nat.add_le_add_left h_lt b
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with perms := p2,
                reg := oseair.RegMap.insert s.reg dst

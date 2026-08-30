@@ -882,3 +882,21 @@ alternative) is the adopted design. Scope caveat appended in place
 rather than superseding.
 **Status:** complete.
 **Next-session pickup:** unchanged — see the preceding entries.
+
+## 2026-09-03 (seventh)
+**Session:** (terminal, continued) — the temp-assignment lowering
+**Theme:** COMPILER + SEMANTICS change, human-approved. copy lowers to
+`Load` into a fresh REGISTER (the read, in the rhs pre-phase) then
+`RStore` (the write), matching rustc's `_3 = (*_2); (*_1) = move _3`;
+`Rhs.Load` now bounds-checks its whole width; mirlite's overlapping-copy
+guard REMOVED (Rust permits overlap — Miri runs `*p = *p` clean). All
+six copy leaves repaired (Memcpy step → Load + RStore steps, one extra
+fresh register in the sim bullets); the offset leaves got SIMPLER — the
+Die now precedes the write, so BRIDGE 1S is contiguous and
+`sb_die_sb_write_comm` is no longer used. d33 rewritten (both machines
+now succeed), d35 flipped to ok, d59 added as the regression pin.
+**Status:** complete; all green; 17/17 + 72/72; corpus 82/123 (0 fail);
+audit exact at 2.
+**Next-session pickup:** copy's NON-LOCAL dst — now plain composition
+(two place lowerings + two cleanups) with no ordering obstacle; then
+ref's classes.

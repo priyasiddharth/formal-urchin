@@ -762,20 +762,25 @@ def d32_field_copy_zero_offset : IO Unit :=
      .assign yD32 (.copy (.proj tupD32 (.field ⟨0, by decide⟩ .nil)))]
     .ok "d32 field copy zero offset"
 
-/-- STATE-LEVEL pin, RETIRED-countermodel edition (2026-08-28): this
-    forged overlap state — `y : natL` re-bound INSIDE `tup : pairL`'s
-    block, cell 1's stack `[Ref 4, MutRef 3, Own 1]`, `tup.tag := 4`,
-    `y.tag := 3` — used to make `y := copy tup.1` DIVERGE (source ok,
-    target dies at the `Die`), which was the separation-invariant
-    countermodel. The overlapping-assignment check dissolved it: BOTH
-    machines now refuse the copy — mirlite at the `doAssign` overlap
-    guard, oseair at the `Memcpy`'s nonoverlapping check. Teeth:
-    reverting either check resurrects the one-sided behavior. -/
+/-- FIXED-BUG witness, REWRITTEN 2026-09-03 (the temp-assignment
+    lowering). This hand-forged state — `y : natL` re-bound INSIDE
+    `tup : pairL`'s block, cell 1's stack `[Ref 4, MutRef 3, Own 1]`,
+    `tup.tag := 4`, `y.tag := 3` — used to make `y := copy tup.1`
+    DIVERGE: the old lowering was `Borrow; Memcpy; Die`, and the
+    `Memcpy`'s dst write popped the fresh borrow tag that the following
+    `Die` needed, so the target erred where mirlite succeeded. The
+    overlapping-assignment guard papered over it by making BOTH refuse.
+
+    The copy now lowers to `Borrow; Load; Die; RStore` — the value is
+    read into a register and the temporary borrow retires BEFORE the
+    write — so the countermodel dissolves in the good direction: both
+    machines SUCCEED and end with the same cell-1 stack. Teeth: putting
+    the write back before the `Die` resurrects the one-sided error. -/
 def ΓD33 : Ctx := [pairL, natL]
 def tupD33 : Place ΓD33 pairL := .local ⟨⟨0, by decide⟩, rfl⟩
 def yLocD33 : Local ΓD33 natL := ⟨⟨1, by decide⟩, rfl⟩
 
-def d33_overlap_junk_copy_diverges : IO Unit := do
+def d33_overlap_junk_copy_agrees : IO Unit := do
   -- the shared permission state (rename = identity on both machines)
   let perms : AccessPerms :=
     { StackMap := [(0, [.Own 1]),
@@ -793,12 +798,10 @@ def d33_overlap_junk_copy_diverges : IO Unit := do
       perms := perms }
   let stmt : Stmt ΓD33 :=
     .assign (.local yLocD33) (.copy (.proj tupD33 (.field ⟨1, by decide⟩ .nil)))
-  match mirlite.stepStmt M junkSrc stmt with
-  | .ok _ => throw (IO.userError
-      "d33: source should now REFUSE the overlapping copy")
-  | .err e =>
-      assert ((e.splitOn "overlapping").length > 1)
-        s!"d33: expected the overlap guard, got: {e}"
+  let srcPerms ←
+    match mirlite.stepStmt M junkSrc stmt with
+    | .err e => throw (IO.userError s!"d33: source should now SUCCEED, got: {e}")
+    | .ok st => pure st.perms
   -- TARGET: same stacks, registers holding the forged pointers; the
   -- program is exactly what the compiler emits for the statement
   let junkTgt : oseair.State M :=
@@ -810,19 +813,16 @@ def d33_overlap_junk_copy_diverges : IO Unit := do
       perms := perms }
   let instrs : List oseair.Instr :=
     [.Assgn (.R 2) (borrowRhs .Shared 1 (.R 0) 1),   -- Borrow(Shared) of tup.1
-     .Memcpy (.R 1) (.R 2) .NatTy,                   -- the copy (read fresh, useMut dst)
-     .Die (.R 2) 1]                                  -- cleanup: fresh tag must be on top
+     .Assgn (.R 3) (.Load .NatTy (.R 2)),            -- the READ, into a register
+     .Die (.R 2) 1,                                  -- the temporary retires
+     .RStore .NatTy (.R 3) (.R 1)]                   -- then the write
   let prog : oseair.Prog := fun n => instrs.get? n
-  -- the Borrow succeeds; the Memcpy now refuses the overlapping ranges
-  match oseair.runN M 1 junkTgt prog with
-  | .Ok _ => pure ()
-  | .Err e => throw (IO.userError s!"d33: the Borrow should succeed, got: {e}")
-  match oseair.runN M 2 junkTgt prog with
-  | .Ok _ => throw (IO.userError
-      "d33: the target Memcpy should refuse the overlapping ranges")
-  | .Err e =>
-      assert ((e.splitOn "overlapping").length > 1)
-        s!"d33: expected the Memcpy overlap check, got: {e}"
+  let tgtPerms ←
+    match oseair.runN M 4 junkTgt prog with
+    | .Err e => throw (IO.userError s!"d33: target should now SUCCEED, got: {e}")
+    | .Ok st => pure st.perms
+  assert (srcPerms.StackMap.lookup 1 == tgtPerms.StackMap.lookup 1)
+    s!"d33: cell-1 stacks disagree: {reprStr (srcPerms.StackMap.lookup 1)} vs {reprStr (tgtPerms.StackMap.lookup 1)}"
 
 /-- FIXED-BUG witness (was the KNOWN-COMPILER-BUG pin, flipped
     2026-08-28 when the lowering-order fix landed): the assign-place
@@ -854,27 +854,18 @@ def d34_deref_dst_temp_killed_by_rhs_spine : IO Unit := do
        (.ref .Mut false [] (.deref (.deref wD34)))]
   expectDiff ΓD34 prog .ok "d34 deref dst temp survives rhs spine"
 
-/-- Differential: the REACHABLE overlapping assignment — an exact
-    self-copy `x := copy x` — is UB on BOTH machines at the same
-    statement: mirlite's `doAssign` overlap guard and oseair's
-    `Memcpy` nonoverlapping check.
-
-    JUSTIFICATION CORRECTED 2026-09-03. The old text claimed "MIR lowers
-    assignment to a nonoverlapping copy; Miri flags overlap". That is
-    FALSE: rustc lowers `*a = *b` through a TEMPORARY
-    (`_3 = (*_2); (*_1) = move _3` — checked on rustc 1.91.0 with
-    `-Zmir-opt-level=0 -Cdebug-assertions=off`), so an overlapping
-    assignment is WELL-DEFINED in Rust. Our two machines agree with each
-    other, so the refinement is unaffected, but both are STRICTER than
-    Rust here — the same missing temporary that causes the event-order
-    divergence in `notes/2026-09-03-copy-nonlocal-dst-order.md`. Adding
-    the temp would make this program defined on both machines and let
-    the overlap guard go. -/
-def d35_self_copy_is_ub : IO Unit :=
+/-- Differential: the exact self-copy `x := copy x` — REWRITTEN
+    2026-09-03. It used to be UB on both machines (mirlite's overlap
+    guard, oseair's `Memcpy` nonoverlapping check). Rust permits it:
+    rustc reads into a temporary first (`_5 = (*_2); (*_2) = move _5`,
+    checked on rustc 1.91.0), and Miri runs it clean. Both machines now
+    do the same — the value goes into a register, then back out — so an
+    overlapping assignment is WELL DEFINED here too. -/
+def d35_self_copy_is_ok : IO Unit :=
   expectDiff ΓA
     [.assign xA (.constInit 7),
      .assign xA (.copy xA)]
-    (.ub 1) "d35 self copy is ub"
+    .ok "d35 self copy is ok"
 
 /-- Differential: a NONZERO-offset field copy `y := copy s.1` — the
     `[Borrow(Shared); Memcpy; Die]` fragment whose interleaved die is
@@ -1322,6 +1313,32 @@ def d58_copy_field_into_fresh_local : IO Unit :=
      .assign yD58 (.copy (.proj sD58 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d58 copy field into fresh local"
 
+def ppNatD59 := obseq.LayoutTy.PtrL ptrNat
+def ΓD59 : Ctx := [natL, ptrNat, ppNatD59, ppNatD59, ptrNat]
+def xD59 : Place ΓD59 natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD59 : Place ΓD59 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def qD59 : Place ΓD59 ppNatD59 := .local ⟨⟨2, by decide⟩, rfl⟩
+def q2D59 : Place ΓD59 ppNatD59 := .local ⟨⟨3, by decide⟩, rfl⟩
+def rD59 : Place ΓD59 ptrNat := .local ⟨⟨4, by decide⟩, rfl⟩
+
+/-- REGRESSION (the temp-assignment lowering, 2026-09-03): the copy's
+    source cell is ALSO a pointer cell that the destination chain must
+    read, and the source's tag is a reborrow ABOVE the chain's on that
+    cell. Under the old `Memcpy` lowering the chain's read ran FIRST and
+    popped the source's tag, so the target trapped where mirlite (and
+    Miri) succeed. Now the value is read into a register before the
+    destination is lowered, and both machines agree. Teeth: moving the
+    read back into the store resurrects the one-sided trap. -/
+def d59_copy_read_precedes_dst_chain : IO Unit :=
+  expectDiff ΓD59
+    [.assign xD59 (.constInit 5),
+     .assign pD59 (.ref .Mut false [] xD59),
+     .assign qD59 (.ref .Mut false [] pD59),
+     .assign q2D59 (.ref .Mut false [] (.deref qD59)),
+     .assign rD59 (.ptrCast q2D59),
+     .assign (.deref (.deref qD59)) (.copy (.deref rD59))]
+    .ok "d59 copy read precedes dst chain"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1368,9 +1385,9 @@ def allTests : List (IO Unit) := [
   d30_reborrow_through_pointer,
   d31_zst_reborrow,
   d32_field_copy_zero_offset,
-  d33_overlap_junk_copy_diverges,
+  d33_overlap_junk_copy_agrees,
   d34_deref_dst_temp_killed_by_rhs_spine,
-  d35_self_copy_is_ub,
+  d35_self_copy_is_ok,
   d36_field_copy_nonzero_offset,
   d37_copy_through_pointer,
   d38_nested_proj_write,
@@ -1393,7 +1410,8 @@ def allTests : List (IO Unit) := [
   d55_copy_from_proj_over_chain,
   d56_copy_from_nested_proj,
   d57_copy_into_fresh_local,
-  d58_copy_field_into_fresh_local]
+  d58_copy_field_into_fresh_local,
+  d59_copy_read_precedes_dst_chain]
 
 def runAll : IO Unit := do
   allTests.forM id

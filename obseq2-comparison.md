@@ -4,6 +4,35 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-03 (sixth) — The Copy Gets a Temporary
+
+Sixty-fourth increment, and the first in a while to change the compiler
+rather than the proofs. A copy now reads its value into a register during
+the right-hand-side phase and stores it afterwards, instead of doing both
+at once in a `Memcpy` emitted after the destination is lowered. That is
+what rustc does, and it removes a real miscompilation: with the old order
+the destination chain's own pointer read ran first and could pop the tag
+the copy's read needed, so the target trapped where both mirlite and Miri
+succeed.
+
+The temporary is a register, not an allocation — which matters more than
+it sounds. A heap temp would bump only the target's allocator watermark
+and desynchronize the two machines' addresses, breaking the identity
+address rename that every leaf leans on. Registers here already hold
+whole value lists, so nothing about allocation changes.
+
+Two consequences fell out. Overlapping assignment is now allowed on both
+machines, matching Rust, and the guard that used to reject it is gone;
+the hand-forged countermodel that guard was invented for now succeeds on
+both sides instead of failing on both. And the nonzero-offset copy proofs
+got *shorter*: with the cleanup dying before the write, the keystone's
+borrow-read-die triple is contiguous again and the commutation lemma that
+used to slide the write between its phases is unnecessary.
+
+d59 pins the divergence permanently. Units 17/17 + 72/72, suite pass 82 |
+fail 0 of 123, axiom audit exact at two. Copy's last class is now ordinary
+composition work.
+
 ## 2026-09-03 (fifth) — Every Source, Into Nothing
 
 Sixty-third increment: an unbound copy destination now accepts every source

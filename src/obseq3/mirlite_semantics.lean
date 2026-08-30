@@ -405,26 +405,16 @@ def doAssign
   match resolvePlaceAcc M output.state dst with
   | .error e => .err e
   | .ok (resolved, permsD) =>
-  -- MIR forbids overlapping place-to-place assignment (Miri lowers it
-  -- to a NONOVERLAPPING copy and flags overlap as UB): the guard exists
-  -- only in the `.copy` branch, checked with the ACCESS-FREE resolver
-  -- so no SB event is duplicated (the d33 countermodel class).
-  match rhs with
-  | .copy src =>
-      match resolvePlace? s1 src with
-      | some rs =>
-          if rs.addr < resolved.addr + blockSize τ ∧
-             resolved.addr < rs.addr + blockSize τ then
-            .err "copy of overlapping ranges"
-          else
-            writeResolvedPlace M { output.state with perms := permsD }
-              resolved output.values output.values_len
-      | none =>
-          writeResolvedPlace M { output.state with perms := permsD }
-            resolved output.values output.values_len
-  | _ =>
-      writeResolvedPlace M { output.state with perms := permsD }
-        resolved output.values output.values_len
+  -- OVERLAP IS ALLOWED (2026-09-03, SEMANTICS CHANGE, flagged). The old
+  -- `.copy` guard rejected overlapping place-to-place assignment because
+  -- the compiler lowered a copy to a nonoverlapping `Memcpy`. Rust does
+  -- NOT forbid it: rustc reads the value into a TEMPORARY first
+  -- (`_3 = (*_2); (*_1) = move _3`), so `*p = *p` is well defined, and
+  -- Miri runs it clean. The compiler now materializes the same
+  -- temporary (a register), so both machines are read-then-write and
+  -- the guard has nothing left to protect.
+  writeResolvedPlace M { output.state with perms := permsD }
+    resolved output.values output.values_len
 
 /-- Read a runtime word for an `AllocLen`. A `fromPlace` read is a real
     SB read access through the place's tag. -/

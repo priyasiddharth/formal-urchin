@@ -560,11 +560,25 @@ def compileRExprPreChecked
         ev := fun _ => RExprToEvidence.constInit value
       }
   | .copy (τ := τ) src => do
+      -- Rust materializes the copied value into a TEMPORARY before the
+      -- destination place is evaluated (`_3 = (*_2); (*_1) = move _3`),
+      -- and so do we: the READ happens here, in the rhs pre-phase, and
+      -- only the write is deferred to the store. Emitting the read as a
+      -- `Memcpy` at store time instead put it AFTER the destination
+      -- lowering's own pointer reads, which is observable under Stacked
+      -- Borrows (a chain read pops the source's tag) — see
+      -- notes/2026-09-03-copy-nonlocal-dst-order.md. The temp is a
+      -- REGISTER, not an allocation: registers hold whole value lists,
+      -- so nothing perturbs the allocator watermarks.
       let srcOut ← placeToRegChecked RefKind.Shared src
       let srcRes := srcOut.result
+      let tmpReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Assgn tmpReg (Rhs.Load (layoutToTyVal τ) srcRes.reg)]
+          ++ cleanupInstrs srcRes.cleanup))
       pure {
-        store := fun dstPtr => [Instr.Memcpy dstPtr srcRes.reg (layoutToTyVal τ)],
-        postCleanup := srcRes.cleanup,
+        store := fun dstPtr => [Instr.RStore (layoutToTyVal τ) tmpReg dstPtr],
+        postCleanup := [],
         ev := fun _ => RExprToEvidence.copy src srcRes srcOut.evidence
       }
   | .ref kind prot mask src => do

@@ -149,7 +149,10 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
      match state.reg.lookup reg with
      | some (_, [Val.Ptr base offset size tag]) =>
        let addr := base + offset
-       if addr < base || addr >= base + size then RhsResult.Err "OOB"
+       -- the WHOLE width must fit: `Load` is used at wide types by the
+       -- copy lowering (2026-09-03), where checking only the start
+       -- address would let a read run off the end of the block
+       if addr < base || addr + typeSize ty > base + size then RhsResult.Err "OOB"
        else
          match M.read state.perms addr (typeSize ty) tag with
          | .ok perms2 =>

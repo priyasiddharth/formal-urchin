@@ -119,19 +119,15 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    states under both extended renames, and `AddrRenameMap.extendBlock`
    keeps a zero-sized destination's base mapped), and the two
    `copy_fresh_projchain_*` leaves extend that to proj-topped sources —
-   so an unbound destination accepts EVERY source shape. Remaining: the
-   NON-LOCAL destination only (`(*p).f := copy s`) — and that class is
-   an EVENT-ORDER MISMATCH, not composition (assessment corrected
-   2026-09-03). mirlite performs the copy's range read BEFORE the dst
-   resolution (rhs-first, Rust's order); the compiled `Memcpy` performs
-   it AFTER the dst lowering's pointer-cell reads. SB reads do not
-   commute in general. They DO commute here, because a dst-chain
-   pointer cell inside the source's τ-range would force τ to contain
-   `PtrL σ` while σ reaches `PtrL τ` — impossible for an inductive
-   `LayoutTy` — but formalizing that needs a memory well-typedness
-   invariant `CompilerInv` does not carry, or a compiler change that
-   materializes the source into a temporary first. See
-   `copy_place_residual`'s docstring.
+   so an unbound destination accepts EVERY source shape. The
+   event-ORDER obstacle that blocked the last class is GONE as of
+   2026-09-03: the copy lowering now materializes the value in a
+   REGISTER during the rhs pre-phase (`Load` then `RStore`), exactly as
+   rustc does, so the read precedes the destination lowering on both
+   machines. That also removed mirlite's overlapping-assignment guard
+   (Rust permits overlap) and is pinned by d59. Remaining: the
+   NON-LOCAL destination only (`(*p).f := copy s`) — now genuine
+   composition work (two place lowerings and two cleanups in one leaf).
 4. `ref_place_residual` — NARROWED 2026-08-30: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested
