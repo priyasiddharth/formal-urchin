@@ -1525,3 +1525,34 @@ valid control: its read-back is itself an offset projection.
 three families (unbound dst roots, non-local sources, projected dsts
 over a deref base). The copy techniques transfer: the lowering PACKAGE,
 regime-B leaves, and `csnorm`.
+
+## 2026-08-31 (later)
+**Session:** (terminal, continued) — ref reconnaissance, and the first
+compiled fragments
+**Theme:** with copy closed, `ref_place_residual` is the only sorry.
+Inventoried it from the source: ELEVEN call sites in three families —
+unbound destination roots (4), non-local sources (6), and a projected
+destination over a deref base (1). The closed set is the complement:
+local sources under every destination, non-local sources only under a
+local destination.
+**Key finding:** copy's package trick does NOT transfer for free.
+`LoweringSim` was cheap because `ptrChain_lowering_sim` already existed
+as a standalone source lemma; ref has none — every leaf inlines its own
+source phase, so factoring one out means extracting and proving it per
+source shape. The payoff is bigger, though:
+`placeToBorrowRegChecked` ends identically in all three arms (a
+`Borrow` into a fresh register, cleanup `[(tmpReg, blockSize τ)]`),
+differing only in the offset, so one package would unlock all six
+family-(B) sites. Unlike copy's, it should be stated WITH the cleanup
+rather than against it. Recommendation recorded: build it after two or
+three concrete leaves exist to generalize over.
+**Landed:** `compileStmt_ref_derefdst_projsrc_run/_value` for
+`*P := &kind s.f` — the proj arm differs from the local arm only in the
+borrow's offset, so both are the deref-dst pair with `pathOffset f` for
+`0`. Both compiled first try.
+**Status:** green; 17/17 + 87/87; audit exact at ONE sorry.
+**Next-session pickup:** the leaf itself — swap
+`ref_derefdst_local_simulation`'s source phase for the proj arm
+(`resolvePlaceAcc_proj_base_ok`, the fit check at
+`bS.addr + PathTo.offset f`, the borrow offset, and the pointer value's
+`(0 + pathOffset f)` / `blockSize σs`).
