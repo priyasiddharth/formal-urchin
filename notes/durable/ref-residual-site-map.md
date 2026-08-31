@@ -4,7 +4,7 @@ Tags: obseq3, ref, residual, site-map
 
 `obseq3.proof.ref_place_residual` is the ONLY `sorry` left in
 `src/obseq3` (verified 2026-08-31 by `grep -rn sorry src/obseq3` and by
-`scripts/audit_axioms.sh`). SIX call sites, in TWO classes.
+`scripts/audit_axioms.sh`). FIVE call sites, in TWO classes.
 
 The count is NOT monotone and is not the metric. It went 12 -> 6 as
 whole classes closed, then 6 -> 8 when the projected-destination source
@@ -20,12 +20,15 @@ Enumerated by walking the `cases` arms enclosing each
 
 | class | statement shape | sites |
 |---|---|---|
-| 1 | DEREF-ROOTED src — `&(*p).f` under a local, deref or projected dst; `t.g := &*p`; `*chain := &*chain'` | 5 |
+| 1 | DEREF-ROOTED src under a destination that is NOT a plain local — `t.g := &*p`, `t.g := &(*p).f`, `*chain := &*chain'`, `*chain := &(*p).f` | 4 |
 | 2 | PROJECTED dst over a DEREF base — `(*p).g := &_`, any src | 1 |
 
-Class 1 needs two mother-lemma applications in one statement (`copy`'s
+Class 1 needs TWO mother-lemma applications in one statement (`copy`'s
 two-mother skeleton is the donor); class 2 needs the spine mother lemma
 on the DESTINATION side, which no ref leaf does yet.
+
+A deref-rooted source under a plain LOCAL destination is CLOSED
+(2026-08-31) — that half of class 1 needed only one mother lemma.
 
 ## [FACT] "non-spine deref sources" is not a class
 
@@ -169,3 +172,31 @@ Two mechanical notes from that derivation:
   so `σb` from the theorem binders is not the one in scope. Bind it in
   the case pattern — `| @«local» σ' srcLoc =>` — or the layout-equality
   step cannot even be stated.
+
+## [FACT] a deref-rooted source costs nothing extra over a plain deref
+
+`placeToRegChecked`'s DEREF arm ignores its `kind` argument entirely —
+it lowers the pointer place at `Shared`, `Load`s, and emits the
+cleanup:
+
+```lean
+  | .deref ptrPlace => do
+      let ptrOut ← placeToRegChecked RefKind.Shared ptrPlace
+      ...
+```
+
+So `placeToBorrowRegChecked kind prot mask (.proj (.deref P) f)` — which
+lowers its base with `placeToRegChecked kind (.deref P)` — emits exactly
+the chain code a plain `&kind *P` emits, and differs only in the
+`Borrow`'s offset operand. That is why the mother lemma can be invoked
+at `kind` rather than `Shared` and consumed unchanged, and why
+`ref_derefprojsrc_local_simulation` is `ref_deref_local_simulation`
+under the same offset substitution used five times before.
+
+One arithmetic wrinkle: the two machines spell the stored pointer's
+offset differently — mirlite as `addr + off - allocBase`, oseair as
+`addr - allocBase + off`. They agree only given `allocBase ≤ addr`,
+which the mother lemma supplies as `h_dle`; `Nat.sub_add_comm h_dle`
+is the bridge. `omega` reports a spurious counterexample over
+compiler-state atoms if handed the goal without that hypothesis
+threaded, so name the equation rather than inlining a tactic.

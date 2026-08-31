@@ -172,8 +172,14 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    a proj source rooted at the destination's OWN unbound local
    (`t.g := &kind t.f`, `t` fresh; d84/d85), where the allocation binds
    the source root and every source fact comes from the extended
-   renames instead of `h_lbs` on the pre-state. See
-   `ref_place_residual`'s docstring for the current site map.
+   renames instead of `h_lbs` on the pre-state. Narrowed again to FIVE
+   by `ref_derefprojsrc_local_simulation` and
+   `ref_fresh_derefprojsrc_simulation` (`dst := &kind (*p).f` with
+   `dst` a local, bound or fresh; d86): `placeToRegChecked`'s deref arm
+   ignores its `kind`, so the chain lowers by the mother lemma exactly
+   as for a plain deref source and the projection rides in the
+   `Borrow`'s offset operand. See `ref_place_residual`'s docstring for
+   the current site map.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

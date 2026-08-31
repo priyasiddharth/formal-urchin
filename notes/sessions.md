@@ -1917,3 +1917,57 @@ applications in one statement; copy's two-mother skeleton is the donor)
 and a projected dst over a DEREF base (1 site, needs the spine mother
 lemma on the DESTINATION side).
 See durable/ref-residual-site-map.md.
+
+## 2026-08-31 (OSEA-IR/compiler/correctness proofreading)
+
+**Session:** terminal — semantic audit and twenty-page paper completion.
+**Goal:** bring the OSEA-IR, compiler, and compiler-correctness sections to the
+same self-contained standard as the corrected MIRLite section.
+**Landed:** exact target runtime syntax and operational cases; compiler
+state-delta judgments, root/place/reference lowering, full executable lowering
+surface, prefix-label discipline, and flattening account; the ten-component
+statement-boundary invariant, corrected step/whole-program statements,
+canonical initial relation, observable consequences, and explicit extension
+obligations.
+**Critical corrections:** target registers use erased `TyVal` (`PTy` for every
+pointer layout); `die` has no separate allocation-bounds check; address
+renaming is identity on its domain; the compiler state remains fixed during
+simulation while only address/tag maps extend.
+**Verification:** clean Typst build at exactly 20 PLDI review pages; all pages
+rasterized and visually checked. Axiom audit passes its whitelist at
+`ddc35d1` with exactly one admitted residual reference-assignment root.
+Concurrent proof and `CLAUDE.md` work was left untouched.
+**Record:** journal/2026-08/2026-08-31-oseair-compiler-correctness-proofread.md.
+Appended after the twelfth proof session to preserve strict oldest-first order.
+
+## 2026-08-31 (thirteenth)
+
+**Goal:** class 1 — the deref-rooted sources.
+**Landed:** the LOCAL-destination half —
+`compileStmt_ref_derefprojsrc_run/_value`,
+`compileStmt_ref_fresh_derefprojsrc_run/_value`,
+`ref_derefprojsrc_local_simulation`,
+`ref_fresh_derefprojsrc_simulation`, wired into
+`ref_proj_src_local_simulation`'s `deref` case with the source-flatten
+transfer. Witness d86 exercising both leaves in one program, teeth
+confirmed. Residual sites 6 -> 5.
+**Key finding:** `placeToRegChecked`'s deref arm IGNORES its `kind` —
+it lowers the pointer at `Shared` and `Load`s regardless. So a
+deref-rooted source emits exactly the chain code a plain deref source
+emits, differing only in the `Borrow`'s offset operand, and the mother
+lemma can be invoked at `kind` and consumed unchanged. That made this
+half the same offset substitution used five times before.
+**One wrinkle:** the machines spell the stored pointer's offset
+differently — mirlite `addr + off - allocBase`, oseair
+`addr - allocBase + off` — agreeing only given `allocBase ≤ addr`
+(`h_dle` from the mother lemma). `Nat.sub_add_comm h_dle` is the
+bridge; an inline `omega` reports a spurious counterexample over
+compiler-state atoms, so name the equation.
+**What did NOT land:** the other four class-1 sites, all of which put
+TWO mother-lemma applications in one statement (chain source × chain or
+projected destination). That is genuinely new structure, not a
+substitution; copy's two-mother skeleton is the donor.
+**Status:** green; 17/17 + 99/99; audit exact at ONE sorry.
+**Next-session pickup:** the two-mother skeleton for ref, which covers
+all four remaining class-1 sites at once; then class 2.
+See durable/ref-residual-site-map.md.

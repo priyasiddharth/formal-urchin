@@ -1887,6 +1887,41 @@ def d85_ref_self_root_zero : IO Unit :=
      .assign zD85 (.copy t1D85)]
     .ok "d85 ref self root at zero"
 
+def ΓD86 : Ctx := [pairD52L, obseq.LayoutTy.PtrL pairD52L, ptrNat, ptrNat, natL, natL]
+def sD86 : Place ΓD86 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD86 : Place ΓD86 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def tD86 : Place ΓD86 ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def rD86 : Place ΓD86 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+def zD86 : Place ΓD86 natL := .local ⟨⟨4, by decide⟩, rfl⟩
+def yD86 : Place ΓD86 natL := .local ⟨⟨5, by decide⟩, rfl⟩
+def dp0D86 : Place ΓD86 natL := .proj (.deref pD86) (.field ⟨0, by decide⟩ .nil)
+def dp1D86 : Place ΓD86 natL := .proj (.deref pD86) (.field ⟨1, by decide⟩ .nil)
+
+/-- Positive: a PROJ-TOPPED source over a DEREF base into a local —
+    `r := &mut (*p).0` with `r` FRESH and `t := &mut (*p).1` with `t`
+    already BOUND, so both new leaves fire in one program. The chain
+    lowers by the mother lemma exactly as for a plain deref source
+    (`placeToRegChecked`'s deref arm ignores its `kind`), and the
+    projection rides in the `Borrow`'s offset operand. The two
+    reborrows are children of `p` on DISJOINT fields, so neither pops
+    the other and both writes are defined; point the second at `(*p).0`
+    and it pops `r`. Closed 2026-08-31 by
+    `ref_derefprojsrc_local_simulation` and
+    `ref_fresh_derefprojsrc_simulation`. -/
+def d86_ref_derefprojsrc_into_local : IO Unit :=
+  expectDiff ΓD86
+    [.assign (.proj sD86 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj sD86 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign zD86 (.constInit 0),
+     .assign tD86 (.ref .Mut false [] zD86),
+     .assign pD86 (.ref .Mut false [] sD86),
+     .assign rD86 (.ref .Mut false [] dp0D86),
+     .assign tD86 (.ref .Mut false [] dp1D86),
+     .assign (.deref rD86) (.constInit 9),
+     .assign (.deref tD86) (.constInit 8),
+     .assign yD86 (.copy (.proj sD86 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d86 ref deref-proj src into local"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1985,7 +2020,8 @@ def allTests : List (IO Unit) := [
   d82_ref_projsrc_into_fresh_projdst,
   d83_ref_projsrc_into_bound_projdst,
   d84_ref_self_root_offset,
-  d85_ref_self_root_zero]
+  d85_ref_self_root_zero,
+  d86_ref_derefprojsrc_into_local]
 
 def runAll : IO Unit := do
   allTests.forM id
