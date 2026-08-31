@@ -4,8 +4,8 @@ Tags: obseq3, ref, residual, site-map
 
 `obseq3.proof.ref_place_residual` is the ONLY `sorry` left in
 `src/obseq3` (verified 2026-08-31 by `grep -rn sorry src/obseq3` and by
-`scripts/audit_axioms.sh`). SEVEN call sites, in four classes — was
-eight before the source-flattening recursion.
+`scripts/audit_axioms.sh`). SIX call sites, in three classes — was
+eight before the two source-flattening recursions.
 
 ## the map
 
@@ -16,8 +16,12 @@ Enumerated by walking the `cases` arms enclosing each
 |---|---|---|
 | 1 | non-local src under a PROJECTED dst over a local base — `t.g := &s.f`, `t.g := &*p` | 2 |
 | 2 | PROJECTED dst over a DEREF base — `(*p).g := &_`, any src | 1 |
-| 3 | PROJ-TOPPED src whose base is not a local — `&(*p).f` under a local dst; `&(s.f).h` and `&(*p).f` under a deref dst | 3 |
-| 4 | DEREF src under a DEREF dst — `*chain := &*chain'` | 1 |
+| 3 | DEREF-ROOTED src — `&(*p).f` under a local dst and under a deref dst, and `*chain := &*chain'` | 3 |
+
+Class 1 is what a PROJECTED-DESTINATION instance of the source-flattening
+recursion would close; class 3 needs two mother-lemma applications in one
+statement (`copy`'s two-mother skeleton is the donor); class 2 needs the
+spine mother lemma on the DESTINATION side, which no ref leaf does yet.
 
 ## [FACT] "non-spine deref sources" is not a class
 
@@ -100,3 +104,29 @@ Factoring through a congruence lemma whose hypotheses are the two
 agreement facts about the BORROW lowering avoids touching the place
 under `compileStmtChecked` at all. Worth reaching for whenever a
 transfer is about a subterm of an evidence-carrying compiled statement.
+
+## [FACT] the recursion generalizes by destination shape, not by source
+
+Extending the source-flattening recursion from a local destination to a
+DEREF destination (2026-08-31) took only:
+
+- `compileStmt_ref_src_congr_deref_run/_value` — the same congruence
+  with `CompilerM.run (ensurePlaceRoot (Place.deref P)) cs` as the base
+  state instead of `(ensureLocalRegE dstLoc).run cs`;
+- the two reassociation instantiations;
+- `ref_proj_src_deref_simulation`, textually the local recursion with
+  the base case additionally flattening the DESTINATION chain and
+  composing both transfers into the threaded `stmt0`.
+
+Everything source-side — `placeToBorrowRegChecked_flatten_agree`,
+`stepStmt_assign_refsrc_anyflatten`, `flattenPlace_srcproj_assoc`,
+`placeToBorrowRegChecked_projassoc_agree` — was reused unchanged. The
+per-destination cost is the congruence plus the recursion skeleton; the
+source theory is written once.
+
+One difference worth noting: the deref congruence's VALUE direction
+needs an extra case split that the local one does not. With a local
+destination, once the borrow lowering succeeds the rest of the
+compilation cannot fail; with a deref destination the destination's own
+`placeToRegChecked` can still fail, so its success has to be extracted
+from the hypothesis before concluding.

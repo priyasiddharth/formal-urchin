@@ -158,8 +158,10 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    compiler's `placeToBorrowRegChecked` already reassociates nested
    projection borrows and mirlite's `resolvePlaceAcc` composes the
    offsets, so a proj-of-proj source under a local destination fuses
-   into the closed proj-over-local leaves (d80). See
-   `ref_place_residual`'s docstring for the current site map.
+   into the closed proj-over-local leaves (d80), and to SIX by the
+   deref-destination instance of the same recursion
+   (`ref_proj_src_deref_simulation`, d81). See `ref_place_residual`'s
+   docstring for the current site map.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

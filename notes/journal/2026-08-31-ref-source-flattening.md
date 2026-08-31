@@ -72,3 +72,25 @@ Residual sites 8 -> 7.
 Build green; 17/17 + 93/93; audit exact at ONE sorry. Pinned by d80
 (`t := &mut s.1.0` spelled as a projection over a projection, with a
 live disjoint borrow as teeth; control reports `ub`).
+
+## [FACT] extending to a deref destination (same day)
+
+`ref_proj_src_deref_simulation` reuses ALL the source-side theory
+unchanged. The only new pieces are the congruence at the other base
+state (`CompilerM.run (ensurePlaceRoot (Place.deref P)) cs` instead of
+`(ensureLocalRegE dstLoc).run cs`), its two reassociation
+instantiations, and the recursion skeleton — whose base case
+additionally flattens the DESTINATION chain and composes both transfers
+into the threaded `stmt0`.
+
+So the recursion is parameterized by destination shape, and the source
+theory is written once. A projected-destination instance would close
+the two remaining class-1 sites the same way.
+
+The one asymmetry: the deref congruence's VALUE direction needs a case
+split the local one does not. With a local destination the compilation
+cannot fail after the borrow lowering succeeds, so `exact ⟨_, rfl⟩`
+closes it; with a deref destination `placeToRegChecked Mut (.deref P)`
+can still fail, so its success has to be read off the hypothesis first.
+
+Residual sites 7 -> 6; classes 4 -> 3. Pinned by d81.

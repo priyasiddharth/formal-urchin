@@ -1807,3 +1807,29 @@ one-line instantiations.
 DEREF destination (closes one more site), then the projected dst over a
 deref base — the one class neither recursion can normalize away.
 See journal/2026-08-31-ref-source-flattening.md.
+
+## 2026-08-31 (tenth)
+
+**Goal:** extend the source-flattening recursion to a deref destination.
+**Landed:** `compileStmt_ref_src_congr_deref_run/_value`, the two
+reassociation instantiations, and `ref_proj_src_deref_simulation`,
+wired; witness d81 with teeth. Residual sites 7 -> 6, and the four
+classes collapse to three.
+**Key finding:** the recursion generalizes by DESTINATION shape, not by
+source. Everything source-side (`placeToBorrowRegChecked_flatten_agree`,
+`stepStmt_assign_refsrc_anyflatten`, `flattenPlace_srcproj_assoc`,
+`placeToBorrowRegChecked_projassoc_agree`) was reused verbatim; the
+per-destination cost is one congruence plus the recursion skeleton.
+Everything compiled first try except one point.
+**That point:** the deref congruence's VALUE direction needs a case
+split the local one does not. With a local destination, once the borrow
+lowering succeeds nothing else can fail; with a deref destination the
+destination's own `placeToRegChecked` can still fail, so its success
+must be extracted from the hypothesis before concluding.
+**Status:** green; 17/17 + 94/94; audit exact at ONE sorry.
+**Next-session pickup:** the PROJECTED-destination instance of the same
+recursion closes class 1 (2 sites) the same way. Then class 3 (three
+sites needing two mother-lemma applications in one statement — copy's
+two-mother skeleton is the donor) and class 2 (a projected dst over a
+deref base, which needs the spine mother lemma on the DESTINATION side).
+See journal/2026-08-31-ref-source-flattening.md.

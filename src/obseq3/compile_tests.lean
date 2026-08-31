@@ -1756,6 +1756,39 @@ def d80_ref_projofproj_src : IO Unit :=
      .assign zD80 (.copy s10D80)]
     .ok "d80 ref proj-of-proj src"
 
+def ΓD81 : Ctx := [outerD80, ptrPtrNat, ptrNat, ptrNat, natL, natL]
+def sD81 : Place ΓD81 outerD80 := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD81 : Place ΓD81 ptrPtrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def qD81 : Place ΓD81 ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def rD81 : Place ΓD81 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+def xD81 : Place ΓD81 natL := .local ⟨⟨4, by decide⟩, rfl⟩
+def zD81 : Place ΓD81 natL := .local ⟨⟨5, by decide⟩, rfl⟩
+def s0D81 : Place ΓD81 innerD80 := .proj sD81 (.field ⟨0, by decide⟩ .nil)
+def s1D81 : Place ΓD81 innerD80 := .proj sD81 (.field ⟨1, by decide⟩ .nil)
+def s00D81 : Place ΓD81 natL := .proj s0D81 (.field ⟨0, by decide⟩ .nil)
+def s10D81 : Place ΓD81 natL := .proj s1D81 (.field ⟨0, by decide⟩ .nil)
+
+/-- Positive: a PROJ-OF-PROJ source under a DEREF destination —
+    `*p := &mut s.1.0`, the source spelled as a projection over a
+    projection. Both flattening recursions now run in the same
+    statement: the destination chain normalizes into the `PtrChain`
+    grammar and the source fuses into a single projection over the
+    local. `r := &mut s.0.0` stays live across it, so `*r := 9`
+    afterwards is defined exactly when the borrow fused to `s.1.0`.
+    Closed 2026-08-31 by `ref_proj_src_deref_simulation`. -/
+def d81_ref_projofproj_src_deref_dst : IO Unit :=
+  expectDiff ΓD81
+    [.assign s00D81 (.constInit 1),
+     .assign s10D81 (.constInit 3),
+     .assign xD81 (.constInit 0),
+     .assign qD81 (.ref .Mut false [] xD81),
+     .assign pD81 (.ref .Mut false [] qD81),
+     .assign rD81 (.ref .Mut false [] s00D81),
+     .assign (.deref pD81) (.ref .Mut false [] s10D81),
+     .assign (.deref rD81) (.constInit 9),
+     .assign zD81 (.copy s10D81)]
+    .ok "d81 ref proj-of-proj src into deref dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1849,7 +1882,8 @@ def allTests : List (IO Unit) := [
   d77_ref_into_fresh_proj_zero,
   d78_ref_into_fresh_proj_offset,
   d79_ref_derefsrc_into_fresh_dst,
-  d80_ref_projofproj_src]
+  d80_ref_projofproj_src,
+  d81_ref_projofproj_src_deref_dst]
 
 def runAll : IO Unit := do
   allTests.forM id
