@@ -1971,3 +1971,26 @@ substitution; copy's two-mother skeleton is the donor.
 **Next-session pickup:** the two-mother skeleton for ref, which covers
 all four remaining class-1 sites at once; then class 2.
 See durable/ref-residual-site-map.md.
+
+## 2026-08-31 (fourteenth)
+
+**Question:** could oseair spell a pointer's offset as
+`addr + off - allocBase` so the proofs line up?
+**Answer: no, and it would not help.** The mismatch is a
+REPRESENTATION difference, not a syntax choice: mirlite's `PlaceRes`
+carries an absolute `addr` and subtracts once when a pointer value is
+built; oseair's `Val.Ptr` carries the offset and `Rhs.Borrow`
+accumulates it by addition. Emitting
+`Val.Ptr base (base + baseOff + offset - base) ...` is the same number
+unconditionally, but since `baseOff` is itself `addr - allocBase` the
+term becomes `allocBase + (addr - allocBase) + off - allocBase`, which
+still needs `allocBase ≤ addr`. The obligation moves, it does not
+vanish — and it would change the target semantics to suit a proof and
+churn 325 `Val.Ptr` spellings.
+**What landed instead:** the csnorm move — name the bridge once.
+`resolvedAddr_cancel` and `resolvedOffset_shift` in common.lean, with
+the representation difference documented at the definition. The 38
+existing inline `h_cancel` sites are left alone (churn, no gain); new
+leaves use the named form.
+**Status:** green; 17/17 + 99/99; audit exact at ONE sorry.
+See durable/resolved-address-vs-pointer-offset.md.

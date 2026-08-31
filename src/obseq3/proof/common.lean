@@ -815,6 +815,40 @@ def UnboundLocalsUnmapped {Γ : Ctx}
   ∀ {τ : LayoutTy} (loc : Local Γ τ),
     mirlite.Env.lookup env loc = none → getPlaceInfo cs loc.idx.1 = none
 
+/-! ### The resolved-address / pointer-offset bridge
+
+    The two machines carry "where in its allocation this pointer points"
+    in different canonical forms, and every leaf that builds a pointer
+    value has to reconcile them exactly once:
+
+    * mirlite's `PlaceRes` holds an ABSOLUTE `addr` beside `allocBase`,
+      and derives the offset by ONE subtraction when the value is built
+      (`mirlite_semantics.lean`, the `.ref` arm:
+      `ptrVal allocBase (resolved.addr - resolved.allocBase) ...`);
+    * oseair's `Val.Ptr base offset size tag` CARRIES the offset, and
+      `Rhs.Borrow` accumulates it by addition
+      (`oseair.lean:305`: `Val.Ptr base (baseOff + offset) size newTag`).
+
+    So a projection applied on the source side lands as
+    `addr + off - allocBase`, and the same projection applied on the
+    target side lands as `addr - allocBase + off`. On `Nat` those agree
+    only given `allocBase ≤ addr` — which is exactly the conjunct
+    `ptrChain_lowering_sim` returns. Naming the two directions here
+    keeps that dependency visible instead of re-deriving it per leaf. -/
+
+/-- mirlite's absolute address, rebuilt from oseair's base+offset form. -/
+theorem resolvedAddr_cancel {addr allocBase : Word} (h : allocBase ≤ addr) :
+    allocBase + (addr - allocBase) = addr :=
+  Nat.add_sub_cancel' h
+
+/-- A projection commutes with the base subtraction: the target
+    accumulates the field offset onto the carried offset, the source
+    folds it into the absolute address first. -/
+theorem resolvedOffset_shift {addr allocBase : Word} (h : allocBase ≤ addr)
+    (off : Nat) :
+    addr - allocBase + off = addr + off - allocBase :=
+  (Nat.sub_add_comm h).symm
+
 /-- Pointwise simulation between a source `MemValue` and a target `Val`. -/
 def MemValSim
   (ρa : AddrRenameMap)

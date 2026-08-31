@@ -10040,9 +10040,7 @@ theorem ref_derefprojsrc_local_simulation
     subst h_deq
     have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
         = resolved.addr := Nat.add_sub_cancel' h_dle
-    have h_off_eq : resolved.addr - resolved.allocBase + pathOffset f
-        = resolved.addr + pathOffset f - resolved.allocBase :=
-      (Nat.sub_add_comm h_dle).symm
+    have h_off_eq := resolvedOffset_shift h_dle (pathOffset f)
     -- §4 the retag transported at the post-src state: the fresh pair
     -- extends ρt
     have h_tbd_mid : TagRenameBounded ρt permsR.NextTag s_mid.perms.NextTag := by
@@ -10501,9 +10499,7 @@ theorem ref_fresh_derefprojsrc_simulation
     subst h_deq
     have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
         = resolved.addr := Nat.add_sub_cancel' h_dle
-    have h_off_eq : resolved.addr - resolved.allocBase + pathOffset f
-        = resolved.addr + pathOffset f - resolved.allocBase :=
-      (Nat.sub_add_comm h_dle).symm
+    have h_off_eq := resolvedOffset_shift h_dle (pathOffset f)
     have h_csAt1 : csAt cs0 prog s1.pc csPrefix := by rw [h_pc1]; exact h_csAt
     have h_stmt1 : prog.get? s1.pc = some stmt0 := by rw [h_pc1]; exact h_stmt
     -- §8 the rhs retag transported at the post-spine state
