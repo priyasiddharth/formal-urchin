@@ -1584,3 +1584,48 @@ residual still covers.
 (regime B), or the `BorrowSim` source package now that two proj-source
 leaves exist to generalize over.
 See journal/2026-08-31-ref-derefdst-projsrc.md.
+
+## 2026-08-31 (PLDI format)
+
+**Session:** terminal — PLDI 2026 paper-format conversion
+**Theme:** replaced the custom six-page A4 layout with the current PLDI
+research-paper format: PACMPL-compatible `acmsmall`, single column, 10 pt,
+12 pt baseline spacing, and anonymous review line numbers.
+**Key outputs:** `mirlite-oseair-correctness.typ` and rebuilt PDF;
+`@preview/faithful-acmart:0.1.0`; ACM Libertinus/Inconsolatazi4 fonts plus OFL
+license in `assets/fonts/acm/`; journal entry
+`journal/2026-08/2026-08-31-pldi-format.md`.
+**Critical correction:** current PLDI research papers do not use the older
+two-column SIGPLAN format. PLDI 2026 allows 20 pages of main text excluding
+the bibliography and requires the single-column `acmsmall` layout. The Typst
+port matches `acmart` output but remains unofficial, so final TAPS production
+may require official LaTeX or Word source.
+**Status:** complete — clean Typst 0.15.1 build; seven pages; all pages
+visually inspected at 110 PPI; fonts embedded; no overflow or unintended box
+split. The entry was appended at the end to preserve oldest-first order.
+
+## 2026-08-31 (fourth)
+
+**Goal:** the unbound destination roots of `ref` (four sites).
+**Landed:** one of the four —
+`compileStmt_ref_fresh_projsrc_run/_value` (first try) and
+`ref_fresh_projsrc_simulation` (`dst := &kind s.f`, `dst` unbound),
+wired, plus witness d76 with teeth (control reports `ub`). Residual
+sites 12 -> 11.
+**Key finding:** ref's offset rule composes with regime B for free —
+the allocation half of `ref_fresh_dst_simulation` needed no change at
+all. Second data point that the proj-source substitution is cheap;
+weakens the case for building a `BorrowSim` package.
+**Technique worth keeping:** `ref_dst_src_idx_ne` argues from TYPES
+(`τ ≠ PtrL τ`) and does not survive a projected source. Two
+replacements: inside the leaf, `Env.lookup env loc = env loc.idx` gives
+`none = some bS` from the env facts alone; in the none/none dispatcher
+branch, `ref_proj_dst_src_idx_ne` substitutes `σb = PtrL τ` and then
+`cases f` closes the goal with ZERO cases — both `PathTo` constructors
+fail to unify. An impossible indexed family often needs no lemma.
+**Status:** green; 17/17 + 89/89; audit exact at ONE sorry.
+**Next-session pickup:** the three remaining unbound-root sites — a
+deref source under a fresh destination, and projected destinations over
+an unbound root at zero and nonzero offset (regime B-proj for the
+DESTINATION, analogue of `const_write_proj_fresh_simulation`).
+See journal/2026-08-31-ref-regime-b-proj.md.

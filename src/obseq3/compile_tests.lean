@@ -1618,6 +1618,33 @@ def d75_ref_projsrc_offset_into_deref_dst : IO Unit :=
      .assign zD75 (.copy (.proj tD75 (.field ⟨0, by decide⟩ .nil)))]
     .ok "d75 ref proj src at offset into deref dst"
 
+def ΓD76 : Ctx :=
+  [pairD52L, obseq.LayoutTy.PtrL natL, obseq.LayoutTy.PtrL natL, natL]
+def sD76 : Place ΓD76 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
+def tD76 : Place ΓD76 (obseq.LayoutTy.PtrL natL) := .local ⟨⟨1, by decide⟩, rfl⟩
+def rD76 : Place ΓD76 (obseq.LayoutTy.PtrL natL) := .local ⟨⟨2, by decide⟩, rfl⟩
+def zD76 : Place ΓD76 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: REGIME B-proj of ref — a reference to a FIELD stored into
+    an UNBOUND destination root (`t := &mut s.1`, `t` never assigned
+    before). `preparePlaceAssign` allocates on the mirlite side and
+    `ensureLocalRegE` emits the matching `Alloc`, so the fragment is
+    `Alloc; Borrow; RStore` and the borrow's OFFSET operand carries the
+    projection. `r := &mut s.0` stays live across the statement: the
+    fields are disjoint ranges, so `*r := 9` afterwards is defined
+    exactly when the borrow used offset `1`. Closed 2026-08-31 by
+    `ref_fresh_projsrc_simulation`. -/
+def d76_ref_projsrc_into_fresh_dst : IO Unit :=
+  expectDiff ΓD76
+    [.assign (.proj sD76 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj sD76 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign rD76 (.ref .Mut false [] (.proj sD76 (.field ⟨0, by decide⟩ .nil))),
+     .assign tD76 (.ref .Mut false [] (.proj sD76 (.field ⟨1, by decide⟩ .nil))),
+     .assign (.deref rD76) (.constInit 9),
+     .assign (.deref tD76) (.constInit 7),
+     .assign zD76 (.copy (.proj sD76 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d76 ref proj src into fresh dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1706,7 +1733,8 @@ def allTests : List (IO Unit) := [
   d72_projsrc_offset_into_proj_dst_offset,
   d73_projsrc_offset_into_fresh_proj_zero,
   d74_projsrc_offset_into_fresh_proj_offset,
-  d75_ref_projsrc_offset_into_deref_dst]
+  d75_ref_projsrc_offset_into_deref_dst,
+  d76_ref_projsrc_into_fresh_dst]
 
 def runAll : IO Unit := do
   allTests.forM id
