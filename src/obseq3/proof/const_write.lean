@@ -343,24 +343,37 @@ theorem uninit_local_existing_simulation
     out the same address (so ρa extends by the identity pair) and the
     `sb_own` member mints the root tag on both machines (so ρt extends at
     the fresh pair). -/
-theorem const_write_fresh_local_simulation
+theorem const_store_fresh_local_simulation
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
     {s_mir s_pre s_mir' : mirlite.State MSB Γ}
     {s_osea : oseair.State MSB}
-    {loc : Local Γ obseq.LayoutTy.NatL}
+    {τ : LayoutTy} {loc : Local Γ τ}
     {resolved : mirlite.PlaceRes} {permsD : MSB.State}
-    (compProg : oseair.Prog)
-    (v : Word)
+    {vs : List mirlite.MemValue} {vs' : List Val}
+    (compProg : oseair.Prog) (rhs : RExpr Γ τ)
+    (h_len : vs.length = blockSize τ)
+    (h_rel : ∀ (ρa' : AddrRenameMap) (ρt' : TagRenameMap),
+      ListRel (MemValSim ρa' ρt') vs vs')
+    (h_size : vs'.length = obseq.typeSize (layoutToTyVal τ))
+    (h_run0 : ∀ cs, getPlaceInfo cs loc.idx.1 = none →
+      CheckedCompilerM.run (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs
+        = emit (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 }
+              [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
+            loc.idx.1 (Register.R cs.nextReg, τ))
+          [Instr.CStore (layoutToTyVal τ) vs' (Register.R cs.nextReg)])
+    (h_val0 : ∀ cs, ∃ so,
+      CheckedCompilerM.value (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs
+        = Except.ok so)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc = some (.assign (.local loc) (.constInit v)))
+    (h_stmt : prog.get? s_mir.pc = some (.assign (.local loc) rhs))
     (h_env : mirlite.Env.lookup s_mir.env loc = none)
     (h_prep : mirlite.preparePlaceAssign MSB s_mir (.local loc) = .ok s_pre)
     (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.local loc) = .ok (resolved, permsD))
-    (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
+    (h_write : mirlite.writeResolvedPlace (τ := τ)
                  MSB { s_pre with perms := permsD } resolved
-                 [mirlite.MemValue.word v] rfl = .ok s_mir') :
+                 vs h_len = .ok s_mir') :
     ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
       AddrRenameIncr ρa ρa' ∧
       TagRenameIncr ρt ρt' ∧
@@ -374,7 +387,7 @@ theorem const_write_fresh_local_simulation
   simp only [mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_env,
     mirlite.allocateRoot, mirlite.allocateBase, mirlite.allocate] at h_prep
   cases h_own_src : MSB.own s_mir.perms s_mir.mem.addrStart
-      (blockSize obseq.LayoutTy.NatL) with
+      (blockSize τ) with
   | error e => rw [h_own_src] at h_prep; simp at h_prep
   | ok pr =>
       obtain ⟨permsOwned, tagS⟩ := pr
@@ -397,36 +410,29 @@ theorem const_write_fresh_local_simulation
         sb_own_respects_PermSim h_psim h_wf_t h_tbd h_own_src
       subst h_tagS_eq
       have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
-      have h_incr_a : AddrRenameIncr ρa (ρa.extend s_mir.mem.addrStart s_mir.mem.addrStart) :=
-        AddrRenameIncr.extend_id h_id_a _
-      have h_id_a' : IdentityOnDomain (ρa.extend s_mir.mem.addrStart s_mir.mem.addrStart) :=
-        IdentityOnDomain.extend_id h_id_a _
-      have h_ra_new : (ρa.extend s_mir.mem.addrStart s_mir.mem.addrStart)
+      have h_incr_a : AddrRenameIncr ρa
+          (ρa.extendBlock s_mir.mem.addrStart (blockSize τ)) :=
+        AddrRenameIncr.extendBlock h_id_a _ _
+      have h_id_a' : IdentityOnDomain
+          (ρa.extendBlock s_mir.mem.addrStart (blockSize τ)) :=
+        IdentityOnDomain.extendBlock h_id_a _ _
+      have h_ra_new : (ρa.extendBlock s_mir.mem.addrStart (blockSize τ))
           s_mir.mem.addrStart = some s_mir.mem.addrStart :=
-        AddrRenameMap.extend_self _ _ _
+        AddrRenameMap.extendBlock_base _ _ _
       have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
           s_mir.perms.NextTag = some s_osea.perms.NextTag :=
         TagRenameMap.extend_self _ _ _
       have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
       have h_nw : (s_mir.perms.NextTag == wildcardTag) = false := by grind
       -- §4 the compiled fragment: `Alloc` then `CStore`
-      have h_stmtRun := compileStmt_local_fresh_run (cs := csPrefix) v h_pi_none
-      obtain ⟨stmtOut, h_stmtOut⟩ :
-          ∃ so, CheckedCompilerM.value
-            (compileStmtChecked (Stmt.assign (.local loc) (.constInit v)))
-            csPrefix = Except.ok so :=
-        ⟨{ result := (),
-           evidence := StmtEvidence.assignLocal loc (.constInit v)
-             (CompilerM.value (ensureLocalRegE loc) csPrefix).result
-             (CompilerM.value (ensureLocalRegE loc) csPrefix).evidence
-             (RExprToEvidence.constInit v) },
-         by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, emitM, cleanupInstrs, emit_nil, CompilerM.run]⟩
+      have h_stmtRun := h_run0 csPrefix h_pi_none
+      obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix
       -- §5 the two instructions, at pc and pc+1
-      have h_sz : obseq.typeSize (layoutToTyVal obseq.LayoutTy.NatL)
-          = blockSize obseq.LayoutTy.NatL := obseq.typeSize_layoutToTyVal _
+      have h_sz : obseq.typeSize (layoutToTyVal τ)
+          = blockSize τ := obseq.typeSize_layoutToTyVal _
       have h_code1 : compProg s_osea.pc
           = some (Instr.Assgn (Register.R csPrefix.nextReg)
-              (Rhs.Alloc (layoutToTyVal obseq.LayoutTy.NatL))) := by
+              (Rhs.Alloc (layoutToTyVal τ))) := by
         rw [h_pc]
         refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
         · rw [h_stmtRun]
@@ -437,10 +443,10 @@ theorem const_write_fresh_local_simulation
           show (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } _).code _ = _
           have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
             [Instr.Assgn (Register.R csPrefix.nextReg)
-              (Rhs.Alloc (layoutToTyVal obseq.LayoutTy.NatL))] (k := 0) (by simp)
+              (Rhs.Alloc (layoutToTyVal τ))] (k := 0) (by simp)
           simpa using h
       have h_code2 : compProg (s_osea.pc + 1)
-          = some (Instr.CStore obseq.TyVal.NatTy [Val.Dat v]
+          = some (Instr.CStore (layoutToTyVal τ) vs'
               (Register.R csPrefix.nextReg)) := by
         rw [h_pc]
         refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
@@ -451,19 +457,19 @@ theorem const_write_fresh_local_simulation
           have h := emit_code_at_new
             (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
               [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal obseq.LayoutTy.NatL))])
-              loc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.NatL))
-            [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] (Register.R csPrefix.nextReg)]
+                (Rhs.Alloc (layoutToTyVal τ))])
+              loc.idx.1 (Register.R csPrefix.nextReg, τ))
+            [Instr.CStore (layoutToTyVal τ) vs' (Register.R csPrefix.nextReg)]
             (k := 0) (by simp)
           simpa [emit, setPlaceInfo] using h
       -- §6 execute the `Alloc`
       have h_own_tgt' : MSB.own s_osea.perms s_osea.mem.addrStart
-          (obseq.typeSize (layoutToTyVal obseq.LayoutTy.NatL))
+          (obseq.typeSize (layoutToTyVal τ))
           = .ok (tgtPerms, s_osea.perms.NextTag) := by
         rw [h_sz, h_addr_eq]
         exact h_own_tgt
       have h_run1 := runN_Assgn_Alloc_step compProg s_osea
-        (Register.R csPrefix.nextReg) (layoutToTyVal obseq.LayoutTy.NatL)
+        (Register.R csPrefix.nextReg) (layoutToTyVal τ)
         h_code1 h_own_tgt'
       -- §7 the source write, and its target mirror
       have h_w := h_write
@@ -479,43 +485,44 @@ theorem const_write_fresh_local_simulation
           have h_entry1 : PtrRegisterEntry
               (oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
                 (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-                  (obseq.typeSize (layoutToTyVal obseq.LayoutTy.NatL))
+                  (obseq.typeSize (layoutToTyVal τ))
                   s_osea.perms.NextTag]))
               (Register.R csPrefix.nextReg) s_mir.mem.addrStart
               (s_mir.mem.addrStart - s_mir.mem.addrStart)
-              (blockSize obseq.LayoutTy.NatL) s_osea.perms.NextTag := by
+              (blockSize τ) s_osea.perms.NextTag := by
             rw [Nat.sub_self, ← h_addr_eq, ← h_sz]
             exact RegMap.lookup_insert_self _ _ _
+          have h_useMut_tgt' : MSB.useMut tgtPerms s_mir.mem.addrStart vs'.length
+              s_osea.perms.NextTag = .ok p2 := by
+            rw [← ListRel.length_eq (h_rel ρa ρt)]
+            exact h_useMut_tgt
           obtain ⟨h_wtp, h_sms'⟩ :=
-            writeThroughPtr_sim (τ := obseq.LayoutTy.NatL)
+            writeThroughPtr_sim (τ := τ)
               (s_osea := { s_osea with
                 mem := (oseair.allocate s_osea.mem
-                  (obseq.typeSize (layoutToTyVal obseq.LayoutTy.NatL))).2,
+                  (obseq.typeSize (layoutToTyVal τ))).2,
                 perms := tgtPerms,
                 reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
                   (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-                    (obseq.typeSize (layoutToTyVal obseq.LayoutTy.NatL))
+                    (obseq.typeSize (layoutToTyVal τ))
                     s_osea.perms.NextTag]),
                 pc := s_osea.pc + 1 })
               (resolved := { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag,
                              allocBase := s_mir.mem.addrStart,
-                             allocSize := blockSize obseq.LayoutTy.NatL })
-              "CStore Invalid Ptr" [mirlite.MemValue.word v] [Val.Dat v] rfl
-              ⟨rfl, trivial⟩ h_id_a' h_entry1 h_useMut_tgt
+                             allocSize := blockSize τ })
+              "CStore Invalid Ptr" vs vs' h_len (h_rel _ _) h_id_a' h_entry1 h_useMut_tgt'
               (by exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms) (Nat.le_refl _)
-              (fun k hk => by
-                simp [Nat.lt_one_iff] at hk
-                subst hk
-                exact h_ra_new)
+              (fun k hk =>
+                AddrRenameMap.extendBlock_mem (by rw [← h_len]; exact hk))
               h_write
           have h_run2 := runN_CStore_step compProg _ _
-            obseq.TyVal.NatTy [Val.Dat v] (Register.R csPrefix.nextReg)
-            h_code2 rfl h_wtp
+            (layoutToTyVal τ) vs' (Register.R csPrefix.nextReg)
+            h_code2 h_size h_wtp
           have h_run := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
           -- §8 rebuild the invariant under both extended renames
           refine ⟨_, _, _, 1 + 1, h_incr_a, h_incr_t, h_run, ?_⟩
           refine ⟨CheckedCompilerM.run
-            (compileStmtChecked (Stmt.assign (.local loc) (.constInit v))) csPrefix,
+            (compileStmtChecked (Stmt.assign (.local loc) rhs)) csPrefix,
             ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim2,
             h_id_a', h_wf_t', ?_, ?_, ?_, ?_⟩
           · -- label agreement at pc+2
@@ -526,7 +533,7 @@ theorem const_write_fresh_local_simulation
             -- ones survive the fresh register and the new placeRegMap entry
             intro τ' loc' binding' h_env'
             by_cases h_idx : loc'.idx = loc.idx
-            · have h_ty : τ' = obseq.LayoutTy.NatL := by
+            · have h_ty : τ' = τ := by
                 rw [← loc'.hTy, h_idx, loc.hTy]
               subst h_ty
               have h_b : binding' = { addr := s_mir.mem.addrStart,
@@ -541,11 +548,8 @@ theorem const_write_fresh_local_simulation
               · show oseair.RegMap.lookup _ _ = _
                 rw [← h_addr_eq, ← h_sz]
                 exact RegMap.lookup_insert_self _ _ _
-              · -- the new local's block is one cell wide, and ρa' maps it
-                intro k hk
-                simp only [blockSize, obseq.layoutSize, Nat.lt_one_iff] at hk
-                subst hk
-                exact ⟨s_mir.mem.addrStart, h_ra_new⟩
+              · -- the WHOLE fresh block is in ρa's domain, by `extendBlock`
+                exact fun k hk => ⟨_, AddrRenameMap.extendBlock_mem hk⟩
             · have h_env'' : mirlite.Env.lookup s_mir.env loc' = some binding' := by
                 simpa only [mirlite.Env.lookup, mirlite.Env.set, if_neg h_idx]
                   using h_env'
@@ -605,6 +609,105 @@ theorem const_write_fresh_local_simulation
               simp only [emit, setPlaceInfo]
               grind
         · simp at h_w
+
+/-- REGIME B, CLOSED: constant write to a FRESH local — the `constInit`
+    instance of `const_store_fresh_local_simulation`. -/
+theorem const_write_fresh_local_simulation
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_pre s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {loc : Local Γ obseq.LayoutTy.NatL}
+    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
+    (compProg : oseair.Prog)
+    (v : Word)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    (h_stmt : prog.get? s_mir.pc = some (.assign (.local loc) (.constInit v)))
+    (h_env : mirlite.Env.lookup s_mir.env loc = none)
+    (h_prep : mirlite.preparePlaceAssign MSB s_mir (.local loc) = .ok s_pre)
+    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.local loc) = .ok (resolved, permsD))
+    (h_write : mirlite.writeResolvedPlace (τ := obseq.LayoutTy.NatL)
+                 MSB { s_pre with perms := permsD } resolved
+                 [mirlite.MemValue.word v] rfl = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' :=
+  const_store_fresh_local_simulation
+    (vs := [mirlite.MemValue.word v]) (vs' := [Val.Dat v])
+    compProg (.constInit v) rfl (fun _ _ => by exact ⟨rfl, trivial⟩) rfl
+    (fun cs h => compileStmt_local_fresh_run (cs := cs) v h)
+    (fun cs => ⟨{ result := (), evidence := StmtEvidence.assignLocal loc (.constInit v) (CompilerM.value (ensureLocalRegE loc) cs).result (CompilerM.value (ensureLocalRegE loc) cs).evidence (RExprToEvidence.constInit v) },
+      by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+        emitM, cleanupInstrs, emit_nil, CompilerM.run]⟩)
+    h_comp h_inv h_stmt h_env h_prep h_res h_write
+
+/-- The compiled fragment for an undef-fill of a FRESH local: the root
+    `Alloc` that `ensurePlaceRoot` emits, then the wide `CStore`. -/
+theorem compileStmt_local_fresh_uninit_run
+    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
+    (h : getPlaceInfo cs loc.idx.1 = none) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.local loc) .uninit)) cs
+      = emit
+          (setPlaceInfo
+            (emit { cs with nextReg := cs.nextReg + 1 }
+              [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
+            loc.idx.1 (Register.R cs.nextReg, τ))
+          [Instr.CStore (layoutToTyVal τ)
+            (List.replicate (blockSize τ) Val.Undef) (Register.R cs.nextReg)] := by
+  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
+  have h_pi : getPlaceInfo
+      (setPlaceInfo
+        (emit { cs with nextReg := cs.nextReg + 1 }
+          [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
+        loc.idx.1 (Register.R cs.nextReg, τ))
+      loc.idx.1 = some (Register.R cs.nextReg, τ) :=
+    getPlaceInfo_setPlaceInfo_self _ _ _
+  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+    CompilerM.run_bind, CompilerM.run_pure, h_run, h_val,
+    placeToRegChecked, h_pi]
+  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, emit_nil]
+
+/-- REGIME B for `uninit`: undef-fill of a FRESH local. Unlike the
+    single-cell `constInit` instance, ρa extends over the WHOLE
+    `blockSize τ` block (`extendBlock`), not at the base alone. -/
+theorem uninit_fresh_local_simulation
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_pre s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {τ : LayoutTy} {loc : Local Γ τ}
+    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    (h_stmt : prog.get? s_mir.pc = some (.assign (.local loc) .uninit))
+    (h_env : mirlite.Env.lookup s_mir.env loc = none)
+    (h_prep : mirlite.preparePlaceAssign MSB s_mir (.local loc) = .ok s_pre)
+    (h_res  : mirlite.resolvePlaceAcc MSB s_pre (.local loc) = .ok (resolved, permsD))
+    (h_write : mirlite.writeResolvedPlace (τ := τ)
+                 MSB { s_pre with perms := permsD } resolved
+                 (List.replicate (blockSize τ) mirlite.MemValue.undef)
+                 List.length_replicate = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' :=
+  const_store_fresh_local_simulation
+    (vs := List.replicate (blockSize τ) mirlite.MemValue.undef)
+    (vs' := List.replicate (blockSize τ) Val.Undef)
+    compProg .uninit List.length_replicate
+    (fun ρa' ρt' => ListRel_replicate_undef ρa' ρt' _ _)
+    (List.length_replicate.trans (blockSize_eq_typeSize τ))
+    (fun cs h => compileStmt_local_fresh_uninit_run (cs := cs) h)
+    (fun cs => ⟨{ result := (), evidence := StmtEvidence.assignLocal loc .uninit (CompilerM.value (ensureLocalRegE loc) cs).result (CompilerM.value (ensureLocalRegE loc) cs).evidence RExprToEvidence.uninit },
+      by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+        emitM, cleanupInstrs, emit_nil, CompilerM.run]⟩)
+    h_comp h_inv h_stmt h_env h_prep h_res h_write
 
 /-! ## §C The projected-destination fragments
 
