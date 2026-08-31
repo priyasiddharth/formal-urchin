@@ -81,8 +81,26 @@ the two facts the minting members need.
 Remaining (0). NO SORRIES REMAIN: `obseq3.proof.compile_correct` rests
 on `propext`, `Classical.choice` and `Quot.sound` alone, and
 `scripts/axiom_whitelist.txt` no longer lists `sorryAx`. Its
-reappearance is a REGRESSION, not a drift. The four named residuals,
-in the order they died:
+reappearance is a REGRESSION, not a drift.
+
+The base case is discharged too: `CompilerInv_initial` (§Z below)
+establishes the invariant at the real entry states, so
+`compile_correct_from_initial` is unconditional — compile a proof-core
+program, run it from `mirlite.State.initial`, and the compiled program
+runs from `oseair.State.initial` to a `CompilerInv`-related state, with
+no invariant hypothesis to supply. BOTH are audited roots.
+
+What is NOT proven, and is not a gap in the proof but in its SCOPE:
+(a) the `CoreProg` gate — `assignIf`, `alloc`, `dealloc`, the protector
+frames, and the rvalues `uninit`, `ptrCast`, `ptrOffset`, `refSlice`,
+`exposeAddr`, `fromExposed` are implemented and conformance-tested but
+excluded from the theorem; (b) the direction — this is a forward
+simulation of SUCCESSFUL source runs, so it does not say the target
+goes wrong when the source has UB. That direction is probed only
+empirically, by the `expectDiff` corpus comparing VERDICTS, which is
+why every witness needs teeth.
+
+The four named residuals, in the order they died:
 1. ✔ `const_write_deref_deep_residual` — RETIRED 2026-08-29, the first
    residual to die. The pending-cleanup generalization landed as
    `ptrChain_lowering_sim`; `flattenPlace` + its congruence family
@@ -476,5 +494,93 @@ theorem compile_correct
               h_target_m,
             h_inv'⟩
         · simp at h_run
+
+/-! ## §Z The initial invariant: the base case of `compile_correct`
+
+    `compile_correct` is an induction on the number of source steps and
+    takes `CompilerInv` at the start as a hypothesis. This section
+    discharges it for the actual initial states, which closes the chain
+    from "compile a program" to "run it from entry".
+
+    Nothing is allocated yet, so ρa is EMPTY — but ρt cannot be, because
+    `TagRenameWF` demands `ρt wildcardTag = some wildcardTag` of every
+    rename map (int-to-ptr pointers carry the wildcard on both machines,
+    so `MemValSim` needs it fixed). The wildcard is tag 0 and both
+    machines start at `NextTag = 1`, so the singleton map also satisfies
+    `TagRenameBounded`. -/
+
+/-- The initial address rename: empty, since nothing is allocated. -/
+def initialAddrRename : AddrRenameMap := fun _ => none
+
+/-- The initial tag rename: the wildcard fixed, nothing else. -/
+def initialTagRename : TagRenameMap :=
+  fun t => if t = wildcardTag then some wildcardTag else none
+
+theorem CompilerInv_initial {Γ : Ctx} (prog : obseq3.Prog Γ) :
+    CompilerInv (initialState Γ) prog initialAddrRename initialTagRename
+      (mirlite.State.initial MSB Γ) (oseair.State.initial MSB) := by
+  refine ⟨initialState Γ, ⟨?_, rfl⟩, ?_, ?_, ?_, ?_, ?_, ?_, rfl, ?_, ?_⟩
+  · -- `csAt` at statement 0: the empty prefix compiles to `cs0` itself
+    simp [csAt, prefixCompileState, mirlite.State.initial, List.take_zero,
+      compileStmtsChecked, CheckedCompilerM.value_pure, CheckedCompilerM.run_pure]
+  · -- LocalBindingSim: the initial environment binds nothing
+    intro τ loc binding h_env
+    simp [mirlite.Env.lookup, mirlite.Env.empty, mirlite.State.initial] at h_env
+  · -- SourceMemSim: the initial memory holds nothing
+    intro addr value h_find
+    simp [mirlite.Mem.find?, mirlite.Mem.empty, mirlite.State.initial] at h_find
+  · -- PermSim: empty stacks, no protector frames, nothing exposed
+    refine ⟨?_, trivial, trivial, Nat.le_refl _⟩
+    intro a
+    simp [SB.find?, mirlite.State.initial, oseair.State.initial, MSB,
+      PermissionModel.stackedBorrows, AccessPerms.init]
+  · -- IdentityOnDomain: ρa is empty
+    intro a a' h
+    simp [initialAddrRename] at h
+  · -- TagRenameWF: injective (one point) and fixes the wildcard
+    refine ⟨?_, by simp [initialTagRename]⟩
+    intro t1 t2 t' h1 h2
+    by_cases hc1 : t1 = wildcardTag <;> by_cases hc2 : t2 = wildcardTag <;>
+      simp [initialTagRename, hc1, hc2] at h1 h2 ⊢
+  · -- TagRenameBounded: the only mapped tag is 0, and both start at 1
+    intro t t' h
+    by_cases hc : t = wildcardTag
+    · subst hc
+      simp [initialTagRename] at h
+      subst h
+      refine ⟨?_, ?_⟩ <;>
+        simp [wildcardTag, mirlite.State.initial, oseair.State.initial,
+          PermissionModel.stackedBorrows, AccessPerms.init]
+    · simp [initialTagRename, hc] at h
+  · -- UnboundLocalsUnmapped: the initial placeRegMap is empty
+    intro τ loc _
+    simp [getPlaceInfo, initialState]
+  · -- PlaceRegMapBound: vacuous for an empty placeRegMap
+    intro idx reg τ h
+    simp [getPlaceInfo, initialState] at h
+
+/-- Compiler correctness FROM THE ENTRY STATE: no invariant hypothesis.
+    Every successful `n`-step run of a proof-core program from
+    `mirlite.State.initial` is matched by a finite run of the compiled
+    program from `oseair.State.initial`, with `CompilerInv` — hence
+    `SourceMemSim` at renamed addresses and `PermSim` at renamed tags —
+    relating the final states. -/
+theorem compile_correct_from_initial
+    {Γ : Ctx}
+    {prog : obseq3.Prog Γ}
+    {s_mir' : mirlite.State MSB Γ}
+    (compProg : oseair.Prog)
+    (n : Nat)
+    (h_core : CoreProg prog)
+    (h_comp : compileProg prog = Except.ok compProg)
+    (h_run : mirlite.runN MSB n (mirlite.State.initial MSB Γ) prog
+      = mirlite.Result.ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (m : Nat),
+      oseair.runN MSB m (oseair.State.initial MSB) compProg
+        = oseair.Result.Ok s_osea' ∧
+      CompilerInv (initialState Γ) prog ρa' ρt' s_mir' s_osea' := by
+  obtain ⟨ρa', ρt', s_osea', m, -, -, h_target, h_inv'⟩ :=
+    compile_correct compProg n h_core h_comp h_run (CompilerInv_initial prog)
+  exact ⟨ρa', ρt', s_osea', m, h_target, h_inv'⟩
 
 end obseq3.proof

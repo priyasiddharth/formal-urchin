@@ -2178,3 +2178,28 @@ confirmed.
 **Next-session pickup:** there is no residual left in obseq3. See
 durable/ref-residual-site-map.md for the retired site map and the two
 structural facts worth reusing.
+
+## 2026-08-31 (twenty-second)
+
+**The base case is closed too.** `compile_correct` took `CompilerInv`
+at the entry as a HYPOTHESIS and nothing in-tree discharged it, so the
+chain "compile a program, run it from entry" was not closed in Lean
+even with zero sorries. `CompilerInv_initial` + the corollary
+`compile_correct_from_initial` (proof/compiler.lean §Z) close it, and
+BOTH are now audited roots of scripts/audit_axioms.sh.
+**The one non-obvious conjunct:** ρa is empty at entry but ρt is NOT —
+`TagRenameWF` demands the wildcard be fixed, so the initial ρt is the
+singleton `wildcardTag ↦ wildcardTag`. It satisfies
+`TagRenameBounded` only because `wildcardTag = 0` and both machines
+start at `NextTag = 1`.
+**Status:** green; 17/17 + 103/103; audit exact, two roots, ZERO
+sorries, axioms `propext`/`Classical.choice`/`Quot.sound`.
+**Scope, written down so it stops being re-derived:** see
+durable/what-compile-correct-actually-says.md. Two limits remain and
+neither is a hole — the `CoreProg` gate (three rvalues; `assignIf`,
+`alloc`, `dealloc`, protectors and six other rvalues excluded), and the
+DIRECTION (forward simulation of successful runs; UB preservation is
+tested by the expectDiff corpus, not proven).
+**Next-session pickup:** widen `CoreRhs`, or attack the backward
+direction. Widening is the cheaper of the two and `uninit` is the
+smallest next rvalue.

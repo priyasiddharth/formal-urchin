@@ -26,7 +26,8 @@ open Lean
 
 /-- The roots whose closures are audited. -/
 def auditRoots : List Name :=
-  [``obseq3.proof.compile_correct]
+  [``obseq3.proof.compile_correct,
+   ``obseq3.proof.compile_correct_from_initial]
 
 /-- The whitelist lives in a data file next to this script; the audit
     compares the CURRENT state against it in both directions. -/
