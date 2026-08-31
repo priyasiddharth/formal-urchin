@@ -418,7 +418,8 @@ theorem CompilerInv_step
         | refSlice k p src => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
         | exposeAddr src => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
         | fromExposed src => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
-        | uninit => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
+        | uninit =>
+            exact CompilerInv_step_uninit compProg h_comp h_inv h_get h_step
     | assignIf discr val dst rhs => exact absurd h_stmt_core (by simp [CoreStmt])
     | alloc dst len => exact absurd h_stmt_core (by simp [CoreStmt])
     | dealloc p => exact absurd h_stmt_core (by simp [CoreStmt])

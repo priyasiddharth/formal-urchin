@@ -85,6 +85,7 @@ def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .constInit _ => True
   | .copy _ => True
   | .ref _ _ _ _ => True
+  | .uninit => True
   | _ => False
 
 /-- Statements in the proof-core fragment: `halt` and assignments with a

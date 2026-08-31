@@ -101,12 +101,12 @@ scope note are unaffected.
 | A, bound local | `const_store_local_existing_simulation` | `const_write_local_existing_simulation`, `uninit_local_existing_simulation` | done |
 | B, fresh local | `const_store_fresh_local_simulation` | `const_write_fresh_local_simulation`, `uninit_fresh_local_simulation` | done; ρa extends by `extendBlock`, not `extend` |
 | C0, proj at offset 0 over a bound local | `const_store_proj_zero_simulation` | `const_write_proj_zero_simulation`, `uninit_proj_zero_simulation` | done |
-| C1, proj at nonzero offset | — | — | TODO (BRIDGE 1) |
-| C-fresh, proj over an unbound root | — | — | TODO |
-| C-deref0 / C-deref, proj over a deref base | — | — | TODO |
-| D, deref chain dst | — | — | TODO |
-| dispatchers + flatten transfers | — | — | TODO |
-| `CoreRhs`/`CoreStmt` + `compile_correct` | — | — | TODO, LAST |
+| C1, proj at nonzero offset | `const_store_proj_offset_simulation` | both | done (BRIDGE 1) |
+| C-fresh, proj over an unbound root | `const_store_proj_fresh_simulation` | both | done; `extendBlock` correction |
+| C-deref0 / C-deref | `const_store_proj_deref_{zero,}_simulation` | both | done |
+| D, deref chain dst | `const_store_deref_chain_simulation` | both | done |
+| dispatchers + flatten transfers | `const_store_{proj,deref,resolved}_simulation`, `ConstStoreFrags` | both | done |
+| `CoreRhs`/`CoreStmt` + `compile_correct` | — | — | DONE — `uninit` is a core rvalue |
 
 ## [FACT] the width-generalization checklist, per leaf
 
@@ -140,3 +140,46 @@ landed them between that theorem's docstring and the theorem, giving
 "unexpected token '/--'". Already in the notes from an earlier session;
 hit it again. When inserting before a documented theorem, anchor on the
 docstring's opening `/--`, not on `theorem`.
+
+
+## [FACT] the dispatchers needed a BUNDLE, not more threading
+
+Three dispatcher levels each route to several leaves, and each leaf now
+takes two or three rvalue-specific fragment hypotheses. Threading them
+individually would have put ~20 arguments on every dispatcher.
+
+`ConstStoreFrags rhs vs'` is the bundle: nineteen fields, one per
+(destination shape x run/value/StateIncr), each universally quantified
+over the place so a dispatcher can instantiate it at
+`flattenPlace ptrPlace` and friends. `constInit_frags` and
+`uninit_frags` prove it once each, every field a one-liner over the
+existing fragment lemmas.
+
+**Why a bundle and not a generic proof:** for a variable `rhs`,
+`compileRExprPreChecked rhs` does not reduce, so NO fragment lemma can
+be proved generically. The bundle does not avoid that — it just stops
+the un-provable-generically part from infecting every signature.
+
+## [OBS] reading undef is NOT ub — only OBSERVING it is
+
+The first teeth for d91 dropped a re-initialisation so the program read
+an undef cell, expecting ub. It came back `.ok`: `readWordSeq` returns
+`MemValue.undef` for a missing cell and a `copy` is happy to move it.
+Only the operations that INTERPRET a word err — a deref (`deref of a
+non-pointer value`), a branch discriminant, an alloc length.
+
+This is exactly what makes `MemValSim`'s `| .undef, _ => True` sound,
+and it is the reason `uninit` costs almost nothing to admit: an undef
+source cell imposes no obligation on the target cell at all.
+
+The teeth that DO bite: make the pointer itself undef
+(`p := uninit` in place of `p := &mut s.0`) and then deref it — ub at
+that statement on both machines.
+
+## [FACT] `uninit` is now a core rvalue
+
+`CoreRhs` admits `constInit`, `copy`, `ref`, `uninit`;
+`compile_correct`'s case split routes `.uninit` to
+`CompilerInv_step_uninit`. The audit is unchanged (two roots, zero
+sorries) — what changed is the SCOPE of the theorem, which now covers
+undef-fill of any place at any layout type.

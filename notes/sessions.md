@@ -2229,3 +2229,32 @@ increment changes no theorem statement.
 projected-destination leaves, then regime D and the dispatchers. Same
 substitution throughout; see journal/2026-08-31-uninit-regime-a.md for
 the three mechanical traps.
+
+## 2026-08-31 (twenty-fourth)
+
+**`uninit` IS NOW A CORE RVALUE.** `CoreRhs` went from three members to
+four; `compile_correct` routes `.uninit` to `CompilerInv_step_uninit`.
+The theorem's scope now covers undef-fill of ANY place at ANY layout
+type.
+**How:** all nine const-store leaf families were restated over an
+arbitrary rvalue and value pair (`const_store_*`), with `constInit`
+re-derived as an instantiation; then the three dispatchers, the
+statement-evidence lemma and the top-level step were generalized the
+same way. The rvalue enters through ONE bundle,
+`ConstStoreFrags rhs vs'` — nineteen fields, proved once per rvalue —
+because for a variable `rhs` `compileRExprPreChecked rhs` does not
+reduce and no fragment lemma can be generic.
+**Two real corrections, not just widenings:** regime B-proj's
+`extendIdRange` left a ZST referent's root base unmapped (now
+`extendBlock`); and three leaves proved a `StateIncr` by a
+destination-before-rhs `rfl` that holds only when the rhs pre-phase
+emits nothing.
+**Status:** green; 17/17 + 104/104; audit exact, two roots, ZERO
+sorries. Witness d91 (wide undef fill + undef through a pointer), teeth
+confirmed — and the teeth taught something: reading undef is NOT ub in
+this model, only observing it as a pointer/branch/length is.
+**Next-session pickup:** the cheapest remaining widenings are
+`pushProtectors`/`popProtectors` — one instruction each, and both
+machines run literally the same expression (see the protector agent
+result quoted in obseq2-comparison.md if written up). After that, the
+other six rvalues, or the backward (UB-preservation) direction.

@@ -2065,6 +2065,36 @@ def d90_ref_projderef_dst_two_mothers : IO Unit :=
      .assign zD90 (.copy s1D90)]
     .ok "d90 ref proj-over-deref dst at offset, chain src"
 
+def ΓD91 : Ctx := [pairD52L, ptrNat, natL, natL]
+def sD91 : Place ΓD91 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD91 : Place ΓD91 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def zD91 : Place ΓD91 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def wD91 : Place ΓD91 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+def s0D91 : Place ΓD91 natL := .proj sD91 (.field ⟨0, by decide⟩ .nil)
+def s1D91 : Place ΓD91 natL := .proj sD91 (.field ⟨1, by decide⟩ .nil)
+
+/-- Positive: `uninit` at a WIDE layout and through a pointer. `s :=
+    uninit` fills both cells of the pair with undef in one statement —
+    the first `CoreRhs` member whose value list is longer than one cell
+    — and `*p := uninit` then undef-fills a single cell through a live
+    `&mut`. Reading an undef cell is ub on both machines, which is what
+    the teeth exercise: dropping the `s.1 := 5` re-initialisation makes
+    the final read of `s.1` pop. Admitted to `CoreRhs` 2026-08-31 by
+    `CompilerInv_step_uninit`. -/
+def d91_uninit_wide_and_through_ptr : IO Unit :=
+  expectDiff ΓD91
+    [.assign s0D91 (.constInit 3),
+     .assign s1D91 (.constInit 4),
+     .assign sD91 .uninit,
+     .assign s0D91 (.constInit 7),
+     .assign s1D91 (.constInit 5),
+     .assign pD91 (.ref .Mut false [] s0D91),
+     .assign (.deref pD91) .uninit,
+     .assign (.deref pD91) (.constInit 9),
+     .assign zD91 (.copy s0D91),
+     .assign wD91 (.copy s1D91)]
+    .ok "d91 uninit at a wide layout and through a pointer"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2168,7 +2198,8 @@ def allTests : List (IO Unit) := [
   d87_ref_chainsrc_into_fresh_projdst,
   d88_ref_plain_deref_src_into_projdst,
   d89_ref_two_mothers,
-  d90_ref_projderef_dst_two_mothers]
+  d90_ref_projderef_dst_two_mothers,
+  d91_uninit_wide_and_through_ptr]
 
 def runAll : IO Unit := do
   allTests.forM id
