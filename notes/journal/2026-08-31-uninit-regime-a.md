@@ -92,3 +92,51 @@ are longer than regime A but the substitution is the same one.
 NOTE: `CoreRhs` must NOT be widened until the whole dispatcher is total.
 Until then this work changes no theorem statement — the audit and the
 scope note are unaffected.
+
+
+## progress log (appended as leaves land)
+
+| leaf family | generic name | instances | notes |
+|---|---|---|---|
+| A, bound local | `const_store_local_existing_simulation` | `const_write_local_existing_simulation`, `uninit_local_existing_simulation` | done |
+| B, fresh local | `const_store_fresh_local_simulation` | `const_write_fresh_local_simulation`, `uninit_fresh_local_simulation` | done; ρa extends by `extendBlock`, not `extend` |
+| C0, proj at offset 0 over a bound local | `const_store_proj_zero_simulation` | `const_write_proj_zero_simulation`, `uninit_proj_zero_simulation` | done |
+| C1, proj at nonzero offset | — | — | TODO (BRIDGE 1) |
+| C-fresh, proj over an unbound root | — | — | TODO |
+| C-deref0 / C-deref, proj over a deref base | — | — | TODO |
+| D, deref chain dst | — | — | TODO |
+| dispatchers + flatten transfers | — | — | TODO |
+| `CoreRhs`/`CoreStmt` + `compile_correct` | — | — | TODO, LAST |
+
+## [FACT] the width-generalization checklist, per leaf
+
+Every leaf needs the same six edits. Recording them so the remaining
+ones are transcription, not thought:
+
+1. `{loc/path at NatL}` -> add `{τ : LayoutTy}`, retype.
+2. drop `(v : Word)`; add `{vs} {vs'}` and
+   `h_len : vs.length = blockSize τ`,
+   `h_rel : ListRel (MemValSim ρa ρt) vs vs'` (rename-POLYMORPHIC in any
+   leaf that extends a rename before the store),
+   `h_size : vs'.length = obseq.typeSize (layoutToTyVal τ)`.
+3. thread the compiled fragment as `h_frag`/`h_fragval` keyed on
+   `getPlaceInfo cs loc.idx.1 = some (reg, σ)` — the rhs-specific run
+   lemma cannot be shared, because `compileRExprPreChecked rhs` does not
+   reduce for a variable rhs. Generate its uninit twin by substitution.
+4. `h_useMut_tgt` speaks of `vs.length`; `writeThroughPtr_sim` wants
+   `vs'.length`. Bridge with `rw [← ListRel.length_eq h_rel]` ALONE.
+5. `writeThroughPtr_sim`'s `h_dom` was `Nat.lt_one_iff` + the base fact
+   at width one. At general width it is `LocalBindingSim`'s block-domain
+   conjunct (bound local) or `AddrRenameMap.extendBlock_mem` (fresh
+   root). For a PROJECTED destination it additionally needs
+   `PathTo.offset_add_size_le path` to get `k < blockSize σ` from
+   `k < blockSize τ`.
+6. `runN_CStore_step`'s `rfl` becomes `h_size`.
+
+## [OBS] insert ABOVE the docstring, always
+
+Inserting the two instances at anchor `\ntheorem const_write_proj_offset_simulation`
+landed them between that theorem's docstring and the theorem, giving
+"unexpected token '/--'". Already in the notes from an earlier session;
+hit it again. When inserting before a documented theorem, anchor on the
+docstring's opening `/--`, not on `theorem`.

@@ -767,6 +767,51 @@ theorem compileStmt_proj_zero_run
     h_root, h_brun, h_bval, h_off, dif_pos]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, emit_nil]
 
+theorem compileStmt_proj_zero_uninit_run
+    {Γ : Ctx} {σ : LayoutTy} {base : Place Γ σ}
+    {τ : LayoutTy} {path : PathTo σ τ} {cs : CompilerState}
+    {baseOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut base)}
+    {reg : Register}
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      base = b.proj q → False)
+    (h_off : pathOffset path = 0)
+    (h_root : CompilerM.run (ensurePlaceRoot (Place.proj base path)) cs = cs)
+    (h_brun : CheckedCompilerM.run (placeToRegChecked RefKind.Mut base) cs = cs)
+    (h_bval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut base) cs
+      = Except.ok baseOut)
+    (h_bres : baseOut.result = { reg := reg, cleanup := [] }) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.proj base path) .uninit)) cs
+      = emit cs [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) reg] := by
+  have h_proj_eq : placeToRegChecked (Γ := Γ) RefKind.Mut (.proj base path)
+      = (do
+          let baseOut ← placeToRegChecked RefKind.Mut base
+          let baseRes := baseOut.result
+          let offset := pathOffset path
+          if h_offset : offset = 0 then
+            pure {
+              result := baseRes,
+              evidence := PlaceToRegEvidence.projZero base path baseRes
+                baseOut.evidence h_offset
+            }
+          else
+            let tmpReg ← CheckedCompilerM.lift freshRegM
+            let _ ← CheckedCompilerM.lift
+              (emitM [Instr.Assgn tmpReg
+                (borrowRhs RefKind.Mut (blockSize τ) baseRes.reg offset)])
+            pure {
+              result := { reg := tmpReg,
+                          cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)] },
+              evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
+                baseOut.evidence h_offset
+            }) := placeToRegChecked_proj_root_eq path h_np
+  simp only [compileStmtChecked, h_proj_eq, compileRExprToChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+    h_root, h_brun, h_bval, h_off, dif_pos]
+  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, emit_nil]
+
 /-- Nonzero-offset projection off a mapped local: `Borrow; CStore; Die`.
     The `Die` is the cleanup the assign arm emits after the rhs — the
     only fragment so far that ends by killing a tag it minted. -/
@@ -1546,6 +1591,138 @@ theorem const_write_proj_deref_simulation
     the fragment is a bare `CStore` and this is regime A with a wider
     `allocSize` — the projected place's bounds come from the BASE's
     layout, not from `NatL`. No `Borrow`, hence no BRIDGE 1. -/
+theorem const_store_proj_zero_simulation
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {σ τ : LayoutTy} {loc : Local Γ σ} {path : PathTo σ τ}
+    {binding : mirlite.Binding}
+    {vs : List mirlite.MemValue} {vs' : List Val}
+    (compProg : oseair.Prog) (rhs : RExpr Γ τ)
+    (h_len : vs.length = blockSize τ)
+    (h_rel : ListRel (MemValSim ρa ρt) vs vs')
+    (h_size : vs'.length = obseq.typeSize (layoutToTyVal τ))
+    (h_frag : ∀ (cs : CompilerState) (reg : Register),
+      getPlaceInfo cs loc.idx.1 = some (reg, σ) →
+      CheckedCompilerM.run
+          (compileStmtChecked (Stmt.assign (.proj (.local loc) path) rhs)) cs
+        = emit cs [Instr.CStore (layoutToTyVal τ) vs' reg])
+    (h_fragval : ∀ (cs : CompilerState) (reg : Register),
+      getPlaceInfo cs loc.idx.1 = some (reg, σ) →
+      ∃ so, CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) rhs)) cs
+          = Except.ok so)
+    (h_off : pathOffset path = 0)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj (.local loc) path) rhs)) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj (.local loc) path) rhs)) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
+    (h_env : mirlite.Env.lookup s_mir.env loc = some binding)
+    (h_write : mirlite.writeResolvedPlace (τ := τ) MSB s_mir
+        { addr := binding.addr + pathOffset path, tag := binding.tag,
+          allocBase := binding.addr, allocSize := blockSize σ }
+        vs h_len = .ok s_mir') :
+    ∃ (s_osea' : oseair.State MSB) (n : Nat),
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
+  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
+    h_alloc, h_unmap, h_prb⟩ := h_inv
+  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ :=
+    h_lbs loc binding h_env
+  have h_base : base = binding.addr := (h_id_a _ _ h_ra).symm
+  subst h_base
+  -- source permission step
+  have h_w := h_write
+  simp only [mirlite.writeResolvedPlace] at h_w
+  split at h_w
+  · simp at h_w
+  · rename_i h_nb
+    split at h_w
+    · rename_i perms' h_useMut_src
+      cases h_w
+      obtain ⟨p2, h_useMut_tgt, h_psim'⟩ :=
+        sb_write_respects_PermSim h_psim h_wf_t h_rt h_nw h_useMut_src
+      -- the fragment: one CStore through the base's register
+      have h_stmtRun := (h_run0 csPrefix).trans (h_frag csPrefix reg h_pi)
+      obtain ⟨stmtOutC, h_stmtOutC⟩ := h_fragval csPrefix reg h_pi
+      obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
+      have h_code : compProg s_osea.pc
+          = some (Instr.CStore (layoutToTyVal τ) vs' reg) := by
+        rw [h_pc]
+        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
+        · rw [h_stmtRun]; simp [emit]
+        · rw [h_stmtRun]
+          have h := emit_code_at_new csPrefix
+            [Instr.CStore (layoutToTyVal τ) vs' reg] (k := 0) (by simp)
+          simpa using h
+      -- BRIDGE 2 at the projected address
+      have h_entry' : PtrRegisterEntry s_osea.reg reg binding.addr
+          (binding.addr + pathOffset path - binding.addr) (blockSize σ) tag := by
+        rw [h_off, Nat.add_zero, Nat.sub_self]
+        exact h_entry
+      have h_useMut_tgt' : MSB.useMut s_osea.perms (binding.addr + pathOffset path)
+          vs'.length tag = .ok p2 := by
+        rw [← ListRel.length_eq h_rel]
+        exact h_useMut_tgt
+      have h_fit : pathOffset path + blockSize τ ≤ blockSize σ :=
+        PathTo.offset_add_size_le path
+      obtain ⟨h_wtp, h_sms'⟩ :=
+        writeThroughPtr_sim (τ := τ)
+          (resolved := { addr := binding.addr + pathOffset path, tag := binding.tag,
+                         allocBase := binding.addr, allocSize := blockSize σ })
+          "CStore Invalid Ptr" vs vs' h_len h_rel h_id_a h_entry' h_useMut_tgt' h_sms
+          (by simp [h_off])
+          (fun k hk => by
+            have hk' : k < blockSize σ := by
+              rw [h_len] at hk
+              omega
+            obtain ⟨a', ha'⟩ := h_dom k hk'
+            have h_eq := h_id_a _ _ ha'
+            show ρa (binding.addr + pathOffset path + k) = _
+            rw [h_off, Nat.add_zero]
+            grind)
+          h_write
+      have h_run := runN_CStore_step compProg s_osea _
+        (layoutToTyVal τ) vs' reg h_code h_size h_wtp
+      refine ⟨_, 1, h_run, ?_⟩
+      refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
+        ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim',
+        h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
+      · show s_osea.pc + 1 = _
+        rw [h_stmtRun, h_pc]; simp [emit]
+      · intro τ' loc' binding' h_env'
+        obtain ⟨reg', base', tag', h_pi', h_entry'', h_ra', h_rt', h_nw', h_dom'⟩ :=
+          h_lbs loc' binding' h_env'
+        refine ⟨reg', base', tag', ?_, h_entry'', h_ra', h_rt', h_nw', h_dom'⟩
+        rw [h_stmtRun, getPlaceInfo_emit]
+        exact h_pi'
+      · show TagRenameBounded ρt perms'.NextTag p2.NextTag
+        rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
+        exact h_tbd
+      · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
+          oseair_writeWordSeq_addrStart]
+        exact h_alloc
+      · intro τ' loc' h_none
+        rw [h_stmtRun, getPlaceInfo_emit]
+        exact h_unmap loc' h_none
+      · intro idx reg'' τ'' h_look
+        rw [h_stmtRun] at h_look ⊢
+        rw [getPlaceInfo_emit] at h_look
+        exact h_prb _ _ _ h_look
+    · simp at h_w
+
+/-- Zero-offset projected constant write — the `constInit` instance. -/
 theorem const_write_proj_zero_simulation
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -1577,101 +1754,79 @@ theorem const_write_proj_zero_simulation
         [mirlite.MemValue.word v] rfl = .ok s_mir') :
     ∃ (s_osea' : oseair.State MSB) (n : Nat),
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
-  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
-    h_alloc, h_unmap, h_prb⟩ := h_inv
-  obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ :=
-    h_lbs loc binding h_env
-  have h_base : base = binding.addr := (h_id_a _ _ h_ra).symm
-  subst h_base
-  -- source permission step
-  have h_w := h_write
-  simp only [mirlite.writeResolvedPlace] at h_w
-  split at h_w
-  · simp at h_w
-  · rename_i h_nb
-    split at h_w
-    · rename_i perms' h_useMut_src
-      cases h_w
-      obtain ⟨p2, h_useMut_tgt, h_psim'⟩ :=
-        sb_write_respects_PermSim h_psim h_wf_t h_rt h_nw h_useMut_src
-      -- the fragment: one CStore through the base's register
-      have h_mapped : PlaceInputsMapped csPrefix (Place.proj (Place.local loc) path) :=
-        ⟨reg, σ, h_pi⟩
-      have h_root := ensurePlaceRoot_run_eq_of_mapped
-        (p := Place.proj (Place.local loc) path) h_mapped
+      CompilerInv cs0 prog ρa ρt s_mir' s_osea' :=
+  const_store_proj_zero_simulation
+    (vs := [mirlite.MemValue.word v]) (vs' := [Val.Dat v])
+    compProg (.constInit v) rfl (by exact ⟨rfl, trivial⟩) rfl
+    (fun cs reg h => by
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
-        placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-      have h_stmtRunC := compileStmt_proj_zero_run (cs := csPrefix) (baseOut := baseOut)
-        (fun _ _ _ h => by cases h) v h_off h_root h_brun h_bval h_bres
-      have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
-      obtain ⟨stmtOutC, h_stmtOutC⟩ :
-          ∃ so, CheckedCompilerM.value
-            (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v)))
-            csPrefix = Except.ok so := by
-        obtain ⟨dstOut, h_dstOut⟩ :=
-          placeToRegChecked_ok_of_placeInputsMapped (cs := csPrefix)
-            (kind := RefKind.Mut) (p := Place.proj (Place.local loc) path) h_mapped
-        exact ⟨{ result := (),
-                 evidence := StmtEvidence.assignPlace (.proj (.local loc) path)
-                   (.constInit v) dstOut.result dstOut.evidence
-                   (RExprToEvidence.constInit v) },
-               by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_dstOut, h_root]⟩
-      obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
-      have h_code : compProg s_osea.pc
-          = some (Instr.CStore obseq.TyVal.NatTy [Val.Dat v] reg) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · rw [h_stmtRun]; simp [emit]
-        · rw [h_stmtRun]
-          have h := emit_code_at_new csPrefix
-            [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] reg] (k := 0) (by simp)
-          simpa using h
-      -- BRIDGE 2 at the projected address
-      have h_entry' : PtrRegisterEntry s_osea.reg reg binding.addr
-          (binding.addr + pathOffset path - binding.addr) (blockSize σ) tag := by
-        rw [h_off, Nat.add_zero, Nat.sub_self]
-        exact h_entry
-      obtain ⟨h_wtp, h_sms'⟩ :=
-        writeThroughPtr_sim (τ := obseq.LayoutTy.NatL)
-          (resolved := { addr := binding.addr + pathOffset path, tag := binding.tag,
-                         allocBase := binding.addr, allocSize := blockSize σ })
-          "CStore Invalid Ptr" [mirlite.MemValue.word v] [Val.Dat v] rfl
-          ⟨rfl, trivial⟩ h_id_a h_entry' h_useMut_tgt h_sms
-          (by simp [h_off])
-          (fun k hk => by
-            simp [Nat.lt_one_iff] at hk
-            subst hk
-            simpa [h_off] using h_ra)
-          h_write
-      have h_run := runN_CStore_step compProg s_osea _
-        obseq.TyVal.NatTy [Val.Dat v] reg h_code rfl h_wtp
-      refine ⟨_, 1, h_run, ?_⟩
-      refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
-        ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim',
-        h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
-      · show s_osea.pc + 1 = _
-        rw [h_stmtRun, h_pc]; simp [emit]
-      · intro τ' loc' binding' h_env'
-        obtain ⟨reg', base', tag', h_pi', h_entry'', h_ra', h_rt', h_nw', h_dom'⟩ :=
-          h_lbs loc' binding' h_env'
-        refine ⟨reg', base', tag', ?_, h_entry'', h_ra', h_rt', h_nw', h_dom'⟩
-        rw [h_stmtRun, getPlaceInfo_emit]
-        exact h_pi'
-      · show TagRenameBounded ρt perms'.NextTag p2.NextTag
-        rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
-        exact h_tbd
-      · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-          oseair_writeWordSeq_addrStart]
-        exact h_alloc
-      · intro τ' loc' h_none
-        rw [h_stmtRun, getPlaceInfo_emit]
-        exact h_unmap loc' h_none
-      · intro idx reg'' τ'' h_look
-        rw [h_stmtRun] at h_look ⊢
-        rw [getPlaceInfo_emit] at h_look
-        exact h_prb _ _ _ h_look
-    · simp at h_w
+        placeToRegChecked_local_existing (kind := RefKind.Mut) h
+      exact compileStmt_proj_zero_run (cs := cs) (baseOut := baseOut)
+        (fun _ _ _ hh => by cases hh) v h_off
+        (ensurePlaceRoot_run_eq_of_mapped ⟨reg, σ, h⟩) h_brun h_bval h_bres)
+    (fun cs reg h => by
+      have h_mapped : PlaceInputsMapped cs (Place.proj (Place.local loc) path) :=
+        ⟨reg, σ, h⟩
+      obtain ⟨dstOut, h_dstOut⟩ :=
+        placeToRegChecked_ok_of_placeInputsMapped (cs := cs)
+          (kind := RefKind.Mut) (p := Place.proj (Place.local loc) path) h_mapped
+      exact ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj (.local loc) path) (.constInit v) dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
+        by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+          h_dstOut, ensurePlaceRoot_run_eq_of_mapped h_mapped]⟩)
+    h_off h_comp h_inv h_stmt h_run0 h_val0 h_env h_write
+
+/-- Zero-offset projected undef-fill — the `uninit` instance. -/
+theorem uninit_proj_zero_simulation
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {σ τ : LayoutTy} {loc : Local Γ σ} {path : PathTo σ τ}
+    {binding : mirlite.Binding}
+    (compProg : oseair.Prog)
+    (h_off : pathOffset path = 0)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked (Stmt.assign (.proj (.local loc) path) .uninit)) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) .uninit)) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
+    (h_env : mirlite.Env.lookup s_mir.env loc = some binding)
+    (h_write : mirlite.writeResolvedPlace (τ := τ) MSB s_mir
+        { addr := binding.addr + pathOffset path, tag := binding.tag,
+          allocBase := binding.addr, allocSize := blockSize σ }
+        (List.replicate (blockSize τ) mirlite.MemValue.undef)
+        List.length_replicate = .ok s_mir') :
+    ∃ (s_osea' : oseair.State MSB) (n : Nat),
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa ρt s_mir' s_osea' :=
+  const_store_proj_zero_simulation
+    (vs := List.replicate (blockSize τ) mirlite.MemValue.undef)
+    (vs' := List.replicate (blockSize τ) Val.Undef)
+    compProg .uninit List.length_replicate (ListRel_replicate_undef ρa ρt _ _)
+    (List.length_replicate.trans (blockSize_eq_typeSize τ))
+    (fun cs reg h => by
+      obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
+        placeToRegChecked_local_existing (kind := RefKind.Mut) h
+      exact compileStmt_proj_zero_uninit_run (cs := cs) (baseOut := baseOut)
+        (fun _ _ _ hh => by cases hh) h_off
+        (ensurePlaceRoot_run_eq_of_mapped ⟨reg, σ, h⟩) h_brun h_bval h_bres)
+    (fun cs reg h => by
+      have h_mapped : PlaceInputsMapped cs (Place.proj (Place.local loc) path) :=
+        ⟨reg, σ, h⟩
+      obtain ⟨dstOut, h_dstOut⟩ :=
+        placeToRegChecked_ok_of_placeInputsMapped (cs := cs)
+          (kind := RefKind.Mut) (p := Place.proj (Place.local loc) path) h_mapped
+      exact ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj (.local loc) path) .uninit dstOut.result dstOut.evidence RExprToEvidence.uninit },
+        by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+          h_dstOut, ensurePlaceRoot_run_eq_of_mapped h_mapped]⟩)
+    h_off h_comp h_inv h_stmt h_run0 h_val0 h_env h_write
 
 /-- REGIME C1, CLOSED: constant write to a NONZERO-offset projection off
     a bound local. The fragment is `Borrow(Mut); CStore; Die` — the first
