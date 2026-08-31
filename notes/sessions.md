@@ -2203,3 +2203,29 @@ tested by the expectDiff corpus, not proven).
 **Next-session pickup:** widen `CoreRhs`, or attack the backward
 direction. Widening is the cheaper of the two and `uninit` is the
 smallest next rvalue.
+
+## 2026-08-31 (twenty-third)
+
+**Started widening `CoreRhs` with `uninit`.** Regime A done: the
+constant-store leaf is now GENERIC in the rvalue
+(`const_store_local_existing_simulation`), `constInit` re-derives from
+it as a 12-line instantiation, and `uninit_local_existing_simulation`
+is the second instance.
+**Why it is cheap:** the plumbing was already width-general
+(`writeThroughPtr_sim`, `runN_CStore_step`, and `LocalBindingSim`'s
+block-domain conjunct — which the single-cell `constInit` leaf bound
+and never used). Only the leaves hardcoded `NatL`/one cell. And
+`uninit`'s new obligation is free: `MemValSim`'s first clause is
+`| .undef, _ => True`.
+**Shape that works:** parameterize by `(rhs, vs, vs')` + three length /
+relation hypotheses, and thread the compiled shape as `h_run0`/`h_val0`
+— `RhsPre`'s evidence field is dependent, so "the rhs lowers to one
+CStore" cannot be an equation on `compileRExprPreChecked`.
+**Status:** green; 17/17 + 103/103; audit UNCHANGED (two roots, zero
+sorries). `CoreRhs` deliberately NOT widened — it must stay at three
+rvalues until the whole const-write dispatcher is total, so this
+increment changes no theorem statement.
+**Next-session pickup:** regime B (fresh local), then the five
+projected-destination leaves, then regime D and the dispatchers. Same
+substitution throughout; see journal/2026-08-31-uninit-regime-a.md for
+the three mechanical traps.
