@@ -1692,6 +1692,36 @@ def d78_ref_into_fresh_proj_offset : IO Unit :=
      .assign zD77 (.copy xD77)]
     .ok "d78 ref into fresh proj dst at offset"
 
+def ΓD79 : Ctx := [ptrNat, ptrNat, ptrNat, natL, natL, natL]
+def tD79 : Place ΓD79 ptrNat := .local ⟨⟨0, by decide⟩, rfl⟩
+def rD79 : Place ΓD79 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def sD79 : Place ΓD79 ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def xD79 : Place ΓD79 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+def yD79 : Place ΓD79 natL := .local ⟨⟨4, by decide⟩, rfl⟩
+def zD79 : Place ΓD79 natL := .local ⟨⟨5, by decide⟩, rfl⟩
+
+/-- Positive: REGIME B of ref with a DEREF SOURCE — a reborrow through
+    a pointer chain stored into an UNBOUND destination
+    (`t := &mut *r`, `t` never assigned before). The root `Alloc` comes
+    FIRST, so the source spine lowers from the post-`Alloc` states and
+    the mother lemma's whole hypothesis bundle has to hold there.
+    `s := &mut y` stays live across the statement: reborrowing through
+    `r` touches only `x`, so `*s := 8` afterwards is defined. Point the
+    reborrow at `*s` instead and it becomes a child of `s`, which the
+    later write through `s` pops — then `*t := 9` is UB. Closed
+    2026-08-31 by `ref_fresh_derefsrc_simulation`. -/
+def d79_ref_derefsrc_into_fresh_dst : IO Unit :=
+  expectDiff ΓD79
+    [.assign xD79 (.constInit 5),
+     .assign yD79 (.constInit 6),
+     .assign rD79 (.ref .Mut false [] xD79),
+     .assign sD79 (.ref .Mut false [] yD79),
+     .assign tD79 (.ref .Mut false [] (.deref rD79)),
+     .assign (.deref sD79) (.constInit 8),
+     .assign (.deref tD79) (.constInit 9),
+     .assign zD79 (.copy xD79)]
+    .ok "d79 ref deref src into fresh dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1783,7 +1813,8 @@ def allTests : List (IO Unit) := [
   d75_ref_projsrc_offset_into_deref_dst,
   d76_ref_projsrc_into_fresh_dst,
   d77_ref_into_fresh_proj_zero,
-  d78_ref_into_fresh_proj_offset]
+  d78_ref_into_fresh_proj_offset,
+  d79_ref_derefsrc_into_fresh_dst]
 
 def runAll : IO Unit := do
   allTests.forM id

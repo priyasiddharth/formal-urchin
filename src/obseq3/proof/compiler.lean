@@ -138,10 +138,17 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    `ref_projoffset_fresh_simulation` (d78): the projection mints its
    own interior `Borrow(Mut)` into the fresh root register and retires
    it with a `Die`, and BRIDGE 1 collapses that triple to mirlite's
-   single parent write — five instructions. THREE of the four
-   unbound-root sites are now closed. Remaining: non-local srcs under
-   non-local dsts, non-spine deref srcs, proj-of-proj srcs, and the
-   last unbound-root site (a deref src under a fresh dst).
+   single parent write — five instructions. The LAST unbound-root site
+   fell the same day as `ref_fresh_derefsrc_simulation` (d79): a deref
+   SOURCE under a fresh destination, where the root `Alloc` runs first
+   and so the mother lemma `ptrChain_lowering_sim` must be applied at
+   the POST-`Alloc` states — its whole hypothesis bundle
+   (`LocalBindingSim`, `PlaceRegMapBound`, `SourceMemSim`, `PermSim`,
+   the pc agreement, the instruction transfer) is re-established
+   MID-PROOF under the extended renames rather than rebuilt at the end.
+   REGIME B of ref is now TOTAL: all four unbound-root sites are
+   closed. Remaining: non-local srcs under non-local dsts, non-spine
+   deref srcs, proj-of-proj srcs.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

@@ -1730,3 +1730,33 @@ sites still 9 (no leaf, so no site closes).
 families (proj-of-proj srcs, non-spine deref srcs, non-local srcs under
 non-local dsts).
 See journal/2026-08-31-ref-last-unbound-root-recon.md.
+
+## 2026-08-31 (eighth)
+
+**Goal:** finish the last unbound-root leaf of `ref`.
+**Landed:** `ref_fresh_derefsrc_simulation` (`dst := &kind *chain`,
+`dst` UNBOUND), wired, with witness d79 and teeth. REGIME B of ref is
+now TOTAL — all four unbound-root sites closed. Residual sites 9 -> 8.
+**Key finding:** this leaf crosses the fresh-root axis with the SPINE,
+so `ptrChain_lowering_sim` is applied at the post-`Alloc` states and its
+whole hypothesis bundle is re-established MID-PROOF. That was cheap
+only because `copy_projlocal_fresh_zero_simulation` had already solved
+the same problem for a different statement form — its `h_prb1`/`h_lbs1`
+blocks transferred almost verbatim. Generalisation: when a leaf needs an
+invariant at an unusual POINT in the statement, look for another
+statement form that passes through that point, not for a leaf of the
+same form.
+**Tooling finding:** `simp only [emit]` unfolds `emit` inside the
+compiled state when that state is an ARGUMENT to
+`CheckedCompilerM.run`, splitting one term into two `omega` atoms. Use
+the projection lemmas (`emit_nextLabel`, `setPlaceInfo_nextLabel`,
+`emit_nextReg`, ...) instead. Second known symptom of the same
+root cause as csnorm.
+**Also:** `subst h : a = b` eliminated `b` (the earlier-introduced
+variable), not `a`; and `LocalBindingSim.insert_fresh_reg`'s trailing
+`rfl` needs the `have` to ascribe the target oseair state.
+**Status:** green; 17/17 + 92/92; audit exact at ONE sorry.
+**Next-session pickup:** `ref_place_residual`'s remaining classes —
+non-local srcs under non-local dsts, non-spine deref srcs,
+proj-of-proj srcs.
+See journal/2026-08-31-ref-regime-b-total.md.
