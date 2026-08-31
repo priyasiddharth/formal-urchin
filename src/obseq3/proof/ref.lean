@@ -5703,17 +5703,28 @@ theorem ref_fresh_derefsrc_simulation
       · simp at h_w
 
 
-/-- RESIDUAL (sorried), NARROWED 2026-08-29: after the dst-flattening
-    recursion (`ref_proj_dst_simulation` — nested projection dsts of
-    any depth reassociate on both machines and land in the closed
-    field-dst leaves, stmt0-threaded). Remaining:
-    - proj-TOPPED dsts over non-local bases (`(*p).f := &x`) — the
-      deref-dst and deref-src arms are otherwise TOTAL for bound
-      locals (flatten transfer, 2026-08-29; d51);
-    - non-local srcs under non-local dsts (proj/deref src places);
-    - non-spine deref srcs, proj-of-proj srcs;
-    UNBOUND DESTINATION ROOTS are TOTAL as of 2026-08-31: all four
-    sites closed (`ref_fresh_projsrc_simulation`,
+/-- RESIDUAL (sorried). The only `sorry` left in obseq3; EIGHT call
+    sites, in four classes. Re-enumerated 2026-08-31 against the
+    dispatcher (the previous list said "non-spine deref srcs", which is
+    not a class at all: `PtrChain_flatten_deref` holds for ANY place,
+    so every deref src IS a spine once flattened).
+
+    1. a NON-LOCAL SRC under a PROJECTED DST over a local base —
+       `t.g := &s.f` and `t.g := &*p`. Only a local src is closed
+       there (`ref_local_projzero/projoffset_simulation`).
+    2. a PROJECTED DST over a DEREF base — `(*p).g := &_`, any src.
+       This is the one class the dst-flattening recursion cannot
+       normalize away, since flattening keeps the deref.
+    3. a PROJ-TOPPED SRC whose base is NOT a local — `&(s.f).h` and
+       `&(*p).f` — under a local dst or a deref dst (four sites).
+       The `(s.f).h` half is a src-flattening transfer away from the
+       closed proj-over-local leaves; the `(*p).f` half is not.
+    4. a DEREF SRC under a DEREF DST — `*chain := &*chain'`.
+
+    CLOSED and no longer residual: the dst-flattening recursion
+    (`ref_proj_dst_simulation`, stmt0-threaded); deref dsts with local
+    and proj-topped srcs; and, as of 2026-08-31, ALL FOUR unbound
+    destination roots (`ref_fresh_projsrc_simulation`,
     `ref_projzero_fresh_simulation`, `ref_projoffset_fresh_simulation`,
     `ref_fresh_derefsrc_simulation`). -/
 theorem ref_place_residual

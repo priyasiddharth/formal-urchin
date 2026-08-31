@@ -147,8 +147,13 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    the pc agreement, the instruction transfer) is re-established
    MID-PROOF under the extended renames rather than rebuilt at the end.
    REGIME B of ref is now TOTAL: all four unbound-root sites are
-   closed. Remaining: non-local srcs under non-local dsts, non-spine
-   deref srcs, proj-of-proj srcs.
+   closed. Remaining, re-enumerated against the dispatcher (EIGHT call
+   sites, four classes; the earlier phrase "non-spine deref srcs" was
+   wrong — `PtrChain_flatten_deref` holds for ANY place, so every deref
+   src is a spine once flattened): a non-local src under a projected
+   dst over a local base; a projected dst over a DEREF base; a
+   proj-topped src whose base is not a local; and a deref src under a
+   deref dst. See `ref_place_residual`'s docstring for the site map.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound
