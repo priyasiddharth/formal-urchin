@@ -78,7 +78,7 @@ the two facts the minting members need.
   `AllocLockstep.allocate_eq` is the consumer-facing form: corresponding
   allocations agree, and the property survives them.
 
-Remaining (2): every remaining sorry is blocked on a NAMED obligation.
+Remaining (1): every remaining sorry is blocked on a NAMED obligation.
 1. ✔ `const_write_deref_deep_residual` — RETIRED 2026-08-29, the first
    residual to die. The pending-cleanup generalization landed as
    `ptrChain_lowering_sim`; `flattenPlace` + its congruence family
