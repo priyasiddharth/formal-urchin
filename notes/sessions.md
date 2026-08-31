@@ -1994,3 +1994,28 @@ existing inline `h_cancel` sites are left alone (churn, no gain); new
 leaves use the named form.
 **Status:** green; 17/17 + 99/99; audit exact at ONE sorry.
 See durable/resolved-address-vs-pointer-offset.md.
+
+## 2026-08-31 (fifteenth)
+
+**Attempted:** reparameterize `mirlite.PlaceRes` to carry `offset` with
+`addr` derived, so mirlite and oseair share one pointer representation.
+**Sound and verified:** the invariant `addr = allocBase + Σoffsets`
+holds in all three `resolvePlaceAcc` arms and there is no other
+constructor, so it is faithful. The SEMANTICS change alone built clean
+with the corpus unchanged — 17/17 + 99/99, identical verdicts. Patch
+kept at notes/attic/placeres-offset-reparameterization.patch.
+**Reverted, and why:** my cost estimate ("35 literals plus fallout") was
+wrong. The literals were 28 and mechanical. What I missed is that
+deriving `addr` changes the ASSOCIATIVITY of every projected address —
+`allocBase + (offset + k)` where the proofs say `(allocBase + offset) + k`
+— so ~50 sites across const_write/copy/ref stop matching. Three
+automated passes moved the count 59 -> 46 -> 55 -> 67, non-monotone
+because Lean reports one error per declaration and each fix unmasks the
+next. It needs a per-declaration migration, not a script.
+**Judgement:** the payoff (`h_dle` trivial, `h_cancel`'s 38 derivations
+and 143 uses gone) is a fixed one-time cost of ~50 sites against FIVE
+remaining residual sites. It would have paid for itself hundreds of
+leaf-lines ago; not now. Do it first if the leaf population ever grows
+again.
+**Status:** reverted to green; 17/17 + 99/99; audit exact at ONE sorry.
+See durable/placeres-offset-reparameterization.md.

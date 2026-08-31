@@ -1,0 +1,114 @@
+diff --git a/src/obseq3/mirlite_semantics.lean b/src/obseq3/mirlite_semantics.lean
+index b0330c4..a7b1da7 100644
+--- a/src/obseq3/mirlite_semantics.lean
++++ b/src/obseq3/mirlite_semantics.lean
+@@ -101,12 +101,42 @@ structure State (M : PermissionModel) (Γ : Ctx) where
+ def State.initial (M : PermissionModel) (Γ : Ctx) : State M Γ :=
+   { pc := 0, env := Env.empty, mem := Mem.empty, perms := M.init }
+ 
++/-- A resolved place, carried in the SAME base+offset form as an
++    oseair `Val.Ptr`: the allocation it belongs to, and how far into it
++    the place sits. Every constructor below builds `offset` by ADDITION
++    (zero for a whole local, the accumulated path offsets for a
++    projection, the loaded pointer's own offset for a deref), which is
++    exactly how oseair's `Rhs.Borrow` accumulates. Keeping the two
++    machines in one representation is what makes the simulation's
++    pointer-offset conjunct hold on the nose instead of through
++    `allocBase ≤ addr` arithmetic. -/
+ structure PlaceRes where
+-  addr      : Word
+-  tag       : Tag
+   allocBase : Word
++  offset    : Word
++  tag       : Tag
+   allocSize : Word
+ 
++/-- The absolute address, derived. Every use of a resolved place as an
++    ADDRESS — memory lookups, permission calls, bounds checks — goes
++    through this. -/
++abbrev PlaceRes.addr (r : PlaceRes) : Word := r.allocBase + r.offset
++
++/-- `.addr` on a literal reduces. Definitional, but `rw` matches up to
++    instances only, so proofs that pattern-match on the absolute address
++    need this in their simp set. -/
++theorem PlaceRes.addr_mk (b o : Word) (t : Tag) (sz : Word) :
++    (PlaceRes.mk b o t sz).addr = b + o := rfl
++
++/-- Advancing the offset advances the absolute address by the same
++    amount. This is the bridge the reparameterization needs: a
++    projection now accumulates on `offset` (right-associating under
++    `addr = allocBase + offset`), while every consumer speaks of the
++    absolute address (left-associating). -/
++@[simp] theorem PlaceRes.addr_shift (r : PlaceRes) (k : Word) :
++    ({ r with offset := r.offset + k } : PlaceRes).addr = r.addr + k := by
++  show r.allocBase + (r.offset + k) = r.allocBase + r.offset + k
++  exact (Nat.add_assoc _ _ _).symm
++
+ inductive Result (M : PermissionModel) (Γ : Ctx) where
+ | ok (state : State M Γ)
+ | err (msg : String)
+@@ -124,21 +154,21 @@ def resolvePlace? (state : State M Γ) : Place Γ τ → Option PlaceRes
+   | .local loc =>
+       match state.env.lookup loc with
+       | some binding =>
+-          some { addr := binding.addr, tag := binding.tag,
+-                 allocBase := binding.addr, allocSize := blockSize τ }
++          some { allocBase := binding.addr, offset := 0,
++                 tag := binding.tag, allocSize := blockSize τ }
+       | none => none
+   | .proj base path =>
+       match resolvePlace? state base with
+       | none => none
+-      | some res => some { res with addr := res.addr + PathTo.offset path }
++      | some res => some { res with offset := res.offset + PathTo.offset path }
+   | .deref ptrPlace =>
+       match resolvePlace? state ptrPlace with
+       | none => none
+       | some ptrRes =>
+           match state.mem.find? ptrRes.addr with
+           | some (.ptrVal base offset size tag) =>
+-              some { addr := base + offset, tag := tag,
+-                     allocBase := base, allocSize := size }
++              some { allocBase := base, offset := offset,
++                     tag := tag, allocSize := size }
+           | _ => none
+ 
+ /-- Resolve a place FOR AN ACCESS: like `resolvePlace?`, but each `deref`
+@@ -152,14 +182,14 @@ def resolvePlaceAcc (M : PermissionModel) (state : State M Γ) :
+   | .local loc =>
+       match state.env.lookup loc with
+       | some binding =>
+-          .ok ({ addr := binding.addr, tag := binding.tag,
+-                 allocBase := binding.addr, allocSize := blockSize τ }, state.perms)
++          .ok ({ allocBase := binding.addr, offset := 0,
++                 tag := binding.tag, allocSize := blockSize τ }, state.perms)
+       | none => .error "place root local not allocated"
+   | .proj base path =>
+       match resolvePlaceAcc M state base with
+       | .error e => .error e
+       | .ok (res, perms') =>
+-          .ok ({ res with addr := res.addr + PathTo.offset path }, perms')
++          .ok ({ res with offset := res.offset + PathTo.offset path }, perms')
+   | .deref ptrPlace =>
+       match resolvePlaceAcc M state ptrPlace with
+       | .error e => .error e
+@@ -177,8 +207,8 @@ def resolvePlaceAcc (M : PermissionModel) (state : State M Γ) :
+           | .ok perms'' =>
+               match state.mem.find? ptrRes.addr with
+               | some (.ptrVal base offset size tag) =>
+-                  .ok ({ addr := base + offset, tag := tag,
+-                         allocBase := base, allocSize := size }, perms'')
++                  .ok ({ allocBase := base, offset := offset,
++                         tag := tag, allocSize := size }, perms'')
+               | _ => .error "deref of a non-pointer value"
+ 
+ def writeResolvedPlace
+@@ -362,7 +392,7 @@ def evalRExpr
+           | .ok (perms', freshTag) =>
+               .ok {
+                 values := [MemValue.ptrVal resolved.allocBase
+-                             (resolved.addr - resolved.allocBase)
++                             resolved.offset
+                              resolved.allocSize
+                              freshTag]
+                 values_len := rfl
