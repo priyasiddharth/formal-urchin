@@ -134,10 +134,14 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    unbound root at ZERO offset, where `allocateRoot`/`ensurePlaceRoot`
    allocate the whole σ-sized root and ρa extends by the IDENTITY over
    that entire block (`extendBlock`), not at a single cell (d77).
-   Remaining: non-local srcs under non-local dsts, non-spine deref
-   srcs, proj-of-proj srcs, and two unbound-root sites (a deref src
-   under a fresh dst; a projected dst over an unbound root at NONZERO
-   offset).
+   The NONZERO-offset twin followed the same day as
+   `ref_projoffset_fresh_simulation` (d78): the projection mints its
+   own interior `Borrow(Mut)` into the fresh root register and retires
+   it with a `Die`, and BRIDGE 1 collapses that triple to mirlite's
+   single parent write — five instructions. THREE of the four
+   unbound-root sites are now closed. Remaining: non-local srcs under
+   non-local dsts, non-spine deref srcs, proj-of-proj srcs, and the
+   last unbound-root site (a deref src under a fresh dst).
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

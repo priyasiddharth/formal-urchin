@@ -1673,6 +1673,25 @@ def d77_ref_into_fresh_proj_zero : IO Unit :=
      .assign zD77 (.copy xD77)]
     .ok "d77 ref into fresh proj dst at zero"
 
+/-- Positive: the same regime at NONZERO offset (`t.1 := &mut x`, `t`
+    never assigned before). The projection now mints its own interior
+    `Borrow(Mut)` into the freshly allocated root register and retires
+    it with a `Die` — BRIDGE 1 collapses that triple to mirlite's single
+    parent write, so the fragment is five instructions. `t.0 := &mut y`
+    afterwards is in bounds only if the root was allocated at the
+    tuple's size. Closed 2026-08-31 by
+    `ref_projoffset_fresh_simulation`. -/
+def d78_ref_into_fresh_proj_offset : IO Unit :=
+  expectDiff ΓD77
+    [.assign xD77 (.constInit 5),
+     .assign yD77 (.constInit 6),
+     .assign (.proj tD77 (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] xD77),
+     .assign (.proj tD77 (.field ⟨0, by decide⟩ .nil)) (.ref .Mut false [] yD77),
+     .assign (.deref (.proj tD77 (.field ⟨1, by decide⟩ .nil))) (.constInit 9),
+     .assign (.deref (.proj tD77 (.field ⟨0, by decide⟩ .nil))) (.constInit 8),
+     .assign zD77 (.copy xD77)]
+    .ok "d78 ref into fresh proj dst at offset"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1763,7 +1782,8 @@ def allTests : List (IO Unit) := [
   d74_projsrc_offset_into_fresh_proj_offset,
   d75_ref_projsrc_offset_into_deref_dst,
   d76_ref_projsrc_into_fresh_dst,
-  d77_ref_into_fresh_proj_zero]
+  d77_ref_into_fresh_proj_zero,
+  d78_ref_into_fresh_proj_offset]
 
 def runAll : IO Unit := do
   allTests.forM id

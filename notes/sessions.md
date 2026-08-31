@@ -1657,3 +1657,53 @@ source under a fresh destination, and a projected destination over an
 unbound root at NONZERO offset (this leaf plus BRIDGE 1: the interior
 `Borrow(Mut)` and its cleanup `Die`).
 See journal/2026-08-31-ref-fresh-projected-destination.md.
+
+## 2026-08-31 (OSEA-IR/compiler rules)
+
+**Session:** terminal — PLDI paper semantic-rule expansion
+**Theme:** added derived OSEA-IR RHS and instruction rules, compiler
+place/RHS/assignment lowering rules, and the proof layer's projection
+flattening normalizer to the existing PLDI-format paper.
+**Key outputs:** expanded `mirlite-oseair-correctness.typ` and rebuilt PDF;
+`journal/2026-08/2026-08-31-oseair-compiler-rules.md`.
+**Key finding:** `projInto`/`flattenPlace` is not only syntactic tidying. Path
+fusion prevents a borrow of a wide intermediate projection from invalidating
+a live sibling borrow; lowering instead uses the composed offset and only the
+final field width. Compiler reassociation and proof normalization agree on the
+emitted run and register-plus-cleanup result.
+**Status:** complete — clean Typst 0.15.1 build; eleven PLDI `acmsmall` pages;
+all pages visually inspected at 110 PPI; axiom audit exact at one sorry root
+(`ref_place_residual`). Entry appended after the latest concurrent proof
+session to preserve strict oldest-first order.
+
+## 2026-08-31 (sixth)
+
+**Goal:** keep closing `ref`'s unbound destination roots.
+**Landed:** the third of four —
+`compileStmt_ref_projoffset_fresh_run/_value` (first try) and
+`ref_projoffset_fresh_simulation` (`dst.g := &kind s` at NONZERO
+offset, root UNBOUND), wired, with witness d78 and teeth. Residual
+sites 10 -> 9.
+**Key finding:** this leaf is the first that could NOT be reached by
+substitution from a single donor — the fresh-root axis and the
+nonzero-offset axis each cost a full proof (measured: 405, 560 and 433
+line diffs between the candidate donors). It was assembled by SPLICING
+whole sections: fresh §1-§6 verbatim, then the bound offset leaf's
+BRIDGE 1 write phase, then a merged rebuild. One error on the first
+full build.
+**Where the seam goes:** the mirlite write inversion and BRIDGE 1 must
+come BEFORE the fragment, because the interior Borrow's bounds check is
+`h_nb` from splitting `writeResolvedPlace`, and q1/q2/q3 are arguments
+to the execution steps. The two donors disagree on this order and the
+offset one is right.
+**The one real error:** `TagRenameBounded` now bounds against `q3`,
+three states past `h_tbd2`; transport `h_ntle` through
+`sb_write_NextTag h_useMut_tgt`. In the zero-offset leaf that bound was
+an equality, so BRIDGE 1 is the only place the extra instructions leak
+into the invariant.
+**Status:** green; 17/17 + 91/91; audit exact at ONE sorry.
+**Next-session pickup:** the LAST unbound-root site — a deref SOURCE
+under a fresh destination, crossing the fresh machinery with the spine
+mother lemma instead of with BRIDGE 1. Then the non-local-source
+families.
+See journal/2026-08-31-ref-fresh-proj-offset-bridge1.md.
