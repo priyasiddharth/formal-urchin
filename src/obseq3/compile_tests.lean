@@ -1645,6 +1645,34 @@ def d76_ref_projsrc_into_fresh_dst : IO Unit :=
      .assign zD76 (.copy (.proj sD76 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d76 ref proj src into fresh dst"
 
+def ptrPairD77L := obseq.LayoutTy.TupL [ptrNat, ptrNat]
+def ΓD77 : Ctx := [ptrPairD77L, natL, natL, natL]
+def tD77 : Place ΓD77 ptrPairD77L := .local ⟨⟨0, by decide⟩, rfl⟩
+def xD77 : Place ΓD77 natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def yD77 : Place ΓD77 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def zD77 : Place ΓD77 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- Positive: REGIME B-proj for the DESTINATION — a reference stored
+    into a FIELD of an UNBOUND root at ZERO offset (`t.0 := &mut x`,
+    `t` never assigned before). `preparePlaceAssign` runs `allocateRoot`
+    for the WHOLE tuple and `ensurePlaceRoot` emits the matching
+    σ-sized `Alloc`; ρa extends by the identity over that entire block,
+    not at a single cell. `t.1 := &mut y` afterwards exercises the
+    second field, which is in bounds only if the root really was
+    allocated at the tuple's size. Retargeting the first borrow to `y`
+    makes the two fields alias, and `*(t.0) := 9` then reads a popped
+    tag. Closed 2026-08-31 by `ref_projzero_fresh_simulation`. -/
+def d77_ref_into_fresh_proj_zero : IO Unit :=
+  expectDiff ΓD77
+    [.assign xD77 (.constInit 5),
+     .assign yD77 (.constInit 6),
+     .assign (.proj tD77 (.field ⟨0, by decide⟩ .nil)) (.ref .Mut false [] xD77),
+     .assign (.proj tD77 (.field ⟨1, by decide⟩ .nil)) (.ref .Mut false [] yD77),
+     .assign (.deref (.proj tD77 (.field ⟨0, by decide⟩ .nil))) (.constInit 9),
+     .assign (.deref (.proj tD77 (.field ⟨1, by decide⟩ .nil))) (.constInit 8),
+     .assign zD77 (.copy xD77)]
+    .ok "d77 ref into fresh proj dst at zero"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1734,7 +1762,8 @@ def allTests : List (IO Unit) := [
   d73_projsrc_offset_into_fresh_proj_zero,
   d74_projsrc_offset_into_fresh_proj_offset,
   d75_ref_projsrc_offset_into_deref_dst,
-  d76_ref_projsrc_into_fresh_dst]
+  d76_ref_projsrc_into_fresh_dst,
+  d77_ref_into_fresh_proj_zero]
 
 def runAll : IO Unit := do
   allTests.forM id

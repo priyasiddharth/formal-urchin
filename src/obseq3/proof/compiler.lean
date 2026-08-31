@@ -129,10 +129,15 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    2026-08-31 with `ref_fresh_projsrc_simulation` (regime B-proj:
    `dst := &kind s.f`, `dst` never assigned — `preparePlaceAssign` and
    `ensureLocalRegE` allocate in lockstep, fragment `Alloc; Borrow;
-   RStore`, pinned by d76). Remaining: non-local srcs under non-local
-   dsts, non-spine deref srcs, proj-of-proj srcs, and the three other
-   unbound-root sites (deref src under a fresh dst; projected dsts over
-   an unbound root, at zero and nonzero offset).
+   RStore`, pinned by d76), and continued the same day with
+   `ref_projzero_fresh_simulation` — a PROJECTED destination over an
+   unbound root at ZERO offset, where `allocateRoot`/`ensurePlaceRoot`
+   allocate the whole σ-sized root and ρa extends by the IDENTITY over
+   that entire block (`extendBlock`), not at a single cell (d77).
+   Remaining: non-local srcs under non-local dsts, non-spine deref
+   srcs, proj-of-proj srcs, and two unbound-root sites (a deref src
+   under a fresh dst; a projected dst over an unbound root at NONZERO
+   offset).
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

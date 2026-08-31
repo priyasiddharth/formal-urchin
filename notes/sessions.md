@@ -1629,3 +1629,31 @@ deref source under a fresh destination, and projected destinations over
 an unbound root at zero and nonzero offset (regime B-proj for the
 DESTINATION, analogue of `const_write_proj_fresh_simulation`).
 See journal/2026-08-31-ref-regime-b-proj.md.
+
+## 2026-08-31 (fifth)
+
+**Goal:** keep going on `ref`'s unbound destination roots.
+**Landed:** the second of four — `compileStmt_ref_projzero_fresh_run/_value`
+and `ref_projzero_fresh_simulation` (`dst.g := &kind s` at offset 0,
+root UNBOUND), stmt0-threaded so it plugs into `ref_proj_dst_simulation`;
+witness d77 with teeth. Also `PathTo.sizeOf_le`,
+`ref_dst_src_idx_ne_of_proj`, `prepare_lookup_ne_proj`. Residual sites
+11 -> 10.
+**Key finding:** the leaf is `ref_fresh_dst_simulation` with the ROOT's
+layout blanket-substituted `PtrL τ -> σ`, protecting the single
+occurrence where the layout names the stored VALUE
+(`writeThroughPtr_sim (τ := PtrL τ)`). Only two changes are real: ρa
+extends by `extendBlock` over the whole σ-sized root instead of one
+cell, and the block-domain conjunct follows.
+**Second finding:** a path cannot reach `PtrL τ` from `τ` — needs a
+SIZE argument (`PathTo.sizeOf_le` + Lean's derived `sizeOf_spec`),
+unlike the reverse direction where `cases` alone works.
+**Tooling scar:** `open(p,'w').write(f(...))` truncates before
+evaluating `f`; a raising `f` left ref.lean empty. Recovered from HEAD.
+Compute the output string first, assert it grew, then open for writing.
+**Status:** green; 17/17 + 90/90; audit exact at ONE sorry.
+**Next-session pickup:** the last two unbound-root sites — a deref
+source under a fresh destination, and a projected destination over an
+unbound root at NONZERO offset (this leaf plus BRIDGE 1: the interior
+`Borrow(Mut)` and its cleanup `Die`).
+See journal/2026-08-31-ref-fresh-projected-destination.md.
