@@ -2746,6 +2746,141 @@ theorem compileStmt_ref_projzero_derefsrc_value
   simp only [h_bval]
   exact ⟨_, rfl⟩
 
+/-! ## A CHAIN source under a PROJECTED destination at NONZERO offset:
+    the spine, the source `Borrow`, then the projection's own interior
+    `Borrow(Mut)` and its cleanup `Die` — BRIDGE 1 on the destination. -/
+
+theorem compileStmt_ref_projoffset_derefsrc_run
+    {Γ : Ctx} {τ σ σb : LayoutTy}
+    {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
+    {P : Place Γ (obseq.LayoutTy.PtrL σb)} {f : PathTo σb τ}
+    {cs : CompilerState} {dstReg : Register}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence kind (.deref P))}
+    (h_go : pathOffset g ≠ 0)
+    (h_dst : getPlaceInfo cs dstLoc.idx.1 = some (dstReg, σ))
+    (h_dval : CheckedCompilerM.value (placeToRegChecked kind (.deref P)) cs
+      = Except.ok dOut)
+    (h_dclean : dOut.result.cleanup = [])
+    (h_prm : (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).placeRegMap = cs.placeRegMap) :
+    CheckedCompilerM.run
+        (compileStmtChecked
+          (Stmt.assign (.proj (.local dstLoc) g)
+            (.ref kind prot mask (.proj (.deref P) f)))) cs
+      = emit (emit (emit
+          { (emit { (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg + 1 }
+              [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg)
+                (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f))]) with
+              nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg + 1 + 1 }
+          [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg + 1))
+            (Rhs.Borrow RefKind.Mut false [] (blockSize (obseq.LayoutTy.PtrL τ))
+              dstReg (pathOffset g))])
+          [Instr.RStore obseq.TyVal.PTy (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg)
+            (Register.R ((CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg + 1))])
+          [Instr.Die (Register.R ((CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg + 1))
+            (blockSize (obseq.LayoutTy.PtrL τ))] := by
+  have h_borrow_eq : placeToBorrowRegChecked (Γ := Γ) kind prot mask
+      (.proj (.deref P) f)
+      = (do
+          let baseOut ← placeToRegChecked kind (.deref P)
+          let baseRes := baseOut.result
+          let offset := pathOffset f
+          let tmpReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) baseRes.reg offset)])
+          pure {
+            result := { reg := tmpReg,
+                        cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)] },
+            evidence := PlaceToBorrowRegEvidence.proj (.deref P) f baseRes tmpReg
+              baseOut.evidence
+          }) := by simp only [placeToBorrowRegChecked]
+  have h_dst' : getPlaceInfo
+      (emit { (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg + 1 }
+        [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg)
+          (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f))])
+      dstLoc.idx.1 = some (dstReg, σ) := by
+    rw [getPlaceInfo_emit, getPlaceInfo_setNextReg]
+    show (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).placeRegMap.lookup dstLoc.idx.1 = _
+    rw [h_prm]
+    exact h_dst
+  obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
+    placeToRegChecked_local_existing (kind := RefKind.Mut) h_dst'
+  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
+    (base := .local dstLoc) g (fun _ _ _ h => by cases h)
+  have h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.local dstLoc) g)) cs
+      = cs := ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+    h_borrow_eq, h_proj_eq,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+    h_root, h_dval, h_go, dif_neg]
+  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+    cleanupInstrs, h_dclean, emit_nil]
+  simp only [h_bval, h_brun, h_bres]
+  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+    cleanupInstrs, emit_nil, borrowRhs]
+  rfl
+
+/-- The nonzero-offset field-dst chain-src statement lowers. -/
+theorem compileStmt_ref_projoffset_derefsrc_value
+    {Γ : Ctx} {τ σ σb : LayoutTy}
+    {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
+    {P : Place Γ (obseq.LayoutTy.PtrL σb)} {f : PathTo σb τ}
+    {cs : CompilerState} {dstReg : Register}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence kind (.deref P))}
+    (h_go : pathOffset g ≠ 0)
+    (h_dst : getPlaceInfo cs dstLoc.idx.1 = some (dstReg, σ))
+    (h_dval : CheckedCompilerM.value (placeToRegChecked kind (.deref P)) cs
+      = Except.ok dOut)
+    (h_dclean : dOut.result.cleanup = [])
+    (h_prm : (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).placeRegMap = cs.placeRegMap) :
+    ∃ so, CheckedCompilerM.value
+      (compileStmtChecked
+        (Stmt.assign (.proj (.local dstLoc) g)
+          (.ref kind prot mask (.proj (.deref P) f)))) cs
+      = Except.ok so := by
+  have h_borrow_eq : placeToBorrowRegChecked (Γ := Γ) kind prot mask
+      (.proj (.deref P) f)
+      = (do
+          let baseOut ← placeToRegChecked kind (.deref P)
+          let baseRes := baseOut.result
+          let offset := pathOffset f
+          let tmpReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) baseRes.reg offset)])
+          pure {
+            result := { reg := tmpReg,
+                        cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)] },
+            evidence := PlaceToBorrowRegEvidence.proj (.deref P) f baseRes tmpReg
+              baseOut.evidence
+          }) := by simp only [placeToBorrowRegChecked]
+  have h_dst' : getPlaceInfo
+      (emit { (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg + 1 }
+        [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).nextReg)
+          (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f))])
+      dstLoc.idx.1 = some (dstReg, σ) := by
+    rw [getPlaceInfo_emit, getPlaceInfo_setNextReg]
+    show (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) cs).placeRegMap.lookup dstLoc.idx.1 = _
+    rw [h_prm]
+    exact h_dst
+  obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
+    placeToRegChecked_local_existing (kind := RefKind.Mut) h_dst'
+  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
+    (base := .local dstLoc) g (fun _ _ _ h => by cases h)
+  have h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.local dstLoc) g)) cs
+      = cs := ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+    h_borrow_eq, h_proj_eq,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+    h_root, h_dval, h_go, dif_neg]
+  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [h_bval]
+  exact ⟨_, rfl⟩
+
 /-- REGIME L→P0 (field destination, ZERO offset), CLOSED 2026-08-29:
     `dst.g := &src` with both roots bound locals and `g` at offset 0 —
     regime L→L with a WIDER destination allocation (the resolved dst

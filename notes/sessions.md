@@ -2048,3 +2048,29 @@ sites still 5.
 for the `.deref P` source spelling, then the two-mother skeleton for the
 deref-destination pair.
 See journal/2026-08-31-ref-chainsrc-projdst.md.
+
+## 2026-08-31 (seventeenth)
+
+**Goal:** the other three quadrants of `dst.g := &kind (*p).f`.
+**Landed:** ONE of three — `ref_projzero_fresh_derefsrc_simulation`
+(offset 0, FRESH root) — plus the compiled sides of BOTH nonzero
+quadrants (`compileStmt_ref_projoffset_derefsrc_run/_value`). All three
+fragment pairs this session went through first try.
+**Not landed:** the two nonzero LEAVES. They are not substitutions: the
+zero-offset destination phase is one `RStore` through the root
+register, the nonzero one is four steps with BRIDGE 1, and the mirlite
+write inversion has to move ahead of the execution steps to supply the
+collapsed tags. Same assembly as `ref_projoffset_fresh_simulation`;
+the exact splice recipe (which sections, which re-spellings, which peel
+counts) is written down in the journal entry.
+**Observation worth acting on:** the four quadrants differ ONLY in how
+the destination lowers; everything downstream is uniform. A
+DESTINATION-side package — `LoweringSim` for destinations — would
+collapse all four into one leaf. The earlier decision not to build a
+source-side package does not transfer: for sources each shape needed
+its own extraction, whereas for destinations the four shapes already
+exist as proved leaves, so the package can be read off them. Doing it
+before the two-mother sites avoids repeating the four quadrants there.
+**Status:** green; 17/17 + 99/99; audit exact at ONE sorry; residual
+sites still 5 (nothing wired yet — the quadrants are incomplete).
+See journal/2026-08-31-ref-chainsrc-projdst.md.
