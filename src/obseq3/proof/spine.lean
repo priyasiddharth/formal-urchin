@@ -601,6 +601,141 @@ theorem placeToRegChecked_flatten_agree {Γ : Ctx} :
 termination_by τ p kind cs => p.depth
 decreasing_by all_goals (simp [Place.depth]; try omega)
 
+
+/-- The BORROW lowering cannot tell a place from its flattening apart
+    either. `placeToBorrowRegChecked` carries its own reassociating arm
+    for `.proj (.proj b q) p` — the compiler already flattens nested
+    projection borrows so that `&mut s.1.0` does not route through a
+    wide `Mut` borrow of `s.1` — so this is the ref-side mirror of
+    `placeToRegChecked_flatten_agree`, and the two share every case but
+    that one. -/
+theorem placeToBorrowRegChecked_flatten_agree {Γ : Ctx}
+    (kind : RefKind) (prot : Bool) (mask : List Bool) :
+    {τ : LayoutTy} → (p : Place Γ τ) → (cs : CompilerState) →
+    CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask (flattenPlace p)) cs
+      = CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask p) cs ∧
+    (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask (flattenPlace p)) cs).map
+        (fun o => o.result)
+      = (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask p) cs).map
+        (fun o => o.result)
+  | _, .local l, _ => ⟨rfl, rfl⟩
+  | _, .proj (.local l) path, _ => ⟨rfl, rfl⟩
+  | _, .proj (.proj b q) path, cs => by
+      have h_flat : flattenPlace (Place.proj (Place.proj b q) path)
+          = flattenPlace (Place.proj b (q.append path)) := by
+        show projInto (projInto (flattenPlace b) q) path
+          = projInto (flattenPlace b) (q.append path)
+        exact projInto_projInto _ q path
+      obtain ⟨ihr, ihv⟩ :=
+        placeToBorrowRegChecked_flatten_agree kind prot mask
+          (Place.proj b (q.append path)) cs
+      rw [h_flat]
+      refine ⟨?_, ?_⟩
+      · rw [ihr]
+        show _ = CheckedCompilerM.run
+          (placeToBorrowRegChecked kind prot mask (Place.proj (Place.proj b q) path)) cs
+        simp only [placeToBorrowRegChecked, CheckedCompilerM.run_bind,
+          CheckedCompilerM.value_bind, CheckedCompilerM.run_pure,
+          CheckedCompilerM.value_pure]
+        split <;> rfl
+      · rw [ihv]
+        show _ = (CheckedCompilerM.value
+          (placeToBorrowRegChecked kind prot mask
+            (Place.proj (Place.proj b q) path)) cs).map (fun o => o.result)
+        simp only [placeToBorrowRegChecked, CheckedCompilerM.run_bind,
+          CheckedCompilerM.value_bind, CheckedCompilerM.run_pure,
+          CheckedCompilerM.value_pure]
+        cases h : CheckedCompilerM.value
+            (placeToBorrowRegChecked kind prot mask (Place.proj b (q.append path))) cs <;>
+          simp [Except.map]
+  | _, .proj (.deref pp) path, cs => by
+      obtain ⟨ihr, ihv⟩ := placeToRegChecked_flatten_agree (Place.deref pp) kind cs
+      rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp)
+        from rfl] at ihr ihv
+      have h_fl : flattenPlace (Place.proj (Place.deref pp) path)
+          = Place.proj (Place.deref (flattenPlace pp)) path := rfl
+      rw [h_fl]
+      cases hF : CheckedCompilerM.value
+          (placeToRegChecked kind (Place.deref (flattenPlace pp))) cs with
+      | error eF =>
+          cases hO : CheckedCompilerM.value
+              (placeToRegChecked kind (Place.deref pp)) cs with
+          | error eO =>
+              have h_e : eF = eO := by
+                rw [hF, hO] at ihv
+                simpa [Except.map] using ihv
+              subst h_e
+              constructor <;>
+                simp only [placeToBorrowRegChecked, CheckedCompilerM.run_bind,
+                  CheckedCompilerM.value_bind, CheckedCompilerM.run_lift,
+                  CheckedCompilerM.value_lift, CheckedCompilerM.run_pure,
+                  CheckedCompilerM.value_pure, hF, hO, ihr, Except.map]
+          | ok oO =>
+              exfalso
+              rw [hF, hO] at ihv
+              simp [Except.map] at ihv
+      | ok oF =>
+          cases hO : CheckedCompilerM.value
+              (placeToRegChecked kind (Place.deref pp)) cs with
+          | error eO =>
+              exfalso
+              rw [hF, hO] at ihv
+              simp [Except.map] at ihv
+          | ok oO =>
+              have h_res : oF.result = oO.result := by
+                rw [hF, hO] at ihv
+                simpa [Except.map] using ihv
+              constructor <;>
+                simp [placeToBorrowRegChecked, CheckedCompilerM.run_bind,
+                  CheckedCompilerM.value_bind, CheckedCompilerM.run_lift,
+                  CheckedCompilerM.value_lift, CheckedCompilerM.run_pure,
+                  CheckedCompilerM.value_pure, hF, hO, ihr, h_res,
+                  CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+                  cleanupInstrs, Except.map]
+  | _, .deref pp, cs => by
+      obtain ⟨ihr, ihv⟩ := placeToRegChecked_flatten_agree pp RefKind.Shared cs
+      have h_fl : flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) := rfl
+      rw [h_fl]
+      cases hF : CheckedCompilerM.value
+          (placeToRegChecked RefKind.Shared (flattenPlace pp)) cs with
+      | error eF =>
+          cases hO : CheckedCompilerM.value
+              (placeToRegChecked RefKind.Shared pp) cs with
+          | error eO =>
+              have h_e : eF = eO := by
+                rw [hF, hO] at ihv
+                simpa [Except.map] using ihv
+              subst h_e
+              constructor <;>
+                simp only [placeToBorrowRegChecked, CheckedCompilerM.run_bind,
+                  CheckedCompilerM.value_bind, CheckedCompilerM.run_lift,
+                  CheckedCompilerM.value_lift, CheckedCompilerM.run_pure,
+                  CheckedCompilerM.value_pure, hF, hO, ihr, Except.map]
+          | ok oO =>
+              exfalso
+              rw [hF, hO] at ihv
+              simp [Except.map] at ihv
+      | ok oF =>
+          cases hO : CheckedCompilerM.value
+              (placeToRegChecked RefKind.Shared pp) cs with
+          | error eO =>
+              exfalso
+              rw [hF, hO] at ihv
+              simp [Except.map] at ihv
+          | ok oO =>
+              have h_res : oF.result = oO.result := by
+                rw [hF, hO] at ihv
+                simpa [Except.map] using ihv
+              constructor <;>
+                simp [placeToBorrowRegChecked, CheckedCompilerM.run_bind,
+                  CheckedCompilerM.value_bind, CheckedCompilerM.run_lift,
+                  CheckedCompilerM.value_lift, CheckedCompilerM.run_pure,
+                  CheckedCompilerM.value_pure, hF, hO, ihr, h_res,
+                  CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+                  cleanupInstrs, Except.map]
+  termination_by τ p cs => p.depth
+  decreasing_by all_goals (simp [Place.depth]; try omega)
+
 /-- The SOURCE cannot tell the two spellings of a nested-projection
     assignment apart either: `doAssign` consults the destination only
     through `preparePlaceAssign` and `resolvePlaceAcc`, both of which
@@ -1568,6 +1703,24 @@ theorem stepStmt_assign_refsrc_flatten
       mirlite.resolvePlaceAcc M st (Place.deref (flattenPlace P))
         = mirlite.resolvePlaceAcc M st (Place.deref P) :=
     fun st => resolvePlaceAcc_flatten (Place.deref P)
+  show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
+  simp only [mirlite.doAssign, mirlite.evalRExpr, h1]
+
+/-- The ref rhs, like the copy rhs, sees a place only through
+    `resolvePlaceAcc`, so it cannot tell a source from its flattening
+    apart. Generalizes `stepStmt_assign_refsrc_flatten` from a deref
+    source to ANY source. -/
+theorem stepStmt_assign_refsrc_anyflatten
+    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    (s : mirlite.State M Γ) (dst : Place Γ (obseq.LayoutTy.PtrL τ))
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (src : Place Γ τ) :
+    mirlite.stepStmt M s (.assign dst (.ref kind prot mask src))
+      = mirlite.stepStmt M s (.assign dst (.ref kind prot mask (flattenPlace src))) := by
+  have h1 : ∀ st : mirlite.State M Γ,
+      mirlite.resolvePlaceAcc M st (flattenPlace src)
+        = mirlite.resolvePlaceAcc M st src :=
+    fun st => resolvePlaceAcc_flatten src
   show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
   simp only [mirlite.doAssign, mirlite.evalRExpr, h1]
 

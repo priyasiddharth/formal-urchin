@@ -1760,3 +1760,50 @@ variable), not `a`; and `LocalBindingSim.insert_fresh_reg`'s trailing
 non-local srcs under non-local dsts, non-spine deref srcs,
 proj-of-proj srcs.
 See journal/2026-08-31-ref-regime-b-total.md.
+
+## 2026-08-31 (semantic paper rewrite)
+
+**Session:** terminal — syntax/semantics/example restructuring
+**Theme:** replaced the Lean-name-oriented rule catalog with a self-contained
+semantic account organized around `x.1.0 := 42` throughout MIRLite, OSEA-IR,
+compiler translation, and forward simulation.
+**Key outputs:** rewritten `mirlite-oseair-correctness.typ`, rebuilt PDF, and
+`journal/2026-08/2026-08-31-semantic-narrative-rewrite.md`.
+**Key finding:** the nested-field example supplies a useful abstraction test.
+It forces the paper to define typed paths, composed offsets, source and target
+states, permission events, compiler cleanup, and the renaming relation. It
+also makes flattening visibly semantic: the final one-cell borrow preserves
+the sibling field that a two-cell intermediate borrow could disturb.
+**Status:** complete — clean Typst 0.15.1 build; nine PLDI `acmsmall` pages;
+all pages visually inspected at 110 PPI; axiom audit exact at one admitted
+reference-assignment case. Appended after the latest concurrent proof session
+to preserve strict oldest-first order.
+
+## 2026-08-31 (ninth)
+
+**Goal:** the source-flattening transfer for proj sources.
+**Landed:** `placeToBorrowRegChecked_flatten_agree`,
+`stepStmt_assign_refsrc_anyflatten`, the congruence
+`compileStmt_ref_src_congr_local_run/_value` with the flatten and
+reassoc instantiations, and the recursion
+`ref_proj_src_local_simulation`. Both base leaves stmt0-threaded.
+Witness d80 with teeth. Residual sites 8 -> 7.
+**Probe first:** I expected the transfer to be FALSE (the unflattened
+`&(s.f).h` looked like it should emit an interior borrow the flattened
+form does not). A ten-line `#eval` probe showed both spellings emit ONE
+`Borrow` at the summed offset, with the same register and cleanup —
+`placeToBorrowRegChecked` has its own reassociating arm, added
+deliberately so `&mut s.1.0` does not route through a wide Mut borrow
+of `s.1`. One scratch file against a lemma that would not have been
+provable.
+**Key technique:** a statement-level transfer CANNOT be proved by
+rewriting the place inside `compileStmtChecked` — the value's type
+mentions the statement, so the motive is not type correct. Factor
+through a congruence whose hypotheses are the two agreement facts about
+the borrow lowering; the flatten and reassoc transfers are then
+one-line instantiations.
+**Status:** green; 17/17 + 93/93; audit exact at ONE sorry.
+**Next-session pickup:** extend the source-flattening recursion to a
+DEREF destination (closes one more site), then the projected dst over a
+deref base — the one class neither recursion can normalize away.
+See journal/2026-08-31-ref-source-flattening.md.

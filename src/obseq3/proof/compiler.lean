@@ -153,7 +153,13 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    src is a spine once flattened): a non-local src under a projected
    dst over a local base; a projected dst over a DEREF base; a
    proj-topped src whose base is not a local; and a deref src under a
-   deref dst. See `ref_place_residual`'s docstring for the site map.
+   deref dst. NARROWED again 2026-08-31 to SEVEN sites by the
+   SOURCE-flattening recursion `ref_proj_src_local_simulation`: the
+   compiler's `placeToBorrowRegChecked` already reassociates nested
+   projection borrows and mirlite's `resolvePlaceAcc` composes the
+   offsets, so a proj-of-proj source under a local destination fuses
+   into the closed proj-over-local leaves (d80). See
+   `ref_place_residual`'s docstring for the current site map.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

@@ -1,5 +1,9 @@
 # MIRLite inference-rule expansion
 
+[SUPERSEDED → `2026-08-31-pldi-format.md`] The artifact was subsequently
+reflowed into the PLDI 2026 `acmsmall` anonymous-review format. This entry
+records the earlier six-page A4 state.
+
 [OBS] Expanded `mirlite-oseair-correctness.typ` from four to six A4 pages.
 The original overview, OSEA-IR, compiler, and compiler-correctness pages
 remain intact; two pages now give a derived inference-rule presentation of

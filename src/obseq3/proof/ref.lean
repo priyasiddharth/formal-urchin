@@ -1395,9 +1395,18 @@ theorem ref_proj_local_simulation
     (compProg : oseair.Prog)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc
-      = some (.assign (.local dstLoc)
-          (.ref kind prot mask (.proj (.local srcLoc) f))))
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.local dstLoc) (.ref kind prot mask (.proj (.local srcLoc) f)))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.ref kind prot mask (.proj (.local srcLoc) f)))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_envD : mirlite.Env.lookup s_mir.env dstLoc = some bD)
     (h_envS : mirlite.Env.lookup s_mir.env srcLoc = some bS)
     (h_step : mirlite.stepStmt MSB s_mir
@@ -1443,10 +1452,12 @@ theorem ref_proj_local_simulation
       have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
       have h_nw_new : (s_mir.perms.NextTag == wildcardTag) = false := by grind
       -- §3 the fragment
-      have h_stmtRun := compileStmt_ref_proj_local_run (cs := csPrefix) (f := f)
-        kind prot mask h_piD h_piS
-      obtain ⟨stmtOut, h_stmtOut⟩ :=
+      have h_stmtRun := (h_run0 csPrefix).trans
+        (compileStmt_ref_proj_local_run (cs := csPrefix) (f := f)
+          kind prot mask h_piD h_piS)
+      obtain ⟨stmtOutC, h_stmtOutC⟩ :=
         compileStmt_ref_proj_local_value (cs := csPrefix) (f := f) kind prot mask h_piD h_piS
+      obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
       have h_code1 : compProg s_osea.pc
           = some (Instr.Assgn (Register.R csPrefix.nextReg)
               (Rhs.Borrow kind prot mask (blockSize τ) srcReg (pathOffset f))) := by
@@ -1555,10 +1566,7 @@ theorem ref_proj_local_simulation
           have h_run := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
           -- §6 rebuild the invariant under the extended ρt
           refine ⟨_, _, 1 + 1, h_incr_t, h_run, ?_⟩
-          refine ⟨CheckedCompilerM.run
-            (compileStmtChecked
-              (Stmt.assign (.local dstLoc)
-                (.ref kind prot mask (.proj (.local srcLoc) f)))) csPrefix,
+          refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
             ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim2,
             h_id_a, h_wf_t', ?_, ?_, ?_, ?_⟩
           · show s_osea.pc + 1 + 1 = _
@@ -3410,6 +3418,227 @@ theorem compileStmt_assign_derefdst_flatten_value
           exact ⟨_, rfl⟩
 
 
+/-! ## Source flattening for ref
+
+    `placeToBorrowRegChecked` carries its own reassociating arm for
+    nested projection borrows, so the compiled statement cannot tell a
+    ref source from its flattening apart
+    (`placeToBorrowRegChecked_flatten_agree`), and neither can mirlite
+    (`stepStmt_assign_refsrc_anyflatten`). That turns a proj-of-proj
+    source into a single projection over the flattened base — which,
+    when that base is a local, is exactly the shape the closed leaves
+    take.
+
+    The statement-level transfers all factor through one CONGRUENCE:
+    two sources whose borrow lowerings agree (run, and value's result
+    component) compile the enclosing statement identically. Stating it
+    that way avoids rewriting a `Place` underneath `compileStmtChecked`,
+    whose result TYPE mentions the statement — such a rewrite is not
+    type-correct. -/
+
+theorem compileStmt_ref_src_congr_local_run
+    {Γ : Ctx} {τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (src1 src2 : Place Γ τ) (cs : CompilerState)
+    (h_agr : CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src1)
+        ((ensureLocalRegE dstLoc).run cs)
+      = CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
+        ((ensureLocalRegE dstLoc).run cs))
+    (h_agv : (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
+        ((ensureLocalRegE dstLoc).run cs)).map (fun o => o.result)
+      = (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
+        ((ensureLocalRegE dstLoc).run cs)).map (fun o => o.result)) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src1))) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.local dstLoc) (.ref kind prot mask src2))) cs := by
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+  cases h1 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
+      ((ensureLocalRegE dstLoc).run cs) with
+  | error e1 =>
+      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
+          ((ensureLocalRegE dstLoc).run cs) with
+      | error e2 => simp only [h1, h2]; exact h_agr
+      | ok o2 =>
+          exfalso
+          rw [h1, h2] at h_agv
+          simp [Except.map] at h_agv
+  | ok o1 =>
+      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
+          ((ensureLocalRegE dstLoc).run cs) with
+      | error e2 =>
+          exfalso
+          rw [h1, h2] at h_agv
+          simp [Except.map] at h_agv
+      | ok o2 =>
+          have h_res : o1.result = o2.result := by
+            rw [h1, h2] at h_agv
+            simpa [Except.map] using h_agv
+          simp only [h1, h2, h_res, h_agr]
+
+theorem compileStmt_ref_src_congr_local_value
+    {Γ : Ctx} {τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (src1 src2 : Place Γ τ) (cs : CompilerState)
+    (h_agv : (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
+        ((ensureLocalRegE dstLoc).run cs)).map (fun o => o.result)
+      = (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
+        ((ensureLocalRegE dstLoc).run cs)).map (fun o => o.result)) :
+    ∀ so, CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src2))) cs
+      = Except.ok so →
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src1))) cs
+      = Except.ok so' := by
+  intro so h_so
+  simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+    CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure] at h_so ⊢
+  cases h1 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
+      ((ensureLocalRegE dstLoc).run cs) with
+  | error e1 =>
+      exfalso
+      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
+          ((ensureLocalRegE dstLoc).run cs) with
+      | error e2 => rw [h2] at h_so; simp at h_so
+      | ok o2 =>
+          rw [h1, h2] at h_agv
+          simp [Except.map] at h_agv
+  | ok o1 =>
+      simp only [h1]
+      exact ⟨_, rfl⟩
+
+/-- Flattening does not distinguish the two spellings of a nested
+    projection source: both sides fuse to the same path. -/
+theorem flattenPlace_srcproj_assoc {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (f : PathTo σ2 τ) :
+    flattenPlace (Place.proj (Place.proj b q) f)
+      = flattenPlace (Place.proj b (q.append f)) := by
+  show projInto (projInto (flattenPlace b) q) f
+    = projInto (flattenPlace b) (q.append f)
+  exact projInto_projInto _ q f
+
+/-- The compiler's own reassociating arm, as an agreement statement. -/
+theorem placeToBorrowRegChecked_projassoc_agree {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (f : PathTo σ2 τ) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (placeToBorrowRegChecked kind prot mask (Place.proj (Place.proj b q) f)) cs
+      = CheckedCompilerM.run
+          (placeToBorrowRegChecked kind prot mask (Place.proj b (q.append f))) cs ∧
+    (CheckedCompilerM.value
+        (placeToBorrowRegChecked kind prot mask (Place.proj (Place.proj b q) f)) cs).map
+        (fun o => o.result)
+      = (CheckedCompilerM.value
+          (placeToBorrowRegChecked kind prot mask (Place.proj b (q.append f))) cs).map
+        (fun o => o.result) := by
+  constructor
+  · show CheckedCompilerM.run
+      (placeToBorrowRegChecked kind prot mask (Place.proj (Place.proj b q) f)) cs = _
+    simp only [placeToBorrowRegChecked, CheckedCompilerM.run_bind,
+      CheckedCompilerM.value_bind, CheckedCompilerM.run_pure,
+      CheckedCompilerM.value_pure]
+    split <;> rfl
+  · show (CheckedCompilerM.value
+      (placeToBorrowRegChecked kind prot mask (Place.proj (Place.proj b q) f)) cs).map _ = _
+    simp only [placeToBorrowRegChecked, CheckedCompilerM.run_bind,
+      CheckedCompilerM.value_bind, CheckedCompilerM.run_pure,
+      CheckedCompilerM.value_pure]
+    cases h : CheckedCompilerM.value
+        (placeToBorrowRegChecked kind prot mask (Place.proj b (q.append f))) cs <;>
+      simp [Except.map]
+
+/-- The mirlite step reassociates a nested projection SOURCE, the
+    source-side mirror of `stepStmt_assign_proj_assoc`. -/
+theorem stepStmt_assign_refsrc_projassoc
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy} {M : PermissionModel}
+    (s : mirlite.State M Γ) (dst : Place Γ (obseq.LayoutTy.PtrL τ))
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (f : PathTo σ2 τ) :
+    mirlite.stepStmt M s (.assign dst (.ref kind prot mask (.proj (.proj b q) f)))
+      = mirlite.stepStmt M s
+          (.assign dst (.ref kind prot mask (.proj b (q.append f)))) := by
+  rw [stepStmt_assign_refsrc_anyflatten s dst kind prot mask
+        (Place.proj (Place.proj b q) f),
+      stepStmt_assign_refsrc_anyflatten s dst kind prot mask
+        (Place.proj b (q.append f)),
+      flattenPlace_srcproj_assoc]
+
+theorem compileStmt_ref_srcproj_assoc_local_run
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (f : PathTo σ2 τ) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc)
+            (.ref kind prot mask (.proj (.proj b q) f)))) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.local dstLoc)
+              (.ref kind prot mask (.proj b (q.append f))))) cs :=
+  compileStmt_ref_src_congr_local_run (dstLoc := dstLoc) kind prot mask _ _ cs
+    (placeToBorrowRegChecked_projassoc_agree kind prot mask b q f _).1
+    (placeToBorrowRegChecked_projassoc_agree kind prot mask b q f _).2
+
+theorem compileStmt_ref_srcproj_assoc_local_value
+    {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (b : Place Γ σ1) (q : PathTo σ1 σ2) (f : PathTo σ2 τ) (cs : CompilerState) :
+    ∀ so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc)
+            (.ref kind prot mask (.proj b (q.append f))))) cs
+      = Except.ok so →
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc)
+            (.ref kind prot mask (.proj (.proj b q) f)))) cs
+      = Except.ok so' :=
+  compileStmt_ref_src_congr_local_value (dstLoc := dstLoc) kind prot mask _ _ cs
+    (placeToBorrowRegChecked_projassoc_agree kind prot mask b q f _).2
+
+/-- The general source-flattening transfer for a local destination,
+    the other instantiation of the congruence. -/
+theorem compileStmt_ref_srcflatten_local_run
+    {Γ : Ctx} {τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (src : Place Γ τ) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src))) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.local dstLoc)
+              (.ref kind prot mask (flattenPlace src)))) cs :=
+  compileStmt_ref_src_congr_local_run (dstLoc := dstLoc) kind prot mask _ _ cs
+    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).1.symm
+    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
+
+theorem compileStmt_ref_srcflatten_local_value
+    {Γ : Ctx} {τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (src : Place Γ τ) (cs : CompilerState) :
+    ∀ so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc)
+            (.ref kind prot mask (flattenPlace src)))) cs
+      = Except.ok so →
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src))) cs
+      = Except.ok so' :=
+  compileStmt_ref_src_congr_local_value (dstLoc := dstLoc) kind prot mask _ _ cs
+    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
+
 /-! ## Deref destination with a PROJ-TOPPED source over a bound local.
     `placeToBorrowRegChecked`'s proj arm differs from its local arm only
     in the borrow's OFFSET, so the fragment is the deref-dst pair with
@@ -3851,8 +4080,18 @@ theorem ref_fresh_projsrc_simulation
     (compProg : oseair.Prog)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc
-      = some (.assign (.local dstLoc) (.ref kind prot mask (.proj (.local srcLoc) f))))
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.local dstLoc) (.ref kind prot mask (.proj (.local srcLoc) f)))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.ref kind prot mask (.proj (.local srcLoc) f)))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
     (h_envD : mirlite.Env.lookup s_mir.env dstLoc = none)
     (h_envS : mirlite.Env.lookup s_mir.env srcLoc = some bS)
     (h_step : mirlite.stepStmt MSB s_mir
@@ -3960,11 +4199,13 @@ theorem ref_fresh_projsrc_simulation
                 AddrRenameMap.extend_self _ _ _
               have h_raS' := h_incr_a _ _ h_raS
               -- §7 the fragment: Alloc; Borrow; RStore
-              have h_stmtRun := compileStmt_ref_fresh_projsrc_run (cs := csPrefix) (f := f)
-                kind prot mask h_piD h_piS
-              obtain ⟨stmtOut, h_stmtOut⟩ :=
+              have h_stmtRun := (h_run0 csPrefix).trans
+                (compileStmt_ref_fresh_projsrc_run (cs := csPrefix) (f := f)
+                  kind prot mask h_piD h_piS)
+              obtain ⟨stmtOutC, h_stmtOutC⟩ :=
                 compileStmt_ref_fresh_projsrc_value (cs := csPrefix) (f := f)
                   kind prot mask h_piD h_piS
+              obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
               have h_code1 : compProg s_osea.pc
                   = some (Instr.Assgn (Register.R csPrefix.nextReg)
                       (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))) := by
@@ -4138,10 +4379,7 @@ theorem ref_fresh_projsrc_simulation
                       ((oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2)).trans h_run3
                   -- §10 rebuild the invariant under both extended renames
                   refine ⟨_, _, _, 1 + 1 + 1, h_incr_a, h_incr12, h_run, ?_⟩
-                  refine ⟨CheckedCompilerM.run
-                    (compileStmtChecked
-                      (Stmt.assign (.local dstLoc)
-                        (.ref kind prot mask (.proj (.local srcLoc) f)))) csPrefix,
+                  refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
                     ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms',
                     h_psim3, h_id_a', h_wf2, ?_, ?_, ?_, ?_⟩
                   · -- label agreement at pc+3
@@ -5703,30 +5941,33 @@ theorem ref_fresh_derefsrc_simulation
       · simp at h_w
 
 
-/-- RESIDUAL (sorried). The only `sorry` left in obseq3; EIGHT call
+/-- RESIDUAL (sorried). The only `sorry` left in obseq3; SEVEN call
     sites, in four classes. Re-enumerated 2026-08-31 against the
-    dispatcher (the previous list said "non-spine deref srcs", which is
-    not a class at all: `PtrChain_flatten_deref` holds for ANY place,
-    so every deref src IS a spine once flattened).
+    dispatcher, after the SOURCE-flattening recursion
+    (`ref_proj_src_local_simulation`) closed proj-of-proj sources under
+    a local destination.
 
     1. a NON-LOCAL SRC under a PROJECTED DST over a local base —
-       `t.g := &s.f` and `t.g := &*p`. Only a local src is closed
-       there (`ref_local_projzero/projoffset_simulation`).
-    2. a PROJECTED DST over a DEREF base — `(*p).g := &_`, any src.
-       This is the one class the dst-flattening recursion cannot
+       `t.g := &s.f` and `t.g := &*p` (2 sites). Only a local src is
+       closed there.
+    2. a PROJECTED DST over a DEREF base — `(*p).g := &_`, any src
+       (1 site). The one class NEITHER flattening recursion can
        normalize away, since flattening keeps the deref.
-    3. a PROJ-TOPPED SRC whose base is NOT a local — `&(s.f).h` and
-       `&(*p).f` — under a local dst or a deref dst (four sites).
-       The `(s.f).h` half is a src-flattening transfer away from the
-       closed proj-over-local leaves; the `(*p).f` half is not.
-    4. a DEREF SRC under a DEREF DST — `*chain := &*chain'`.
+    3. a DEREF-ROOTED SRC under a local dst — `&(*p).f` (1 site); and
+       BOTH non-local proj-src shapes under a DEREF dst —
+       `*chain := &(s.f).h`, `*chain := &(*p).f` (2 sites). The
+       source-flattening recursion exists only for a local destination
+       so far; extending it to a deref destination would close the
+       proj-of-proj one of these.
+    4. a DEREF SRC under a DEREF DST — `*chain := &*chain'` (1 site).
 
-    CLOSED and no longer residual: the dst-flattening recursion
-    (`ref_proj_dst_simulation`, stmt0-threaded); deref dsts with local
-    and proj-topped srcs; and, as of 2026-08-31, ALL FOUR unbound
-    destination roots (`ref_fresh_projsrc_simulation`,
-    `ref_projzero_fresh_simulation`, `ref_projoffset_fresh_simulation`,
-    `ref_fresh_derefsrc_simulation`). -/
+    Note: "non-spine deref srcs" is NOT a class — `PtrChain_flatten_deref`
+    holds for ANY place, so every deref src is a spine once flattened.
+
+    CLOSED and no longer residual: both flattening recursions (dst:
+    `ref_proj_dst_simulation`; src: `ref_proj_src_local_simulation`);
+    deref dsts with local and proj-topped srcs; and ALL FOUR unbound
+    destination roots. -/
 theorem ref_place_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -6240,6 +6481,94 @@ theorem ref_proj_dst_simulation
 
 
 
+/-- The SOURCE-flattening recursion, the mirror of
+    `ref_proj_dst_simulation`: a nested projection source over a local
+    destination reassociates one layer at a time on BOTH machines
+    (`stepStmt_assign_refsrc_projassoc` source-side,
+    `compileStmt_ref_srcproj_assoc_local_run/_value` compiled-side) and
+    lands in the closed proj-over-local leaves. Only a DEREF-rooted
+    source survives to the residual. -/
+theorem ref_proj_src_local_simulation
+    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir s_mir' : mirlite.State MSB Γ}
+    {s_osea : oseair.State MSB}
+    {τ : LayoutTy} {σ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    {sbase : Place Γ σ} {f : PathTo σ τ}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.local dstLoc) (.ref kind prot mask (.proj sbase f)))) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.ref kind prot mask (.proj sbase f)))) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
+    (h_step : mirlite.stepStmt MSB s_mir
+      (.assign (.local dstLoc) (.ref kind prot mask (.proj sbase f))) = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
+  induction sbase with
+  | «local» srcLoc =>
+      cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
+      | some bD =>
+          cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
+          | some bS =>
+              obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+                ref_proj_local_simulation kind prot mask compProg h_comp h_inv
+                  h_stmt h_run0 h_val0 h_envD h_envS h_step
+              exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr,
+                h_run, h_inv'⟩
+          | none =>
+              exfalso
+              simp [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont,
+                mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_envD,
+                mirlite.resolvePlaceAcc, h_envS, mirlite.evalRExpr] at h_step
+      | none =>
+          cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
+          | some bS =>
+              exact ref_fresh_projsrc_simulation kind prot mask compProg
+                h_comp h_inv h_stmt h_run0 h_val0 h_envD h_envS h_step
+          | none =>
+              exfalso
+              have h_ne := ref_proj_dst_src_idx_ne dstLoc srcLoc f
+              simp only [mirlite.stepStmt, mirlite.doAssign] at h_step
+              cases h_prep : mirlite.preparePlaceAssign MSB s_mir
+                  (Place.local dstLoc) with
+              | err m => rw [h_prep] at h_step; simp at h_step
+              | ok s1 =>
+                  rw [h_prep] at h_step
+                  have hS1 : mirlite.Env.lookup s1.env srcLoc = none := by
+                    rw [prepare_lookup_ne h_ne h_prep]; exact h_envS
+                  simp [mirlite.evalRExpr, mirlite.resolvePlaceAcc, hS1] at h_step
+  | proj b q ih =>
+      refine ih
+        (fun cs => (h_run0 cs).trans
+          (compileStmt_ref_srcproj_assoc_local_run (dstLoc := dstLoc)
+            kind prot mask b q f cs))
+        (fun cs so h => by
+          obtain ⟨so', h'⟩ :=
+            compileStmt_ref_srcproj_assoc_local_value (dstLoc := dstLoc)
+              kind prot mask b q f cs so h
+          exact h_val0 cs so' h')
+        ?_
+      rw [← stepStmt_assign_refsrc_projassoc s_mir (Place.local dstLoc)
+        kind prot mask b q f]
+      exact h_step
+  | deref pp =>
+      exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
+
 /-- LEAF 3 (the dispatcher): per-statement simulation for
     `.assign dst (.ref kind prot mask src)`, decomposed by the shapes of
     the two places. Regime L→L (both bound locals, any referent size) is
@@ -6300,46 +6629,11 @@ theorem CompilerInv_step_ref
                         rw [prepare_lookup_ne h_ne h_prep]; exact h_envS
                       simp [mirlite.evalRExpr, mirlite.resolvePlaceAcc, hS1] at h_step
       | proj sbase f =>
-          cases sbase with
-          | «local» srcLoc =>
-              cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
-              | some bD =>
-                  cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
-                  | some bS =>
-                      -- CLOSED: `dst := &kind s.f`
-                      obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-                        ref_proj_local_simulation kind prot mask compProg h_comp h_inv
-                          h_stmt h_envD h_envS h_step
-                      exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr,
-                        h_run, h_inv'⟩
-                  | none =>
-                      exfalso
-                      simp [mirlite.stepStmt, mirlite.doAssign, mirlite.doAssignCont,
-                        mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_envD,
-                        mirlite.resolvePlaceAcc, h_envS, mirlite.evalRExpr] at h_step
-              | none =>
-                  cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
-                  | some bS =>
-                      -- CLOSED: `dst := &kind s.f`, `dst` UNBOUND (regime B-proj)
-                      exact ref_fresh_projsrc_simulation kind prot mask compProg
-                        h_comp h_inv h_stmt h_envD h_envS h_step
-                  | none =>
-                      -- `&s.f` of an unbound local: the source errs at resolution
-                      exfalso
-                      have h_ne := ref_proj_dst_src_idx_ne dstLoc srcLoc f
-                      simp only [mirlite.stepStmt, mirlite.doAssign] at h_step
-                      cases h_prep : mirlite.preparePlaceAssign MSB s_mir
-                          (Place.local dstLoc) with
-                      | err m => rw [h_prep] at h_step; simp at h_step
-                      | ok s1 =>
-                          rw [h_prep] at h_step
-                          have hS1 : mirlite.Env.lookup s1.env srcLoc = none := by
-                            rw [prepare_lookup_ne h_ne h_prep]; exact h_envS
-                          simp [mirlite.evalRExpr, mirlite.resolvePlaceAcc, hS1] at h_step
-          | proj _ _ =>
-              exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
-          | deref _ =>
-              exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
+          -- CLOSED for any source base that flattens to a LOCAL: the
+          -- source-flattening recursion reassociates nested projections
+          -- and lands in the proj-over-local leaves
+          exact ref_proj_src_local_simulation kind prot mask compProg h_comp h_inv
+            h_stmt (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
       | deref pp =>
           cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
           | some bD =>

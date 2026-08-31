@@ -1722,6 +1722,40 @@ def d79_ref_derefsrc_into_fresh_dst : IO Unit :=
      .assign zD79 (.copy xD79)]
     .ok "d79 ref deref src into fresh dst"
 
+def innerD80 := obseq.LayoutTy.TupL [natL, natL]
+def outerD80 := obseq.LayoutTy.TupL [innerD80, innerD80]
+def ΓD80 : Ctx := [outerD80, ptrNat, ptrNat, natL]
+def sD80 : Place ΓD80 outerD80 := .local ⟨⟨0, by decide⟩, rfl⟩
+def tD80 : Place ΓD80 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def rD80 : Place ΓD80 ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def zD80 : Place ΓD80 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+-- genuinely NESTED projection places: `.proj (.proj s f) h`, not one fused path
+def s0D80 : Place ΓD80 innerD80 := .proj sD80 (.field ⟨0, by decide⟩ .nil)
+def s1D80 : Place ΓD80 innerD80 := .proj sD80 (.field ⟨1, by decide⟩ .nil)
+def s00D80 : Place ΓD80 natL := .proj s0D80 (.field ⟨0, by decide⟩ .nil)
+def s10D80 : Place ΓD80 natL := .proj s1D80 (.field ⟨0, by decide⟩ .nil)
+
+/-- Positive: a PROJ-OF-PROJ source — `t := &mut s.1.0`, spelled as a
+    projection over a projection rather than one fused path. The
+    compiler's `placeToBorrowRegChecked` already reassociates nested
+    projection borrows (so `&mut s.1.0` does not route through a wide
+    `Mut` borrow of `s.1`), and mirlite's `resolvePlaceAcc` composes the
+    offsets, so the source-flattening recursion carries it into the
+    proj-over-local leaf. `r := &mut s.0.0` stays live across the
+    statement: the two fields are disjoint, so `*r := 9` afterwards is
+    defined exactly when the borrow fused to `s.1.0`. Closed 2026-08-31
+    by `ref_proj_src_local_simulation`. -/
+def d80_ref_projofproj_src : IO Unit :=
+  expectDiff ΓD80
+    [.assign s00D80 (.constInit 1),
+     .assign s10D80 (.constInit 3),
+     .assign rD80 (.ref .Mut false [] s00D80),
+     .assign tD80 (.ref .Mut false [] s10D80),
+     .assign (.deref rD80) (.constInit 9),
+     .assign (.deref tD80) (.constInit 8),
+     .assign zD80 (.copy s10D80)]
+    .ok "d80 ref proj-of-proj src"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1814,7 +1848,8 @@ def allTests : List (IO Unit) := [
   d76_ref_projsrc_into_fresh_dst,
   d77_ref_into_fresh_proj_zero,
   d78_ref_into_fresh_proj_offset,
-  d79_ref_derefsrc_into_fresh_dst]
+  d79_ref_derefsrc_into_fresh_dst,
+  d80_ref_projofproj_src]
 
 def runAll : IO Unit := do
   allTests.forM id
