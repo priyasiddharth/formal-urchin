@@ -495,3 +495,37 @@ The copy dispatcher is TOTAL and the pin is 2 → 1; only
 one per (destination offset × bound/fresh root) — all carrying BRIDGE
 1S around the READ. Pinned by d70-d74. See
 journal/2026-08-31-copy-closes.md.
+
+## REFACTOR: reparameterize `mirlite.PlaceRes` by offset
+**Status:** parked 2026-08-31, attempted and reverted (verified sound)
+**What:** carry `offset` in `PlaceRes` instead of the absolute `addr`,
+deriving `addr := allocBase + offset`, so mirlite and oseair share one
+pointer representation and `MemValSim`'s offset conjunct holds on the
+nose instead of through `allocBase ≤ addr` arithmetic.
+**Evidence it is sound:** the invariant `addr = allocBase + Σoffsets`
+holds in all three `resolvePlaceAcc` arms and there is no other
+constructor. The SEMANTICS change alone builds clean and leaves the
+corpus untouched — 17/17 + 99/99, identical verdicts. The working patch
+is kept at `notes/attic/placeres-offset-reparameterization.patch`.
+**Why parked:** deriving `addr` changes the ASSOCIATIVITY of every
+projected address (`allocBase + (offset + k)` where the proofs say
+`(allocBase + offset) + k`), so ~50 sites across const_write, copy and
+ref stop matching. A bridging simp lemma fixes the shape but must be
+applied per consumer, on the goal or on a named hypothesis, and which
+one is per-site: three automated passes moved the error count
+59 → 46 → 55 → 67, non-monotone because Lean reports one error per
+declaration and each fix unmasks the next.
+**Payoff if done:** `h_dle` becomes `Nat.le_add_right`; the `h_cancel`
+idiom (38 derivations, 143 uses) largely evaporates; one dead bounds
+disjunct in `resolvePlaceAcc` becomes deletable.
+**When to do it:** FIRST, if the leaf population ever grows again — a
+second permission model, a v4, or a fourth statement form. It is a
+fixed one-time cost of ~50 sites, so it pays for itself only when many
+leaves are still unwritten. It did not pay against the five residual
+sites left on 2026-08-31.
+**Resume recipe:** apply the attic patch; rewrite the 28 `PlaceRes`
+literals by script (offset is `0` or the visible `+ k`); then migrate
+ONE DECLARATION AT A TIME using
+`@[simp] PlaceRes.addr_shift : ({r with offset := r.offset + k}).addr = r.addr + k`,
+rebuilding per file rather than per pass. See
+durable/placeres-offset-reparameterization.md.
