@@ -4,7 +4,7 @@ Tags: obseq3, ref, residual, site-map
 
 `obseq3.proof.ref_place_residual` is the ONLY `sorry` left in
 `src/obseq3` (verified 2026-08-31 by `grep -rn sorry src/obseq3` and by
-`scripts/audit_axioms.sh`). TWO call sites, one per class.
+`scripts/audit_axioms.sh`). ONE call site.
 
 The count is NOT monotone and is not the metric. It went 12 -> 6 as
 whole classes closed, then 6 -> 8 when the projected-destination source
@@ -18,14 +18,27 @@ table, not the count.
 Enumerated by walking the `cases` arms enclosing each
 `exact ref_place_residual` in `src/obseq3/proof/ref.lean`.
 
-| class | statement shape | sites |
-|---|---|---|
-| 1 | DEREF-ROOTED src under a DEREF destination — `*chain := &(*p).f`, which by the nil eta also covers `*chain := &*chain'` | 1 |
-| 2 | PROJECTED dst over a DEREF base — `(*p).g := &_`, any src | 1 |
+| statement shape | sites |
+|---|---|
+| PROJECTED dst over a DEREF base — `(*p).g := &_`, any src | 1 |
 
-Both are two-mother shapes: class 1 has a source spine under a
-destination spine, class 2 has a destination that is itself a chain
-(`derefProj`). `copy`'s two-mother skeleton is the donor for both.
+The destination is itself a chain (`derefProj`), so this is the
+destination-spine mirror of the two-mother leaf — with the extra twist
+that the projection at NONZERO offset also mints an interior
+`Borrow(Mut)` whose `Die` BRIDGE 1 must collapse. Donors:
+`ref_derefdst_derefprojsrc_simulation` for the two mothers,
+`ref_proj{zero,offset}_derefsrc_simulation` for the projection over a
+spine-free base.
+
+## [FACT] two mothers is cheap when both cleanups are empty
+
+Closing `*chain := &kind (*p).f` took 453 lines FIRST TRY, against
+copy's two-mother leaves which are far longer. The difference is that
+both `placeToRegChecked (.deref _)` calls return `cleanup := []`, so the
+statement's whole emitted shape is known BEFORE either mother runs, and
+each code-inclusion obligation is one `StateIncr` step off `h_stmtRun`
+instead of a hand-assembled tower. See
+journal/2026-08-31-ref-two-mothers.md.
 
 ## [FACT] the nil-projection eta relates `*P` and `(*P).nil`
 

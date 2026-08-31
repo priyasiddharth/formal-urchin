@@ -2124,3 +2124,28 @@ retargeted to `(*p).0`).
 class 1 a source spine under a destination spine, class 2 a destination
 that is itself a `derefProj` chain. `copy`'s two-mother skeleton is the
 donor for both.
+
+## 2026-08-31 (twentieth)
+
+**Goal:** the two-mother leaf.
+**Done, first try:** `ref_derefdst_derefprojsrc_simulation` —
+`*D := &kind (*P).f`, a chain source under a chain destination, 453
+lines, sorry-free on the first build. Source mother at `kind`, one
+`Borrow` at the field offset, `sb_ref_respects_PermSim` extending ρt,
+destination mother at `Mut` from the post-`Borrow` state, one `RStore`
+through BRIDGE 2. The compiled fragment pair
+(`compileStmt_ref_derefdst_derefprojsrc_run/_value`) also first try.
+**Why it was cheap:** both `placeToRegChecked (.deref _)` calls leave an
+empty cleanup, so no `Die` is emitted (no BRIDGE 1) and the whole
+compiled shape is known before either mother — each of the three
+code-inclusion obligations is ONE `StateIncr` step off `h_stmtRun`,
+where copy's two-mother leaves need fifty-line towers.
+**Wired** through `ref_proj_src_deref_simulation`, flattening both
+chains (`compileStmt_ref_srcflatten_deref_run/_value` added). By the nil
+eta this also closes `*chain := &kind *chain'`. Sites 2 -> 1.
+**Status:** green; 17/17 + 102/102; audit exact at ONE sorry.
+Witness d89, teeth confirmed.
+**Next-session pickup:** the LAST site, `(*p).g := &kind _` — the same
+two mothers plus the projection's interior `Borrow(Mut)`/`Die` that
+BRIDGE 1 must collapse. Donors named in
+durable/ref-residual-site-map.md.

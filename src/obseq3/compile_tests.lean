@@ -1988,6 +1988,43 @@ def d88_ref_plain_deref_src_into_projdst : IO Unit :=
      .assign zD88 (.copy (.proj sD88 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d88 ref plain deref src into proj dst at offset"
 
+def ΓD89 : Ctx :=
+  [obseq.LayoutTy.PtrL ptrNat, obseq.LayoutTy.PtrL pairD52L, pairD52L,
+   ptrNat, ptrNat, natL]
+def qD89 : Place ΓD89 (obseq.LayoutTy.PtrL ptrNat) := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD89 : Place ΓD89 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def sD89 : Place ΓD89 pairD52L := .local ⟨⟨2, by decide⟩, rfl⟩
+def tD89 : Place ΓD89 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+def rD89 : Place ΓD89 ptrNat := .local ⟨⟨4, by decide⟩, rfl⟩
+def zD89 : Place ΓD89 natL := .local ⟨⟨5, by decide⟩, rfl⟩
+def s0D89 : Place ΓD89 natL := .proj sD89 (.field ⟨0, by decide⟩ .nil)
+def s1D89 : Place ΓD89 natL := .proj sD89 (.field ⟨1, by decide⟩ .nil)
+def dp0D89 : Place ΓD89 natL := .proj (.deref pD89) (.field ⟨0, by decide⟩ .nil)
+def dp1D89 : Place ΓD89 natL := .proj (.deref pD89) (.field ⟨1, by decide⟩ .nil)
+
+/-- Positive: TWO MOTHERS in one statement — `*q := &mut (*p).1`, a
+    chain SOURCE under a chain DESTINATION. The source spine lowers at
+    `kind`, one `Borrow` at the field offset mints the reference, then
+    the destination spine lowers at `Mut` from the post-`Borrow` state
+    and one `RStore` writes the reference into the cell `q` points at.
+    `r := &mut (*p).0` stays live across the statement on a disjoint
+    field; retargeting the source to `(*p).0` makes it pop `r`, and
+    `*r := 9` is then ub. Closed 2026-08-31 by
+    `ref_derefdst_derefprojsrc_simulation`. -/
+def d89_ref_two_mothers : IO Unit :=
+  expectDiff ΓD89
+    [.assign s0D89 (.constInit 3),
+     .assign s1D89 (.constInit 4),
+     .assign tD89 (.ref .Mut false [] s0D89),
+     .assign pD89 (.ref .Mut false [] sD89),
+     .assign qD89 (.ref .Mut false [] tD89),
+     .assign rD89 (.ref .Mut false [] dp0D89),
+     .assign (.deref qD89) (.ref .Mut false [] dp1D89),
+     .assign (.deref tD89) (.constInit 8),
+     .assign (.deref rD89) (.constInit 9),
+     .assign zD89 (.copy s1D89)]
+    .ok "d89 ref two mothers: chain src into chain dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2089,7 +2126,8 @@ def allTests : List (IO Unit) := [
   d85_ref_self_root_zero,
   d86_ref_derefprojsrc_into_local,
   d87_ref_chainsrc_into_fresh_projdst,
-  d88_ref_plain_deref_src_into_projdst]
+  d88_ref_plain_deref_src_into_projdst,
+  d89_ref_two_mothers]
 
 def runAll : IO Unit := do
   allTests.forM id
