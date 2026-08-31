@@ -4,7 +4,7 @@ Tags: obseq3, ref, residual, site-map
 
 `obseq3.proof.ref_place_residual` is the ONLY `sorry` left in
 `src/obseq3` (verified 2026-08-31 by `grep -rn sorry src/obseq3` and by
-`scripts/audit_axioms.sh`). FIVE call sites, in TWO classes.
+`scripts/audit_axioms.sh`). FOUR call sites, in TWO classes.
 
 The count is NOT monotone and is not the metric. It went 12 -> 6 as
 whole classes closed, then 6 -> 8 when the projected-destination source
@@ -20,8 +20,12 @@ Enumerated by walking the `cases` arms enclosing each
 
 | class | statement shape | sites |
 |---|---|---|
-| 1 | DEREF-ROOTED src under a destination that is NOT a plain local — `t.g := &*p`, `t.g := &(*p).f`, `*chain := &*chain'`, `*chain := &(*p).f` | 4 |
-| 2 | PROJECTED dst over a DEREF base — `(*p).g := &_`, any src | 1 |
+| 1 | DEREF-ROOTED src under a DEREF destination — `*chain := &*chain'`, `*chain := &(*p).f` | 2 |
+| 2 | PROJECTED dst over a DEREF base — `(*p).g := &_`; and the plain deref src under a projected dst, `t.g := &*p` | 2 |
+
+Class 1 is now exactly the shapes needing TWO mother lemmas. Class 2's
+second site is a spelling artefact: `&kind *p` and `&kind (*p).nil`
+emit identical code but are different terms.
 
 Class 1 needs TWO mother-lemma applications in one statement (`copy`'s
 two-mother skeleton is the donor); class 2 needs the spine mother lemma
@@ -200,3 +204,33 @@ which the mother lemma supplies as `h_dle`; `Nat.sub_add_comm h_dle`
 is the bridge. `omega` reports a spurious counterexample over
 compiler-state atoms if handed the goal without that hypothesis
 threaded, so name the equation rather than inlining a tactic.
+
+## [FACT] a projected destination over a LOCAL base has no spine
+
+Recorded 2026-08-31 while closing `t.g := &kind (*p).f`. The
+destination's lowering at zero offset IS the root register, and at
+nonzero offset is one `Borrow` from it — no `ptrChain_lowering_sim`
+involved. So a chain SOURCE under such a destination needs only ONE
+mother lemma, and the four leaves are the destination's four quadrants
+(offset zero/nonzero x root bound/fresh) with the source spine spliced
+in.
+
+That halved what looked like a uniform four-site class. Only the two
+DEREF-destination sites genuinely need two mother lemmas.
+
+## [OBS] the destination-side package does NOT collapse the quadrants
+
+Considered and rejected 2026-08-31, having first claimed it would work.
+`LoweringSim` — the named conclusion of `ptrChain_lowering_sim` — is
+already the destination package for the shapes that supply it, and a
+projected destination at ZERO offset does
+(`LoweringSim.projZero`). But it demands `placeOut.result.cleanup = []`
+(spine.lean), and `placeToRegChecked`'s projection arm at NONZERO offset
+returns `cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)]`
+(compile.lean). So the package covers exactly the two zero-offset
+quadrants — the ones that were already cheap — and covering the other
+two would mean restating it WITH the cleanup and packaging BRIDGE 1,
+whose proof is the very assembly the package was meant to avoid.
+
+Check the `cleanup = []` conjunct before proposing a package for any
+lowering that mints a temporary.

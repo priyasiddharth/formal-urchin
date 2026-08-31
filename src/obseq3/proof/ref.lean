@@ -4554,6 +4554,39 @@ theorem compileStmt_ref_src_congr_proj_value
               simp only [hD]
               exact ⟨_, rfl⟩
 
+/-- The source-flattening transfer for a PROJECTED destination, the
+    other instantiation of the projected-destination congruence. -/
+theorem compileStmt_ref_srcflatten_proj_run
+    {Γ : Ctx} {τ σ : LayoutTy}
+    {dbase : Place Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (src : Place Γ τ) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.proj dbase g) (.ref kind prot mask src))) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj dbase g)
+              (.ref kind prot mask (flattenPlace src)))) cs :=
+  compileStmt_ref_src_congr_proj_run (dbase := dbase) (g := g) kind prot mask _ _ cs
+    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).1.symm
+    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
+
+theorem compileStmt_ref_srcflatten_proj_value
+    {Γ : Ctx} {τ σ : LayoutTy}
+    {dbase : Place Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (src : Place Γ τ) (cs : CompilerState) :
+    ∀ so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj dbase g) (.ref kind prot mask (flattenPlace src)))) cs
+      = Except.ok so →
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.proj dbase g) (.ref kind prot mask src))) cs
+      = Except.ok so' :=
+  compileStmt_ref_src_congr_proj_value (dbase := dbase) (g := g) kind prot mask _ _ cs
+    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).1.symm
+    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
+
 theorem compileStmt_ref_srcproj_assoc_proj_run
     {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
     {σ : LayoutTy} {dbase : Place Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
@@ -12991,33 +13024,32 @@ theorem ref_projoffset_fresh_derefsrc_simulation
 
 
 
-/-- RESIDUAL (sorried). The only `sorry` left in obseq3; FIVE call
-    sites, in two classes. Narrowed 2026-08-31 by the deref-rooted
-    source leaves for a LOCAL destination.
+/-- RESIDUAL (sorried). The only `sorry` left in obseq3; FOUR call
+    sites, in two classes.
 
-    1. a DEREF-ROOTED SOURCE under a destination that is NOT a plain
-       local (4 sites): `t.g := &kind *p` and `t.g := &kind (*p).f`
-       (projected dst), `*chain := &kind *chain'` and
-       `*chain := &kind (*p).f` (deref dst). All four put TWO
-       mother-lemma applications in one statement — the source spine
-       and the destination spine, or the source spine under the
-       projected-destination machinery. `copy`'s two-mother skeleton is
-       the donor; no ref leaf does it yet.
+    1. a DEREF-ROOTED SOURCE under a DEREF destination (2 sites):
+       `*chain := &kind *chain'` and `*chain := &kind (*p).f`. These are
+       the only shapes needing TWO mother-lemma applications in one
+       statement — the source spine and the destination spine. `copy`'s
+       two-mother skeleton is the donor.
+       A deref-rooted source under a LOCAL or PROJECTED destination is
+       CLOSED: a projected destination over a local base has no spine,
+       so only the source's mother lemma is needed
+       (`ref_proj{zero,offset}_derefsrc_simulation` and their fresh
+       twins, all four quadrants of destination offset x root state).
     2. a PROJECTED DST over a DEREF base — `(*p).g := &kind _`, any src
-       (1 site). No flattening can normalize it away: flattening keeps
-       the deref, so `(*p).g` never becomes a projection over a local.
-       It needs the spine mother lemma on the DESTINATION side.
+       (1 site), plus the plain deref src under a projected dst
+       (`t.g := &kind *p`, 1 site) which spells its source `.deref P`
+       rather than `.proj (.deref P) f` and so needs its own statement
+       even though the emitted code is identical.
 
     Note: "non-spine deref srcs" is NOT a class — `PtrChain_flatten_deref`
     holds for ANY place, so every deref src is a spine once flattened.
 
-    CLOSED and no longer residual: all four flattening recursions;
-    proj-topped srcs under local, deref and projected dsts, including a
-    source rooted at the destination's OWN unbound local; deref-rooted
-    srcs under a LOCAL destination, bound and fresh
-    (`ref_derefprojsrc_local_simulation`,
-    `ref_fresh_derefprojsrc_simulation`); and ALL FOUR unbound
-    destination roots. -/
+    CLOSED and no longer residual: all four flattening recursions; all
+    proj-topped srcs; a source rooted at the destination's OWN unbound
+    local; deref-rooted srcs under local and projected destinations; and
+    ALL FOUR unbound destination roots. -/
 theorem ref_place_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -13551,7 +13583,64 @@ theorem ref_proj_src_projdst_simulation
         kind prot mask b q f]
       exact h_step
   | deref pp =>
-      exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
+      -- CLOSED: `dst.g := &kind (*p).f` — the source spine by the mother
+      -- lemma, the destination by its four quadrants
+      rw [stepStmt_assign_refsrc_anyflatten] at h_step
+      by_cases h_g0 : pathOffset g = 0
+      · cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
+        | some bD =>
+            obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+              ref_projzero_derefsrc_simulation (P := flattenPlace pp) kind prot mask h_g0
+                compProg (PtrChain_flatten_deref pp) h_comp h_inv h_stmt
+                (fun cs => (h_run0 cs).trans
+                  (compileStmt_ref_srcflatten_proj_run (dbase := Place.local dstLoc) (g := g)
+                    kind prot mask (Place.proj (Place.deref pp) f) cs))
+                (fun cs so h => by
+                  obtain ⟨so', h'⟩ :=
+                    compileStmt_ref_srcflatten_proj_value (dbase := Place.local dstLoc) (g := g)
+                      kind prot mask (Place.proj (Place.deref pp) f) cs so h
+                  exact h_val0 cs so' h')
+                h_envD h_step
+            exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+        | none =>
+            exact ref_projzero_fresh_derefsrc_simulation (P := flattenPlace pp) kind prot mask
+              h_g0 compProg (PtrChain_flatten_deref pp) h_comp h_inv h_stmt
+                (fun cs => (h_run0 cs).trans
+                  (compileStmt_ref_srcflatten_proj_run (dbase := Place.local dstLoc) (g := g)
+                    kind prot mask (Place.proj (Place.deref pp) f) cs))
+                (fun cs so h => by
+                  obtain ⟨so', h'⟩ :=
+                    compileStmt_ref_srcflatten_proj_value (dbase := Place.local dstLoc) (g := g)
+                      kind prot mask (Place.proj (Place.deref pp) f) cs so h
+                  exact h_val0 cs so' h')
+                h_envD h_step
+      · cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
+        | some bD =>
+            obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+              ref_projoffset_derefsrc_simulation (P := flattenPlace pp) kind prot mask h_g0
+                compProg (PtrChain_flatten_deref pp) h_comp h_inv h_stmt
+                (fun cs => (h_run0 cs).trans
+                  (compileStmt_ref_srcflatten_proj_run (dbase := Place.local dstLoc) (g := g)
+                    kind prot mask (Place.proj (Place.deref pp) f) cs))
+                (fun cs so h => by
+                  obtain ⟨so', h'⟩ :=
+                    compileStmt_ref_srcflatten_proj_value (dbase := Place.local dstLoc) (g := g)
+                      kind prot mask (Place.proj (Place.deref pp) f) cs so h
+                  exact h_val0 cs so' h')
+                h_envD h_step
+            exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+        | none =>
+            exact ref_projoffset_fresh_derefsrc_simulation (P := flattenPlace pp) kind prot mask
+              h_g0 compProg (PtrChain_flatten_deref pp) h_comp h_inv h_stmt
+                (fun cs => (h_run0 cs).trans
+                  (compileStmt_ref_srcflatten_proj_run (dbase := Place.local dstLoc) (g := g)
+                    kind prot mask (Place.proj (Place.deref pp) f) cs))
+                (fun cs so h => by
+                  obtain ⟨so', h'⟩ :=
+                    compileStmt_ref_srcflatten_proj_value (dbase := Place.local dstLoc) (g := g)
+                      kind prot mask (Place.proj (Place.deref pp) f) cs so h
+                  exact h_val0 cs so' h')
+                h_envD h_step
 
 /-- The dst-flattening recursion for ref: a PROJECTED destination of any
     nesting depth reassociates on both machines

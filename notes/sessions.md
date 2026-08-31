@@ -2074,3 +2074,30 @@ before the two-mother sites avoids repeating the four quadrants there.
 **Status:** green; 17/17 + 99/99; audit exact at ONE sorry; residual
 sites still 5 (nothing wired yet — the quadrants are incomplete).
 See journal/2026-08-31-ref-chainsrc-projdst.md.
+
+## 2026-08-31 (eighteenth)
+
+**Goal:** build the destination-side package.
+**Correction, checked before building:** it does not do what I claimed.
+`LoweringSim` IS already the destination package for shapes that supply
+it, and a projected destination at ZERO offset does — but it demands
+`placeOut.result.cleanup = []`, and the projection arm at NONZERO
+offset returns `cleanup ++ [(tmpReg, blockSize τ)]`. So the package
+covers exactly the two quadrants that were already cheap, and covering
+the other two means restating it with the cleanup and packaging
+BRIDGE 1 — the very assembly it was meant to avoid.
+**So I did the assemblies instead, and all four quadrants are done:**
+`ref_projoffset_derefsrc_simulation` (bound) and
+`ref_projoffset_fresh_derefsrc_simulation` (fresh), each the
+zero-offset leaf with the write inversion moved ahead of the execution,
+peel counts widened from two to four, the interior
+`Borrow(Mut)`/`RStore`/`Die` added and the rebuild collapsed. Both
+fragment pairs first try, as were all four in this family.
+**Wired, and a site CLOSED:** `t.g := &kind (*p).f` for every
+destination offset and root state, through
+`ref_proj_src_projdst_simulation`. Residual sites 5 -> 4. Witness d87
+at the hardest quadrant (fresh root, nonzero offset), teeth confirmed.
+**Status:** green; 17/17 + 100/100; audit exact at ONE sorry.
+**Next-session pickup:** class 2's `t.g := &kind *p` (a spelling
+artefact — identical code, different term), then the two-mother sites.
+See durable/ref-residual-site-map.md.

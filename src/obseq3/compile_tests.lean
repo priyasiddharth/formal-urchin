@@ -1922,6 +1922,38 @@ def d86_ref_derefprojsrc_into_local : IO Unit :=
      .assign yD86 (.copy (.proj sD86 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d86 ref deref-proj src into local"
 
+def ΓD87 : Ctx := [ptrPairD77L, obseq.LayoutTy.PtrL pairD52L, pairD52L, ptrNat, natL]
+def tD87 : Place ΓD87 ptrPairD77L := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD87 : Place ΓD87 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def sD87 : Place ΓD87 pairD52L := .local ⟨⟨2, by decide⟩, rfl⟩
+def rD87 : Place ΓD87 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+def zD87 : Place ΓD87 natL := .local ⟨⟨4, by decide⟩, rfl⟩
+def dp0D87 : Place ΓD87 natL := .proj (.deref pD87) (.field ⟨0, by decide⟩ .nil)
+def dp1D87 : Place ΓD87 natL := .proj (.deref pD87) (.field ⟨1, by decide⟩ .nil)
+def t1D87 : Place ΓD87 ptrNat := .proj tD87 (.field ⟨1, by decide⟩ .nil)
+
+/-- Positive: a CHAIN source under a PROJECTED destination, at the
+    hardest quadrant — `t.1 := &mut (*p).1` with `t`'s root UNBOUND and
+    the destination field at NONZERO offset. The source spine lowers by
+    the mother lemma, the σ-sized root is `Alloc`ed, and the
+    destination projection mints its own interior `Borrow(Mut)` whose
+    `Die` BRIDGE 1 collapses. `r := &mut (*p).0` stays live across it on
+    a disjoint field; retargeting the statement's source to `(*p).0`
+    makes it pop `r`. Closed 2026-08-31 by
+    `ref_projoffset_fresh_derefsrc_simulation` through
+    `ref_proj_src_projdst_simulation`. -/
+def d87_ref_chainsrc_into_fresh_projdst : IO Unit :=
+  expectDiff ΓD87
+    [.assign (.proj sD87 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj sD87 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign pD87 (.ref .Mut false [] sD87),
+     .assign rD87 (.ref .Mut false [] dp0D87),
+     .assign t1D87 (.ref .Mut false [] dp1D87),
+     .assign (.deref rD87) (.constInit 9),
+     .assign (.deref t1D87) (.constInit 8),
+     .assign zD87 (.copy (.proj sD87 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d87 ref chain src into fresh proj dst at offset"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2021,7 +2053,8 @@ def allTests : List (IO Unit) := [
   d83_ref_projsrc_into_bound_projdst,
   d84_ref_self_root_offset,
   d85_ref_self_root_zero,
-  d86_ref_derefprojsrc_into_local]
+  d86_ref_derefprojsrc_into_local,
+  d87_ref_chainsrc_into_fresh_projdst]
 
 def runAll : IO Unit := do
   allTests.forM id
