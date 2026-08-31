@@ -78,7 +78,11 @@ the two facts the minting members need.
   `AllocLockstep.allocate_eq` is the consumer-facing form: corresponding
   allocations agree, and the property survives them.
 
-Remaining (1): every remaining sorry is blocked on a NAMED obligation.
+Remaining (0). NO SORRIES REMAIN: `obseq3.proof.compile_correct` rests
+on `propext`, `Classical.choice` and `Quot.sound` alone, and
+`scripts/axiom_whitelist.txt` no longer lists `sorryAx`. Its
+reappearance is a REGRESSION, not a drift. The four named residuals,
+in the order they died:
 1. ✔ `const_write_deref_deep_residual` — RETIRED 2026-08-29, the first
    residual to die. The pending-cleanup generalization landed as
    `ptrChain_lowering_sim`; `flattenPlace` + its congruence family
@@ -109,7 +113,8 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    one per (destination offset × bound/fresh root). The two bridges
    never interleave: the source borrow retires in the rhs pre-phase,
    before the destination lowering starts. Pinned by d70-d74.
-4. `ref_place_residual` — NARROWED 2026-08-29: P→L, D→L, both field-dst
+4. ✔ `ref_place_residual` — CLOSED 2026-08-31, and DELETED; the LAST
+   sorry in obseq3. NARROWED 2026-08-29: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested
    projection destinations of any depth reassociate on both machines
@@ -178,8 +183,49 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    `dst` a local, bound or fresh; d86): `placeToRegChecked`'s deref arm
    ignores its `kind`, so the chain lowers by the mother lemma exactly
    as for a plain deref source and the projection rides in the
-   `Borrow`'s offset operand. See `ref_place_residual`'s docstring for
-   the current site map.
+   `Borrow`'s offset operand.
+
+   The last two classes needed TWO `ptrChain_lowering_sim` applications
+   in one statement, and both fell on 2026-08-31.
+
+   First a SPELLING gap had to be bridged: `flattenPlace` never
+   introduces an EMPTY projection, so it could not relate `&kind *p` to
+   `&kind (*p).nil` even though the two emit identical code. The
+   nil-projection eta (`resolvePlaceAcc_nil`,
+   `stepStmt_assign_refsrc_nil`, `placeToBorrowRegChecked_nil_agree`
+   and its `_local`/`_chain` forms) supplies that, because
+   `placeToRegChecked`'s deref and local arms both return an EMPTY
+   cleanup, so the projection arm's `[] ++ [tmp]` is `[tmp]`. It closed
+   `t.g := &kind *p` outright and MERGED `*chain := &kind *chain'` into
+   `*chain := &kind (*p).f`.
+
+   Then `ref_derefdst_derefprojsrc_simulation` (d89) closed the merged
+   class: a chain SOURCE under a chain DESTINATION. Rust order forces
+   the shape — source mother at `kind`, one `Borrow` at the field
+   offset, `sb_ref_respects_PermSim` extending ρt, destination mother
+   at `Mut` from the post-`Borrow` state with its register-frame
+   conjunct carrying the borrow temp across, one `RStore` through
+   BRIDGE 2. Because BOTH lowerings leave an empty cleanup, no `Die` is
+   emitted (no BRIDGE 1) and the whole compiled shape is known BEFORE
+   either mother, which reduces each of the three code-inclusion
+   obligations to ONE `StateIncr` step off `h_stmtRun` — where copy's
+   two-mother leaves assemble fifty-line towers.
+
+   Last, `(*p).g := &kind _` — a PROJECTED destination over a DEREF
+   base — fell as `ref_proj{zero,offset}_derefdst_chainsrc_simulation`
+   (d90). At ZERO offset the destination supplies the lowering PACKAGE
+   (`LoweringSim.projZero` over the mother) and returns the base's own
+   register with an empty cleanup, so it is the two-mother assembly
+   respelled; at NONZERO offset the projection mints its OWN interior
+   `Borrow(Mut)` with no mirlite counterpart and
+   `sb_ref_use_die_cancels` collapses that ref/store/die triple to the
+   parent's single use — two mothers AND BRIDGE 1, the only place in
+   obseq3 where all three meet. Both leaves are GENERIC in the source:
+   they take `PtrChain sbase` plus the
+   `placeToBorrowRegChecked_proj_root_eq` unfolding, which after
+   flattening (`flatten_chainish`) and the nil eta covers every source
+   shape, so the dispatcher's last arm needs no source case split of
+   its own.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

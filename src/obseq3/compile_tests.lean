@@ -2025,6 +2025,46 @@ def d89_ref_two_mothers : IO Unit :=
      .assign zD89 (.copy s1D89)]
     .ok "d89 ref two mothers: chain src into chain dst"
 
+def ΓD90 : Ctx :=
+  [obseq.LayoutTy.PtrL ptrPairD77L, obseq.LayoutTy.PtrL pairD52L, pairD52L,
+   ptrPairD77L, ptrNat, natL]
+def qD90 : Place ΓD90 (obseq.LayoutTy.PtrL ptrPairD77L) := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD90 : Place ΓD90 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def sD90 : Place ΓD90 pairD52L := .local ⟨⟨2, by decide⟩, rfl⟩
+def tD90 : Place ΓD90 ptrPairD77L := .local ⟨⟨3, by decide⟩, rfl⟩
+def rD90 : Place ΓD90 ptrNat := .local ⟨⟨4, by decide⟩, rfl⟩
+def zD90 : Place ΓD90 natL := .local ⟨⟨5, by decide⟩, rfl⟩
+def s0D90 : Place ΓD90 natL := .proj sD90 (.field ⟨0, by decide⟩ .nil)
+def s1D90 : Place ΓD90 natL := .proj sD90 (.field ⟨1, by decide⟩ .nil)
+def dp0D90 : Place ΓD90 natL := .proj (.deref pD90) (.field ⟨0, by decide⟩ .nil)
+def dp1D90 : Place ΓD90 natL := .proj (.deref pD90) (.field ⟨1, by decide⟩ .nil)
+def dq1D90 : Place ΓD90 ptrNat := .proj (.deref qD90) (.field ⟨1, by decide⟩ .nil)
+def t1D90 : Place ΓD90 ptrNat := .proj tD90 (.field ⟨1, by decide⟩ .nil)
+
+/-- Positive: the LAST residual shape — a PROJECTED destination over a
+    DEREF base at NONZERO offset, with a chain source:
+    `(*q).1 := &mut (*p).1`. Two mothers AND BRIDGE 1 — the source spine
+    lowers and its `Borrow` mints, the destination spine lowers at
+    `Mut`, and the destination projection mints its own interior
+    `Borrow(Mut)` at the field offset whose `Die` has no mirlite
+    counterpart. `r := &mut (*p).0` stays live across the statement on a
+    disjoint field; retargeting the source to `(*p).0` makes it pop `r`
+    and `*r := 9` is then ub. Closed 2026-08-31 by
+    `ref_projoffset_derefdst_chainsrc_simulation`. -/
+def d90_ref_projderef_dst_two_mothers : IO Unit :=
+  expectDiff ΓD90
+    [.assign s0D90 (.constInit 3),
+     .assign s1D90 (.constInit 4),
+     .assign t1D90 (.ref .Mut false [] s0D90),
+     .assign pD90 (.ref .Mut false [] sD90),
+     .assign qD90 (.ref .Mut false [] tD90),
+     .assign rD90 (.ref .Mut false [] dp0D90),
+     .assign dq1D90 (.ref .Mut false [] dp1D90),
+     .assign (.deref t1D90) (.constInit 8),
+     .assign (.deref rD90) (.constInit 9),
+     .assign zD90 (.copy s1D90)]
+    .ok "d90 ref proj-over-deref dst at offset, chain src"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2127,7 +2167,8 @@ def allTests : List (IO Unit) := [
   d86_ref_derefprojsrc_into_local,
   d87_ref_chainsrc_into_fresh_projdst,
   d88_ref_plain_deref_src_into_projdst,
-  d89_ref_two_mothers]
+  d89_ref_two_mothers,
+  d90_ref_projderef_dst_two_mothers]
 
 def runAll : IO Unit := do
   allTests.forM id

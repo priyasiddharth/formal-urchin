@@ -171,6 +171,17 @@ theorem resolvePlaceAcc_proj_base_err
     `PtrChain.placeToRegChecked_placeRegMap`, the standalone form is
     needed BEFORE the mother lemma can be invoked — the compiled
     fragment mentions the source's cleanup. -/
+theorem placeToRegChecked_local_cleanup {Γ : Ctx} {τ : LayoutTy}
+    {kind : RefKind} {loc : Local Γ τ} {cs : CompilerState}
+    {out : ResultWithEvidence PtrResult (PlaceToRegEvidence kind (.local loc))}
+    (h : CheckedCompilerM.value (placeToRegChecked kind (.local loc)) cs
+      = Except.ok out) :
+    out.result.cleanup = [] := by
+  simp only [CheckedCompilerM.value, CompilerM.value, placeToRegChecked] at h
+  split at h
+  · cases h; rfl
+  · simp at h
+
 theorem placeToRegChecked_deref_cleanup {Γ : Ctx} {τ : LayoutTy}
     {P : Place Γ (obseq.LayoutTy.PtrL τ)} {kind : RefKind} {cs : CompilerState}
     {out : ResultWithEvidence PtrResult (PlaceToRegEvidence kind (.deref P))}
@@ -1818,6 +1829,88 @@ theorem placeToBorrowRegChecked_nil_agree {Γ : Ctx} {τ : LayoutTy}
       CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
       CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
       CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+
+/-- The `placeToBorrowRegChecked` projection equation for a base that
+    is not itself a projection — the borrow mirror of
+    `placeToRegChecked_proj_root_eq`. `PtrChain.not_proj` supplies the
+    side condition, so a leaf generic in a chain base can unfold. -/
+theorem placeToBorrowRegChecked_proj_root_eq {Γ : Ctx} {σ τ : LayoutTy}
+    {kind : RefKind} {prot : Bool} {mask : List Bool}
+    {base : Place Γ σ} (path : PathTo σ τ)
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      base = b.proj q → False) :
+    placeToBorrowRegChecked kind prot mask (Place.proj base path)
+      = (do
+          let baseOut ← placeToRegChecked kind base
+          let baseRes := baseOut.result
+          let offset := pathOffset path
+          let tmpReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn tmpReg
+              (Rhs.Borrow kind prot mask (blockSize τ) baseRes.reg offset)])
+          pure {
+            result := { reg := tmpReg,
+                        cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)] },
+            evidence := PlaceToBorrowRegEvidence.proj base path baseRes tmpReg
+              baseOut.evidence
+          }) := by
+  cases base with
+  | «local» l => simp only [placeToBorrowRegChecked]
+  | deref pp => simp only [placeToBorrowRegChecked]
+  | proj b q => exact absurd rfl (h_np _ b q)
+
+/-- The nil-projection eta for a LOCAL base: the local arm and the
+    zero-offset projection arm emit the same `Borrow`, and the local
+    lowering's cleanup is literally `[]`. -/
+theorem placeToBorrowRegChecked_nil_agree_local {Γ : Ctx} {τ : LayoutTy}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (loc : Local Γ τ) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (placeToBorrowRegChecked kind prot mask
+          (Place.proj (Place.local loc) PathTo.nil)) cs
+      = CheckedCompilerM.run
+          (placeToBorrowRegChecked kind prot mask (Place.local loc)) cs ∧
+    (CheckedCompilerM.value
+        (placeToBorrowRegChecked kind prot mask
+          (Place.proj (Place.local loc) PathTo.nil)) cs).map (fun o => o.result)
+      = (CheckedCompilerM.value
+          (placeToBorrowRegChecked kind prot mask (Place.local loc)) cs).map
+        (fun o => o.result) := by
+  constructor
+  · cases hv : CheckedCompilerM.value (placeToRegChecked kind (Place.local loc)) cs <;>
+      simp [placeToBorrowRegChecked, PathTo.offset, hv,
+        CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+        CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+        CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+  · cases hv : CheckedCompilerM.value (placeToRegChecked kind (Place.local loc)) cs with
+    | error e =>
+        simp [placeToBorrowRegChecked, PathTo.offset, hv, Except.map,
+          CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+          CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+          CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+    | ok a =>
+        have hc := placeToRegChecked_local_cleanup hv
+        simp [placeToBorrowRegChecked, PathTo.offset, hv, hc, Except.map,
+          CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+          CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+          CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+
+/-- The nil-projection eta for ANY canonical chain base. -/
+theorem placeToBorrowRegChecked_nil_agree_chain {Γ : Ctx} {τ : LayoutTy}
+    {b : Place Γ τ} (h : PtrChain b)
+    (kind : RefKind) (prot : Bool) (mask : List Bool) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (placeToBorrowRegChecked kind prot mask (Place.proj b PathTo.nil)) cs
+      = CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask b) cs ∧
+    (CheckedCompilerM.value
+        (placeToBorrowRegChecked kind prot mask (Place.proj b PathTo.nil)) cs).map
+          (fun o => o.result)
+      = (CheckedCompilerM.value
+          (placeToBorrowRegChecked kind prot mask b) cs).map (fun o => o.result) := by
+  cases h with
+  | base loc => exact placeToBorrowRegChecked_nil_agree_local kind prot mask loc cs
+  | deref _ => exact placeToBorrowRegChecked_nil_agree kind prot mask _ cs
+  | derefProj _ _ => exact placeToBorrowRegChecked_nil_agree kind prot mask _ cs
 
 /-! ## Source lowerings as a PACKAGE
 

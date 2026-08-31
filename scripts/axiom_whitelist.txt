@@ -3,12 +3,15 @@
 # in EITHER direction (new axiom/sorry, or a stale entry after one closes).
 # Update this file in the same commit that changes the proof state, with a
 # matching entry in the SORRY AUDIT block (obseq3/proof/compiler.lean).
+#
+# 2026-08-31: `sorryAx` REMOVED and the [sorries] block EMPTIED — the last
+# residual (`obseq3.proof.ref_place_residual`, the ref place leaves) is
+# closed. compile_correct now rests on the three Lean axioms alone. Any
+# reappearance of sorryAx is a regression, not a drift.
 
 [axioms]
 propext
 Classical.choice
 Quot.sound
-sorryAx
 
 [sorries]
-obseq3.proof.ref_place_residual

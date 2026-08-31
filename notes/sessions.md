@@ -2149,3 +2149,32 @@ Witness d89, teeth confirmed.
 two mothers plus the projection's interior `Borrow(Mut)`/`Die` that
 BRIDGE 1 must collapse. Donors named in
 durable/ref-residual-site-map.md.
+
+## 2026-08-31 (twenty-first)
+
+**ZERO SORRIES.** `ref_place_residual` is closed and DELETED;
+`obseq3.proof.compile_correct` rests on `propext`, `Classical.choice`,
+`Quot.sound` alone and the whitelist no longer lists `sorryAx`.
+**The last site** was `(*p).g := &kind _`, a projected destination over
+a deref base. Two leaves, split on the destination offset: at ZERO the
+destination supplies the `LoweringSim` package
+(`LoweringSim.projZero`) and it is the two-mother assembly respelled;
+at NONZERO the projection mints its own interior `Borrow(Mut)` and
+BRIDGE 1 collapses the triple — the only leaf where two mothers and
+BRIDGE 1 meet.
+**The move that halved the work:** both leaves are GENERIC in the
+source. A leaf needs the source constructor only for a definitional
+unfolding, so `placeToBorrowRegChecked_proj_root_eq` (side condition
+`PtrChain.not_proj`) takes its place, and `ptrChain_lowering_sim`
+already covers a LOCAL source at zero steps. Four leaves became two.
+**Also landed:** the nil eta at a general chain base
+(`placeToBorrowRegChecked_nil_agree_local/_chain`,
+`placeToRegChecked_local_cleanup`) and the destination flatten transfer
+for a projection over a deref
+(`compileStmt_assign_projderefdst_flatten_run/_value`).
+**Status:** green; 17/17 + 103/103; audit exact at ZERO sorries.
+Witnesses d89 (two mothers) and d90 (two mothers + BRIDGE 1), teeth
+confirmed.
+**Next-session pickup:** there is no residual left in obseq3. See
+durable/ref-residual-site-map.md for the retired site map and the two
+structural facts worth reusing.
