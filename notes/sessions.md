@@ -1497,3 +1497,31 @@ landed.
 the BRIDGE 1 write phase from `copy_projdst_offset_projsrc_offset_
 simulation` §9 — then delete `copy_place_residual` and take the pin
 2 → 1.
+
+## 2026-08-31
+**Session:** (terminal, continued) — copy_place_residual is CLOSED
+**Theme:** the nonzero-destination twin,
+`copy_projlocal_fresh_projsrc_offset_offset_simulation`, landed; with
+it every branch of the copy dispatcher reaches a leaf, so
+`copy_place_residual` was DELETED and the whitelist pin went 2 → 1.
+Only `ref_place_residual` remains.
+**Method:** the same structural rewrite as the zero twin — tokenize the
+source state, replace the `Load`-only state with the
+`Borrow`/`Load`/`Die` tower, write the write phase fresh. The follow-up
+errors came in the three classes now recorded in
+journal/2026-08-31-copy-closes.md: arities (peel counts and tower steps
+grow with the added instructions), spelling (`csnorm`, four-field
+records, single-line `{ s_mid with … }`), and one content error worth
+anticipating — the destination borrow mints at `q3.NextTag`, the state
+AFTER the source's `Die`, not at `s_mid.perms.NextTag`.
+**Witnesses:** d72 (bound dst at offset), d73 (fresh dst at zero), d74
+(fresh dst at offset). Teeth: oversizing the `Shared` projection borrow
+flips d73 to `ub 2` while d68 — whose Shared projections are all at
+offset zero, so no borrow is emitted — stays passing. Note d71 is NOT a
+valid control: its read-back is itself an offset projection.
+**Status:** green; 17/17 + 87/87; corpus 82/123 (0 fail, osea matched
+82); audit exact at ONE sorry, `[axioms]` untouched.
+**Next-session pickup:** `ref_place_residual` — eleven call sites in
+three families (unbound dst roots, non-local sources, projected dsts
+over a deref base). The copy techniques transfer: the lowering PACKAGE,
+regime-B leaves, and `csnorm`.

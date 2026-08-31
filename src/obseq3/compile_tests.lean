@@ -1534,6 +1534,56 @@ def d71_projsrc_zero_into_proj_local : IO Unit :=
      .assign zD64 (.copy (.proj tD64 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d71 proj src at zero into proj local"
 
+def ΓD72 : Ctx := [pairD52L, pairD52L, natL]
+def tD72 : Place ΓD72 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
+def sD72 : Place ΓD72 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
+def zD72 : Place ΓD72 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- Positive: a PROJ-TOPPED source at NONZERO offset into a PROJECTED
+    destination over a BOUND local base, itself at nonzero offset
+    (`t.1 := copy s.1`). Both projections mint their own borrow: the
+    source's `Borrow(Shared)` retires in the rhs pre-phase (BRIDGE 1S)
+    before the destination's `Borrow(Mut)` is taken (BRIDGE 1), so the
+    two never interleave. Closed 2026-08-31 by
+    `copy_projdst_offset_projsrc_offset_simulation`. -/
+def d72_projsrc_offset_into_proj_dst_offset : IO Unit :=
+  expectDiff ΓD72
+    [.assign (.proj sD72 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj sD72 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign (.proj tD72 (.field ⟨0, by decide⟩ .nil)) (.constInit 0),
+     .assign (.proj tD72 (.field ⟨1, by decide⟩ .nil))
+       (.copy (.proj sD72 (.field ⟨1, by decide⟩ .nil))),
+     .assign zD72 (.copy (.proj tD72 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d72 proj src at offset into proj dst at offset"
+
+/-- Positive: the same with an UNBOUND destination root at ZERO
+    destination offset (`t.0 := copy s.1`, `t` fresh) — regime B-proj
+    with a BRIDGE 1S source. Closed 2026-08-31 by
+    `copy_projlocal_fresh_projsrc_offset_zero_simulation`. -/
+def d73_projsrc_offset_into_fresh_proj_zero : IO Unit :=
+  expectDiff ΓD72
+    [.assign (.proj sD72 (.field ⟨0, by decide⟩ .nil)) (.constInit 5),
+     .assign (.proj sD72 (.field ⟨1, by decide⟩ .nil)) (.constInit 6),
+     .assign (.proj tD72 (.field ⟨0, by decide⟩ .nil))
+       (.copy (.proj sD72 (.field ⟨1, by decide⟩ .nil))),
+     .assign zD72 (.copy (.proj tD72 (.field ⟨0, by decide⟩ .nil)))]
+    .ok "d73 proj src at offset into fresh proj dst at zero"
+
+/-- Positive: and with an UNBOUND root at NONZERO destination offset
+    (`t.1 := copy s.1`, `t` fresh) — the root `Alloc`, BRIDGE 1S on the
+    source, then BRIDGE 1 through the fresh root register. Closed
+    2026-08-31 by
+    `copy_projlocal_fresh_projsrc_offset_offset_simulation`; with it
+    `copy_place_residual` is deleted. -/
+def d74_projsrc_offset_into_fresh_proj_offset : IO Unit :=
+  expectDiff ΓD72
+    [.assign (.proj sD72 (.field ⟨0, by decide⟩ .nil)) (.constInit 7),
+     .assign (.proj sD72 (.field ⟨1, by decide⟩ .nil)) (.constInit 8),
+     .assign (.proj tD72 (.field ⟨1, by decide⟩ .nil))
+       (.copy (.proj sD72 (.field ⟨1, by decide⟩ .nil))),
+     .assign zD72 (.copy (.proj tD72 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d74 proj src at offset into fresh proj dst at offset"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1618,7 +1668,10 @@ def allTests : List (IO Unit) := [
   d68_copy_into_fresh_proj_local,
   d69_copy_into_fresh_proj_local_offset,
   d70_projsrc_zero_into_proj_dst,
-  d71_projsrc_zero_into_proj_local]
+  d71_projsrc_zero_into_proj_local,
+  d72_projsrc_offset_into_proj_dst_offset,
+  d73_projsrc_offset_into_fresh_proj_zero,
+  d74_projsrc_offset_into_fresh_proj_offset]
 
 def runAll : IO Unit := do
   allTests.forM id

@@ -99,70 +99,16 @@ Remaining (2): every remaining sorry is blocked on a NAMED obligation.
    lockstep, ρa extends by the IDENTITY over the whole fresh block via
    `AddrRenameMap.extendIdRange`, then the C0/C1 endgames land inside
    it). The axiom whitelist dropped to TWO sorries.
-3. `copy_place_residual` — NARROWED 2026-08-29: for a BOUND LOCAL dst
-   EVERY source shape is closed. The old P0→L/P→L leaves collapsed onto
-   the mother lemma at the chain base as
-   `copy_projchain_zero/offset_simulation` (gate `PtrChain B` for a src
-   `.proj B path`), which subsumes both the bound-local bases and
-   pointer chains (`y := copy (*p).f`); D→L stays
-   `copy_deref_local_simulation`; and the src flatten transfer
-   (`stepStmt_assign_copysrc_anyflatten` +
-   `compileStmt_copy_srcflatten_run/_value` + `flatten_proj_chainish`)
-   normalizes every remaining spelling — proj-of-proj included — into
-   one of them. The nonzero-offset endgame still slides the dst
-   `useMut` between BRIDGE 1S's phases by the overlap guard's
-   disjointness. The L→L leaf was retired too: a bound local source is
-   the base case of the chain grammar, so `copy_chainsrc_local_simulation`
-   owns it. UNBOUND destinations with a chain source are CLOSED by
-   `copy_fresh_chainsrc_simulation` (regime B for copy: the root `Alloc`
-   runs first, the mother lemma is then called at the POST-allocation
-   states under both extended renames, and `AddrRenameMap.extendBlock`
-   keeps a zero-sized destination's base mapped), and the two
-   `copy_fresh_projchain_*` leaves extend that to proj-topped sources —
-   so an unbound destination accepts EVERY source shape. The
-   event-ORDER obstacle that blocked the last class is GONE as of
-   2026-08-30: the copy lowering now materializes the value in a
-   REGISTER during the rhs pre-phase (`Load` then `RStore`), exactly as
-   rustc does, so the read precedes the destination lowering on both
-   machines. That also removed mirlite's overlapping-assignment guard
-   (Rust permits overlap) and is pinned by d59. A DEREF destination with
-   a chain source is then closed by
-   `copy_chaindst_chainsrc_simulation` — the first leaf composing TWO
-   mother-lemma calls, with the READ between them, the temporary
-   surviving the destination lowering by the mother's register-frame
-   conjunct (d60). The deref-dst FLATTEN transfer then generalizes that
-   to every spelling whose flattened source is a chain (two single-split
-   steps, source then destination, composed at the dispatcher; d61).
-   PROJECTED destinations then get their own recursive dispatcher
-   (`copy_projdst_simulation`): nested projections peel with the
-   associativity transfers, and a deref base is closed at BOTH offsets —
-   `copy_projdst_zero_chainsrc_simulation` (d62), where the projection
-   costs a `+ 0` on the resolved address and a `pure` on the compiled
-   side, and `copy_projdst_offset_chainsrc_simulation` (d63), where it
-   wraps the `RStore` in its own `Borrow(Mut)`/`Die` — the BRIDGE 1
-   endgame, with the loaded temporary surviving the `Borrow`'s insert.
-   A proj-topped flattened SOURCE under a deref destination is closed at
-   ZERO offset the same way (`copy_chaindst_projsrc_zero_simulation`,
-   d64) and at NONZERO offset by
-   `copy_chaindst_projsrc_offset_simulation` (d65), where the source
-   projection's `Borrow(Shared)` and its cleanup `Die` bracket the READ
-   — BRIDGE 1S, contiguous, because both retire before the destination
-   lowering starts, so the destination mother simply runs at the
-   post-`Die` states. The DEREF-destination arm is therefore TOTAL.
-   PROJECTED destinations over a LOCAL base close too: for a BOUND root
-   by GENERALIZING the two proj-dst leaves from `.deref P` to any
-   canonical chain base — a bound local is one — which cost a
-   hypothesis (`preparePlaceAssign` is a no-op) rather than a proof
-   (d66/d67); for an UNBOUND root by regime B-proj, allocating the
-   σ-sized root and running the source mother lemma at the
-   post-allocation states under both extended renames (d68/d69).
-   A PROJ-TOPPED source under a projected destination closes at ZERO
-   offset by naming the mother lemma's conclusion (`LoweringSimAny`) and
-   gating the leaves on that PACKAGE rather than on `PtrChain src`; a
-   zero-offset projection over a chain supplies one (d70/d71).
-   Remaining: that source at NONZERO offset, where the projection emits
-   a `Borrow(Shared)` and leaves a `Die`, so it cannot supply a package
-   and the BRIDGE 1S cancellation belongs to the consumer.
+3. `copy_place_residual` — CLOSED 2026-08-31, and DELETED. The copy
+   dispatcher is now TOTAL. The last shapes to fall were a PROJ-TOPPED
+   source under a PROJECTED destination: at ZERO source offset the
+   source supplies a `LoweringSim` PACKAGE (`LoweringSimAny.projZero`)
+   and the existing leaves took it unchanged; at NONZERO source offset
+   it cannot — its lowering emits a `Borrow(Shared)` and leaves a
+   cleanup `Die` — so four leaves carry BRIDGE 1S around the READ,
+   one per (destination offset × bound/fresh root). The two bridges
+   never interleave: the source borrow retires in the rhs pre-phase,
+   before the destination lowering starts. Pinned by d70-d74.
 4. `ref_place_residual` — NARROWED 2026-08-29: P→L, D→L, both field-dst
    regimes (L→P0/L→P — the TWO-MINT leaf, BRIDGE 1 under the extended
    rename), and the DST-FLATTENING RECURSION are CLOSED: nested
