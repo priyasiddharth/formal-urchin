@@ -1835,6 +1835,58 @@ def d83_ref_projsrc_into_bound_projdst : IO Unit :=
      .assign zD82 (.copy s10D82)]
     .ok "d83 ref proj src into bound proj dst"
 
+def selfTupA := obseq.LayoutTy.TupL [natL, ptrNat, natL]
+def selfTupB := obseq.LayoutTy.TupL [ptrNat, natL, natL]
+def ΓD84 : Ctx := [selfTupA, ptrNat, natL]
+def tD84 : Place ΓD84 selfTupA := .local ⟨⟨0, by decide⟩, rfl⟩
+def rD84 : Place ΓD84 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def zD84 : Place ΓD84 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def t0D84 : Place ΓD84 natL := .proj tD84 (.field ⟨0, by decide⟩ .nil)
+def t1D84 : Place ΓD84 ptrNat := .proj tD84 (.field ⟨1, by decide⟩ .nil)
+def t2D84 : Place ΓD84 natL := .proj tD84 (.field ⟨2, by decide⟩ .nil)
+
+/-- Positive: the destination root as its OWN source root —
+    `t.1 := &mut t.0` with `t` never assigned before, at NONZERO
+    destination offset. `preparePlaceAssign` allocates `t` and thereby
+    BINDS the source root, so unlike every other fresh-destination shape
+    this one cannot be discharged by index disjointness — the types
+    allow both paths to leave the same layout. `r := &mut t.2` is taken
+    afterwards on a disjoint field, so `*(t.1) := 9` stays defined;
+    point the reborrow at `t.2` instead and `r` pops it. Closed
+    2026-08-31 by `ref_projoffset_fresh_selfsrc_simulation`. -/
+def d84_ref_self_root_offset : IO Unit :=
+  expectDiff ΓD84
+    [.assign t0D84 (.constInit 3),
+     .assign t2D84 (.constInit 4),
+     .assign t1D84 (.ref .Mut false [] t0D84),
+     .assign rD84 (.ref .Mut false [] t2D84),
+     .assign (.deref t1D84) (.constInit 9),
+     .assign (.deref rD84) (.constInit 8),
+     .assign zD84 (.copy t0D84)]
+    .ok "d84 ref self root at offset"
+
+def ΓD85 : Ctx := [selfTupB, ptrNat, natL]
+def tD85 : Place ΓD85 selfTupB := .local ⟨⟨0, by decide⟩, rfl⟩
+def rD85 : Place ΓD85 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def zD85 : Place ΓD85 natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def t0D85 : Place ΓD85 ptrNat := .proj tD85 (.field ⟨0, by decide⟩ .nil)
+def t1D85 : Place ΓD85 natL := .proj tD85 (.field ⟨1, by decide⟩ .nil)
+def t2D85 : Place ΓD85 natL := .proj tD85 (.field ⟨2, by decide⟩ .nil)
+
+/-- Positive: the same at ZERO destination offset — `t.0 := &mut t.1`,
+    `t` fresh. Closed 2026-08-31 by
+    `ref_projzero_fresh_selfsrc_simulation`. -/
+def d85_ref_self_root_zero : IO Unit :=
+  expectDiff ΓD85
+    [.assign t1D85 (.constInit 3),
+     .assign t2D85 (.constInit 4),
+     .assign t0D85 (.ref .Mut false [] t1D85),
+     .assign rD85 (.ref .Mut false [] t2D85),
+     .assign (.deref t0D85) (.constInit 9),
+     .assign (.deref rD85) (.constInit 8),
+     .assign zD85 (.copy t1D85)]
+    .ok "d85 ref self root at zero"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1931,7 +1983,9 @@ def allTests : List (IO Unit) := [
   d80_ref_projofproj_src,
   d81_ref_projofproj_src_deref_dst,
   d82_ref_projsrc_into_fresh_projdst,
-  d83_ref_projsrc_into_bound_projdst]
+  d83_ref_projsrc_into_bound_projdst,
+  d84_ref_self_root_offset,
+  d85_ref_self_root_zero]
 
 def runAll : IO Unit := do
   allTests.forM id

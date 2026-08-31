@@ -4,12 +4,13 @@ Tags: obseq3, ref, residual, site-map
 
 `obseq3.proof.ref_place_residual` is the ONLY `sorry` left in
 `src/obseq3` (verified 2026-08-31 by `grep -rn sorry src/obseq3` and by
-`scripts/audit_axioms.sh`). EIGHT call sites, in three classes.
+`scripts/audit_axioms.sh`). SIX call sites, in TWO classes.
 
 The count is NOT monotone and is not the metric. It went 12 -> 6 as
 whole classes closed, then 6 -> 8 when the projected-destination source
 recursion split one coarse residual arm into three narrow ones while
-CLOSING `t.g := &kind s.f` and `t.g := &kind (s.f).h`. Read the class
+CLOSING `t.g := &kind s.f` and `t.g := &kind (s.f).h`, then back to 6
+when the same-unbound-root leaves closed two of those. Read the class
 table, not the count.
 
 ## the map
@@ -19,14 +20,12 @@ Enumerated by walking the `cases` arms enclosing each
 
 | class | statement shape | sites |
 |---|---|---|
-| 1 | DEREF-ROOTED src — `&(*p).f` under a local, deref or projected dst, and `*chain := &*chain'` | 4 |
+| 1 | DEREF-ROOTED src — `&(*p).f` under a local, deref or projected dst; `t.g := &*p`; `*chain := &*chain'` | 5 |
 | 2 | PROJECTED dst over a DEREF base — `(*p).g := &_`, any src | 1 |
-| 3 | projected dst and proj src rooted at the SAME UNBOUND local — `t.g := &kind t.f`, `t` fresh, at zero and nonzero dst offset | 2 |
 
 Class 1 needs two mother-lemma applications in one statement (`copy`'s
 two-mother skeleton is the donor); class 2 needs the spine mother lemma
-on the DESTINATION side, which no ref leaf does yet; class 3 needs a leaf
-that reads the source binding off the POST-allocation state.
+on the DESTINATION side, which no ref leaf does yet.
 
 ## [FACT] "non-spine deref sources" is not a class
 
@@ -153,7 +152,20 @@ source root, the borrow reads nothing (only `&mut` of uninitialized
 memory), and the step succeeds.
 
 So this is not a vacuous branch to be discharged — it is a real
-behaviour needing a leaf whose source facts come from the
-post-allocation `LocalBindingSim` rather than from `h_lbs` on the
-pre-state. `copy_projlocal_fresh_zero_simulation`'s `h_lbs1` block is
-the shape to reuse.
+behaviour. CLOSED 2026-08-31 by
+`ref_proj{zero,offset}_fresh_selfsrc_simulation`: the source binding is
+the one `allocateRoot` just made, its register is the root register the
+`Alloc` produced (`getPlaceInfo_setPlaceInfo_self`, not a survival
+argument), and every source fact — address, tag, non-wildcard, block
+domain — comes from the extended renames instead of `h_lbs` on the
+pre-state.
+
+Two mechanical notes from that derivation:
+
+- `h_rtS1` and the non-wildcard fact are needed at `sb_ref_respects_PermSim`,
+  which sits EARLIER than where the distinct-root leaves define them.
+  Hoist `h0`/`h_nwD` above §5.
+- `induction sbase` gives the source base's layout an INACCESSIBLE name,
+  so `σb` from the theorem binders is not the one in scope. Bind it in
+  the case pattern — `| @«local» σ' srcLoc =>` — or the layout-equality
+  step cannot even be stated.

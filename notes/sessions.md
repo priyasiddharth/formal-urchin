@@ -1888,3 +1888,32 @@ or the run composition stops matching.
 then class 1 (four sites needing two mother-lemma applications in one
 statement) and class 2.
 See journal/2026-08-31-ref-source-flattening.md.
+
+## 2026-08-31 (twelfth)
+
+**Goal:** class 3 — the same-unbound-root leaves.
+**Landed:** `compileStmt_ref_proj{zero,offset}_fresh_selfsrc_run/_value`
+and `ref_proj{zero,offset}_fresh_selfsrc_simulation`
+(`t.g := &kind t.f`, `t` fresh), wired into both none/none branches of
+`ref_proj_src_projdst_simulation`; witnesses d84 and d85 with teeth
+checked separately. Residual sites 8 -> 6, classes 3 -> 2.
+**Shape of the work:** the leaves are the distinct-root fresh leaves
+with the source-facts prologue REPLACED rather than substituted — the
+binding is the one `allocateRoot` just made, its register is the root
+register (`getPlaceInfo_setPlaceInfo_self`, no survival argument), and
+address/tag/non-wildcard/block-domain all come from the extended
+renames. All four fragments and both leaves compiled first try.
+**Two traps:** (1) `h_rtS1` and the non-wildcard fact are consumed by
+`sb_ref_respects_PermSim`, which sits earlier than where the
+distinct-root leaves define them — hoist `h0`/`h_nwD` above §5. (2)
+`induction sbase` gives the source base's layout an INACCESSIBLE name,
+so the `σb` from the binders is not in scope; bind it in the case
+pattern (`| @«local» σ' srcLoc =>`) or the layout-equality step cannot
+be stated at all. `trace_state` showed this in one build.
+**Status:** green; 17/17 + 98/98; audit exact at ONE sorry.
+**Next-session pickup:** the last two classes — a deref-rooted SOURCE
+under a non-plain-local destination (5 sites, two mother-lemma
+applications in one statement; copy's two-mother skeleton is the donor)
+and a projected dst over a DEREF base (1 site, needs the spine mother
+lemma on the DESTINATION side).
+See durable/ref-residual-site-map.md.
