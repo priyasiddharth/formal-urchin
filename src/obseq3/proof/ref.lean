@@ -4450,6 +4450,41 @@ theorem compileStmt_ref_srcproj_assoc_deref_value
     (placeToBorrowRegChecked_projassoc_agree kind prot mask b q f _).1
     (placeToBorrowRegChecked_projassoc_agree kind prot mask b q f _).2
 
+/-- The NIL-projection eta for a DEREF destination. -/
+theorem compileStmt_ref_srcnil_deref_run
+    {Γ : Ctx} {τ : LayoutTy}
+    {D : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (P : Place Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked
+          (Stmt.assign (.deref D) (.ref kind prot mask (.deref P)))) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.deref D)
+              (.ref kind prot mask (.proj (.deref P) PathTo.nil)))) cs :=
+  compileStmt_ref_src_congr_deref_run (P := D) kind prot mask _ _ cs
+    (placeToBorrowRegChecked_nil_agree kind prot mask P _).1.symm
+    (placeToBorrowRegChecked_nil_agree kind prot mask P _).2.symm
+
+theorem compileStmt_ref_srcnil_deref_value
+    {Γ : Ctx} {τ : LayoutTy}
+    {D : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (P : Place Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState) :
+    ∀ so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.deref D)
+            (.ref kind prot mask (.proj (.deref P) PathTo.nil)))) cs
+      = Except.ok so →
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.deref D) (.ref kind prot mask (.deref P)))) cs
+      = Except.ok so' :=
+  compileStmt_ref_src_congr_deref_value (P := D) kind prot mask _ _ cs
+    (placeToBorrowRegChecked_nil_agree kind prot mask P _).1.symm
+    (placeToBorrowRegChecked_nil_agree kind prot mask P _).2.symm
+
 /-- The same congruence for a PROJECTED destination, general in the
     base so both the local-base and deref-base spellings are covered. -/
 theorem compileStmt_ref_src_congr_proj_run
@@ -4586,6 +4621,43 @@ theorem compileStmt_ref_srcflatten_proj_value
   compileStmt_ref_src_congr_proj_value (dbase := dbase) (g := g) kind prot mask _ _ cs
     (placeToBorrowRegChecked_flatten_agree kind prot mask src _).1.symm
     (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
+
+/-- The NIL-projection eta for a PROJECTED destination: `&kind *P` and
+    `&kind (*P).nil` compile to the same code, so a plain deref source
+    can be handed to the `.proj (.deref _) _` leaves. -/
+theorem compileStmt_ref_srcnil_proj_run
+    {Γ : Ctx} {τ σ : LayoutTy}
+    {dbase : Place Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (P : Place Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (compileStmtChecked
+          (Stmt.assign (.proj dbase g) (.ref kind prot mask (.deref P)))) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked
+            (Stmt.assign (.proj dbase g)
+              (.ref kind prot mask (.proj (.deref P) PathTo.nil)))) cs :=
+  compileStmt_ref_src_congr_proj_run (dbase := dbase) (g := g) kind prot mask _ _ cs
+    (placeToBorrowRegChecked_nil_agree kind prot mask P _).1.symm
+    (placeToBorrowRegChecked_nil_agree kind prot mask P _).2.symm
+
+theorem compileStmt_ref_srcnil_proj_value
+    {Γ : Ctx} {τ σ : LayoutTy}
+    {dbase : Place Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (P : Place Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState) :
+    ∀ so, CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj dbase g)
+            (.ref kind prot mask (.proj (.deref P) PathTo.nil)))) cs
+      = Except.ok so →
+    ∃ so', CheckedCompilerM.value
+        (compileStmtChecked
+          (Stmt.assign (.proj dbase g) (.ref kind prot mask (.deref P)))) cs
+      = Except.ok so' :=
+  compileStmt_ref_src_congr_proj_value (dbase := dbase) (g := g) kind prot mask _ _ cs
+    (placeToBorrowRegChecked_nil_agree kind prot mask P _).1.symm
+    (placeToBorrowRegChecked_nil_agree kind prot mask P _).2.symm
 
 theorem compileStmt_ref_srcproj_assoc_proj_run
     {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
@@ -13024,32 +13096,35 @@ theorem ref_projoffset_fresh_derefsrc_simulation
 
 
 
-/-- RESIDUAL (sorried). The only `sorry` left in obseq3; FOUR call
-    sites, in two classes.
+/-- RESIDUAL (sorried). The only `sorry` left in obseq3; TWO call
+    sites, one per class.
 
-    1. a DEREF-ROOTED SOURCE under a DEREF destination (2 sites):
-       `*chain := &kind *chain'` and `*chain := &kind (*p).f`. These are
-       the only shapes needing TWO mother-lemma applications in one
-       statement — the source spine and the destination spine. `copy`'s
-       two-mother skeleton is the donor.
+    1. `*chain := &kind (*p).f` — a DEREF-ROOTED SOURCE under a DEREF
+       destination. The one shape needing TWO mother-lemma applications
+       in one statement, the source spine and the destination spine;
+       `copy`'s two-mother skeleton is the donor. The plain-deref
+       spelling `*chain := &kind *chain'` MERGES into this site through
+       the nil-projection eta (`stepStmt_assign_refsrc_nil`,
+       `placeToBorrowRegChecked_nil_agree`): the two spellings emit
+       identical code, so closing this leaf closes both.
        A deref-rooted source under a LOCAL or PROJECTED destination is
        CLOSED: a projected destination over a local base has no spine,
        so only the source's mother lemma is needed
        (`ref_proj{zero,offset}_derefsrc_simulation` and their fresh
        twins, all four quadrants of destination offset x root state).
-    2. a PROJECTED DST over a DEREF base — `(*p).g := &kind _`, any src
-       (1 site), plus the plain deref src under a projected dst
-       (`t.g := &kind *p`, 1 site) which spells its source `.deref P`
-       rather than `.proj (.deref P) f` and so needs its own statement
-       even though the emitted code is identical.
+
+    2. `(*p).g := &kind _` — a PROJECTED DST over a DEREF base, any
+       source. The destination is itself a chain (`derefProj`), so this
+       is the destination-spine mirror of class 1.
 
     Note: "non-spine deref srcs" is NOT a class — `PtrChain_flatten_deref`
     holds for ANY place, so every deref src is a spine once flattened.
 
     CLOSED and no longer residual: all four flattening recursions; all
     proj-topped srcs; a source rooted at the destination's OWN unbound
-    local; deref-rooted srcs under local and projected destinations; and
-    ALL FOUR unbound destination roots. -/
+    local; deref-rooted srcs under local and projected destinations
+    (both the projected and the plain spelling); and ALL FOUR unbound
+    destination roots. -/
 theorem ref_place_residual
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -13759,8 +13834,21 @@ theorem ref_proj_dst_simulation
           -- the destination root: the source-flattening recursion
           exact ref_proj_src_projdst_simulation kind prot mask compProg h_comp h_inv
             h_stmt h_run0 h_val0 h_step
-      | deref _ =>
-          exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
+      | deref pp =>
+          -- CLOSED: `dst.g := &kind *P`. The nil-projection eta puts the
+          -- plain deref spelling into the `.proj (.deref _) _` grammar
+          -- the source-flattening recursion already covers.
+          exact ref_proj_src_projdst_simulation (sbase := Place.deref pp) (f := PathTo.nil)
+            kind prot mask compProg h_comp h_inv h_stmt
+            (fun cs => (h_run0 cs).trans
+              (compileStmt_ref_srcnil_proj_run (dbase := Place.local dstLoc) (g := g)
+                kind prot mask pp cs))
+            (fun cs so h => by
+              obtain ⟨so', h'⟩ :=
+                compileStmt_ref_srcnil_proj_value (dbase := Place.local dstLoc) (g := g)
+                  kind prot mask pp cs so h
+              exact h_val0 cs so' h')
+            (by rw [← stepStmt_assign_refsrc_nil]; exact h_step)
   | proj b q ih =>
       refine ih
         (fun cs => (h_run0 cs).trans
@@ -14102,7 +14190,15 @@ theorem CompilerInv_step_ref
           -- source-flattening recursion, under a deref destination
           exact ref_proj_src_deref_simulation kind prot mask compProg h_comp h_inv
             h_stmt (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
-      | deref _ =>
-          exact ref_place_residual kind prot mask compProg h_comp h_inv h_stmt h_step
+      | deref pp =>
+          -- The nil-projection eta MERGES this site with the projected
+          -- deref source under a deref destination: `*chain := &kind *P`
+          -- compiles exactly as `*chain := &kind (*P).nil`.
+          exact ref_proj_src_deref_simulation (sbase := Place.deref pp) (f := PathTo.nil)
+            kind prot mask compProg h_comp h_inv h_stmt
+            (fun cs => compileStmt_ref_srcnil_deref_run (D := P) kind prot mask pp cs)
+            (fun cs so h =>
+              compileStmt_ref_srcnil_deref_value (D := P) kind prot mask pp cs so h)
+            (by rw [← stepStmt_assign_refsrc_nil]; exact h_step)
 
 end obseq3.proof

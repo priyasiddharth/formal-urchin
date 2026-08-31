@@ -2101,3 +2101,26 @@ at the hardest quadrant (fresh root, nonzero offset), teeth confirmed.
 **Next-session pickup:** class 2's `t.g := &kind *p` (a spelling
 artefact — identical code, different term), then the two-mother sites.
 See durable/ref-residual-site-map.md.
+
+## 2026-08-31 (nineteenth)
+
+**Goal:** the cheapest remaining site, `t.g := &kind *p`.
+**Found:** it is a spelling artefact, and `flattenPlace` cannot fix it —
+flattening never introduces an empty projection. Built the NIL
+PROJECTION ETA instead: `resolvePlaceAcc_nil`,
+`stepStmt_assign_refsrc_nil`, `placeToBorrowRegChecked_nil_agree`, and
+the two congruence instantiations (projected and deref destinations).
+The compiled halves coincide because `placeToRegChecked`'s deref arm
+returns an empty cleanup, so the projection arm's `[] ++ [tmp]` is
+`[tmp]` and both emit the same instructions from the same counter.
+**Paid twice:** under a PROJECTED destination the eta CLOSES
+`t.g := &kind *p` (into today's four quadrants); under a DEREF
+destination it MERGES `*chain := &kind *chain'` into
+`*chain := &kind (*p).f`. Sites 4 -> 2.
+**Status:** green; 17/17 + 101/101; audit exact at ONE sorry.
+Witness d88, teeth confirmed (ub at statement 7 when the source is
+retargeted to `(*p).0`).
+**Next-session pickup:** both remaining sites are two-mother shapes —
+class 1 a source spine under a destination spine, class 2 a destination
+that is itself a `derefProj` chain. `copy`'s two-mother skeleton is the
+donor for both.

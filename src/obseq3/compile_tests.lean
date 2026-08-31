@@ -1954,6 +1954,40 @@ def d87_ref_chainsrc_into_fresh_projdst : IO Unit :=
      .assign zD87 (.copy (.proj sD87 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d87 ref chain src into fresh proj dst at offset"
 
+def ΓD88 : Ctx := [ptrPairD77L, obseq.LayoutTy.PtrL pairD52L, pairD52L, ptrNat, ptrNat, natL]
+def tD88 : Place ΓD88 ptrPairD77L := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD88 : Place ΓD88 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def sD88 : Place ΓD88 pairD52L := .local ⟨⟨2, by decide⟩, rfl⟩
+def qD88 : Place ΓD88 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+def rD88 : Place ΓD88 ptrNat := .local ⟨⟨4, by decide⟩, rfl⟩
+def zD88 : Place ΓD88 natL := .local ⟨⟨5, by decide⟩, rfl⟩
+def dp0D88 : Place ΓD88 natL := .proj (.deref pD88) (.field ⟨0, by decide⟩ .nil)
+def dp1D88 : Place ΓD88 natL := .proj (.deref pD88) (.field ⟨1, by decide⟩ .nil)
+def t1D88 : Place ΓD88 ptrNat := .proj tD88 (.field ⟨1, by decide⟩ .nil)
+
+/-- Positive: a PLAIN DEREF source under a PROJECTED destination —
+    `t.1 := &mut *q`, with `t`'s root UNBOUND and the destination field
+    at NONZERO offset. `&mut *q` and `&mut (*q).nil` emit identical
+    code but are different terms, so this spelling needed the
+    nil-projection eta to reach the chain-source leaves. `r := &mut
+    (*p).0` stays live across the statement on a disjoint field;
+    retargeting the source to `(*p).0` makes it pop `r`, and `*r := 9`
+    is then ub. Closed 2026-08-31 by `stepStmt_assign_refsrc_nil` +
+    `placeToBorrowRegChecked_nil_agree` through
+    `ref_proj_src_projdst_simulation`. -/
+def d88_ref_plain_deref_src_into_projdst : IO Unit :=
+  expectDiff ΓD88
+    [.assign (.proj sD88 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj sD88 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign pD88 (.ref .Mut false [] sD88),
+     .assign qD88 (.ref .Mut false [] dp1D88),
+     .assign rD88 (.ref .Mut false [] dp0D88),
+     .assign t1D88 (.ref .Mut false [] (.deref qD88)),
+     .assign (.deref t1D88) (.constInit 8),
+     .assign (.deref rD88) (.constInit 9),
+     .assign zD88 (.copy (.proj sD88 (.field ⟨1, by decide⟩ .nil)))]
+    .ok "d88 ref plain deref src into proj dst at offset"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2054,7 +2088,8 @@ def allTests : List (IO Unit) := [
   d84_ref_self_root_offset,
   d85_ref_self_root_zero,
   d86_ref_derefprojsrc_into_local,
-  d87_ref_chainsrc_into_fresh_projdst]
+  d87_ref_chainsrc_into_fresh_projdst,
+  d88_ref_plain_deref_src_into_projdst]
 
 def runAll : IO Unit := do
   allTests.forM id

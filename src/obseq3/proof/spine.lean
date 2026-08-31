@@ -1760,6 +1760,65 @@ theorem stepStmt_assign_refsrc_anyflatten
   show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
   simp only [mirlite.doAssign, mirlite.evalRExpr, h1]
 
+/-! ## The NIL-projection eta: `*P` and `(*P).nil` are the same place
+
+    `flattenPlace` never introduces an empty projection, so it cannot
+    relate the two spellings — but they resolve identically (a path
+    offset of zero) and lower to literally the same instructions, since
+    `placeToRegChecked`'s deref arm leaves an empty cleanup and the
+    projection arm's `[] ++ [tmp]` is `[tmp]`. Retagging a deref source
+    is therefore expressible in the `.proj (.deref _) _` grammar the
+    projected-destination leaves already cover. -/
+
+theorem resolvePlaceAcc_nil
+    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    (s : mirlite.State M Γ) (p : Place Γ τ) :
+    mirlite.resolvePlaceAcc M s (Place.proj p PathTo.nil)
+      = mirlite.resolvePlaceAcc M s p := by
+  cases h : mirlite.resolvePlaceAcc M s p with
+  | error e => simp only [mirlite.resolvePlaceAcc, h]
+  | ok r => simp only [mirlite.resolvePlaceAcc, h, PathTo.offset, Nat.add_zero]
+
+theorem stepStmt_assign_refsrc_nil
+    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    (s : mirlite.State M Γ) (dst : Place Γ (obseq.LayoutTy.PtrL τ))
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (src : Place Γ τ) :
+    mirlite.stepStmt M s (.assign dst (.ref kind prot mask src))
+      = mirlite.stepStmt M s
+          (.assign dst (.ref kind prot mask (Place.proj src PathTo.nil))) := by
+  have h1 : ∀ st : mirlite.State M Γ,
+      mirlite.resolvePlaceAcc M st (Place.proj src PathTo.nil)
+        = mirlite.resolvePlaceAcc M st src :=
+    fun st => resolvePlaceAcc_nil st src
+  show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
+  simp only [mirlite.doAssign, mirlite.evalRExpr, h1]
+
+/-- The compiled side of the nil-projection eta, for a DEREF base: both
+    spellings emit the pointer lowering, the `Load`, its cleanup, and one
+    `Borrow` at offset zero, in that order, from the same register
+    counter. -/
+theorem placeToBorrowRegChecked_nil_agree {Γ : Ctx} {τ : LayoutTy}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (P : Place Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState) :
+    CheckedCompilerM.run
+        (placeToBorrowRegChecked kind prot mask
+          (Place.proj (Place.deref P) PathTo.nil)) cs
+      = CheckedCompilerM.run
+          (placeToBorrowRegChecked kind prot mask (Place.deref P)) cs ∧
+    (CheckedCompilerM.value
+        (placeToBorrowRegChecked kind prot mask
+          (Place.proj (Place.deref P) PathTo.nil)) cs).map (fun o => o.result)
+      = (CheckedCompilerM.value
+          (placeToBorrowRegChecked kind prot mask (Place.deref P)) cs).map
+        (fun o => o.result) := by
+  refine ⟨?_, ?_⟩ <;>
+    cases h : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P) cs <;>
+    simp [placeToBorrowRegChecked, placeToRegChecked, PathTo.offset, h, Except.map,
+      CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+      CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+      CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
+
 /-! ## Source lowerings as a PACKAGE
 
     Every copy leaf lowers its source by calling `ptrChain_lowering_sim`

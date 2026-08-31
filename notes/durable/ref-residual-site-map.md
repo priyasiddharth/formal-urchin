@@ -4,7 +4,7 @@ Tags: obseq3, ref, residual, site-map
 
 `obseq3.proof.ref_place_residual` is the ONLY `sorry` left in
 `src/obseq3` (verified 2026-08-31 by `grep -rn sorry src/obseq3` and by
-`scripts/audit_axioms.sh`). FOUR call sites, in TWO classes.
+`scripts/audit_axioms.sh`). TWO call sites, one per class.
 
 The count is NOT monotone and is not the metric. It went 12 -> 6 as
 whole classes closed, then 6 -> 8 when the projected-destination source
@@ -20,12 +20,24 @@ Enumerated by walking the `cases` arms enclosing each
 
 | class | statement shape | sites |
 |---|---|---|
-| 1 | DEREF-ROOTED src under a DEREF destination — `*chain := &*chain'`, `*chain := &(*p).f` | 2 |
-| 2 | PROJECTED dst over a DEREF base — `(*p).g := &_`; and the plain deref src under a projected dst, `t.g := &*p` | 2 |
+| 1 | DEREF-ROOTED src under a DEREF destination — `*chain := &(*p).f`, which by the nil eta also covers `*chain := &*chain'` | 1 |
+| 2 | PROJECTED dst over a DEREF base — `(*p).g := &_`, any src | 1 |
 
-Class 1 is now exactly the shapes needing TWO mother lemmas. Class 2's
-second site is a spelling artefact: `&kind *p` and `&kind (*p).nil`
-emit identical code but are different terms.
+Both are two-mother shapes: class 1 has a source spine under a
+destination spine, class 2 has a destination that is itself a chain
+(`derefProj`). `copy`'s two-mother skeleton is the donor for both.
+
+## [FACT] the nil-projection eta relates `*P` and `(*P).nil`
+
+`flattenPlace` never introduces an empty projection, so it cannot
+relate the two spellings — but `resolvePlaceAcc` adds `PathTo.offset
+.nil = 0`, and the two compiled lowerings emit the same instructions
+from the same register counter (`placeToRegChecked`'s deref arm returns
+`cleanup := []`, so the projection arm's `[] ++ [tmp]` is `[tmp]`).
+`stepStmt_assign_refsrc_nil` + `placeToBorrowRegChecked_nil_agree`.
+Under a projected destination it CLOSES the plain-deref-source site;
+under a deref destination it MERGES that site into the projected one.
+See journal/2026-08-31-ref-nil-projection-eta.md.
 
 Class 1 needs TWO mother-lemma applications in one statement (`copy`'s
 two-mother skeleton is the donor); class 2 needs the spine mother lemma
