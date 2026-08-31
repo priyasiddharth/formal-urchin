@@ -160,8 +160,13 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    offsets, so a proj-of-proj source under a local destination fuses
    into the closed proj-over-local leaves (d80), and to SIX by the
    deref-destination instance of the same recursion
-   (`ref_proj_src_deref_simulation`, d81). See `ref_place_residual`'s
-   docstring for the current site map.
+   (`ref_proj_src_deref_simulation`, d81). The PROJECTED-destination
+   instance followed (`ref_proj_src_projdst_simulation`, d82/d83), on
+   four new `*_projsrc_*` leaves — `dst.g := &kind s.f` at zero and
+   nonzero destination offset, bound and fresh root. That took the site
+   count 6 -> 8 while GROWING coverage: one coarse residual arm split
+   into three narrow ones. Sites are not the metric; classes are. See
+   `ref_place_residual`'s docstring for the current site map.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

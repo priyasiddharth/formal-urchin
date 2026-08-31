@@ -94,3 +94,38 @@ closes it; with a deref destination `placeToRegChecked Mut (.deref P)`
 can still fail, so its success has to be read off the hypothesis first.
 
 Residual sites 7 -> 6; classes 4 -> 3. Pinned by d81.
+
+## [FACT] the projected-destination instance, and what it cost
+
+Unlike the deref instance, this one was NOT just a congruence plus a
+skeleton: its base case `t.g := &kind s.f` was not a closed leaf. Four
+new leaves were needed first — `ref_projzero_projsrc_simulation`,
+`ref_projoffset_projsrc_simulation` and their fresh-root twins — each
+the corresponding local-source leaf with `pathOffset f` in place of `0`
+and the stored pointer covering the source base's whole block. Four
+fragment pairs likewise, built by splicing the proj arm's `h_borrow_eq`
+into the local-source fragments.
+
+Two substitution slips worth remembering:
+
+1. Omitting `Rhs.Borrow ... srcReg 0` inside the CODE FACTS (while
+   fixing it in the `runN` call) surfaces as goals `pathOffset f = 0` —
+   unification trying to equate the fragment's offset operand with the
+   stale one in the code fact. The error points at a `simpa`, not at
+   the code fact.
+2. `simp only [Nat.zero_add] at h_run3` normalises the DESTINATION
+   borrow's `0 + pathOffset g` — and also the SOURCE borrow's
+   `0 + pathOffset f` sitting in the same state. The run composition
+   then stops matching unless `h_run2` is normalised too. Normalise
+   both, and spell the source pointer `Val.Ptr bS.addr (pathOffset f)`
+   throughout.
+
+## [FACT] the shape index disjointness cannot reach
+
+`t.g := &kind t.f` with `t` fresh. Both roots unbound and the SAME
+local; `g : PathTo σ (PtrL τ)` and `f : PathTo σ τ` can leave the same
+layout, so unlike every earlier fresh shape there is no type argument —
+and none is possible, because the statement is well-typed and the step
+really succeeds: the allocation binds the root and `&mut` reads
+nothing. Routed to the residual (2 sites, one per destination offset)
+with the reason recorded, not silently.

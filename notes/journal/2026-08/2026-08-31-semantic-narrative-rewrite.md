@@ -1,5 +1,11 @@
 # Syntax–semantics–example paper rewrite
 
+[SUPERSEDED → `2026-08-31-mirlite-proofread.md`] The overall narrative remains,
+but the MIRLite section was subsequently corrected and expanded with defined
+layout metavariables, complete retag kinds and parameters, typed syntax, exact
+state threading, and a full source derivation. This entry records the first
+narrative draft.
+
 [DECISION] Replaced the rule-catalog presentation of
 `mirlite-oseair-correctness.typ` with a semantic narrative. Every major part
 now introduces the notation it consumes, states an operational or translation

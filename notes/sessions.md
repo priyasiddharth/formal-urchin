@@ -1833,3 +1833,58 @@ sites needing two mother-lemma applications in one statement — copy's
 two-mother skeleton is the donor) and class 2 (a projected dst over a
 deref base, which needs the spine mother lemma on the DESTINATION side).
 See journal/2026-08-31-ref-source-flattening.md.
+
+## 2026-08-31 (MIRLite proofreading)
+
+**Session:** terminal — MIRLite notation and semantic correction
+**Theme:** replaced undefined and inaccurate shorthand with a typed,
+self-contained presentation of layouts, places, retag kinds, state, assignment
+semantics, and the complete `x.1.0 := 42` source derivation.
+**Key outputs:** corrected `mirlite-oseair-correctness.typ`, rebuilt PDF, and
+`journal/2026-08/2026-08-31-mirlite-proofread.md`.
+**Critical corrections:** `τ`/`σ` now range explicitly over recursively sized
+layouts; `k` includes raw-const, raw-mut, and two-phase as well as shared and
+mutable; `ref(k,c,m,p)` carries its protector flag and `UnsafeCell` mask
+through source, target, and compiler notation; assignment threads whole states
+rather than reconstructing one from loose primed components.
+**Status:** complete — clean ten-page Typst build; all pages visually inspected
+at 110 PPI; no split tables or overflow; whole-program axiom audit exact at one
+admitted reference-assignment root. Appended after the latest proof session to
+preserve strict oldest-first order.
+
+## 2026-08-31 (eleventh)
+
+**Goal:** the projected-destination instance of the source-flattening
+recursion.
+**Correction first:** I had said this instance would close class 1 on
+its own. It does not — its base case `t.g := &s.f` was NOT closed, so
+the instance needed four new leaves first
+(`ref_proj{zero,offset}_projsrc_simulation` and their fresh twins),
+each the local-source leaf with `pathOffset f` for `0`. Four fragment
+pairs, four leaves; all compiled with only argument-pinning fixes.
+**Landed:** those, plus `compileStmt_ref_src_congr_proj_run/_value`
+(the congruence, general in the destination base), the reassoc
+instantiations, and `ref_proj_src_projdst_simulation`. Witnesses d82
+(fresh root) and d83 (bound root), teeth checked separately.
+**Count went UP, coverage went up:** residual sites 6 -> 8, because one
+coarse `| proj _ _ =>` arm split into three narrow ones while
+`t.g := &kind s.f` and `t.g := &kind (s.f).h` became closed. Sites were
+never the metric.
+**Key finding:** there is exactly one shape index disjointness cannot
+reach — a projected dst and a proj src rooted at the SAME UNBOUND local
+(`t.g := &kind t.f`, `t` fresh). `g : PathTo σ (PtrL τ)` and
+`f : PathTo σ τ` can leave the same layout, so no type argument exists;
+the allocation BINDS the source root and the step really succeeds. It
+needs a leaf reading the source binding off the post-allocation state
+(copy's `h_lbs1` block is the shape).
+**Also:** a substitution I omitted (`Rhs.Borrow ... srcReg 0` inside the
+code facts) surfaced as `pathOffset f = 0` goals — unification trying to
+equate the fragment's offset with the code fact's. And normalising the
+destination borrow with `Nat.zero_add` also normalises the SOURCE
+borrow's register content, so both run steps must be normalised together
+or the run composition stops matching.
+**Status:** green; 17/17 + 96/96; audit exact at ONE sorry.
+**Next-session pickup:** class 3 (the same-unbound-root leaf, 2 sites),
+then class 1 (four sites needing two mother-lemma applications in one
+statement) and class 2.
+See journal/2026-08-31-ref-source-flattening.md.

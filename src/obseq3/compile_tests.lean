@@ -1789,6 +1789,52 @@ def d81_ref_projofproj_src_deref_dst : IO Unit :=
      .assign zD81 (.copy s10D81)]
     .ok "d81 ref proj-of-proj src into deref dst"
 
+def ΓD82 : Ctx := [outerD80, ptrPairD77L, ptrNat, natL, natL]
+def sD82 : Place ΓD82 outerD80 := .local ⟨⟨0, by decide⟩, rfl⟩
+def tD82 : Place ΓD82 ptrPairD77L := .local ⟨⟨1, by decide⟩, rfl⟩
+def rD82 : Place ΓD82 ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def xD82 : Place ΓD82 natL := .local ⟨⟨3, by decide⟩, rfl⟩
+def zD82 : Place ΓD82 natL := .local ⟨⟨4, by decide⟩, rfl⟩
+def s0D82 : Place ΓD82 innerD80 := .proj sD82 (.field ⟨0, by decide⟩ .nil)
+def s1D82 : Place ΓD82 innerD80 := .proj sD82 (.field ⟨1, by decide⟩ .nil)
+def s00D82 : Place ΓD82 natL := .proj s0D82 (.field ⟨0, by decide⟩ .nil)
+def s10D82 : Place ΓD82 natL := .proj s1D82 (.field ⟨0, by decide⟩ .nil)
+def t0D82 : Place ΓD82 ptrNat := .proj tD82 (.field ⟨0, by decide⟩ .nil)
+def t1D82 : Place ΓD82 ptrNat := .proj tD82 (.field ⟨1, by decide⟩ .nil)
+
+/-- Positive: a PROJ-OF-PROJ source under a PROJECTED destination whose
+    root is UNBOUND — `t.1 := &mut s.1.0` with `t` never assigned.
+    Exercises the fresh σ-sized root `Alloc`, BRIDGE 1 for the nonzero
+    destination offset, and the source-flattening recursion, all in one
+    statement. Closed 2026-08-31 by `ref_proj_src_projdst_simulation`
+    into `ref_projoffset_fresh_projsrc_simulation`. -/
+def d82_ref_projsrc_into_fresh_projdst : IO Unit :=
+  expectDiff ΓD82
+    [.assign s00D82 (.constInit 1),
+     .assign s10D82 (.constInit 3),
+     .assign rD82 (.ref .Mut false [] s00D82),
+     .assign t1D82 (.ref .Mut false [] s10D82),
+     .assign (.deref rD82) (.constInit 9),
+     .assign (.deref t1D82) (.constInit 8),
+     .assign zD82 (.copy s10D82)]
+    .ok "d82 ref proj src into fresh proj dst"
+
+/-- Positive: the same with the destination root already BOUND —
+    `t.0 := &mut x` first, so `t.1 := &mut s.1.0` takes the bound
+    projected-destination leaf (`ref_projoffset_projsrc_simulation`). -/
+def d83_ref_projsrc_into_bound_projdst : IO Unit :=
+  expectDiff ΓD82
+    [.assign s00D82 (.constInit 1),
+     .assign s10D82 (.constInit 3),
+     .assign xD82 (.constInit 0),
+     .assign t0D82 (.ref .Mut false [] xD82),
+     .assign rD82 (.ref .Mut false [] s00D82),
+     .assign t1D82 (.ref .Mut false [] s10D82),
+     .assign (.deref rD82) (.constInit 9),
+     .assign (.deref t1D82) (.constInit 8),
+     .assign zD82 (.copy s10D82)]
+    .ok "d83 ref proj src into bound proj dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1883,7 +1929,9 @@ def allTests : List (IO Unit) := [
   d78_ref_into_fresh_proj_offset,
   d79_ref_derefsrc_into_fresh_dst,
   d80_ref_projofproj_src,
-  d81_ref_projofproj_src_deref_dst]
+  d81_ref_projofproj_src_deref_dst,
+  d82_ref_projsrc_into_fresh_projdst,
+  d83_ref_projsrc_into_bound_projdst]
 
 def runAll : IO Unit := do
   allTests.forM id

@@ -4,8 +4,13 @@ Tags: obseq3, ref, residual, site-map
 
 `obseq3.proof.ref_place_residual` is the ONLY `sorry` left in
 `src/obseq3` (verified 2026-08-31 by `grep -rn sorry src/obseq3` and by
-`scripts/audit_axioms.sh`). SIX call sites, in three classes — was
-eight before the two source-flattening recursions.
+`scripts/audit_axioms.sh`). EIGHT call sites, in three classes.
+
+The count is NOT monotone and is not the metric. It went 12 -> 6 as
+whole classes closed, then 6 -> 8 when the projected-destination source
+recursion split one coarse residual arm into three narrow ones while
+CLOSING `t.g := &kind s.f` and `t.g := &kind (s.f).h`. Read the class
+table, not the count.
 
 ## the map
 
@@ -14,14 +19,14 @@ Enumerated by walking the `cases` arms enclosing each
 
 | class | statement shape | sites |
 |---|---|---|
-| 1 | non-local src under a PROJECTED dst over a local base — `t.g := &s.f`, `t.g := &*p` | 2 |
+| 1 | DEREF-ROOTED src — `&(*p).f` under a local, deref or projected dst, and `*chain := &*chain'` | 4 |
 | 2 | PROJECTED dst over a DEREF base — `(*p).g := &_`, any src | 1 |
-| 3 | DEREF-ROOTED src — `&(*p).f` under a local dst and under a deref dst, and `*chain := &*chain'` | 3 |
+| 3 | projected dst and proj src rooted at the SAME UNBOUND local — `t.g := &kind t.f`, `t` fresh, at zero and nonzero dst offset | 2 |
 
-Class 1 is what a PROJECTED-DESTINATION instance of the source-flattening
-recursion would close; class 3 needs two mother-lemma applications in one
-statement (`copy`'s two-mother skeleton is the donor); class 2 needs the
-spine mother lemma on the DESTINATION side, which no ref leaf does yet.
+Class 1 needs two mother-lemma applications in one statement (`copy`'s
+two-mother skeleton is the donor); class 2 needs the spine mother lemma
+on the DESTINATION side, which no ref leaf does yet; class 3 needs a leaf
+that reads the source binding off the POST-allocation state.
 
 ## [FACT] "non-spine deref sources" is not a class
 
@@ -130,3 +135,25 @@ destination, once the borrow lowering succeeds the rest of the
 compilation cannot fail; with a deref destination the destination's own
 `placeToRegChecked` can still fail, so its success has to be extracted
 from the hypothesis before concluding.
+
+## [FACT] the one shape index disjointness does not reach (2026-08-31)
+
+Every fresh-destination leaf so far discharged the "both roots unbound"
+branch by showing the two locals cannot share an index:
+
+- `ref_dst_src_idx_ne` — types: `τ ≠ PtrL τ`;
+- `ref_proj_dst_src_idx_ne` — `cases f` on an impossible `PathTo`;
+- `ref_dst_src_idx_ne_of_proj` — `PathTo.sizeOf_le`.
+
+For a PROJECTED destination with a PROJECTED source there is no such
+argument, and none is possible: `g : PathTo σ (PtrL τ)` and
+`f : PathTo σ τ` can both leave the same layout, so `t.g := &kind t.f`
+with `t` fresh is well-typed and REACHABLE. The allocation binds the
+source root, the borrow reads nothing (only `&mut` of uninitialized
+memory), and the step succeeds.
+
+So this is not a vacuous branch to be discharged — it is a real
+behaviour needing a leaf whose source facts come from the
+post-allocation `LocalBindingSim` rather than from `h_lbs` on the
+pre-state. `copy_projlocal_fresh_zero_simulation`'s `h_lbs1` block is
+the shape to reuse.
