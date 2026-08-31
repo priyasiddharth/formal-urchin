@@ -509,6 +509,186 @@ theorem compileStmt_ref_deref_run
       simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
         cleanupInstrs, emit_nil]
 
+/-- The fragment of `dst := &kind *chain` when `dst` is an UNMAPPED
+    local: the σ-sized `Alloc` for the fresh root comes FIRST, so the
+    source spine lowers from the post-`Alloc` compiler state and the
+    `RStore` goes through the root register. -/
+theorem compileStmt_ref_fresh_derefsrc_run
+    {Γ : Ctx} {τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {cs : CompilerState}
+    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared (.deref P))}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (h_dst : getPlaceInfo cs dstLoc.idx.1 = none)
+    (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared (.deref P))
+        (setPlaceInfo
+        (emit { cs with nextReg := cs.nextReg + 1 }
+          [Instr.Assgn (Register.R cs.nextReg)
+            (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
+        dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ))
+      = Except.ok dOut) :
+    CheckedCompilerM.run
+        (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.ref kind prot mask (.deref P)))) cs
+      = emit (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (Place.deref P))
+          (setPlaceInfo
+                (emit { cs with nextReg := cs.nextReg + 1 }
+                  [Instr.Assgn (Register.R cs.nextReg)
+                    (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
+                dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ))) with
+            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (Place.deref P))
+          (setPlaceInfo
+                (emit { cs with nextReg := cs.nextReg + 1 }
+                  [Instr.Assgn (Register.R cs.nextReg)
+                    (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
+                dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ))).nextReg + 1 }
+          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (Place.deref P))
+          (setPlaceInfo
+                (emit { cs with nextReg := cs.nextReg + 1 }
+                  [Instr.Assgn (Register.R cs.nextReg)
+                    (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
+                dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ))).nextReg)
+            (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg 0)])
+          [Instr.RStore obseq.TyVal.PTy
+            (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (Place.deref P))
+          (setPlaceInfo
+                (emit { cs with nextReg := cs.nextReg + 1 }
+                  [Instr.Assgn (Register.R cs.nextReg)
+                    (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
+                dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ))).nextReg) (Register.R cs.nextReg)] := by
+  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := dstLoc) h_dst
+  have h_bindB : placeToBorrowRegChecked (Γ := Γ) kind prot mask (.deref P)
+      = (do
+          let ptrOut ← placeToRegChecked RefKind.Shared P
+          let ptrRes := ptrOut.result
+          let loadedReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+          let tmpReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) loadedReg 0)])
+          pure {
+            result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
+            evidence := PlaceToBorrowRegEvidence.deref P ptrRes loadedReg tmpReg
+              ptrOut.evidence
+          }) := by simp only [placeToBorrowRegChecked]
+  have h_bindD : placeToRegChecked (Γ := Γ) RefKind.Shared (.deref P)
+      = (do
+          let ptrOut ← placeToRegChecked RefKind.Shared P
+          let ptrRes := ptrOut.result
+          let loadedReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+          pure {
+            result := { reg := loadedReg, cleanup := [] },
+            evidence := PlaceToRegEvidence.deref P ptrRes loadedReg ptrOut.evidence
+          }) := by simp only [placeToRegChecked]
+  cases h_x : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P)
+      (setPlaceInfo
+        (emit { cs with nextReg := cs.nextReg + 1 }
+          [Instr.Assgn (Register.R cs.nextReg)
+            (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
+        dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ)) with
+  | error e =>
+      exfalso
+      rw [h_bindD] at h_dval
+      simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+        CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+        CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_x] at h_dval
+      simp at h_dval
+  | ok pOut =>
+      rw [h_bindD] at h_dval
+      simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+        CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+        CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_x] at h_dval
+      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM] at h_dval
+      cases h_dval
+      simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+        h_bindB, h_bindD, h_run, h_val, h_x]
+      simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
+        cleanupInstrs, emit_nil, setPlaceInfo]
+
+/-- The fresh-destination deref-src statement lowers. -/
+theorem compileStmt_ref_fresh_derefsrc_value
+    {Γ : Ctx} {τ : LayoutTy}
+    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
+    {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {cs : CompilerState}
+    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared (.deref P))}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (h_dst : getPlaceInfo cs dstLoc.idx.1 = none)
+    (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared (.deref P))
+        (setPlaceInfo
+        (emit { cs with nextReg := cs.nextReg + 1 }
+          [Instr.Assgn (Register.R cs.nextReg)
+            (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
+        dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ))
+      = Except.ok dOut) :
+    ∃ so, CheckedCompilerM.value
+      (compileStmtChecked
+        (Stmt.assign (.local dstLoc) (.ref kind prot mask (.deref P)))) cs
+      = Except.ok so := by
+  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := dstLoc) h_dst
+  have h_bindB : placeToBorrowRegChecked (Γ := Γ) kind prot mask (.deref P)
+      = (do
+          let ptrOut ← placeToRegChecked RefKind.Shared P
+          let ptrRes := ptrOut.result
+          let loadedReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+          let tmpReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) loadedReg 0)])
+          pure {
+            result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
+            evidence := PlaceToBorrowRegEvidence.deref P ptrRes loadedReg tmpReg
+              ptrOut.evidence
+          }) := by simp only [placeToBorrowRegChecked]
+  have h_bindD : placeToRegChecked (Γ := Γ) RefKind.Shared (.deref P)
+      = (do
+          let ptrOut ← placeToRegChecked RefKind.Shared P
+          let ptrRes := ptrOut.result
+          let loadedReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+          pure {
+            result := { reg := loadedReg, cleanup := [] },
+            evidence := PlaceToRegEvidence.deref P ptrRes loadedReg ptrOut.evidence
+          }) := by simp only [placeToRegChecked]
+  cases h_x : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P)
+      (setPlaceInfo
+        (emit { cs with nextReg := cs.nextReg + 1 }
+          [Instr.Assgn (Register.R cs.nextReg)
+            (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
+        dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ)) with
+  | error e =>
+      exfalso
+      rw [h_bindD] at h_dval
+      simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+        CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+        CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_x] at h_dval
+      simp at h_dval
+  | ok pOut =>
+      rw [h_bindD] at h_dval
+      simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+        CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+        CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_x] at h_dval
+      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM] at h_dval
+      cases h_dval
+      simp only [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
+        h_bindB, h_bindD,
+        CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+        CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
+        CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
+        h_run, h_x]
+      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      exact ⟨_, rfl⟩
+
 /-- The deref-src statement lowers. -/
 theorem compileStmt_ref_deref_value
     {Γ : Ctx} {τ : LayoutTy}

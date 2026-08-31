@@ -1707,3 +1707,26 @@ under a fresh destination, crossing the fresh machinery with the spine
 mother lemma instead of with BRIDGE 1. Then the non-local-source
 families.
 See journal/2026-08-31-ref-fresh-proj-offset-bridge1.md.
+
+## 2026-08-31 (seventh)
+
+**Goal:** the last unbound-root site of `ref` — a deref SOURCE under a
+fresh destination.
+**Landed:** the compiled side only —
+`compileStmt_ref_fresh_derefsrc_run/_value`, both first try, generated
+from the bound pair by swapping `ensureLocalRegE_existing` for
+`_fresh` and evaluating the source's lowering at the post-`Alloc`
+compiler state.
+**Why it stopped there:** this leaf crosses the fresh machinery with
+`ptrChain_lowering_sim` rather than with an extra instruction, and that
+lemma takes eleven hypotheses about the state it starts from. The fresh
+root forces all of them to be re-established MID-PROOF at the post-
+`Alloc` states under the extended renames — roughly 150 lines that the
+other fresh leaves only ever needed at the very end. Scoped in the
+journal entry; the splice method carries but the seam moves.
+**Status:** green; 17/17 + 91/91; audit exact at ONE sorry; residual
+sites still 9 (no leaf, so no site closes).
+**Next-session pickup:** the leaf itself, then the non-local-source
+families (proj-of-proj srcs, non-spine deref srcs, non-local srcs under
+non-local dsts).
+See journal/2026-08-31-ref-last-unbound-root-recon.md.
