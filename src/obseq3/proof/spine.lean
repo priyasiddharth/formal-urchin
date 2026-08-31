@@ -166,6 +166,42 @@ theorem resolvePlaceAcc_proj_base_err
     mirlite.resolvePlaceAcc M s (.proj b path) = .error e := by
   simp [mirlite.resolvePlaceAcc, h]
 
+/-- A deref lowering leaves no cleanup: the `Load` consumes the pointer
+    place's own cleanup and the result is a plain register. Like
+    `PtrChain.placeToRegChecked_placeRegMap`, the standalone form is
+    needed BEFORE the mother lemma can be invoked — the compiled
+    fragment mentions the source's cleanup. -/
+theorem placeToRegChecked_deref_cleanup {Γ : Ctx} {τ : LayoutTy}
+    {P : Place Γ (obseq.LayoutTy.PtrL τ)} {kind : RefKind} {cs : CompilerState}
+    {out : ResultWithEvidence PtrResult (PlaceToRegEvidence kind (.deref P))}
+    (h : CheckedCompilerM.value (placeToRegChecked kind (.deref P)) cs
+      = Except.ok out) :
+    out.result.cleanup = [] := by
+  have h_bindD : placeToRegChecked (Γ := Γ) kind (.deref P)
+      = (do
+          let ptrOut ← placeToRegChecked RefKind.Shared P
+          let ptrRes := ptrOut.result
+          let loadedReg ← CheckedCompilerM.lift freshRegM
+          let _ ← CheckedCompilerM.lift
+            (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+          pure {
+            result := { reg := loadedReg, cleanup := [] },
+            evidence := PlaceToRegEvidence.deref P ptrRes loadedReg ptrOut.evidence
+          }) := by simp only [placeToRegChecked]
+  rw [h_bindD] at h
+  cases hx : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P) cs with
+  | error e =>
+      exfalso
+      simp only [CheckedCompilerM.value_bind, hx] at h
+      simp at h
+  | ok o =>
+      simp only [CheckedCompilerM.value_bind, CheckedCompilerM.value_lift,
+        CheckedCompilerM.value_pure, hx] at h
+      simp only [CompilerM.value, freshRegM, freshReg, emitM] at h
+      cases h
+      rfl
+
 /-- A CHAIN's lowering never touches `placeRegMap`: it only LOOKS UP
     locals. The mother lemma carries this as an output conjunct, but the
     standalone form is needed BEFORE the mother can be invoked — to

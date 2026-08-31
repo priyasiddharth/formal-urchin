@@ -2019,3 +2019,32 @@ leaf-lines ago; not now. Do it first if the leaf population ever grows
 again.
 **Status:** reverted to green; 17/17 + 99/99; audit exact at ONE sorry.
 See durable/placeres-offset-reparameterization.md.
+
+## 2026-08-31 (sixteenth)
+
+**Parked first:** the PlaceRes reparameterization is now recorded in
+loose-ends/parked.md with soundness evidence, the revert reason, the
+payoff, the trigger condition and a resume recipe.
+**Then continued on class 1.** Key finding: the class is NOT uniform. A
+projected destination over a LOCAL base has no spine, so
+`t.g := &kind *p` and `t.g := &kind (*p).f` need only ONE mother lemma
+— the source's. Only the two DEREF-destination sites need two.
+**Landed (all first try):** `placeToRegChecked_deref_cleanup` (the
+standalone cleanup fact, needed BEFORE the mother lemma exactly as
+`PtrChain.placeToRegChecked_placeRegMap` is),
+`compileStmt_ref_projzero_derefsrc_run/_value`, and
+`ref_projzero_derefsrc_simulation` (`dst.g := &kind (*p).f`, both roots
+bound, dst offset 0).
+**Deliberately NOT wired:** wiring one quadrant of the 2x2 (dst offset x
+bound/fresh root) would split one residual arm into three and fragment
+the site map for no coverage gain. Precedent: commit 5e8e67c landed a
+compiled side ahead of its leaf the same way.
+**Also recorded:** `&kind *p` and `&kind (*p).nil` emit identical code
+but are different TERMS, so the plain deref source needs its own
+statement — one leaf cannot serve both.
+**Status:** green; 17/17 + 99/99; audit exact at ONE sorry; residual
+sites still 5.
+**Next-session pickup:** the other three quadrants, then the same four
+for the `.deref P` source spelling, then the two-mother skeleton for the
+deref-destination pair.
+See journal/2026-08-31-ref-chainsrc-projdst.md.
