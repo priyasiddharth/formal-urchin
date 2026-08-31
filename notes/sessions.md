@@ -1556,3 +1556,31 @@ borrow's offset, so both are the deref-dst pair with `pathOffset f` for
 (`resolvePlaceAcc_proj_base_ok`, the fit check at
 `bS.addr + PathTo.offset f`, the borrow offset, and the pointer value's
 `(0 + pathOffset f)` / `blockSize σs`).
+
+## 2026-08-31 (later still)
+
+**Goal:** the leaf left as next-session pickup —
+`ref_derefdst_projsrc_simulation` (`*P := &kind s.f`).
+**Landed:** the leaf, green; wired into `CompilerInv_step_ref`'s
+deref-destination arm under a `local` source base; witness d75 with
+teeth (a disjoint live `&mut t.0` that a wrong offset would pop —
+control run reports `ub`).
+**Key finding:** the four substitutions off
+`ref_derefdst_local_simulation` were mechanical, but the source
+reduction is NOT: `simp only [mirlite.resolvePlaceAcc, ...]` unfolds
+the DESTINATION's resolution too and kills the later `rw [h_dres]`.
+Use the targeted `resolvePlaceAcc_proj_base_ok (resolvePlaceAcc_local
+h_envS)` instead. Rule: in a leaf that keeps one half opaque for the
+mother lemma, never `simp only` a definition that governs that half.
+**Also landed:** `compileStmt_ref_derefdst_flatten_run/_value` never
+inspected the rhs, so it was generalized in place to any
+`rhs : RExpr Γ (PtrL τ)` and renamed
+`compileStmt_assign_derefdst_flatten_run/_value`. Future
+deref-destination leaves get flatten normalization for free.
+**Status:** green; 17/17 + 88/88; audit exact at ONE sorry
+(`ref_place_residual`) — unchanged; this class was one of several the
+residual still covers.
+**Next-session pickup:** the four UNBOUND-DESTINATION-ROOT ref sites
+(regime B), or the `BorrowSim` source package now that two proj-source
+leaves exist to generalize over.
+See journal/2026-08-31-ref-derefdst-projsrc.md.

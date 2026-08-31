@@ -116,9 +116,18 @@ Remaining (1): every remaining sorry is blocked on a NAMED obligation.
    (`stepStmt_assign_proj_assoc` source-side, the transfer lemmas —
    now in common.lean — compiled-side) and `ref_proj_dst_simulation`
    recurses into the leaves, stmt0-threaded. The residual's h_stmt is
-   stmt0-loosened. Remaining: deref dst bases (spine composition),
-   non-local srcs under non-local dsts, non-spine deref srcs,
-   proj-of-proj srcs, unbound roots.
+   stmt0-loosened. Deref-dst bases are CLOSED for a LOCAL source
+   (`ref_derefdst_local_simulation`) and, since 2026-08-31, for a
+   PROJ-TOPPED source over a bound local
+   (`ref_derefdst_projsrc_simulation`, pinned by d75): unlike copy's
+   proj source, ref's folds the field offset into the `Borrow`'s offset
+   operand rather than minting its own borrow, so the rhs stays ONE
+   instruction and no second bridge appears. The destination flatten
+   transfer was generalized over the rhs
+   (`compileStmt_assign_derefdst_flatten_run/_value`), so further
+   deref-dst source shapes reuse it. Remaining: non-local srcs under
+   non-local dsts, non-spine deref srcs, proj-of-proj srcs, unbound
+   roots.
 
 - ✔ REGIME P→L of ref — `ref_proj_local_simulation` (2026-08-27):
   `dst := &kind s.f`, any kind/offset/mask, dst and src-root both bound

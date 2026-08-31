@@ -4,6 +4,90 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-08-31 (second) — The Offset Goes in the Operand
+
+Seventy-fourth increment: `*p := &mut s.f` — a reference to a field,
+stored through a pointer chain. It closes, and the interesting part is
+how little it cost.
+
+Yesterday the same shape in `copy` cost four leaves. A projected copy
+source at nonzero offset mints its own `Borrow(Shared)`, loads through
+it, and retires it with a cleanup `Die`; every leaf had to carry that
+bridge around the read. So the expectation going in was another
+expensive class.
+
+It was two instructions. `placeToBorrowRegChecked`'s projection arm
+differs from its local arm in exactly one place: the offset operand of
+the `Borrow`. A reference to `s.f` is a borrow of `s` at offset
+`pathOffset f`, not a borrow of a borrow. There is no second reference
+to create, so there is nothing to retire, so there is no second bridge.
+The proof is `ref_derefdst_local_simulation` with `pathOffset f` where
+`0` used to be — plus the observation that the stored pointer still
+covers the WHOLE base allocation, so its size is the base type's, not
+the field's.
+
+Two things went wrong, and both were about scope rather than content.
+
+The source phase wanted `simp only [mirlite.resolvePlaceAcc, ...]` to
+reduce `&s.f`. That unfolds `resolvePlaceAcc` everywhere — including
+the DESTINATION's, which this leaf deliberately keeps opaque so the
+mother lemma can consume it later. Three hundred lines further down, a
+`rw` against the destination's resolution failed, because the
+destination was no longer a `resolvePlaceAcc` application at all. The
+fix is to rewrite with a targeted lemma instead of unfolding a
+definition: `resolvePlaceAcc_proj_base_ok` composed with
+`resolvePlaceAcc_local`. The general rule is worth stating: in a proof
+that keeps one half of a statement opaque on purpose, a `simp only`
+set must not name any definition that governs the opaque half.
+
+The second was better news. The destination's flatten-normalization
+transfer had been written for a local source and looked source-specific
+— but reading it, it never inspects the source. It threads the whole
+right-hand side through as one opaque `compileRExprPreChecked`
+argument. Generalizing it over the rhs was a mechanical substitution
+and deleted the need for a per-source twin. Every future
+deref-destination leaf now gets flatten normalization for free, and the
+mirlite-side twin was already polymorphic in the same way. A lemma
+written for one caller had been general all along; the specialization
+was in its binders, not in its argument.
+
+Pinned by d75, whose teeth are a live `&mut t.0` held across the
+statement. The two fields are disjoint ranges, so a correct borrow of
+`t.1` leaves it alone and the later write through it is defined; aim
+the borrow at `t.0` instead and mirlite reports UB. Verdicts, not
+values — which is the only kind of tooth `expectDiff` can bite with.
+
+---
+
+## 2026-08-31 (first) — Copy Is Total
+
+Seventy-third increment: `copy_place_residual` is closed and deleted.
+Every `.copy` statement the compiler accepts is now proved correct,
+whatever the shapes of its two places.
+
+The last class to fall was a projected source under a projected
+destination at nonzero source offset, and it split on that offset in a
+way worth recording. At ZERO offset the source's lowering satisfies
+`LoweringSim` — the named package the chain mother lemma produces — so
+the existing leaves consumed it unchanged and no new proof was needed.
+At NONZERO offset it cannot: the lowering emits a `Borrow(Shared)` and
+leaves a cleanup `Die`, which breaks the package's `cleanup = []`
+conjunct. That single conjunct is the whole boundary between "free" and
+"four leaves", one per destination offset crossed with bound or fresh
+root.
+
+What made the four tractable was that the two bridges never interleave.
+The source's borrow is minted and retired entirely inside the rhs
+pre-phase, before the destination lowering starts, so BRIDGE 1S and
+BRIDGE 1 are sequential rather than nested. Had they overlapped, each
+leaf would have needed a joint invariant over two live borrows instead
+of two independent applications of existing lemmas.
+
+Whitelist went from two sorries to one. `ref_place_residual` is the
+last.
+
+---
+
 ## 2026-08-30 (thirteenth) — Ask What the Hypothesis Is For
 
 Seventy-second increment: a copy whose source is a projection and whose

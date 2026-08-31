@@ -1584,6 +1584,40 @@ def d74_projsrc_offset_into_fresh_proj_offset : IO Unit :=
      .assign zD72 (.copy (.proj tD72 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d74 proj src at offset into fresh proj dst at offset"
 
+def ΓD75 : Ctx :=
+  [pairD52L, obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL natL),
+   obseq.LayoutTy.PtrL natL, obseq.LayoutTy.PtrL natL, natL, natL]
+def tD75 : Place ΓD75 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD75 : Place ΓD75 (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL natL)) :=
+  .local ⟨⟨1, by decide⟩, rfl⟩
+def qD75 : Place ΓD75 (obseq.LayoutTy.PtrL natL) := .local ⟨⟨2, by decide⟩, rfl⟩
+def rD75 : Place ΓD75 (obseq.LayoutTy.PtrL natL) := .local ⟨⟨3, by decide⟩, rfl⟩
+def xD75 : Place ΓD75 natL := .local ⟨⟨4, by decide⟩, rfl⟩
+def zD75 : Place ΓD75 natL := .local ⟨⟨5, by decide⟩, rfl⟩
+
+/-- Positive: a REF whose source is proj-topped at NONZERO offset under
+    a DEREF destination (`*p := &mut t.1`). The projection is folded
+    into the `Borrow`'s offset operand rather than minting its own
+    borrow, so the whole rhs is one instruction and the destination
+    chain lowers after it. `r := &mut t.0` stays live across the
+    statement: the two fields are disjoint ranges, so the new borrow
+    must not pop `r`, and `*r := 9` afterwards is well-defined exactly
+    when the compiler used offset `1`. Closed 2026-08-31 by
+    `ref_derefdst_projsrc_simulation`. -/
+def d75_ref_projsrc_offset_into_deref_dst : IO Unit :=
+  expectDiff ΓD75
+    [.assign (.proj tD75 (.field ⟨0, by decide⟩ .nil)) (.constInit 3),
+     .assign (.proj tD75 (.field ⟨1, by decide⟩ .nil)) (.constInit 4),
+     .assign xD75 (.constInit 0),
+     .assign qD75 (.ref .Mut false [] xD75),
+     .assign pD75 (.ref .Mut false [] qD75),
+     .assign rD75 (.ref .Mut false [] (.proj tD75 (.field ⟨0, by decide⟩ .nil))),
+     .assign (.deref pD75)
+       (.ref .Mut false [] (.proj tD75 (.field ⟨1, by decide⟩ .nil))),
+     .assign (.deref rD75) (.constInit 9),
+     .assign zD75 (.copy (.proj tD75 (.field ⟨0, by decide⟩ .nil)))]
+    .ok "d75 ref proj src at offset into deref dst"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -1671,7 +1705,8 @@ def allTests : List (IO Unit) := [
   d71_projsrc_zero_into_proj_local,
   d72_projsrc_offset_into_proj_dst_offset,
   d73_projsrc_offset_into_fresh_proj_zero,
-  d74_projsrc_offset_into_fresh_proj_offset]
+  d74_projsrc_offset_into_fresh_proj_offset,
+  d75_ref_projsrc_offset_into_deref_dst]
 
 def runAll : IO Unit := do
   allTests.forM id
