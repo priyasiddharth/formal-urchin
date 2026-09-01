@@ -4,6 +4,22 @@ import obseq3.proof.spine
 
 namespace obseq3.proof
 
+/-! ### Ambient binders
+
+    The data every simulation leaf and fragment-transfer lemma
+    quantifies over. These are IMPLICIT and every leaf's conclusion
+    mentions them, so Lean includes them automatically — no `include` is
+    needed, and because they were already the leading binders the
+    explicit argument order is unchanged.
+
+    A theorem that binds its own `{Γ : Ctx}` shadows these cleanly and
+    picks up none of them. -/
+variable {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+variable {ρa : AddrRenameMap} {ρt : TagRenameMap}
+variable {s_mir s_mir' : mirlite.State MSB Γ}
+variable {s_osea : oseair.State MSB}
+
+
 open obseq3
 open obseq3.compile
 open obseq3.oseair (Instr Register Rhs Val)
@@ -603,10 +619,6 @@ theorem compileStmt_ref_fresh_derefsrc_lowers
     `addr + len > base + size`, the same as `writeThroughPtr`'s, and the
     residual is gone.) -/
 theorem ref_local_local_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy}
     {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)} {srcLoc : Local Γ τ}
     {bD bS : mirlite.Binding}
@@ -775,10 +787,6 @@ theorem ref_local_local_simulation
     the first member hands back the `TagRenameBounded` at the intermediate
     counters, which is exactly the hypothesis the second one takes. -/
 theorem ref_fresh_dst_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy}
     {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)} {srcLoc : Local Γ τ}
     {bS : mirlite.Binding}
@@ -1103,10 +1111,6 @@ theorem ref_fresh_dst_simulation
     `allocBase`/`allocSize`), which is exactly why `LocalBindingSim`
     carries the block-domain conjunct over the full block. -/
 theorem ref_proj_local_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)} {srcLoc : Local Γ σb}
     {f : PathTo σb τ}
@@ -1525,10 +1529,6 @@ theorem compileStmt_ref_derefsrc_flatten_value
     paid by the retag-dereferenceability check) and the `RStore` into
     the dst. One tag minted on each side. -/
 theorem ref_deref_local_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy}
     {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
     {P : Place Γ (obseq.LayoutTy.PtrL τ)}
@@ -2216,10 +2216,6 @@ theorem compileStmt_ref_projoffset_derefsrc_lowers
     fragment is L→L's: `[Borrow; RStore]` through the dst BASE
     register. -/
 theorem ref_local_projzero_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {srcLoc : Local Γ τ}
@@ -2553,10 +2549,6 @@ theorem compileStmt_ref_projoffset_fresh_lowers
     `Borrow(Mut)` (a compiler phantom; BRIDGE 1 cancels its
     `ref; use; die` triple to the parent write the source performs). -/
 theorem ref_local_projoffset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {srcLoc : Local Γ τ}
@@ -4196,10 +4188,6 @@ theorem compileStmt_ref_derefdst_derefprojsrc_value
     adds one `RStore` (BRIDGE 2 through the loaded tag). One tag is
     minted on each side. -/
 theorem ref_derefdst_local_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy}
     {P : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))}
     {srcLoc : Local Γ τ}
@@ -4517,10 +4505,6 @@ theorem ref_derefdst_local_simulation
     as everywhere in `ref` — costs only the `Borrow`'s offset operand.
     Three instructions: `Alloc; Borrow; RStore`. -/
 theorem ref_fresh_projsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)} {srcLoc : Local Γ σb}
     {f : PathTo σb τ}
@@ -5392,10 +5376,6 @@ theorem compileStmt_ref_projoffset_fresh_derefsrc_lowers
     pointer-local case. At offset zero the store goes through the root
     register, so the fragment is still `Alloc; Borrow; RStore`. -/
 theorem ref_projzero_fresh_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {srcLoc : Local Γ τ}
@@ -5737,10 +5717,6 @@ theorem ref_projzero_fresh_simulation
     register and its cleanup `Die` — BRIDGE 1 collapses that triple to
     mirlite's single parent write. Five instructions. -/
 theorem ref_projoffset_fresh_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {srcLoc : Local Γ τ}
@@ -6225,10 +6201,6 @@ theorem ref_projoffset_fresh_simulation
     the instruction transfer) has to be re-established MID-PROOF at the
     extended renames, not just rebuilt at the end. -/
 theorem ref_fresh_derefsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy}
     {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
     {P : Place Γ (obseq.LayoutTy.PtrL τ)}
@@ -6641,10 +6613,6 @@ theorem ref_fresh_derefsrc_simulation
     `ref_local_projzero_simulation` with `pathOffset f` for `0` and the
     stored pointer covering the source base's WHOLE block. -/
 theorem ref_projzero_projsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σb : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {srcLoc : Local Γ σb} {f : PathTo σb τ}
@@ -6836,10 +6804,6 @@ theorem ref_projzero_projsrc_simulation
     destination as before; the source projection again costs only the
     `Borrow`'s offset operand. -/
 theorem ref_projoffset_projsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σb : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {srcLoc : Local Γ σb} {f : PathTo σb τ}
@@ -7165,10 +7129,6 @@ theorem ref_projoffset_projsrc_simulation
     `dst.g := &kind s.f` at ZERO destination offset, `dst`'s root
     UNBOUND. -/
 theorem ref_projzero_fresh_projsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σb : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {srcLoc : Local Γ σb} {f : PathTo σb τ}
@@ -7517,10 +7477,6 @@ theorem ref_projzero_fresh_projsrc_simulation
     the source borrow at the field's offset, then BRIDGE 1 for the
     destination projection. -/
 theorem ref_projoffset_fresh_projsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σb : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {srcLoc : Local Γ σb} {f : PathTo σb τ}
@@ -8014,10 +7970,6 @@ theorem ref_projoffset_fresh_projsrc_simulation
     and every source fact comes from the extended renames rather than
     from `h_lbs` on the pre-state. -/
 theorem ref_projzero_fresh_selfsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {f : PathTo σ τ}
@@ -8345,10 +8297,6 @@ theorem ref_projzero_fresh_selfsrc_simulation
 /-- The same at NONZERO destination offset: `t.g := &kind t.f`, `t`
     FRESH, with BRIDGE 1 for the destination projection on top. -/
 theorem ref_projoffset_fresh_selfsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {f : PathTo σ τ}
@@ -8822,10 +8770,6 @@ theorem ref_projoffset_fresh_selfsrc_simulation
     arm ignores its `kind` — and the projection costs only the
     `Borrow`'s offset operand. -/
 theorem ref_derefprojsrc_local_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
     {P : Place Γ (obseq.LayoutTy.PtrL σb)} {f : PathTo σb τ}
@@ -9099,10 +9043,6 @@ theorem ref_derefprojsrc_local_simulation
     chain-source leaf with the projection folded into the `Borrow`'s
     offset operand. -/
 theorem ref_fresh_derefprojsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
     {P : Place Γ (obseq.LayoutTy.PtrL σb)} {f : PathTo σb τ}
@@ -9521,10 +9461,6 @@ theorem ref_fresh_derefprojsrc_simulation
     the source needs the mother lemma, and the plain `&kind *p` is the
     `pathOffset f = 0` instance. -/
 theorem ref_projzero_derefsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σb : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {P : Place Γ (obseq.LayoutTy.PtrL σb)} {f : PathTo σb τ}
@@ -9804,10 +9740,6 @@ theorem ref_projzero_derefsrc_simulation
     `dst.g := &kind (*p).f` with `dst`'s root unbound. The σ-sized root
     `Alloc` of regime B-proj, and the source spine after it. -/
 theorem ref_projzero_fresh_derefsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σb : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {P : Place Γ (obseq.LayoutTy.PtrL σb)} {f : PathTo σb τ}
@@ -10233,10 +10165,6 @@ theorem ref_projzero_fresh_derefsrc_simulation
     `Borrow`, then the projection's interior `Borrow(Mut)`, the store
     and its `Die` — BRIDGE 1 collapsing the triple. -/
 theorem ref_projoffset_derefsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σb : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {P : Place Γ (obseq.LayoutTy.PtrL σb)} {f : PathTo σb τ}
@@ -10561,10 +10489,6 @@ theorem ref_projoffset_derefsrc_simulation
     σ-sized root `Alloc`, the spine, the source `Borrow`, then BRIDGE 1
     on the destination projection. -/
 theorem ref_projoffset_fresh_derefsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σb : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {P : Place Γ (obseq.LayoutTy.PtrL σb)} {f : PathTo σb τ}
@@ -11068,10 +10992,6 @@ theorem ref_projoffset_fresh_derefsrc_simulation
 
 
 theorem ref_derefdst_projsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {P : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))}
     {srcLoc : Local Γ σb} {f : PathTo σb τ}
@@ -11418,10 +11338,6 @@ theorem ref_derefdst_projsrc_simulation
     By the nil-projection eta this leaf also closes
     `*D := &kind *P`. -/
 theorem ref_derefdst_derefprojsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {D : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))}
     {P : Place Γ (obseq.LayoutTy.PtrL σb)} {f : PathTo σb τ}
@@ -11815,10 +11731,6 @@ theorem ref_derefdst_derefprojsrc_simulation
     flattening is every source shape; `h_unfold` is that base's
     `placeToBorrowRegChecked` equation. -/
 theorem ref_projzero_derefdst_chainsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σd σs : LayoutTy}
     {pp : Place Γ (obseq.LayoutTy.PtrL σd)}
     {g : PathTo σd (obseq.LayoutTy.PtrL τ)}
@@ -12231,10 +12143,6 @@ theorem ref_projzero_derefdst_chainsrc_simulation
     field offset which has no mirlite counterpart. `sb_ref_use_die_cancels`
     collapses that ref/store/die triple to the parent's single use. -/
 theorem ref_projoffset_derefdst_chainsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σd σs : LayoutTy}
     {pp : Place Γ (obseq.LayoutTy.PtrL σd)}
     {g : PathTo σd (obseq.LayoutTy.PtrL τ)}
@@ -12718,10 +12626,6 @@ theorem ref_projoffset_derefdst_chainsrc_simulation
     so the step really can succeed. It needs a leaf that reads the
     source binding off the post-allocation state. -/
 theorem ref_proj_src_projdst_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σb : LayoutTy}
     {dstLoc : Local Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
     {sbase : Place Γ σb} {f : PathTo σb τ}
@@ -12921,10 +12825,6 @@ theorem ref_proj_src_projdst_simulation
     leaves, threading the PROGRAM's own statement (`stmt0`). Deref
     bases, non-local srcs and unbound roots route to the residual. -/
 theorem ref_proj_dst_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy} {σ' : LayoutTy}
     {dbase : Place Γ σ'} {g : PathTo σ' (obseq.LayoutTy.PtrL τ)}
     {src : Place Γ τ}
@@ -13145,10 +13045,6 @@ theorem ref_proj_dst_simulation
     lands in the closed proj-over-local leaves. Only a DEREF-rooted
     source survives to the residual. -/
 theorem ref_proj_src_local_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy} {σ : LayoutTy}
     {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
     {sbase : Place Γ σ} {f : PathTo σ τ}
@@ -13258,10 +13154,6 @@ theorem ref_proj_src_local_simulation
     flattens the DESTINATION chain, composing both transfers into the
     threaded `stmt0`. -/
 theorem ref_proj_src_deref_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy} {σ : LayoutTy}
     {P : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))}
     {sbase : Place Γ σ} {f : PathTo σ τ}
@@ -13361,10 +13253,6 @@ theorem ref_proj_src_deref_simulation
     the two places. Regime L→L (both bound locals, any referent size) is
     CLOSED by `ref_local_local_simulation`; the residuals are named. -/
 theorem CompilerInv_step_ref
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy}
     {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
     {src : Place Γ τ}

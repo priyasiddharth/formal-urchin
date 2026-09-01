@@ -4,6 +4,22 @@ import obseq3.proof.spine
 
 namespace obseq3.proof
 
+/-! ### Ambient binders
+
+    The data every simulation leaf and fragment-transfer lemma
+    quantifies over. These are IMPLICIT and every leaf's conclusion
+    mentions them, so Lean includes them automatically — no `include` is
+    needed, and because they were already the leading binders the
+    explicit argument order is unchanged.
+
+    A theorem that binds its own `{Γ : Ctx}` shadows these cleanly and
+    picks up none of them. -/
+variable {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+variable {ρa : AddrRenameMap} {ρt : TagRenameMap}
+variable {s_mir s_mir' : mirlite.State MSB Γ}
+variable {s_osea : oseair.State MSB}
+
+
 open obseq3
 open obseq3.compile
 open obseq3.oseair (Instr Register Rhs Val)
@@ -233,10 +249,6 @@ theorem compileStmt_copy_derefsrc_flatten_value
     `resolvePlace?_of_resolveAcc`. No tag survives: renames grow by
     `refl`. -/
 theorem copy_chainsrc_local_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy}
     {dstLoc : Local Γ τ}
     {src : Place Γ τ}
@@ -607,10 +619,6 @@ theorem compileStmt_copy_projchain_offset_value
     0), any depth. The projection passes the base register through, so
     this is the chain-src leaf with a `+ 0` on the resolution. -/
 theorem copy_projchain_zero_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {dstLoc : Local Γ τ} {B : Place Γ σb} {path : PathTo σb τ}
     {bD : mirlite.Binding}
@@ -879,10 +887,6 @@ theorem copy_projchain_zero_simulation
     the overlap guard's disjointness. The `Borrow`'s bound is the
     SOURCE's own copy-range check, not typing. -/
 theorem copy_projchain_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {dstLoc : Local Γ τ} {B : Place Γ σb} {path : PathTo σb τ}
     {bD : mirlite.Binding}
@@ -1460,10 +1464,6 @@ theorem compileStmt_copy_fresh_chainsrc_value
     aliasing (`y := copy y`) is rejected source-side by the overlap
     guard, since the destination resolves after the allocation. -/
 theorem copy_fresh_chainsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy}
     {dstLoc : Local Γ τ} {src : Place Γ τ}
     (compProg : oseair.Prog)
@@ -2142,10 +2142,6 @@ theorem compileStmt_copy_fresh_projchain_offset_value
     so this is the chain-source regime B with a `+ 0` on the source
     resolution. -/
 theorem copy_fresh_projchain_zero_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {dstLoc : Local Γ τ} {B : Place Γ σb} {path : PathTo σb τ}
     (compProg : oseair.Prog)
@@ -2689,10 +2685,6 @@ theorem copy_fresh_projchain_zero_simulation
     Die`, with the destination's `useMut` sliding between BRIDGE 1S's
     phases by the overlap guard's disjointness. -/
 theorem copy_fresh_projchain_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {dstLoc : Local Γ τ} {B : Place Γ σb} {path : PathTo σb τ}
     (compProg : oseair.Prog)
@@ -4004,10 +3996,6 @@ theorem compileStmt_copy_derefdst_dstflatten_value
     register survives the destination lowering by the mother lemma's
     register-frame conjunct. -/
 theorem copy_chaindst_chainsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy}
     {P : Place Γ (obseq.LayoutTy.PtrL τ)} {src : Place Γ τ}
     (compProg : oseair.Prog)
@@ -4526,10 +4514,6 @@ theorem copy_chaindst_chainsrc_simulation
     is the two-mother skeleton with the READ one layer deeper. Takes the
     `stmt0` transfer triple. -/
 theorem copy_chaindst_projsrc_zero_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σs : LayoutTy}
     {P : Place Γ (obseq.LayoutTy.PtrL τ)} {B : Place Γ σs}
     {spath : PathTo σs τ}
@@ -5058,10 +5042,6 @@ theorem copy_chaindst_projsrc_zero_simulation
     contiguous and the destination mother lemma simply runs at the
     post-`Die` states. Takes the `stmt0` transfer triple. -/
 theorem copy_chaindst_projsrc_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σs : LayoutTy}
     {P : Place Γ (obseq.LayoutTy.PtrL τ)} {B : Place Γ σs}
     {spath : PathTo σs τ}
@@ -5850,10 +5830,6 @@ theorem compileStmt_copy_projlocal_fresh_value
     register — the projection contributes only a `+ 0` on the resolved
     address. -/
 theorem copy_projlocal_fresh_zero_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ : LayoutTy}
     {loc : Local Γ σ} {path : PathTo σ τ} {src : Place Γ τ}
     (compProg : oseair.Prog)
@@ -6360,10 +6336,6 @@ theorem copy_projlocal_fresh_zero_simulation
     register's own `Borrow(Mut)`, with the cleanup `Die` after — the
     BRIDGE 1 endgame through the freshly minted root tag. -/
 theorem copy_projlocal_fresh_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ : LayoutTy}
     {loc : Local Γ σ} {path : PathTo σ τ} {src : Place Γ τ}
     (compProg : oseair.Prog)
@@ -7150,10 +7122,6 @@ theorem compileStmt_copy_projlocal_fresh_projsrc_offset_value
     exact ⟨_, rfl⟩
 
 theorem copy_projlocal_fresh_projsrc_offset_zero_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σs : LayoutTy}
     {loc : Local Γ σ} {path : PathTo σ τ}
     {B : Place Γ σs} {spath : PathTo σs τ}
@@ -7700,10 +7668,6 @@ theorem copy_projlocal_fresh_projsrc_offset_zero_simulation
       omega
 
 theorem copy_projlocal_fresh_projsrc_offset_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σs : LayoutTy}
     {loc : Local Γ σ} {path : PathTo σ τ}
     {B : Place Γ σs} {spath : PathTo σs τ}
@@ -9065,10 +9029,6 @@ theorem compileStmt_copy_projdst_projsrc_offset_value
     exact ⟨_, rfl⟩
 
 theorem copy_projdst_zero_projsrc_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb σs : LayoutTy}
     {dbase : Place Γ σb} {dpath : PathTo σb τ} {B : Place Γ σs}
     {spath : PathTo σs τ}
@@ -9648,10 +9608,6 @@ theorem copy_projdst_zero_projsrc_offset_simulation
       grind
 
 theorem copy_projdst_offset_projsrc_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb σs : LayoutTy}
     {dbase : Place Γ σb} {dpath : PathTo σb τ} {B : Place Γ σs}
     {spath : PathTo σs τ}
@@ -10394,10 +10350,6 @@ theorem copy_projdst_offset_projsrc_offset_simulation
     temp-register `Load`/`RStore` pair; the projection contributes only a
     `+ 0` on the resolved address. Takes the `stmt0` transfer triple. -/
 theorem copy_projdst_zero_chainsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {dbase : Place Γ σb} {path : PathTo σb τ}
     {src : Place Γ τ}
@@ -10926,10 +10878,6 @@ theorem copy_projdst_zero_chainsrc_simulation
       grind
 
 theorem copy_projdst_offset_chainsrc_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σb : LayoutTy}
     {dbase : Place Γ σb} {path : PathTo σb τ}
     {src : Place Γ τ}
@@ -11753,10 +11701,6 @@ theorem copy_projdst_offset_chainsrc_simulation
     two-mother leaf (both places flatten first); a local base, or a
     nonzero offset, stays residual. -/
 theorem copy_projdst_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ : LayoutTy} {base : Place Γ σ} {path : PathTo σ τ} {src : Place Γ τ}
     (compProg : oseair.Prog)
     (h_slower : LoweringSimAny compProg (flattenPlace src))
@@ -11949,10 +11893,6 @@ theorem copy_projdst_simulation
     bracketed by BRIDGE 1S inside the leaf). Nested projections peel
     with the associativity transfers; a deref base flattens first. -/
 theorem copy_projdst_projsrc_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ σ σs : LayoutTy} {base : Place Γ σ} {path : PathTo σ τ}
     {B : Place Γ σs} {spath : PathTo σs τ}
     (compProg : oseair.Prog)
@@ -12090,10 +12030,6 @@ theorem copy_projdst_projsrc_offset_simulation
     places. Regime L→L (both bound locals, any layout) is CLOSED by
     `copy_local_local_simulation`; the residual shapes are named. -/
 theorem CompilerInv_step_copy
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy}
     {dst src : Place Γ τ}
     (compProg : oseair.Prog)

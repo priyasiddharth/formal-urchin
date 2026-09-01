@@ -13,6 +13,22 @@ sorries — see the audit in `proof/compiler.lean`.
 
 namespace obseq3.proof
 
+/-! ### Ambient binders
+
+    The data every simulation leaf and fragment-transfer lemma
+    quantifies over. These are IMPLICIT and every leaf's conclusion
+    mentions them, so Lean includes them automatically — no `include` is
+    needed, and because they were already the leading binders the
+    explicit argument order is unchanged.
+
+    A theorem that binds its own `{Γ : Ctx}` shadows these cleanly and
+    picks up none of them. -/
+variable {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+variable {ρa : AddrRenameMap} {ρt : TagRenameMap}
+variable {s_mir s_mir' : mirlite.State MSB Γ}
+variable {s_osea : oseair.State MSB}
+
+
 open obseq3
 open obseq3.compile
 open obseq3.oseair (Instr Register Rhs Val)
@@ -248,10 +264,6 @@ structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
     fragment is one `CStore`; execution is BRIDGE 2, the permission
     transport is BRIDGE 3, and the renames do not grow. -/
 theorem const_store_local_existing_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy} {loc : Local Γ τ}
     {binding : mirlite.Binding}
     {vs : List mirlite.MemValue} {vs' : List Val}
@@ -344,10 +356,6 @@ theorem const_store_local_existing_simulation
 /-- REGIME A, CLOSED: constant write to an already-bound local — the
     `constInit` instance of `const_store_local_existing_simulation`. -/
 theorem const_write_local_existing_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {loc : Local Γ obseq.LayoutTy.NatL}
     {binding : mirlite.Binding}
     (compProg : oseair.Prog)
@@ -408,10 +416,6 @@ theorem compileStmt_local_uninit_run
 
 /-- REGIME A for `uninit`: undef-fill of an already-bound local. -/
 theorem uninit_local_existing_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy} {loc : Local Γ τ}
     {binding : mirlite.Binding}
     (compProg : oseair.Prog)
@@ -1978,10 +1982,6 @@ theorem uninit_proj_deref_simulation
     `allocSize` — the projected place's bounds come from the BASE's
     layout, not from `NatL`. No `Borrow`, hence no BRIDGE 1. -/
 theorem const_store_proj_zero_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {σ τ : LayoutTy} {loc : Local Γ σ} {path : PathTo σ τ}
     {binding : mirlite.Binding}
     {vs : List mirlite.MemValue} {vs' : List Val}
@@ -2097,10 +2097,6 @@ theorem const_store_proj_zero_simulation
 
 /-- Zero-offset projected constant write — the `constInit` instance. -/
 theorem const_write_proj_zero_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {σ : LayoutTy} {loc : Local Γ σ} {path : PathTo σ obseq.LayoutTy.NatL}
     {binding : mirlite.Binding}
     (compProg : oseair.Prog)
@@ -2150,10 +2146,6 @@ theorem const_write_proj_zero_simulation
 
 /-- Zero-offset projected undef-fill — the `uninit` instance. -/
 theorem uninit_proj_zero_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {σ τ : LayoutTy} {loc : Local Γ σ} {path : PathTo σ τ}
     {binding : mirlite.Binding}
     (compProg : oseair.Prog)
@@ -2214,10 +2206,6 @@ theorem uninit_proj_zero_simulation
     because ρt's range lies below the counter
     (`freshTag_not_protected`). -/
 theorem const_store_proj_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {σ τ : LayoutTy} {loc : Local Γ σ} {path : PathTo σ τ}
     {binding : mirlite.Binding}
     {vs : List mirlite.MemValue} {vs' : List Val}
@@ -2416,10 +2404,6 @@ theorem const_store_proj_offset_simulation
 
 /-- Nonzero-offset projected constant write — the `constInit` instance. -/
 theorem const_write_proj_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {σ : LayoutTy} {loc : Local Γ σ} {path : PathTo σ obseq.LayoutTy.NatL}
     {binding : mirlite.Binding}
     (compProg : oseair.Prog)
@@ -2467,10 +2451,6 @@ theorem const_write_proj_offset_simulation
 
 /-- Nonzero-offset projected undef-fill — the `uninit` instance; the projection's own `Borrow(Mut)`/`Die` still collapses by BRIDGE 1. -/
 theorem uninit_proj_offset_simulation
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {σ τ : LayoutTy} {loc : Local Γ σ} {path : PathTo σ τ}
     {binding : mirlite.Binding}
     (compProg : oseair.Prog)
@@ -4433,10 +4413,6 @@ theorem prepare_local_assign_resolves
       simp [mirlite.resolvePlace?, mirlite.Env.lookup, mirlite.Env.set]
 
 theorem CompilerInv_step_constStore
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy} {dst : Place Γ τ}
     {vs : List mirlite.MemValue} {vs' : List Val}
     (compProg : oseair.Prog) (rhs : RExpr Γ τ)
@@ -4477,10 +4453,6 @@ theorem CompilerInv_step_constStore
 
 /-- The `constInit` instance of the constant-store step. -/
 theorem CompilerInv_step_constWrite
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {dst : Place Γ obseq.LayoutTy.NatL}
     (compProg : oseair.Prog)
     (v : Word)
@@ -4502,10 +4474,6 @@ theorem CompilerInv_step_constWrite
     regime is the constant-store leaf it shares with `constInit`, and the
     only rvalue-specific input is `uninit_frags`. -/
 theorem CompilerInv_step_uninit
-    {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir s_mir' : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
     {τ : LayoutTy} {dst : Place Γ τ}
     (compProg : oseair.Prog)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
