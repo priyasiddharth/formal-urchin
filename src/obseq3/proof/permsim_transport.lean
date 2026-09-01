@@ -1116,18 +1116,6 @@ theorem sb_write_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
       len 0 ap ap' rfl rfl rfl h
   rw [h_ap']
 
-theorem sb_write_frames {ap ap' : AccessPerms} {addr : Word} {len : Nat}
-    {tag : Tag} (h : sb_write ap addr len tag = .ok ap') :
-    ap'.protFrames = ap.protFrames ∧ ap'.exposed = ap.exposed := by
-  obtain ⟨V, W, -, h_ap'⟩ :=
-    foldCells_ok_inv
-      (C := fun a stack => writeCellContent ap.protFrames ap.exposed a tag stack)
-      (msgNone := fun a => s!"sb-write: no borrow stack at address {a}")
-      (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag)
-      (fun ap a h_pf h_ex _ => writeCell_content_form tag ap a h_pf h_ex)
-      len 0 ap ap' rfl rfl rfl h
-  rw [h_ap']
-  exact ⟨rfl, rfl⟩
 
 theorem sb_read_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
     {tag : Tag} (h : sb_read ap addr len tag = .ok ap') :
@@ -1141,20 +1129,6 @@ theorem sb_read_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
       len 0 ap ap' rfl rfl rfl h
   rw [h_ap']
 
-theorem sb_die_NextTag {ap ap' : AccessPerms} {addr : Word} {len : Nat}
-    {tag : Tag} (h : sb_die ap addr len tag = .ok ap') :
-    ap'.NextTag = ap.NextTag := by
-  obtain ⟨V, W, -, h_ap'⟩ :=
-    foldCells_ok_inv
-      (C := fun _ stack => dieCellContent ap.protFrames tag stack)
-      (msgNone := fun a => s!"sb-die: no borrow stack at address {a}")
-      (P := ap.protFrames) (E := ap.exposed) (N := ap.NextTag)
-      (fun ap a h_pf h_ex _ => by simp only [h_pf]; rfl)
-      len 0 ap ap' rfl rfl rfl h
-  rw [h_ap']
-
-/-- Every element on the right of a `ListRel` has a related partner on
-    the left. -/
 theorem ListRel.mem_right {α β} {R : α → β → Prop} :
     ∀ {as : List α} {bs : List β}, ListRel R as bs →
       ∀ {b : β}, b ∈ bs → ∃ a, a ∈ as ∧ R a b := by
@@ -1409,90 +1383,6 @@ theorem sb_read_respects_PermSim
       (fun j h1 h2 => (h_pkg' j h2).2.2),
     h_prot, h_exp, h_next⟩
 
-/-- BRIDGE 3 family, `sb_die` member: a successful source die through
-    `tagS` is matched by a target die through the renamed `tagT`, and the
-    results stay `PermSim`-related. (No wildcard side condition: `die` is
-    only ever invoked on compiler-minted tags.) -/
-theorem sb_die_respects_PermSim
-    {ρt : TagRenameMap} {src tgt src' : AccessPerms}
-    {addr : Word} {len : Nat} {tagS tagT : Tag}
-    (h_sim : PermSim ρt src tgt)
-    (h_wf : TagRenameWF ρt)
-    (h_tag : ρt tagS = some tagT)
-    (h_src : sb_die src addr len tagS = .ok src') :
-    ∃ tgt', sb_die tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' := by
-  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
-  have h_src0 : foldCells
-      (fun ap a =>
-        match ap.StackMap.find? a with
-        | none => .error s!"sb-die: no borrow stack at address {a}"
-        | some stack =>
-            match dieCellContent ap.protFrames tagS stack with
-            | .error e => .error e
-            | .ok below => .ok { ap with StackMap := ap.StackMap.set a below })
-      src (addr + 0) len = .ok src' := h_src
-  obtain ⟨V, W, h_cells, h_src'⟩ :=
-    foldCells_ok_inv
-      (C := fun _ stack => dieCellContent src.protFrames tagS stack)
-      (msgNone := fun a => s!"sb-die: no borrow stack at address {a}")
-      (P := src.protFrames) (E := src.exposed) (N := src.NextTag)
-      (fun ap a h_pf h_ex _ => by simp only [h_pf]; rfl)
-      len 0 src src' rfl rfl rfl h_src0
-  have h_pkg : ∀ j, ∃ vj, ∃ wj, j < len →
-      SB.find? tgt.StackMap (addr + j) = some vj ∧
-        dieCellContent tgt.protFrames tagT vj = .ok wj ∧
-        StackSim ρt (W j) wj := by
-    intro j
-    by_cases hj : j < len
-    · have hc := h_cells j (Nat.zero_le j) (by omega)
-      obtain ⟨s', h_find', h_ss⟩ := SB.find?_transport h_stacks hc.1
-      obtain ⟨w', h_w', h_ws⟩ :=
-        dieCellContent_transport h_wf h_prot h_tag h_ss hc.2
-      exact ⟨s', w', fun _ => ⟨h_find', h_w', h_ws⟩⟩
-    · exact ⟨[], [], fun h => absurd h hj⟩
-  have h_pkg' : ∀ j, j < len →
-      SB.find? tgt.StackMap (addr + j) = some ((h_pkg j).choose) ∧
-        dieCellContent tgt.protFrames tagT ((h_pkg j).choose)
-          = .ok ((h_pkg j).choose_spec.choose) ∧
-        StackSim ρt (W j) ((h_pkg j).choose_spec.choose) :=
-    fun j hj => (h_pkg j).choose_spec.choose_spec hj
-  have h_tgt : foldCells
-      (fun ap a =>
-        match ap.StackMap.find? a with
-        | none => .error s!"sb-die: no borrow stack at address {a}"
-        | some stack =>
-            match dieCellContent ap.protFrames tagT stack with
-            | .error e => .error e
-            | .ok below => .ok { ap with StackMap := ap.StackMap.set a below })
-      tgt (addr + 0) len =
-      .ok { tgt with StackMap := setChain tgt.StackMap (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 (0 + len)) } :=
-    foldCells_ok_of_cells
-      (C := fun _ stack => dieCellContent tgt.protFrames tagT stack)
-      (msgNone := fun a => s!"sb-die: no borrow stack at address {a}")
-      (P := tgt.protFrames) (E := tgt.exposed) (N := tgt.NextTag)
-      (fun ap a h_pf h_ex _ => by simp only [h_pf]; rfl)
-      len 0 tgt (fun j => (h_pkg j).choose)
-      (fun j => (h_pkg j).choose_spec.choose)
-      rfl rfl rfl
-      (fun j h1 h2 => (h_pkg' j (by omega)).1)
-      (fun j h1 h2 => (h_pkg' j (by omega)).2.1)
-  rw [show (0 : Nat) + len = len from Nat.zero_add len] at h_tgt
-  refine ⟨_, h_tgt, ?_⟩
-  rw [h_src']
-  rw [show (0 : Nat) + len = len from Nat.zero_add len]
-  exact ⟨setChain_chain_respects h_stacks
-      (fun j h1 h2 => (h_pkg' j h2).2.2),
-    h_prot, h_exp, h_next⟩
-
-/-- BRIDGE 3 family, `sb_ref` member — the one op that GROWS ρt.
-
-    Both machines mint at their own counter, so the fresh tags differ and
-    the conclusion is stated for `ρt` extended at that pair. The extension
-    is well-formed exactly because of `TagRenameBounded`: the target's fresh
-    tag is outside ρt's range (injectivity) and the source's is outside its
-    domain (so this really is a growth). Everything else — the per-cell
-    accesses and placements, the protector-frame registration — transports
-    with the machinery the non-minting members already use. -/
 theorem sb_ref_respects_PermSim
     {ρt : TagRenameMap} {src tgt src' : AccessPerms}
     {addr : Word} {len : Nat} {tagS tagT newTagS : Tag}
