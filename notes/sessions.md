@@ -2508,3 +2508,37 @@ and a new plan, not another sweep.
 **Validation after all seven commits, every time:** 0 errors; audit OK,
 0 sorries, axioms unchanged; 17/17 + 104/104; conformance 82 pass /
 0 fail; osea 82 matched / 0 mismatch / 0 skipped.
+
+## 2026-09-01 (thirty-first)
+
+**The leaf-collapse spike landed** (`29513f6`, `e1c846f`): the
+nonzero-offset compiler equations, then `copy_projdst_zero_after_read` —
+the destination half of `dst.f := copy src` proven ONCE over an abstract
+post-read state, with both projdst_zero leaves ending in one call to it.
+
+**The plan's design was wrong and the code said so before any proof
+did.** Widening `LoweringSim` past `cleanup = []` was the approved
+shape; in fact TWO conjuncts break at nonzero offset (the register holds
+a FRESH borrow tag, falsifying the ρt-tag conjunct, and PermSim cannot
+hold while the borrow is live). The decisive fact: the copy arm emits
+`[Load] ++ cleanupInstrs srcRes.cleanup` in one breath, so Borrow/Load/
+Die completes BEFORE the destination lowering and PermSim is restored by
+the Die. The right seam is therefore the READ, not the place lowering —
+`LoweringSim` and its ten users stay untouched.
+
+**Elaborator-found facts** worth keeping: the after_read theorem needs
+no `path` binder — the destination half is PROJECTION-AGNOSTIC, so the
+chaindst family (same §7 marker, 3 more leaves) should reuse it as-is;
+and the mirlite write runs on the POST-RESOLUTION perms `permsD`, not
+the post-read `perms₂` (resolution performs SB reads of its own).
+
+**The re-measure the plan demanded:** per-pair net is ~135 lines, not
+the ~590 ceiling — the two source halves genuinely differ (53.5% bag
+overlap) and survive. The real win is marginal cost: a new source shape
+now costs its source half only (~150-250 lines) against ~550 for a full
+leaf, and one 203-line destination half serves the family. The sweep's
+value is therefore in the leaves-per-destination count (chaindst 3,
+projlocal_fresh 4, fresh 3), not in pair merging.
+
+Validation, all four suites, both commits: 0 errors; audit OK,
+0 sorries, axioms unchanged; 17/17 + 104/104; 82/0; osea 82/0/0.
