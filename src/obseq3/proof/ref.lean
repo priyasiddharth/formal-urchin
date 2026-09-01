@@ -5438,21 +5438,8 @@ theorem ref_derefdst_local_simulation
       CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_dval0]
     exact StateIncr.trans (emit_state_incr _ _)
       (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))
-  have h_instD : ∀ q' instr,
-      q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-      (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-        [Instr.Assgn (Register.R csPrefix.nextReg)
-          (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)])).nextLabel →
-      (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-      (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-        [Instr.Assgn (Register.R csPrefix.nextReg)
-          (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)])).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incr2.nextLabel_le
-    · rw [h_incr2.code_eq q' h_lt]
-      exact h_code
+  have h_instD :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incr2
   -- §6 execute the Borrow (the rhs, FIRST)
   have h_incr_cs1 : StateIncr
       (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
@@ -13767,21 +13754,8 @@ theorem ref_derefdst_projsrc_simulation
       CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_dval0]
     exact StateIncr.trans (emit_state_incr _ _)
       (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))
-  have h_instD : ∀ q' instr,
-      q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-      (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-        [Instr.Assgn (Register.R csPrefix.nextReg)
-          (Rhs.Borrow kind prot mask (blockSize τ) srcReg (pathOffset f))])).nextLabel →
-      (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-      (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-        [Instr.Assgn (Register.R csPrefix.nextReg)
-          (Rhs.Borrow kind prot mask (blockSize τ) srcReg (pathOffset f))])).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incr2.nextLabel_le
-    · rw [h_incr2.code_eq q' h_lt]
-      exact h_code
+  have h_instD :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incr2
   -- §6 execute the Borrow (the rhs, FIRST)
   have h_incr_cs1 : StateIncr
       (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
@@ -14122,34 +14096,16 @@ theorem ref_derefdst_derefprojsrc_simulation
     exact StateIncr.trans
       (StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix)) (emit_state_incr _ _))
       (StateIncr.trans (CheckedCompilerM.incr _ _) (emit_state_incr _ _))
-  have h_instS : ∀ q' instr,
-      q' < (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextLabel →
-      (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-    · rw [h_incrS.code_eq q' h_lt]
-      exact h_code
+  have h_instS :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
   have h_incrCS1 : StateIncr (emit { (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg + 1 }
       [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg)
         (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])
       (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
     rw [h_stmtRun]
     exact StateIncr.trans (CheckedCompilerM.incr _ _) (emit_state_incr _ _)
-  have h_instCS1 : ∀ q' instr,
-      q' < (emit { (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg + 1 }
-      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg)
-        (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))]).nextLabel →
-      (emit { (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg + 1 }
-      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg)
-        (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))]).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incrCS1.nextLabel_le
-    · rw [h_incrCS1.code_eq q' h_lt]
-      exact h_code
+  have h_instCS1 :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
   have h_incrD : StateIncr
       (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref D)) (emit { (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg + 1 }
       [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg)
@@ -14157,21 +14113,8 @@ theorem ref_derefdst_derefprojsrc_simulation
       (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
     rw [h_stmtRun]
     exact emit_state_incr _ _
-  have h_instDst : ∀ q' instr,
-      q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref D))
-        (emit { (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg + 1 }
-      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg)
-        (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])).nextLabel →
-      (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref D))
-        (emit { (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg + 1 }
-      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg)
-        (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incrD.nextLabel_le
-    · rw [h_incrD.code_eq q' h_lt]
-      exact h_code
+  have h_instDst :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrD
   -- §6 MOTHER 1: the SOURCE chain
   obtain ⟨sOut, n1, s_mid, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
     h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -14582,34 +14525,16 @@ theorem ref_projzero_derefdst_chainsrc_simulation
     exact StateIncr.trans
       (StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix)) (emit_state_incr _ _))
       (StateIncr.trans (CheckedCompilerM.incr _ _) (emit_state_incr _ _))
-  have h_instS : ∀ q' instr,
-      q' < (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextLabel →
-      (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-    · rw [h_incrS.code_eq q' h_lt]
-      exact h_code
+  have h_instS :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
   have h_incrCS1 : StateIncr (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 }
       [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg)
         (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])
       (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
     rw [h_stmtRun]
     exact StateIncr.trans (CheckedCompilerM.incr _ _) (emit_state_incr _ _)
-  have h_instCS1 : ∀ q' instr,
-      q' < (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 }
-      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg)
-        (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))]).nextLabel →
-      (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 }
-      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg)
-        (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))]).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incrCS1.nextLabel_le
-    · rw [h_incrCS1.code_eq q' h_lt]
-      exact h_code
+  have h_instCS1 :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
   have h_incrD : StateIncr
       (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.proj (Place.deref pp) g)) (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 }
       [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg)
@@ -14617,21 +14542,8 @@ theorem ref_projzero_derefdst_chainsrc_simulation
       (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
     rw [h_stmtRun]
     exact emit_state_incr _ _
-  have h_instDst : ∀ q' instr,
-      q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.proj (Place.deref pp) g))
-        (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 }
-      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg)
-        (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])).nextLabel →
-      (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.proj (Place.deref pp) g))
-        (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 }
-      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg)
-        (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incrD.nextLabel_le
-    · rw [h_incrD.code_eq q' h_lt]
-      exact h_code
+  have h_instDst :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrD
   -- §6 MOTHER 1: the SOURCE chain
   obtain ⟨sOut, n1, s_mid, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
     h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -15048,37 +14960,14 @@ theorem ref_projoffset_derefdst_chainsrc_simulation
     StateIncr.trans
       (StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix)) (emit_state_incr _ _))
       h_incrCS1
-  have h_instS : ∀ q' instr,
-      q' < (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextLabel → (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).code q' = some instr → compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-    · rw [h_incrS.code_eq q' h_lt]
-      exact h_code
-  have h_instCS1 : ∀ q' instr,
-      q' < (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))]).nextLabel → (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))]).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incrCS1.nextLabel_le
-    · rw [h_incrCS1.code_eq q' h_lt]
-      exact h_code
-  have h_instB : ∀ q' instr,
-      q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref pp)) (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])).nextLabel → (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref pp)) (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incrB.nextLabel_le
-    · rw [h_incrB.code_eq q' h_lt]
-      exact h_code
-  have h_instCS2 : ∀ q' instr,
-      q' < (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref pp)) (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref pp)) (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref pp)) (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])).nextReg) (Rhs.Borrow RefKind.Mut false [] (blockSize (obseq.LayoutTy.PtrL τ)) bOut0.result.reg (pathOffset g))]).nextLabel → (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref pp)) (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref pp)) (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref pp)) (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))])).nextReg) (Rhs.Borrow RefKind.Mut false [] (blockSize (obseq.LayoutTy.PtrL τ)) bOut0.result.reg (pathOffset g))]).code q' = some instr →
-      compProg q' = some instr := by
-    intro q' instr h_lt h_code
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · exact Nat.lt_of_lt_of_le h_lt h_incrCS2.nextLabel_le
-    · rw [h_incrCS2.code_eq q' h_lt]
-      exact h_code
+  have h_instS :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
+  have h_instCS1 :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
+  have h_instB :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrB
+  have h_instCS2 :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS2
   -- §6 MOTHER 1: the SOURCE chain
   obtain ⟨sOut, n1, s_mid, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
     h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,

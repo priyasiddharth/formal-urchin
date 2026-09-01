@@ -339,18 +339,8 @@ theorem copy_chainsrc_local_simulation
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run
-          (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel →
-        (CheckedCompilerM.run
-          (placeToRegChecked RefKind.Shared src) csPrefix).code q'
-          = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §3 the mother lemma on the WHOLE src place (through the Load)
     obtain ⟨sOut, n1, s_mid, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -790,17 +780,8 @@ theorem copy_projchain_zero_simulation
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run
-          (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel →
-        (CheckedCompilerM.run
-          (placeToRegChecked RefKind.Shared B) csPrefix).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §3 the mother lemma on the chain BASE
     obtain ⟨sOut, n1, s_mid, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -1111,17 +1092,8 @@ theorem copy_projchain_offset_simulation
           (StateIncr.trans (freshReg_state_incr _)
             (StateIncr.trans (emit_state_incr _ _)
               (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))))
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run
-          (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel →
-        (CheckedCompilerM.run
-          (placeToRegChecked RefKind.Shared B) csPrefix).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §3 the mother lemma on the chain BASE
     obtain ⟨sOut, n1, s_mid, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -1945,25 +1917,8 @@ theorem copy_fresh_chainsrc_simulation
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal τ))])
-            dstLoc.idx.1 (Register.R csPrefix.nextReg, τ))).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal τ))])
-            dstLoc.idx.1 (Register.R csPrefix.nextReg, τ))).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §6 execute the `Alloc`
     have h_code0 : compProg s_osea.pc
         = some (Instr.Assgn (Register.R csPrefix.nextReg)
@@ -2761,25 +2716,8 @@ theorem copy_fresh_projchain_zero_simulation
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal τ))])
-            dstLoc.idx.1 (Register.R csPrefix.nextReg, τ))).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal τ))])
-            dstLoc.idx.1 (Register.R csPrefix.nextReg, τ))).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §6 execute the `Alloc`
     have h_code0 : compProg s_osea.pc
         = some (Instr.Assgn (Register.R csPrefix.nextReg)
@@ -3404,25 +3342,8 @@ theorem copy_fresh_projchain_offset_simulation
           (StateIncr.trans (freshReg_state_incr _)
             (StateIncr.trans (emit_state_incr _ _)
               (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))))
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal τ))])
-            dstLoc.idx.1 (Register.R csPrefix.nextReg, τ))).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal τ))])
-            dstLoc.idx.1 (Register.R csPrefix.nextReg, τ))).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §6 execute the `Alloc`
     have h_code0 : compProg s_osea.pc
         = some (Instr.Assgn (Register.R csPrefix.nextReg)
@@ -4884,15 +4805,8 @@ theorem copy_chaindst_chainsrc_simulation
               (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
             ++ cleanupInstrs sOut0.result.cleanup))
           (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P)) _)
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma
     obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -4962,27 +4876,8 @@ theorem copy_chaindst_chainsrc_simulation
               (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
                 a.result.cleanup.reverse)))
       · exact CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P)) _
-    have h_instD : ∀ q' instr,
-        q' < (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).nextLabel →
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrCS1.nextLabel_le
-      · rw [h_incrCS1.code_eq q' h_lt]
-        exact h_code
+    have h_instD :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
     -- code inclusion for the DESTINATION lowering's own instructions
     have h_incrDrun : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
         (emit
@@ -5028,29 +4923,8 @@ theorem copy_chaindst_chainsrc_simulation
             (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
               a.result.cleanup.reverse))
       · exact StateIncr.refl _
-    have h_instDst : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrDrun.nextLabel_le
-      · rw [h_incrDrun.code_eq q' h_lt]
-        exact h_code
+    have h_instDst :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 the READ: transport, then execute the `Load`
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
@@ -5486,15 +5360,8 @@ theorem copy_chaindst_projsrc_zero_simulation
               (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
             ++ cleanupInstrs sOut0.result.cleanup))
           (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P)) _)
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma
     obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -5564,27 +5431,8 @@ theorem copy_chaindst_projsrc_zero_simulation
               (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
                 a.result.cleanup.reverse)))
       · exact CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P)) _
-    have h_instD : ∀ q' instr,
-        q' < (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).nextLabel →
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrCS1.nextLabel_le
-      · rw [h_incrCS1.code_eq q' h_lt]
-        exact h_code
+    have h_instD :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
     -- code inclusion for the DESTINATION lowering's own instructions
     have h_incrDrun : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
         (emit
@@ -5630,29 +5478,8 @@ theorem copy_chaindst_projsrc_zero_simulation
             (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
               a.result.cleanup.reverse))
       · exact StateIncr.refl _
-    have h_instDst : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrDrun.nextLabel_le
-      · rw [h_incrDrun.code_eq q' h_lt]
-        exact h_code
+    have h_instDst :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 the READ: transport, then execute the `Load`
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
@@ -6109,15 +5936,8 @@ theorem copy_chaindst_projsrc_offset_simulation
     have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix)
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
       StateIncr.trans h_incrPre h_incrCS2V
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma on the chain BASE
     obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -6164,33 +5984,8 @@ theorem copy_chaindst_projsrc_offset_simulation
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))
       · exact CheckedCompilerM.incr
           (placeToRegChecked RefKind.Mut (Place.deref P)) _
-    have h_instCS2 : ∀ q' instr,
-        q' < 
-                (emit
-                  { (emit
-                    { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                    [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                      (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]) with
-                      nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                  [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
-                   Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)]).nextLabel →
-        
-                (emit
-                  { (emit
-                    { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                    [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                      (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]) with
-                      nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                  [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
-                   Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)]).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrCS2.nextLabel_le
-      · rw [h_incrCS2.code_eq q' h_lt]
-        exact h_code
+    have h_instCS2 :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS2
     have h_incrDrun : StateIncr 
                 (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
                     (emit
@@ -6219,35 +6014,8 @@ theorem copy_chaindst_projsrc_offset_simulation
       · rename_i a h_a
         exact StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)
       · exact StateIncr.refl _
-    have h_instDst : ∀ q' instr,
-        q' < 
-                (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-                    (emit
-                    { (emit
-                      { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                          nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                        (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                    [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
-                     Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)])).nextLabel →
-        
-                (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-                    (emit
-                    { (emit
-                      { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                          nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                        (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                    [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
-                     Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)])).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrDrun.nextLabel_le
-      · rw [h_incrDrun.code_eq q' h_lt]
-        exact h_code
+    have h_instDst :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 BRIDGE 1S: the projection's borrow is taken, read through, and
     -- retired, all before the destination lowering starts
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
@@ -7122,15 +6890,8 @@ theorem copy_projlocal_fresh_zero_simulation
     have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)))
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
       StateIncr.trans h_incrPre h_incrS1V
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §6 execute the `Alloc`
     have h_code0 : compProg s_osea.pc
         = some (Instr.Assgn (Register.R csPrefix.nextReg)
@@ -7694,15 +7455,8 @@ theorem copy_projlocal_fresh_offset_simulation
     have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)))
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
       StateIncr.trans h_incrPre h_incrS1V
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §6 execute the `Alloc`
     have h_code0 : compProg s_osea.pc
         = some (Instr.Assgn (Register.R csPrefix.nextReg)
@@ -8653,15 +8407,8 @@ theorem copy_projlocal_fresh_projsrc_offset_zero_simulation
     have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)))
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
       StateIncr.trans h_incrPre h_incrS1V
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §6 execute the `Alloc`
     have h_code0 : compProg s_osea.pc
         = some (Instr.Assgn (Register.R csPrefix.nextReg)
@@ -9292,15 +9039,8 @@ theorem copy_projlocal_fresh_projsrc_offset_offset_simulation
     have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)))
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
       StateIncr.trans h_incrPre h_incrS1V
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §6 execute the `Alloc`
     have h_code0 : compProg s_osea.pc
         = some (Instr.Assgn (Register.R csPrefix.nextReg)
@@ -10772,15 +10512,8 @@ theorem copy_projdst_zero_projsrc_offset_simulation
     have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix)
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
       StateIncr.trans h_incrPre h_incrCS2V
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma on the chain BASE
     obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -10825,17 +10558,8 @@ theorem copy_projdst_zero_projsrc_offset_simulation
       exact StateIncr.trans
         (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut dbase) _)
         (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))
-    have h_instCS2 : ∀ q' instr,
-        q' < 
-                (emit { nextReg := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextReg + 1, nextLabel := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextLabel, code := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).code, placeRegMap := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).placeRegMap } [Instr.Assgn (Register.R (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)]).nextLabel →
-        
-                (emit { nextReg := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextReg + 1, nextLabel := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextLabel, code := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).code, placeRegMap := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).placeRegMap } [Instr.Assgn (Register.R (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)]).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrCS2.nextLabel_le
-      · rw [h_incrCS2.code_eq q' h_lt]
-        exact h_code
+    have h_instCS2 :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS2
     have h_incrDrun : StateIncr 
                 (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase)
                     (emit
@@ -10868,35 +10592,8 @@ theorem copy_projdst_zero_projsrc_offset_simulation
       csnorm at h_d1 ⊢
       simp only [h_d1]
       exact StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)
-    have h_instDst : ∀ q' instr,
-        q' < 
-                (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase)
-                    (emit
-                    { (emit
-                      { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                          nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                        (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                    [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
-                     Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)])).nextLabel →
-        
-                (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase)
-                    (emit
-                    { (emit
-                      { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                          nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                        (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                    [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
-                     Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)])).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrDrun.nextLabel_le
-      · rw [h_incrDrun.code_eq q' h_lt]
-        exact h_code
+    have h_instDst :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 BRIDGE 1S: the projection's borrow is taken, read through, and
     -- retired, all before the destination lowering starts
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
@@ -11434,15 +11131,8 @@ theorem copy_projdst_offset_projsrc_offset_simulation
     have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix)
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
       StateIncr.trans h_incrPre h_incrCS2V
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma on the chain BASE
     obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -11489,17 +11179,8 @@ theorem copy_projdst_offset_projsrc_offset_simulation
         (StateIncr.trans (freshReg_state_incr _)
           (StateIncr.trans (emit_state_incr _ _)
             (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))))
-    have h_instCS2 : ∀ q' instr,
-        q' < 
-                (emit { nextReg := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextReg + 1, nextLabel := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextLabel, code := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).code, placeRegMap := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).placeRegMap } [Instr.Assgn (Register.R (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)]).nextLabel →
-        
-                (emit { nextReg := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextReg + 1, nextLabel := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextLabel, code := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).code, placeRegMap := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).placeRegMap } [Instr.Assgn (Register.R (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)]).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrCS2.nextLabel_le
-      · rw [h_incrCS2.code_eq q' h_lt]
-        exact h_code
+    have h_instCS2 :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS2
     have h_incrDrun : StateIncr 
                 (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase)
                     (emit
@@ -11534,35 +11215,8 @@ theorem copy_projdst_offset_projsrc_offset_simulation
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
-    have h_instDst : ∀ q' instr,
-        q' < 
-                (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase)
-                    (emit
-                    { (emit
-                      { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                          nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                        (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                    [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
-                     Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)])).nextLabel →
-        
-                (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase)
-                    (emit
-                    { (emit
-                      { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                          nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                      [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                        (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                    [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
-                     Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)])).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrDrun.nextLabel_le
-      · rw [h_incrDrun.code_eq q' h_lt]
-        exact h_code
+    have h_instDst :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 BRIDGE 1S: the projection's borrow is taken, read through, and
     -- retired, all before the destination lowering starts
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
@@ -12243,15 +11897,8 @@ theorem copy_projdst_zero_chainsrc_simulation
               (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
             ++ cleanupInstrs sOut0.result.cleanup))
           (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (dbase)) _)
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma
     obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -12322,27 +11969,8 @@ theorem copy_projdst_zero_chainsrc_simulation
               (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
                 a.result.cleanup.reverse)))
       · exact CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (dbase)) _
-    have h_instD : ∀ q' instr,
-        q' < (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).nextLabel →
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrCS1.nextLabel_le
-      · rw [h_incrCS1.code_eq q' h_lt]
-        exact h_code
+    have h_instD :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
     -- code inclusion for the DESTINATION lowering's own instructions
     have h_incrDrun : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
         (emit
@@ -12389,29 +12017,8 @@ theorem copy_projdst_zero_chainsrc_simulation
             (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
               a.result.cleanup.reverse))
       · exact StateIncr.refl _
-    have h_instDst : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrDrun.nextLabel_le
-      · rw [h_incrDrun.code_eq q' h_lt]
-        exact h_code
+    have h_instDst :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 the READ: transport, then execute the `Load`
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
@@ -12839,15 +12446,8 @@ theorem copy_projdst_offset_chainsrc_simulation
               (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
             ++ cleanupInstrs sOut0.result.cleanup))
           (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.proj (dbase) path)) _)
-    have h_instS : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrS.nextLabel_le
-      · rw [h_incrS.code_eq q' h_lt]
-        exact h_code
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma
     obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
       h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
@@ -12917,27 +12517,8 @@ theorem copy_projdst_offset_chainsrc_simulation
               (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
                 a.result.cleanup.reverse)))
       · exact CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.proj (dbase) path)) _
-    have h_instD : ∀ q' instr,
-        q' < (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).nextLabel →
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrCS1.nextLabel_le
-      · rw [h_incrCS1.code_eq q' h_lt]
-        exact h_code
+    have h_instD :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
     -- code inclusion for the DESTINATION lowering's own instructions
     have h_incrProj : StateIncr
         (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
@@ -13012,29 +12593,8 @@ theorem copy_projdst_offset_chainsrc_simulation
               a.result.cleanup.reverse))
       · exact StateIncr.refl _
     have h_incrDrun := h_incrProj.trans h_incrDrunP
-    have h_instDst : ∀ q' instr,
-        q' < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])).nextLabel →
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
-        (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1,
-            nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextLabel,
-            code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).code,
-            placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])).code q' = some instr →
-        compProg q' = some instr := by
-      intro q' instr h_lt h_code
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · exact Nat.lt_of_lt_of_le h_lt h_incrDrun.nextLabel_le
-      · rw [h_incrDrun.code_eq q' h_lt]
-        exact h_code
+    have h_instDst :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 the READ: transport, then execute the `Load`
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src

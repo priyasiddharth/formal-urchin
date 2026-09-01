@@ -2002,6 +2002,43 @@ theorem compileStmt_emitted_in_compProg
   rw [compileProgFrom_code_eq_compileStmt cs0 prog compProg h_comp h_prefix h_get h_stmt h_lt]
   exact h_code
 
+/-- Everything a compiler state has emitted below its own `nextLabel`
+    survives verbatim into the whole compiled program.
+
+    This is exactly the instruction-transfer hypothesis
+    `ptrChain_lowering_sim` demands, and exactly what every `h_code*`
+    block re-derives — given a NAME, both become one-liners. -/
+def CodeIncluded (compProg : obseq3.oseair.Prog) (cs : CompilerState) : Prop :=
+  ∀ q instr, q < cs.nextLabel → cs.code q = some instr → compProg q = some instr
+
+/-- The statement's own compiled state is code-included: this is
+    `compileStmt_emitted_in_compProg` with its two positional obligations
+    turned into the definition's binders. -/
+theorem CodeIncluded.of_stmt
+    {Γ : Ctx} {cs0 csPrefix : CompilerState} {prog : obseq3.Prog Γ}
+    {compProg : obseq3.oseair.Prog} {stmtIdx : Nat} {stmt : Stmt Γ}
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt)}
+    (h_comp : compileProgFrom cs0 prog = Except.ok compProg)
+    (h_prefix : csAt cs0 prog stmtIdx csPrefix)
+    (h_get : prog.get? stmtIdx = some stmt)
+    (h_stmt : CheckedCompilerM.value (compileStmtChecked stmt) csPrefix
+      = Except.ok stmtOut) :
+    CodeIncluded compProg
+      (CheckedCompilerM.run (compileStmtChecked stmt) csPrefix) :=
+  fun _ _ h_lt h_code =>
+    compileStmt_emitted_in_compProg h_comp h_prefix h_get h_stmt h_lt h_code
+
+/-- Code inclusion is ANTITONE in the compiler state: anything an earlier
+    state emitted is still there later, so a later state's inclusion gives
+    an earlier one's. Replaces the five-line `Nat.lt_of_lt_of_le` /
+    `StateIncr.code_eq` dance at every `h_inst*` site. -/
+theorem CodeIncluded.mono {compProg : obseq3.oseair.Prog} {cs cs' : CompilerState}
+    (h : CodeIncluded compProg cs') (h_incr : StateIncr cs cs') :
+    CodeIncluded compProg cs :=
+  fun q instr h_lt h_code =>
+    h q instr (Nat.lt_of_lt_of_le h_lt h_incr.nextLabel_le)
+      (by rw [h_incr.code_eq q h_lt]; exact h_code)
+
 /-- One-step execution of an `RStore`: the source register's cells are
     written through the destination pointer register. The instruction's
     `srcTy != ty` guard is discharged by `LawfulBEq TyVal` — which is why
