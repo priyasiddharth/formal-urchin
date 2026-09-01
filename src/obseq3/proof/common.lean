@@ -2118,6 +2118,41 @@ theorem FragmentAt.instrAt {compProg : obseq3.oseair.Prog} {base : Nat}
     compProg q = some i := by
   subst h_q; exact h k i h_i
 
+/-- `EmitTower cs base instrs` is `EmittedAt` made *inferrable*. The
+    compiler-state tower `cs` is an input and `instrs` an `outParam`, so
+    instance resolution walks the tower outside-in — peeling one `emit`,
+    `setNextReg` or `setPlaceInfo` at a time — and assembles the
+    instruction list on the way back out. That is the same forward chain
+    a call site would otherwise spell by hand, which is the only per-leaf
+    input `EmittedAt` needs. -/
+class EmitTower (cs : CompilerState) (base : Nat) (instrs : outParam (List Instr)) : Prop where
+  out : EmittedAt cs base instrs
+
+instance emitTower_nil (cs : CompilerState) : EmitTower cs cs.nextLabel [] :=
+  ⟨EmittedAt.nil cs⟩
+
+instance emitTower_snoc (cs : CompilerState) (base : Nat) (l : List Instr)
+    [i : EmitTower cs base l] (l' : List Instr) : EmitTower (emit cs l') base (l ++ l') :=
+  ⟨i.out.snoc l'⟩
+
+instance emitTower_setNextReg (cs : CompilerState) (base : Nat) (l : List Instr)
+    [i : EmitTower cs base l] (n : Nat) : EmitTower { cs with nextReg := n } base l :=
+  ⟨i.out.setNextReg n⟩
+
+instance emitTower_setPlaceInfo (cs : CompilerState) (base : Nat) (l : List Instr)
+    [i : EmitTower cs base l] (idx : Nat) (info : PlaceInfo) :
+    EmitTower (setPlaceInfo cs idx info) base l :=
+  ⟨i.out.setPlaceInfo idx info⟩
+
+/-- Locate an emitted fragment in `compProg` with the tower walked by
+    instance resolution: the caller supplies only the statement facts and
+    the `nextLabel`-to-`pc` equation. -/
+theorem CodeIncluded.fragmentOf {compProg : obseq3.oseair.Prog} {cs cs' : CompilerState}
+    {base pc : Nat} {instrs : List Instr} (h : CodeIncluded compProg cs)
+    (h_cs : cs = cs') [i : EmitTower cs' base instrs] (h_pc : pc = base) :
+    FragmentAt compProg pc instrs :=
+  ((h_cs ▸ h).fragmentAt i.out).rebase h_pc
+
 /-- One-step execution of an `RStore`: the source register's cells are
     written through the destination pointer register. The instruction's
     `srcTy != ty` guard is discharged by `LawfulBEq TyVal` — which is why

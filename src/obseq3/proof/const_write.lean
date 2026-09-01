@@ -294,16 +294,12 @@ theorem const_store_local_existing_simulation
         sb_write_respects_PermSim h_psim h_wf_t h_rt h_nw h_useMut_src
       have h_stmtRun := h_run0 csPrefix reg h_pi
       obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix
+      have hFrag :=
+        (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
+          h_stmtRun h_pc
       have h_code : compProg s_osea.pc
-          = some (Instr.CStore (layoutToTyVal τ) vs' reg) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · rw [h_stmtRun]
-          simp [emit]
-        · rw [h_stmtRun]
-          have h_at := emit_code_at_new csPrefix
-            [Instr.CStore (layoutToTyVal τ) vs' reg] (k := 0) (by simp)
-          simpa using h_at
+          = some (Instr.CStore (layoutToTyVal τ) vs' reg) :=
+        hFrag.instrAt 0 rfl rfl
       have h_entry' : PtrRegisterEntry s_osea.reg reg binding.addr
           (binding.addr - binding.addr) (blockSize τ) tag := by
         rw [Nat.sub_self]
@@ -548,38 +544,17 @@ theorem const_store_fresh_local_simulation
       -- §5 the two instructions, at pc and pc+1
       have h_sz : obseq.typeSize (layoutToTyVal τ)
           = blockSize τ := obseq.typeSize_layoutToTyVal _
+      have hFrag2 :=
+        (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
+          h_stmtRun h_pc
       have h_code1 : compProg s_osea.pc
           = some (Instr.Assgn (Register.R csPrefix.nextReg)
-              (Rhs.Alloc (layoutToTyVal τ))) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · rw [h_stmtRun]
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-          omega
-        · rw [h_stmtRun]
-          rw [emit_code_lt_nextLabel _ _ (by simp [emit, setPlaceInfo])]
-          show (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } _).code _ = _
-          have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
-            [Instr.Assgn (Register.R csPrefix.nextReg)
-              (Rhs.Alloc (layoutToTyVal τ))] (k := 0) (by simp)
-          simpa using h
+              (Rhs.Alloc (layoutToTyVal τ))) :=
+        hFrag2.instrAt 0 rfl rfl
       have h_code2 : compProg (s_osea.pc + 1)
           = some (Instr.CStore (layoutToTyVal τ) vs'
-              (Register.R csPrefix.nextReg)) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · rw [h_stmtRun]
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-          omega
-        · rw [h_stmtRun]
-          have h := emit_code_at_new
-            (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal τ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, τ))
-            [Instr.CStore (layoutToTyVal τ) vs' (Register.R csPrefix.nextReg)]
-            (k := 0) (by simp)
-          simpa [emit, setPlaceInfo] using h
+              (Register.R csPrefix.nextReg)) :=
+        hFrag2.instrAt 1 rfl rfl
       -- §6 execute the `Alloc`
       have h_own_tgt' : MSB.own s_osea.perms s_osea.mem.addrStart
           (obseq.typeSize (layoutToTyVal τ))
@@ -1404,19 +1379,12 @@ theorem const_store_proj_deref_zero_simulation
       rd permsP h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instD
   have h_stmtRunC := h_frag _ h_o h_root h_dval h_dclean
   have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
+  have hFrag3 :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
+      h_stmtRun h_dpc
   have h_code : compProg s_mid.pc
-      = some (Instr.CStore (layoutToTyVal τ) vs' dOut.result.reg) := by
-    rw [h_dpc]
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · rw [h_stmtRun]
-      show _ < _ + 1
-      exact Nat.lt_succ_self _
-    · rw [h_stmtRun]
-      have h := emit_code_at_new
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) csPrefix)
-        [Instr.CStore (layoutToTyVal τ) vs' dOut.result.reg]
-        (k := 0) (by simp)
-      simpa using h
+      = some (Instr.CStore (layoutToTyVal τ) vs' dOut.result.reg) :=
+    hFrag3.instrAt 0 rfl rfl
   have h_w := h_write
   simp only [mirlite.writeResolvedPlace] at h_w
   split at h_w
@@ -1781,66 +1749,21 @@ theorem const_store_proj_deref_simulation
   have h_stmtRunC := h_frag _ h_off h_root h_dval h_dclean
   have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
   -- the three compiled instructions after the dst lowering
+  have hFrag4 :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
+      h_stmtRun h_dpc
   have h_code1 : compProg s_mid.pc
       = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)
-          (borrowRhs RefKind.Mut (blockSize τ) dOut.result.reg (pathOffset path))) := by
-    rw [h_dpc]
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · rw [h_stmtRun]
-      simp only [emit, List.length_cons, List.length_nil]
-      omega
-    · rw [h_stmtRun]
-      rw [emit_code_lt_nextLabel _ _ (by
-        simp only [emit, List.length_cons, List.length_nil]; omega)]
-      rw [emit_code_lt_nextLabel _ _ (by
-        simp only [emit, List.length_cons, List.length_nil]; omega)]
-      have h := emit_code_at_new
-        { (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg + 1 }
-        [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)
-          (borrowRhs RefKind.Mut (blockSize τ) dOut.result.reg (pathOffset path))]
-        (k := 0) (by simp)
-      simpa using h
+          (borrowRhs RefKind.Mut (blockSize τ) dOut.result.reg (pathOffset path))) :=
+    hFrag4.instrAt 0 rfl rfl
   have h_code2 : compProg (s_mid.pc + 1)
       = some (Instr.CStore (layoutToTyVal τ) vs'
-          (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)) := by
-    rw [h_dpc]
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · rw [h_stmtRun]
-      simp only [emit, List.length_cons, List.length_nil]
-      omega
-    · rw [h_stmtRun]
-      rw [emit_code_lt_nextLabel _ _ (by
-        simp only [emit, List.length_cons, List.length_nil]; omega)]
-      have h := emit_code_at_new
-        (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)
-            (borrowRhs RefKind.Mut (blockSize τ) dOut.result.reg (pathOffset path))])
-        [Instr.CStore (layoutToTyVal τ) vs'
-          (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)]
-        (k := 0) (by simp)
-      simpa [emit] using h
+          (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)) :=
+    hFrag4.instrAt 1 rfl rfl
   have h_code3 : compProg (s_mid.pc + 1 + 1)
       = some (Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)
-          (blockSize τ)) := by
-    rw [h_dpc]
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · rw [h_stmtRun]
-      simp only [emit, List.length_cons, List.length_nil]
-      omega
-    · rw [h_stmtRun]
-      have h := emit_code_at_new
-        (emit (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)
-            (borrowRhs RefKind.Mut (blockSize τ) dOut.result.reg (pathOffset path))])
-          [Instr.CStore (layoutToTyVal τ) vs'
-            (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)])
-        [Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)
-          (blockSize τ)]
-        (k := 0) (by simp)
-      simpa [emit] using h
+          (blockSize τ)) :=
+    hFrag4.instrAt 2 rfl rfl
   -- source write facts
   have h_w := h_write
   simp only [mirlite.writeResolvedPlace] at h_w
@@ -2222,15 +2145,12 @@ theorem const_store_proj_zero_simulation
       have h_stmtRun := (h_run0 csPrefix).trans (h_frag csPrefix reg h_pi)
       obtain ⟨stmtOutC, h_stmtOutC⟩ := h_fragval csPrefix reg h_pi
       obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
+      have hFrag5 :=
+        (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
+          h_stmtRun h_pc
       have h_code : compProg s_osea.pc
-          = some (Instr.CStore (layoutToTyVal τ) vs' reg) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · rw [h_stmtRun]; simp [emit]
-        · rw [h_stmtRun]
-          have h := emit_code_at_new csPrefix
-            [Instr.CStore (layoutToTyVal τ) vs' reg] (k := 0) (by simp)
-          simpa using h
+          = some (Instr.CStore (layoutToTyVal τ) vs' reg) :=
+        hFrag5.instrAt 0 rfl rfl
       -- BRIDGE 2 at the projected address
       have h_entry' : PtrRegisterEntry s_osea.reg reg binding.addr
           (binding.addr + pathOffset path - binding.addr) (blockSize σ) tag := by
@@ -2497,53 +2417,21 @@ theorem const_store_proj_offset_simulation
           [Instr.Die (Register.R csPrefix.nextReg) (blockSize τ)])).nextLabel
           = csPrefix.nextLabel + 3 := by
         simp only [emit, List.length_cons, List.length_nil]
+      have hFrag6 :=
+        (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
+          h_stmtRun h_pc
       have h_code1 : compProg s_osea.pc
           = some (Instr.Assgn (Register.R csPrefix.nextReg)
-              (borrowRhs RefKind.Mut (blockSize τ) reg (pathOffset path))) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · rw [h_stmtRun, h_len3]; omega
-        · rw [h_stmtRun]
-          rw [emit_code_lt_nextLabel _ _ (by
-            simp only [emit, List.length_cons, List.length_nil]; omega)]
-          rw [emit_code_lt_nextLabel _ _ (by
-            simp only [emit, List.length_cons, List.length_nil]; omega)]
-          have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
-            [Instr.Assgn (Register.R csPrefix.nextReg)
-              (borrowRhs RefKind.Mut (blockSize τ) reg (pathOffset path))]
-            (k := 0) (by simp)
-          simpa using h
+              (borrowRhs RefKind.Mut (blockSize τ) reg (pathOffset path))) :=
+        hFrag6.instrAt 0 rfl rfl
       have h_code2 : compProg (s_osea.pc + 1)
           = some (Instr.CStore (layoutToTyVal τ) vs'
-              (Register.R csPrefix.nextReg)) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · rw [h_stmtRun, h_len3]; omega
-        · rw [h_stmtRun]
-          rw [emit_code_lt_nextLabel _ _ (by
-            simp only [emit, List.length_cons, List.length_nil]; omega)]
-          have h := emit_code_at_new
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (borrowRhs RefKind.Mut (blockSize τ) reg (pathOffset path))])
-            [Instr.CStore (layoutToTyVal τ) vs' (Register.R csPrefix.nextReg)]
-            (k := 0) (by simp)
-          simpa [emit] using h
+              (Register.R csPrefix.nextReg)) :=
+        hFrag6.instrAt 1 rfl rfl
       have h_code3 : compProg (s_osea.pc + 1 + 1)
           = some (Instr.Die (Register.R csPrefix.nextReg)
-              (blockSize τ)) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · rw [h_stmtRun, h_len3]; omega
-        · rw [h_stmtRun]
-          have h := emit_code_at_new
-            (emit (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (borrowRhs RefKind.Mut (blockSize τ) reg (pathOffset path))])
-              [Instr.CStore (layoutToTyVal τ) vs' (Register.R csPrefix.nextReg)])
-            [Instr.Die (Register.R csPrefix.nextReg) (blockSize τ)]
-            (k := 0) (by simp)
-          simpa [emit] using h
+              (blockSize τ)) :=
+        hFrag6.instrAt 2 rfl rfl
       -- §execute: Borrow, then the store through the fresh tag, then Die
       have h_ref_tgt' : MSB.ref s_osea.perms (binding.addr + 0 + pathOffset path)
           (blockSize τ) tag RefKind.Mut false []
@@ -3161,38 +3049,17 @@ theorem const_store_proj_fresh_simulation
       simp [h_o']
     rw [h_req] at h_write
     -- §5 the two instructions
+    have hFrag7 :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
+        h_stmtRun h_pc
     have h_code1 : compProg s_osea.pc
         = some (Instr.Assgn (Register.R csPrefix.nextReg)
-            (Rhs.Alloc (layoutToTyVal σ))) := by
-      rw [h_pc]
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · rw [h_stmtRun]
-        simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-        omega
-      · rw [h_stmtRun]
-        rw [emit_code_lt_nextLabel _ _ (by simp [emit, setPlaceInfo])]
-        show (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } _).code _ = _
-        have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
-          [Instr.Assgn (Register.R csPrefix.nextReg)
-            (Rhs.Alloc (layoutToTyVal σ))] (k := 0) (by simp)
-        simpa using h
+            (Rhs.Alloc (layoutToTyVal σ))) :=
+      hFrag7.instrAt 0 rfl rfl
     have h_code2 : compProg (s_osea.pc + 1)
         = some (Instr.CStore (layoutToTyVal τ) vs'
-            (Register.R csPrefix.nextReg)) := by
-      rw [h_pc]
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · rw [h_stmtRun]
-        simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-        omega
-      · rw [h_stmtRun]
-        have h := emit_code_at_new
-          (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-            [Instr.Assgn (Register.R csPrefix.nextReg)
-              (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ))
-          [Instr.CStore (layoutToTyVal τ) vs' (Register.R csPrefix.nextReg)]
-          (k := 0) (by simp)
-        simpa [emit, setPlaceInfo] using h
+            (Register.R csPrefix.nextReg)) :=
+      hFrag7.instrAt 1 rfl rfl
     -- §6 execute the `Alloc`
     have h_run1 := runN_Assgn_Alloc_step compProg s_osea
       (Register.R csPrefix.nextReg) (layoutToTyVal σ)
@@ -3331,99 +3198,26 @@ theorem const_store_proj_fresh_simulation
     have h_stmtRun := (h_run0 csPrefix).trans
       (h_frag1 csPrefix h_off h_pi_none)
     -- §5' the four instructions
+    have hFrag8 :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
+        h_stmtRun h_pc
     have h_code1 : compProg s_osea.pc
         = some (Instr.Assgn (Register.R csPrefix.nextReg)
-            (Rhs.Alloc (layoutToTyVal σ))) := by
-      rw [h_pc]
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · rw [h_stmtRun]
-        simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-        omega
-      · rw [h_stmtRun]
-        rw [emit_code_lt_nextLabel _ _ (by
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]; omega)]
-        rw [emit_code_lt_nextLabel _ _ (by
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]; omega)]
-        rw [emit_code_lt_nextLabel _ _ (by
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]; omega)]
-        show (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } _).code _ = _
-        have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
-          [Instr.Assgn (Register.R csPrefix.nextReg)
-            (Rhs.Alloc (layoutToTyVal σ))] (k := 0) (by simp)
-        simpa using h
+            (Rhs.Alloc (layoutToTyVal σ))) :=
+      hFrag8.instrAt 0 rfl rfl
     have h_code2 : compProg (s_osea.pc + 1)
         = some (Instr.Assgn (Register.R (csPrefix.nextReg + 1))
             (borrowRhs RefKind.Mut (blockSize τ)
-              (Register.R csPrefix.nextReg) (pathOffset path))) := by
-      rw [h_pc]
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · rw [h_stmtRun]
-        simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-        omega
-      · rw [h_stmtRun]
-        rw [emit_code_lt_nextLabel _ _ (by
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]; omega)]
-        rw [emit_code_lt_nextLabel _ _ (by
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]; omega)]
-        have h := emit_code_at_new
-          { (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)) with
-              nextReg := csPrefix.nextReg + 1 + 1 }
-          [Instr.Assgn (Register.R (csPrefix.nextReg + 1))
-            (borrowRhs RefKind.Mut (blockSize τ)
-              (Register.R csPrefix.nextReg) (pathOffset path))]
-          (k := 0) (by simp)
-        simpa [emit, setPlaceInfo] using h
+              (Register.R csPrefix.nextReg) (pathOffset path))) :=
+      hFrag8.instrAt 1 rfl rfl
     have h_code3 : compProg (s_osea.pc + 1 + 1)
         = some (Instr.CStore (layoutToTyVal τ) vs'
-            (Register.R (csPrefix.nextReg + 1))) := by
-      rw [h_pc]
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · rw [h_stmtRun]
-        simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-        omega
-      · rw [h_stmtRun]
-        rw [emit_code_lt_nextLabel _ _ (by
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]; omega)]
-        have h := emit_code_at_new
-          (emit { (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)) with
-              nextReg := csPrefix.nextReg + 1 + 1 }
-            [Instr.Assgn (Register.R (csPrefix.nextReg + 1))
-              (borrowRhs RefKind.Mut (blockSize τ)
-                (Register.R csPrefix.nextReg) (pathOffset path))])
-          [Instr.CStore (layoutToTyVal τ) vs'
-            (Register.R (csPrefix.nextReg + 1))]
-          (k := 0) (by simp)
-        simpa [emit, setPlaceInfo] using h
+            (Register.R (csPrefix.nextReg + 1))) :=
+      hFrag8.instrAt 2 rfl rfl
     have h_code4 : compProg (s_osea.pc + 1 + 1 + 1)
         = some (Instr.Die (Register.R (csPrefix.nextReg + 1))
-            (blockSize τ)) := by
-      rw [h_pc]
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · rw [h_stmtRun]
-        simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-        omega
-      · rw [h_stmtRun]
-        have h := emit_code_at_new
-          (emit (emit { (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)) with
-              nextReg := csPrefix.nextReg + 1 + 1 }
-            [Instr.Assgn (Register.R (csPrefix.nextReg + 1))
-              (borrowRhs RefKind.Mut (blockSize τ)
-                (Register.R csPrefix.nextReg) (pathOffset path))])
-            [Instr.CStore (layoutToTyVal τ) vs'
-              (Register.R (csPrefix.nextReg + 1))])
-          [Instr.Die (Register.R (csPrefix.nextReg + 1))
-            (blockSize τ)]
-          (k := 0) (by simp)
-        simpa [emit, setPlaceInfo] using h
+            (blockSize τ)) :=
+      hFrag8.instrAt 3 rfl rfl
     -- §6' execute the `Alloc`
     have h_run1 := runN_Assgn_Alloc_step compProg s_osea
       (Register.R csPrefix.nextReg) (layoutToTyVal σ)
@@ -3936,19 +3730,12 @@ theorem const_store_deref_chain_simulation
       resolved permsD h_res h_tbd h_lbs h_prb h_sms h_psim h_pc h_instD
   have h_stmtRunC := h_frag _ h_root h_dval h_dclean
   have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
+  have hFrag9 :=
+    (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
+      h_stmtRun h_dpc
   have h_code : compProg s_mid.pc
-      = some (Instr.CStore (layoutToTyVal τ) vs' dOut.result.reg) := by
-    rw [h_dpc]
-    refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-    · rw [h_stmtRun]
-      show _ < _ + 1
-      exact Nat.lt_succ_self _
-    · rw [h_stmtRun]
-      have h := emit_code_at_new
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref ptrPlace)) csPrefix)
-        [Instr.CStore (layoutToTyVal τ) vs' dOut.result.reg]
-        (k := 0) (by simp)
-      simpa using h
+      = some (Instr.CStore (layoutToTyVal τ) vs' dOut.result.reg) :=
+    hFrag9.instrAt 0 rfl rfl
   have h_w := h_write
   simp only [mirlite.writeResolvedPlace] at h_w
   split at h_w
