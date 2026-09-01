@@ -94,6 +94,59 @@ what the conformance corpus can even state:
   pops identically. The comment says the dealloc difference is
   unexercised.
 
+## [FACT] the "passes" are CONCERNS, not stages — it is ONE walk
+
+The header docstring of `lowering.lean` numbers five passes and says, in
+parentheses, "fused into one walk". Take that literally. There is a
+single `mutual` block (`walkBlock` / `walkCall`, :627-734) entered once
+at :796 as `walkBlock crate 8 st0 main 0 0 []`, and every concern —
+dropping StorageLive, linearizing gotos, desugaring aggregates,
+inlining, seam retags — happens in that one recursive descent,
+appending to `st.out`. There is no intermediate IR.
+
+This matters because pass 1 (inline) and pass 5 (seam retags) are
+otherwise a paradox: inlining DESTROYS the call boundary, and seam
+retags must PRESERVE the only part of it Stacked Borrows can see. If
+they were sequential, pass 5 would run over an already-flattened
+statement list — call boundaries gone, callee locals renumbered into one
+global space — and would have to reconstruct the seams from exactly the
+information inlining just erased.
+
+Fusion sidesteps it. When `walkCall` runs it still holds the argument
+operands, the callee signature and local types, and the destination, so
+it emits the seam AROUND the recursion that does the inlining:
+
+    pushProt                                    :712
+    emitSeamBind ... prot := true   (per arg)   :718   <- "pass 5"
+    walkBlock crate (depth-1) ... f offset 0 [] :720   <- "pass 1"
+    popProt                                     :722
+    emitSeamCopy ... prot := false  (return)    :730   <- "pass 5"
+
+The inlined body is nested INSIDE the seam; the retags are emitted
+before the callee's statements exist in the output, never recovered
+afterwards. Each call node is consumed exactly once and both concerns
+are served from it at that moment.
+
+Read off the ordering while it is in front of you: arg retags are
+protected (`true`), the return retag is NOT (`false`), and the return
+retag is emitted AFTER `popProt` — protectors end before the return
+value flows back. That asymmetry is real Miri behaviour and is only
+expressible because the retags are a separate thing you can place
+relative to the frame.
+
+## [FACT] seam retags are keyed on TYPES, not on calls
+
+`emitSeamCopy` (:222-264) recurses over `UTy`, not over the call graph:
+`.ref` -> a `ref` retag, `.boxT` -> a Unique reborrow, `.slice` -> a
+runtime-length `refSlice`, `.tup` -> field by field, `.enum` -> write
+the discriminant then guard each payload field with `assignIf` on it.
+Its own unsupported case is nested references in an enum payload.
+
+So it is not call machinery that happens to be used at calls. It has
+three call sites and only two are seams: the third is :303-307, where a
+plain `x := *p` needs a retag because Miri retags reference-typed values
+loaded through an indirection (`load_invalid_mut` / `load_invalid_shr`).
+
 ## [FACT] none of this is verified — it is upstream of `compile_correct`
 
 Charon's extraction, the inlining, and the choice of where to put
@@ -182,8 +235,26 @@ resolution (`local/zst_ref`). This is the interaction that makes ZST
 locals and `uninit` load-bearing rather than hypothetical — cf. the
 `extendBlock` fix in the `uninit` widening.
 
-**Aggregates are desugared structurally** (:339, :345). Non-empty
-tuples become per-field assignments; an enum variant writes the
+**Aggregates are desugared structurally** (:339, :345), because
+mirlite HAS NO AGGREGATE RVALUE. `RExpr` (`obseq3/syntax.lean`:95-104)
+is nine constructors — `constInit`, `copy`, `ref`, `ptrCast`,
+`ptrOffset`, `refSlice`, `exposeAddr`, `fromExposed`, `uninit` — and
+every one writes a single value to a single place, so there is nothing
+for `(a, b)` to lower INTO.
+
+That is a deliberate choice, not an omission. Under Stacked Borrows the
+desugaring is free: Miri builds a tuple by writing each field in turn
+and has no distinct "aggregate write" event, and the fields are disjoint
+cell ranges so the writes cannot invalidate each other. But an aggregate
+rvalue would be expensive in the PROOF — every member of `CoreRhs` costs
+a family of simulation leaves, one per destination place shape (the
+~1000-line-per-family structure of `const_write.lean` and `ref.lean`) —
+and it would prove nothing new, since each desugared field assignment is
+already exactly a `copy` or a `constInit`. `fld dst i` just extends the
+destination's projection path, which the mother lemma already reasons
+about.
+
+Non-empty tuples become per-field assignments; an enum variant writes the
 discriminant to payload slot 0 and field `i` to slot `1+i`. Seam retags
 into enum payloads are guarded on the discriminant with `assignIf` —
 which is where `assignIf` comes from. It exists for enum payload

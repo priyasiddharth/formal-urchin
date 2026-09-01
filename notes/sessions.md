@@ -2350,3 +2350,40 @@ for this plan.
 
 **Validation after every commit:** 0 errors; audit OK, 0 sorries, axioms
 unchanged (propext, Classical.choice, Quot.sound); 17/17 + 104/104.
+
+## 2026-09-01 (twenty-eighth)
+
+**Corrected the lowering note on two points, and found a validation gap.**
+
+**The five "passes" in `lowering.lean`'s header are concerns, not
+stages** — the docstring says "fused into one walk" and that is literal.
+One `mutual` block (:627-734), one entry (:796), no intermediate IR. I
+had been describing pass 1 (inline) and pass 5 (seam retags) as
+sequential, which makes them a paradox: inlining destroys the call
+boundary, seam retags preserve the only part of it Stacked Borrows can
+see, and a real pass 5 would have to reconstruct the seams from exactly
+what inlining erased. Fusion sidesteps it — `walkCall` still holds the
+args, callee signature and destination, so it emits the seam *around*
+the recursive `walkBlock` that inlines. Details and the emission order
+(protected arg retags, unprotected return retag, emitted after
+`popProt`) now in the durable note.
+Also recorded there: `emitSeamCopy` is keyed on `UTy`, not on calls —
+one of its three call sites (:303-307) has no call near it, because Miri
+retags reference-typed values loaded through an indirection.
+
+**Why tuple aggregates are desugared:** mirlite has no aggregate rvalue.
+`RExpr` is nine constructors, each writing one value to one place. Free
+under SB (Miri writes fields in turn; disjoint cells), but an aggregate
+rvalue would cost a full family of simulation leaves per destination
+place shape and prove nothing the `copy`/`constInit` leaves don't.
+
+**VALIDATION GAP — the triad was missing a suite.** `sb_conformance
+--unit` runs only the two in-Lean suites (17/17 mirlite semantics,
+104/104 compiler witnesses). The ULLBC conformance corpus needs
+`--manifest conformance/manifest.json --charon-dir conformance/charon`,
+and the differential mode needs `--osea` on top. Ran both against the
+current tree: **82 pass / 0 fail / 41 unsupported (123 total)**, and
+**osea: 82 matched / 0 mismatch / 0 skipped**. The 0-skipped is worth
+noting — every program the mirlite side accepts, the compiler also
+handles, so `CoreProg` covers the whole live corpus.
+Run all four from now on, not just `--unit`.
