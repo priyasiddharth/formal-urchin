@@ -452,6 +452,33 @@ def TagRenameMap.extend (ρt : TagRenameMap) (s t : Tag) : TagRenameMap :=
     call `grind`: it changes no normal form. The registration is split in
     two only because the `AddrRenameMap` operations are defined further
     down the file, and an attribute must follow its definition. -/
+/-- Inversion for a successful `writeResolvedPlace`: it succeeds exactly
+    when the write is in bounds and `useMut` grants, and then the state
+    is the store plus a pc bump.
+
+    Every leaf that writes through a resolved place opened with the same
+    `simp only [writeResolvedPlace]` / `split` / `split` ritual, which
+    also wrapped the whole remainder of the proof in two dead bullets. -/
+theorem writeResolvedPlace_ok_inv {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
+    {state s' : mirlite.State M Γ} {dst : mirlite.PlaceRes}
+    {values : List mirlite.MemValue} {h_len : values.length = blockSize τ}
+    (h : mirlite.writeResolvedPlace (τ := τ) M state dst values h_len
+      = mirlite.Result.ok s') :
+    ¬ (dst.addr + values.length > dst.allocBase + dst.allocSize) ∧
+    ∃ perms', M.useMut state.perms dst.addr values.length dst.tag = .ok perms' ∧
+      s' = { state with perms := perms',
+                        mem := mirlite.writeWordSeq state.mem dst.addr values,
+                        pc := state.pc + 1 } := by
+  simp only [mirlite.writeResolvedPlace] at h
+  split at h
+  · simp at h
+  · rename_i h_nb
+    refine ⟨h_nb, ?_⟩
+    split at h
+    · rename_i perms' h_use
+      exact ⟨perms', h_use, by cases h; rfl⟩
+    · simp at h
+
 -- The six `CheckedCompilerM` run/value projections are already global
 -- `@[simp]`, but every fragment proof uses `simp only`, which excludes
 -- the default set, so all 205 sites listed the six by hand, three lines
