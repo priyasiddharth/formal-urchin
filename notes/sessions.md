@@ -2542,3 +2542,27 @@ projlocal_fresh 4, fresh 3), not in pair merging.
 
 Validation, all four suites, both commits: 0 errors; audit OK,
 0 sorries, axioms unchanged; 17/17 + 104/104; 82/0; osea 82/0/0.
+
+## 2026-09-01 (thirty-second)
+
+**2a landed** (`3aac3b6`, −527): the seam renamed
+`copy_chainwrite_after_read` and the three chaindst leaves converted
+onto it — no new machinery, five leaves now share the one 203-line
+destination half. chaindst 475→293 / 483→303 / 613→446.
+
+Two splice traps recorded in the plan's constraints, both hit again:
+`^theorem` anchored at the theorem's own index matches ITSELF (a block
+move must search from index+1 — one red build: the docstring moved, the
+theorem stayed), and the saved call template still carried the raw
+`sb_read_NextTag h_read_src` instead of the `.trans h_snt1` chain.
+
+**2b measured, not started.** projlocal_fresh INVERTS the anatomy —
+fresh-root Alloc first, then source, then write — so its shareable
+piece is a PREFIX lemma, not a suffix seam. The four §1–§6 prefixes are
+97%/84% similar (same/cross source), ~270 lines each, with a ~35-fact
+output interface: `ConstStoreFrags`-style structure, one prefix lemma,
+expected ≈ +690. Write tails pair 2×2 and roughly break even — only if
+the prefix goes smoothly. Details in the plan (rev. 2).
+
+Validation, all four suites: 0 errors; audit OK, 0 sorries, axioms
+unchanged; 17/17 + 104/104; 82/0; osea 82/0/0. Proof dir 37,160.
