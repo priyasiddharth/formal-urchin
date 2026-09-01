@@ -292,7 +292,7 @@ The four named residuals, in the order they died:
   intermediate counters that the next one takes as hypothesis — the
   payoff for making that an invariant rather than a per-leaf side
   condition. ρa extends once, at the identity pair. New pieces:
-  `compileStmt_ref_fresh_local_run`/`_value`, `prepare_lookup_ne`
+  `(compileStmt_ref_fresh_local_lowers`/`_value`, `prepare_lookup_ne`).run
   (preparing one local leaves other bindings alone — needed because
   `doAssign` resolves the SOURCE against the post-allocation state),
   `layout_ne_ptrL`/`ref_dst_src_idx_ne` (a `PtrL τ` destination and a `τ`

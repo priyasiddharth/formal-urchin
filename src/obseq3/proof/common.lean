@@ -2118,6 +2118,20 @@ theorem FragmentAt.instrAt {compProg : obseq3.oseair.Prog} {base : Nat}
     compProg q = some i := by
   subst h_q; exact h k i h_i
 
+/-- One lowering fact where there were two. Every fragment lemma came as
+    an `X_run`/`X_value` pair: the compiled state, and the fact that the
+    compiler does not reject. Both were proved from the same preamble, and
+    the `_value` half re-derived that preamble in full to reach a one-line
+    `exact ⟨_, rfl⟩`. `LowersTo` states them together so the preamble is
+    paid once.
+
+    The two halves really are independent -- `throw` leaves the state
+    alone, but a `throw` *after* an `emit` would give an advanced state
+    with an error value -- so `value` does not follow from `run`. -/
+structure LowersTo {α : Type} (m : CheckedCompilerM α) (cs cs' : CompilerState) : Prop where
+  run : CheckedCompilerM.run m cs = cs'
+  value : ∃ a, CheckedCompilerM.value m cs = Except.ok a
+
 /-- `EmitTower cs base instrs` is `EmittedAt` made *inferrable*. The
     compiler-state tower `cs` is an input and `instrs` an `outParam`, so
     instance resolution walks the tower outside-in — peeling one `emit`,
