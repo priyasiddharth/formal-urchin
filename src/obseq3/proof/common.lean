@@ -2118,6 +2118,30 @@ theorem FragmentAt.instrAt {compProg : obseq3.oseair.Prog} {base : Nat}
     compProg q = some i := by
   subst h_q; exact h k i h_i
 
+/-- Two `Except`s whose `map`s agree are either both errors, or both `ok`
+    with equal images. Every `_src_congr` lemma opened with this same
+    four-way `cases`; it is pure `Except` algebra and has nothing to do
+    with the compiler.
+
+    The two payload types must be allowed to DIFFER: the evidence in a
+    `placeToBorrowRegChecked` result is indexed by the source place, so
+    the `src1` and `src2` sides do not even have the same type. Erasing
+    that with `.map (·.result)` down to a common `PtrResult` is the whole
+    reason the `_congr` hypotheses are phrased with a `map`. -/
+theorem exceptMap_agree {ε α₁ α₂ β : Type} {f₁ : α₁ → β} {f₂ : α₂ → β}
+    {x : Except ε α₁} {y : Except ε α₂} (h : x.map f₁ = y.map f₂) :
+    (∃ e₁ e₂, x = .error e₁ ∧ y = .error e₂) ∨
+    (∃ a b, x = .ok a ∧ y = .ok b ∧ f₁ a = f₂ b) := by
+  cases x with
+  | error e₁ =>
+      cases y with
+      | error e₂ => exact Or.inl ⟨e₁, e₂, rfl, rfl⟩
+      | ok b => simp [Except.map] at h
+  | ok a =>
+      cases y with
+      | error e₂ => simp [Except.map] at h
+      | ok b => exact Or.inr ⟨a, b, rfl, rfl, by simpa [Except.map] using h⟩
+
 /-- One lowering fact where there were two. Every fragment lemma came as
     an `X_run`/`X_value` pair: the compiled state, and the fact that the
     compiler does not reject. Both were proved from the same preamble, and

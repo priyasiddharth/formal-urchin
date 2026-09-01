@@ -3555,28 +3555,9 @@ theorem compileStmt_ref_src_congr_local_run
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
-  cases h1 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-      ((ensureLocalRegE dstLoc).run cs) with
-  | error e1 =>
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          ((ensureLocalRegE dstLoc).run cs) with
-      | error e2 => simp only [h1, h2]; exact h_agr
-      | ok o2 =>
-          exfalso
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-  | ok o1 =>
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          ((ensureLocalRegE dstLoc).run cs) with
-      | error e2 =>
-          exfalso
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-      | ok o2 =>
-          have h_res : o1.result = o2.result := by
-            rw [h1, h2] at h_agv
-            simpa [Except.map] using h_agv
-          simp only [h1, h2, h_res, h_agr]
+  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
+  · simp only [h1, h2]; exact h_agr
+  · simp only [h1, h2, h_res, h_agr]
 
 theorem compileStmt_ref_src_congr_local_value
     {Γ : Ctx} {τ : LayoutTy}
@@ -3598,19 +3579,9 @@ theorem compileStmt_ref_src_congr_local_value
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure] at h_so ⊢
-  cases h1 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-      ((ensureLocalRegE dstLoc).run cs) with
-  | error e1 =>
-      exfalso
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          ((ensureLocalRegE dstLoc).run cs) with
-      | error e2 => rw [h2] at h_so; simp at h_so
-      | ok o2 =>
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-  | ok o1 =>
-      simp only [h1]
-      exact ⟨_, rfl⟩
+  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
+  · exfalso; rw [h2] at h_so; simp at h_so
+  · simp only [h1]; exact ⟨_, rfl⟩
 
 /-- Flattening does not distinguish the two spellings of a nested
     projection source: both sides fuse to the same path. -/
@@ -3761,28 +3732,9 @@ theorem compileStmt_ref_src_congr_deref_run
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
-  cases h1 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-      (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
-  | error e1 =>
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
-      | error e2 => simp only [h1, h2]; exact h_agr
-      | ok o2 =>
-          exfalso
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-  | ok o1 =>
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
-      | error e2 =>
-          exfalso
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-      | ok o2 =>
-          have h_res : o1.result = o2.result := by
-            rw [h1, h2] at h_agv
-            simpa [Except.map] using h_agv
-          simp only [h1, h2, h_res, h_agr]
+  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
+  · simp only [h1, h2]; exact h_agr
+  · simp only [h1, h2, h_res, h_agr]
 
 theorem compileStmt_ref_src_congr_deref_value
     {Γ : Ctx} {τ : LayoutTy}
@@ -3808,39 +3760,15 @@ theorem compileStmt_ref_src_congr_deref_value
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure] at h_so ⊢
-  cases h1 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-      (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
-  | error e1 =>
-      exfalso
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
-      | error e2 => rw [h2] at h_so; simp at h_so
-      | ok o2 =>
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-  | ok o1 =>
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
-      | error e2 =>
-          exfalso
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-      | ok o2 =>
-          have h_res : o1.result = o2.result := by
-            rw [h1, h2] at h_agv
-            simpa [Except.map] using h_agv
-          simp only [h2] at h_so
-          simp only [h1, h_res, h_agr]
-          cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.deref P))
-              (CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
-                (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)) with
-          | error eD =>
-              exfalso
-              simp only [hD] at h_so
-              simp at h_so
-          | ok oD =>
-              simp only [hD]
-              exact ⟨_, rfl⟩
+  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
+  · exfalso; rw [h2] at h_so; simp at h_so
+  · simp only [h2] at h_so
+    simp only [h1, h_res, h_agr]
+    cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.deref P))
+        (CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
+          (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)) with
+    | error eD => exfalso; simp only [hD] at h_so; simp at h_so
+    | ok oD => simp only [hD]; exact ⟨_, rfl⟩
 
 theorem compileStmt_ref_srcproj_assoc_deref_run
     {Γ : Ctx} {σ1 σ2 τ : LayoutTy}
@@ -3966,28 +3894,9 @@ theorem compileStmt_ref_src_congr_proj_run
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
-  cases h1 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-      (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs) with
-  | error e1 =>
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs) with
-      | error e2 => simp only [h1, h2]; exact h_agr
-      | ok o2 =>
-          exfalso
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-  | ok o1 =>
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs) with
-      | error e2 =>
-          exfalso
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-      | ok o2 =>
-          have h_res : o1.result = o2.result := by
-            rw [h1, h2] at h_agv
-            simpa [Except.map] using h_agv
-          simp only [h1, h2, h_res, h_agr]
+  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
+  · simp only [h1, h2]; exact h_agr
+  · simp only [h1, h2, h_res, h_agr]
 
 theorem compileStmt_ref_src_congr_proj_value
     {Γ : Ctx} {τ : LayoutTy}
@@ -4013,39 +3922,15 @@ theorem compileStmt_ref_src_congr_proj_value
     CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
     CheckedCompilerM.run_pure, CheckedCompilerM.value_pure] at h_so ⊢
-  cases h1 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-      (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs) with
-  | error e1 =>
-      exfalso
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs) with
-      | error e2 => rw [h2] at h_so; simp at h_so
-      | ok o2 =>
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-  | ok o1 =>
-      cases h2 : CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-          (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs) with
-      | error e2 =>
-          exfalso
-          rw [h1, h2] at h_agv
-          simp [Except.map] at h_agv
-      | ok o2 =>
-          have h_res : o1.result = o2.result := by
-            rw [h1, h2] at h_agv
-            simpa [Except.map] using h_agv
-          simp only [h2] at h_so
-          simp only [h1, h_res, h_agr]
-          cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.proj dbase g))
-              (CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
-                (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs)) with
-          | error eD =>
-              exfalso
-              simp only [hD] at h_so
-              simp at h_so
-          | ok oD =>
-              simp only [hD]
-              exact ⟨_, rfl⟩
+  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
+  · exfalso; rw [h2] at h_so; simp at h_so
+  · simp only [h2] at h_so
+    simp only [h1, h_res, h_agr]
+    cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.proj dbase g))
+        (CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
+          (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs)) with
+    | error eD => exfalso; simp only [hD] at h_so; simp at h_so
+    | ok oD => simp only [hD]; exact ⟨_, rfl⟩
 
 /-- The source-flattening transfer for a PROJECTED destination, the
     other instantiation of the projected-destination congruence. -/
