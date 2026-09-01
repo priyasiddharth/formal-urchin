@@ -2258,3 +2258,23 @@ this model, only observing it as a pointer/branch/length is.
 machines run literally the same expression (see the protector agent
 result quoted in obseq2-comparison.md if written up). After that, the
 other six rvalues, or the backward (UB-preservation) direction.
+
+## 2026-09-01 (twenty-fifth)
+
+**Wrote up the protector / Charon-seam question** as
+durable/protectors-and-the-charon-inlining-seam.md, from reading the
+syntax, both semantics, sb.lean and src/conformance/lowering.lean.
+Answers "who decides which tags are protected?": nobody in mirlite —
+the LOADER does. mirlite has no calls at all; `inlineCall` splices the
+callee body and emits `pushProt` / argument retags with `prot := true` /
+`popProt` / an UNPROTECTED return retag around it. A tag enters a frame
+in exactly one place (`sb_ref`'s `prot` branch), always the fresh child,
+always the innermost frame, and an absent frame is an ERROR not a no-op.
+**Also recorded:** protection is a membership SET beside the stacks, not
+a field on an item; the three writes that touch `protFrames`; the
+loader's limits (depth-8 inlining, no recursion, no indirect calls,
+allocator shims, the known weak-box-protection divergence); and that
+none of that layer is verified — it is upstream of `compile_correct`.
+**Cross-linked** from durable/what-compile-correct-actually-says.md,
+which also now records `uninit` as a core rvalue.
+**No code changed.**

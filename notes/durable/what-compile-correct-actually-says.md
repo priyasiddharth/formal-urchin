@@ -38,11 +38,17 @@ where it breaks.
 
 ## [FACT] two scope limits, neither of them a hole in the proof
 
+**0. The pipeline above mirlite.** Charon's extraction, the call
+inlining, and the placement of protector brackets and `prot` flags are
+all upstream and unverified — `compile_correct` starts from whatever
+`Prog` the loader produces. See
+[[protectors-and-the-charon-inlining-seam]].
+
 **1. The `CoreProg` gate.** `CoreStmt` admits only `halt` and
 `assign dst rhs` with `CoreRhs rhs`, and `CoreRhs` admits only
-`constInit`, `copy`, `ref`. Excluded: `assignIf`, `alloc`, `dealloc`,
-`pushProtectors`, `popProtectors`, and the rvalues `uninit`,
-`ptrCast`, `ptrOffset`, `refSlice`, `exposeAddr`, `fromExposed`. They
+`constInit`, `copy`, `ref`, `uninit` (admitted 2026-08-31). Excluded: `assignIf`, `alloc`, `dealloc`,
+`pushProtectors`, `popProtectors`, and the rvalues `ptrCast`,
+`ptrOffset`, `refSlice`, `exposeAddr`, `fromExposed`. They
 are implemented and exercised by the conformance corpus; the theorem
 discharges them with `absurd h_stmt_core`.
 
