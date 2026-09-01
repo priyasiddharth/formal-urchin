@@ -628,8 +628,7 @@ theorem const_store_fresh_local_simulation
                 rw [← loc'.hTy, h_idx, loc.hTy]
               subst h_ty
               have h_b : binding' = { addr := s_mir.mem.addrStart,
-                                      tag := s_mir.perms.NextTag } := by
-                grind [mirlite.Env.lookup, mirlite.Env.set]
+                                      tag := s_mir.perms.NextTag } := by grind
               subst h_b
               refine ⟨Register.R csPrefix.nextReg, s_mir.mem.addrStart,
                 s_osea.perms.NextTag, ?_, ?_, h_ra_new, h_rt_new, h_nw, ?_⟩
@@ -646,12 +645,12 @@ theorem const_store_fresh_local_simulation
                   using h_env'
               obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
                 h_lbs loc' binding' h_env''
-              have h_idxv : loc'.idx.1 ≠ loc.idx.1 := by grind [Fin.ext]
+              have h_idxv : loc'.idx.1 ≠ loc.idx.1 := by grind
               have h_regne : reg' ≠ Register.R csPrefix.nextReg := by
                 cases reg' with
                 | R n =>
                     have h_lt := h_prb _ _ _ h_pi'
-                    grind [RegisterBelow]
+                    grind
               refine ⟨reg', base', tag', ?_, ?_, h_incr_a _ _ h_ra',
                 h_incr_t _ _ h_rt', h_nw',
                 fun k hk => ⟨(h_dom' k hk).choose,
@@ -674,10 +673,9 @@ theorem const_store_fresh_local_simulation
             intro τ' loc' h_none
             by_cases h_idx : loc'.idx = loc.idx
             · exfalso
-              grind [mirlite.Env.lookup, mirlite.Env.set]
+              grind
             · have h_idxv : loc'.idx.1 ≠ loc.idx.1 := fun h => h_idx (Fin.ext h)
-              have h_none' : mirlite.Env.lookup s_mir.env loc' = none := by
-                grind [mirlite.Env.lookup, mirlite.Env.set]
+              have h_none' : mirlite.Env.lookup s_mir.env loc' = none := by grind
               rw [h_stmtRun, getPlaceInfo_emit,
                 getPlaceInfo_setPlaceInfo_ne _ h_idxv]
               exact h_unmap loc' h_none'
@@ -688,12 +686,7 @@ theorem const_store_fresh_local_simulation
             by_cases h_i : idx = loc.idx.1
             · subst h_i
               rw [getPlaceInfo_setPlaceInfo_self] at h_look
-              injection h_look with h_look'
-              have : reg = Register.R csPrefix.nextReg := (congrArg Prod.fst h_look').symm
-              subst this
-              show csPrefix.nextReg < _
-              simp only [emit, setPlaceInfo]
-              grind
+              grind [emit, setPlaceInfo]
             · rw [getPlaceInfo_setPlaceInfo_ne _ h_i] at h_look
               have := h_prb _ _ _ h_look
               refine RegisterBelow.mono ?_ this
@@ -2396,8 +2389,7 @@ theorem const_store_proj_offset_simulation
       obtain ⟨q2, q3, qAcc', h_wr1, h_die1, h_wr2, h_sm, h_ex, h_pf, h_ntle⟩ :=
         sb_ref_use_die_cancels h_nt h_unprot h_ref_tgt
       -- BRIDGE 1's own direct write is the one BRIDGE 3 produced
-      have h_qAcc : qAcc' = qAcc := by
-        grind
+      have h_qAcc : qAcc' = qAcc := by grind
       subst h_qAcc
       -- the fragment: Borrow; CStore; Die
       have h_stmtRun := (h_run0 csPrefix).trans (h_frag csPrefix reg h_pi)
@@ -3115,8 +3107,7 @@ theorem const_store_proj_fresh_simulation
               rw [← loc'.hTy, h_idx, loc.hTy]
             subst h_ty
             have h_b : binding' = { addr := s_mir.mem.addrStart,
-                                    tag := s_mir.perms.NextTag } := by
-              grind [mirlite.Env.lookup, mirlite.Env.set]
+                                    tag := s_mir.perms.NextTag } := by grind
             subst h_b
             refine ⟨Register.R csPrefix.nextReg, s_mir.mem.addrStart,
               s_osea.perms.NextTag, ?_, ?_, ?_, h_rt_new, h_nw, ?_⟩
@@ -3134,12 +3125,12 @@ theorem const_store_proj_fresh_simulation
                 using h_env'
             obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
               h_lbs loc' binding' h_env''
-            have h_idxv : loc'.idx.1 ≠ loc.idx.1 := by grind [Fin.ext]
+            have h_idxv : loc'.idx.1 ≠ loc.idx.1 := by grind
             have h_regne : reg' ≠ Register.R csPrefix.nextReg := by
               cases reg' with
               | R n =>
                   have h_lt := h_prb _ _ _ h_pi'
-                  grind [RegisterBelow]
+                  grind
             refine ⟨reg', base', tag', ?_, ?_, h_incr_a _ _ h_ra',
               h_incr_t _ _ h_rt', h_nw',
               fun k hk => ⟨(h_dom' k hk).choose,
@@ -3159,10 +3150,9 @@ theorem const_store_proj_fresh_simulation
         · intro τ' loc' h_none
           by_cases h_idx : loc'.idx = loc.idx
           · exfalso
-            grind [mirlite.Env.lookup, mirlite.Env.set]
+            grind
           · have h_idxv : loc'.idx.1 ≠ loc.idx.1 := fun h => h_idx (Fin.ext h)
-            have h_none' : mirlite.Env.lookup s_mir.env loc' = none := by
-              grind [mirlite.Env.lookup, mirlite.Env.set]
+            have h_none' : mirlite.Env.lookup s_mir.env loc' = none := by grind
             rw [h_stmtRun, getPlaceInfo_emit,
               getPlaceInfo_setPlaceInfo_ne _ h_idxv]
             exact h_unmap loc' h_none'
@@ -3172,12 +3162,7 @@ theorem const_store_proj_fresh_simulation
           by_cases h_i : idx = loc.idx.1
           · subst h_i
             rw [getPlaceInfo_setPlaceInfo_self] at h_look
-            injection h_look with h_look'
-            have : reg = Register.R csPrefix.nextReg := (congrArg Prod.fst h_look').symm
-            subst this
-            show csPrefix.nextReg < _
-            simp only [emit, setPlaceInfo]
-            grind
+            grind [emit, setPlaceInfo]
           · rw [getPlaceInfo_setPlaceInfo_ne _ h_i] at h_look
             have := h_prb _ _ _ h_look
             refine RegisterBelow.mono ?_ this
@@ -3280,8 +3265,7 @@ theorem const_store_proj_fresh_simulation
             (s_mir.mem.addrStart + PathTo.offset path - s_mir.mem.addrStart)
             (blockSize σ) tgtPerms.NextTag := by
           have h_oe : s_mir.mem.addrStart + PathTo.offset path - s_mir.mem.addrStart
-              = 0 + pathOffset path := by
-            grind
+              = 0 + pathOffset path := by grind
           rw [h_oe]
           exact RegMap.lookup_insert_self _ _ _
         obtain ⟨h_wtp, h_sms'⟩ :=
@@ -3365,8 +3349,7 @@ theorem const_store_proj_fresh_simulation
               rw [← loc'.hTy, h_idx, loc.hTy]
             subst h_ty
             have h_b : binding' = { addr := s_mir.mem.addrStart,
-                                    tag := s_mir.perms.NextTag } := by
-              grind [mirlite.Env.lookup, mirlite.Env.set]
+                                    tag := s_mir.perms.NextTag } := by grind
             subst h_b
             refine ⟨Register.R csPrefix.nextReg, s_mir.mem.addrStart,
               s_osea.perms.NextTag, ?_, ?_, ?_, h_rt_new, h_nw, ?_⟩
@@ -3387,17 +3370,17 @@ theorem const_store_proj_fresh_simulation
                 using h_env'
             obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
               h_lbs loc' binding' h_env''
-            have h_idxv : loc'.idx.1 ≠ loc.idx.1 := by grind [Fin.ext]
+            have h_idxv : loc'.idx.1 ≠ loc.idx.1 := by grind
             have h_regne1 : reg' ≠ Register.R csPrefix.nextReg := by
               cases reg' with
               | R n =>
                   have h_lt := h_prb _ _ _ h_pi'
-                  grind [RegisterBelow]
+                  grind
             have h_regne2 : reg' ≠ Register.R (csPrefix.nextReg + 1) := by
               cases reg' with
               | R n =>
                   have h_lt := h_prb _ _ _ h_pi'
-                  grind [RegisterBelow]
+                  grind
             refine ⟨reg', base', tag', ?_, ?_, h_incr_a _ _ h_ra',
               h_incr_t _ _ h_rt', h_nw',
               fun k hk => ⟨(h_dom' k hk).choose,
@@ -3420,10 +3403,9 @@ theorem const_store_proj_fresh_simulation
         · intro τ' loc' h_none
           by_cases h_idx : loc'.idx = loc.idx
           · exfalso
-            grind [mirlite.Env.lookup, mirlite.Env.set]
+            grind
           · have h_idxv : loc'.idx.1 ≠ loc.idx.1 := fun h => h_idx (Fin.ext h)
-            have h_none' : mirlite.Env.lookup s_mir.env loc' = none := by
-              grind [mirlite.Env.lookup, mirlite.Env.set]
+            have h_none' : mirlite.Env.lookup s_mir.env loc' = none := by grind
             rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_emit,
               getPlaceInfo_setNextReg, getPlaceInfo_setPlaceInfo_ne _ h_idxv]
             exact h_unmap loc' h_none'
@@ -3434,12 +3416,7 @@ theorem const_store_proj_fresh_simulation
           by_cases h_i : idx = loc.idx.1
           · subst h_i
             rw [getPlaceInfo_setPlaceInfo_self] at h_look
-            injection h_look with h_look'
-            have : reg = Register.R csPrefix.nextReg := (congrArg Prod.fst h_look').symm
-            subst this
-            show csPrefix.nextReg < _
-            simp only [emit, setPlaceInfo]
-            grind
+            grind [emit, setPlaceInfo]
           · rw [getPlaceInfo_setPlaceInfo_ne _ h_i] at h_look
             have := h_prb _ _ _ h_look
             refine RegisterBelow.mono ?_ this

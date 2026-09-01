@@ -959,8 +959,7 @@ theorem ptrChain_lowering_sim
               subst h_r1
               subst h_r2
               -- bounds of the pointer place, from the new dereferenceable check
-              have h_cancel : qRes.allocBase + (qRes.addr - qRes.allocBase) = qRes.addr := by
-                grind
+              have h_cancel : qRes.allocBase + (qRes.addr - qRes.allocBase) = qRes.addr := by grind
               have h_off : qRes.addr - qRes.allocBase < qRes.allocSize := by grind
               -- this level's do-block, definitionally
               have h_bind : placeToRegChecked (Γ := Γ) kind (.deref q)
@@ -1205,8 +1204,7 @@ theorem ptrChain_lowering_sim
                   h_psim h_pc h_instB
               have h_po : pathOffset f = PathTo.offset f := rfl
               have h_one : blockSize (obseq.LayoutTy.PtrL τ') = 1 := rfl
-              have h_cancel : bRes.allocBase + (bRes.addr - bRes.allocBase) = bRes.addr := by
-                grind
+              have h_cancel : bRes.allocBase + (bRes.addr - bRes.allocBase) = bRes.addr := by grind
               by_cases h_off : pathOffset f = 0
               · -- offset ZERO: the projection is a no-op on both machines;
                 -- this is the plain deref step with a shifted-by-zero address
@@ -1389,8 +1387,7 @@ theorem ptrChain_lowering_sim
                 subst h_qAcc
                 -- §execute the Borrow: bound from the source's deref check
                 have h_le1 : bRes.allocBase + (bRes.addr - bRes.allocBase) + pathOffset f
-                    + blockSize (obseq.LayoutTy.PtrL τ') ≤ bRes.allocBase + bRes.allocSize := by
-                  grind
+                    + blockSize (obseq.LayoutTy.PtrL τ') ≤ bRes.allocBase + bRes.allocSize := by grind
                 have h_ref_tgt' : MSB.ref s_mid.perms
                     (bRes.allocBase + (bRes.addr - bRes.allocBase) + pathOffset f)
                     (blockSize (obseq.LayoutTy.PtrL τ')) btag RefKind.Shared false []
@@ -1433,8 +1430,7 @@ theorem ptrChain_lowering_sim
                   rw [h_po, ← Nat.add_assoc, h_cancel]
                   exact h_rd1
                 have h_offlt : (bRes.addr - bRes.allocBase) + pathOffset f
-                    < bRes.allocSize := by
-                  grind
+                    < bRes.allocSize := by grind
                 have h_entry_tmp : PtrRegisterEntry
                     (oseair.RegMap.insert s_mid.reg
                       (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)

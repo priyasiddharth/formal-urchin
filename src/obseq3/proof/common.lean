@@ -438,6 +438,23 @@ def TagRenameBounded (ρt : TagRenameMap) (nS nT : Tag) : Prop :=
 def TagRenameMap.extend (ρt : TagRenameMap) (s t : Tag) : TagRenameMap :=
   fun x => if x = s then some t else ρt x
 
+/-! ### `grind` lemma registration
+
+    There were 483 `grind` calls in the proof dir and every one passed
+    its lemmas inline — `grind [RegisterBelow]` 55 times,
+    `grind [mirlite.Env.lookup, mirlite.Env.set]` 43, `grind [Fin.ext]`
+    30. Only NINE distinct lemmas appear across all of them, so
+    registering those nine makes a bare `grind` exactly as strong
+    everywhere.
+
+    Unlike a global `@[simp]`, this cannot disturb a proof that does not
+    call `grind`: it changes no normal form. The registration is split in
+    two only because the `AddrRenameMap` operations are defined further
+    down the file, and an attribute must follow its definition. -/
+attribute [grind] RegisterBelow IdentityOnDomain Fin.ext
+attribute [grind] mirlite.Env.lookup mirlite.Env.set
+attribute [grind] TagRenameBounded TagRenameMap.extend
+
 @[simp] theorem TagRenameMap.extend_self (ρt : TagRenameMap) (s t : Tag) :
     ρt.extend s t s = some t := by
   simp [TagRenameMap.extend]
@@ -446,7 +463,7 @@ theorem TagRenameIncr.extend {ρt : TagRenameMap} {nS nT s t : Tag}
     (h_bd : TagRenameBounded ρt nS nT) (h_s : nS ≤ s) :
     TagRenameIncr ρt (ρt.extend s t) := by
   intro x x' hx
-  grind [TagRenameMap.extend, TagRenameBounded]
+  grind
 
 /-- `TagRenameWF` survives the fresh-pair extension: injectivity because the
     new target is outside the old range (the range bound), and the wildcard
@@ -458,8 +475,8 @@ theorem TagRenameWF.extend {ρt : TagRenameMap} {nS nT s t : Tag}
   obtain ⟨h_inj, h_wc⟩ := h_wf
   constructor
   · intro t1 t2 t' h1 h2
-    grind [TagRenameMap.extend, TagRenameBounded]
-  · grind [TagRenameMap.extend, TagRenameBounded]
+    grind
+  · grind
 
 /-- The bound itself grows with the counters. -/
 theorem TagRenameBounded.extend {ρt : TagRenameMap} {nS nT nS' nT' s t : Tag}
@@ -467,13 +484,12 @@ theorem TagRenameBounded.extend {ρt : TagRenameMap} {nS nT nS' nT' s t : Tag}
     (h_le : nS ≤ nS') (h_le' : nT ≤ nT') (h_s : s < nS') (h_t : t < nT') :
     TagRenameBounded (ρt.extend s t) nS' nT' := by
   intro x x' hx
-  grind [TagRenameMap.extend, TagRenameBounded]
+  grind
 
 /-- The bound is monotone in the counters (both machines only ever mint). -/
 theorem TagRenameBounded.mono {ρt : TagRenameMap} {nS nT nS' nT' : Tag}
     (h_bd : TagRenameBounded ρt nS nT) (h_le : nS ≤ nS') (h_le' : nT ≤ nT') :
-    TagRenameBounded ρt nS' nT' := by
-  grind [TagRenameBounded]
+    TagRenameBounded ρt nS' nT' := by grind
 
 /-! ### PermSim — the corrected permission relation
 
@@ -752,6 +768,8 @@ theorem MemValSim.rename_mono
 def AddrRenameMap.extend (ρa : AddrRenameMap) (a b : Word) : AddrRenameMap :=
   fun x => if x = a then some b else ρa x
 
+attribute [grind] AddrRenameMap.extend
+
 @[simp] theorem AddrRenameMap.extend_self (ρa : AddrRenameMap) (a b : Word) :
     ρa.extend a b a = some b := by
   simp [AddrRenameMap.extend]
@@ -760,13 +778,13 @@ theorem AddrRenameIncr.extend_id {ρa : AddrRenameMap}
     (h_id : IdentityOnDomain ρa) (a : Word) :
     AddrRenameIncr ρa (ρa.extend a a) := by
   intro x x' hx
-  grind [AddrRenameMap.extend, IdentityOnDomain]
+  grind
 
 theorem IdentityOnDomain.extend_id {ρa : AddrRenameMap}
     (h_id : IdentityOnDomain ρa) (a : Word) :
     IdentityOnDomain (ρa.extend a a) := by
   intro x x' hx
-  grind [AddrRenameMap.extend, IdentityOnDomain]
+  grind
 
 /-- Identity extension over a whole block: every cell of `[base, base+n)`
     maps to itself. Regime B for MULTI-CELL roots (a projected dst whose
@@ -777,6 +795,8 @@ def AddrRenameMap.extendIdRange (ρa : AddrRenameMap) (base : Word) (n : Nat) :
     AddrRenameMap :=
   fun x => if base ≤ x ∧ x < base + n then some x else ρa x
 
+attribute [grind] AddrRenameMap.extendIdRange
+
 theorem AddrRenameMap.extendIdRange_mem {ρa : AddrRenameMap} {base x : Word}
     {n : Nat} (h1 : base ≤ x) (h2 : x < base + n) :
     ρa.extendIdRange base n x = some x := by
@@ -786,13 +806,13 @@ theorem AddrRenameIncr.extendIdRange {ρa : AddrRenameMap}
     (h_id : IdentityOnDomain ρa) (base : Word) (n : Nat) :
     AddrRenameIncr ρa (ρa.extendIdRange base n) := by
   intro x x' hx
-  grind [AddrRenameMap.extendIdRange, IdentityOnDomain]
+  grind
 
 theorem IdentityOnDomain.extendIdRange {ρa : AddrRenameMap}
     (h_id : IdentityOnDomain ρa) (base : Word) (n : Nat) :
     IdentityOnDomain (ρa.extendIdRange base n) := by
   intro x x' hx
-  grind [AddrRenameMap.extendIdRange, IdentityOnDomain]
+  grind
 
 /-- `PlaceInputsMapped` only reads `placeRegMap`, so it transfers across
     any state that keeps the map (an `emit`, a `nextReg` bump). -/
