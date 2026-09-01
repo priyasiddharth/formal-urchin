@@ -349,8 +349,7 @@ theorem copy_chainsrc_local_simulation
         rs permsP' h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
     have h_stmtRun := (h_run0 csPrefix).trans
       (compileStmt_copy_chainsrc_run h_piD h_sval h_sclean)
-    have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancel := resolvedAddr_cancel h_sle
     -- §4 transports: the wide read through the resolved tag, then the
     -- dst write
     obtain ⟨p2w, h_read2_tgt, h_psim2w⟩ :=
@@ -499,9 +498,8 @@ theorem copy_chainsrc_local_simulation
           rw [sb_write_NextTag h_useMut_src', sb_read_NextTag h_read_src, h_snt1,
             sb_write_NextTag h_useMut_tgt, sb_read_NextTag h_read2_tgt]
           exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_smem]
-          exact h_alloc
+        · simp only [h_smem]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_setNextReg]
           show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).placeRegMap.lookup loc'.idx.1 = none
@@ -765,8 +763,7 @@ theorem copy_projchain_zero_simulation
         rb permsP' h_bres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
     have h_stmtRun := (h_run0 csPrefix).trans
       (compileStmt_copy_projchain_zero_run h_np h_off h_piD h_sval h_sclean)
-    have h_cancel : rb.allocBase + (rb.addr - rb.allocBase) = rb.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancel := resolvedAddr_cancel h_sle
     -- §4 transports
     obtain ⟨p2w, h_read2_tgt, h_psim2w⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
@@ -913,9 +910,8 @@ theorem copy_projchain_zero_simulation
           rw [sb_write_NextTag h_useMut_src', sb_read_NextTag h_read_src, h_snt1,
             sb_write_NextTag h_useMut_tgt, sb_read_NextTag h_read2_tgt]
           exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_smem]
-          exact h_alloc
+        · simp only [h_smem]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit]
           show (CheckedCompilerM.run
@@ -1054,8 +1050,7 @@ theorem copy_projchain_offset_simulation
         rb permsP' h_bres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
     have h_stmtRun := (h_run0 csPrefix).trans
       (compileStmt_copy_projchain_offset_run h_np h_off h_piD h_sval h_sclean)
-    have h_cancel : rb.allocBase + (rb.addr - rb.allocBase) = rb.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancel := resolvedAddr_cancel h_sle
     -- §4 transports: the projected read, the dst write
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
@@ -1298,9 +1293,8 @@ theorem copy_projchain_offset_simulation
           refine Nat.le_trans h_snt2 ?_
           rw [← sb_read_NextTag h_read_tgt]
           exact h_ntle
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_smem]
-          exact h_alloc
+        · simp only [h_smem]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_setNextReg,
             getPlaceInfo_emit, getPlaceInfo_setNextReg]
@@ -1871,8 +1865,7 @@ theorem copy_fresh_chainsrc_simulation
                 (Rhs.Alloc (layoutToTyVal τ))])
             dstLoc.idx.1 (Register.R csPrefix.nextReg, τ)) i :=
       fun i => by simp only [getPlaceInfo, h_sprm]
-    have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancel := resolvedAddr_cancel h_sle
     -- §8 transports: the wide read, then the dst write
     obtain ⟨p2w, h_read2_tgt, h_psim2w⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t' h_srt h_snw h_read_src
@@ -2615,8 +2608,7 @@ theorem copy_fresh_projchain_zero_simulation
                 (Rhs.Alloc (layoutToTyVal τ))])
             dstLoc.idx.1 (Register.R csPrefix.nextReg, τ)) i :=
       fun i => by simp only [getPlaceInfo, h_sprm]
-    have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancel := resolvedAddr_cancel h_sle
     -- §8 transports: the wide read, then the dst write
     obtain ⟨p2w, h_read2_tgt, h_psim2w⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t' h_srt h_snw h_read_src
@@ -3184,8 +3176,7 @@ theorem copy_fresh_projchain_offset_simulation
                   (Rhs.Alloc (layoutToTyVal τ))])
               dstLoc.idx.1 (Register.R csPrefix.nextReg, τ)) i :=
       fun i => by simp only [getPlaceInfo, h_sprm]
-    have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancel := resolvedAddr_cancel h_sle
     -- §8 transports: the projected read, then the dst write
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t' h_srt h_snw h_read_src
@@ -4378,8 +4369,7 @@ theorem copy_chaindst_chainsrc_simulation
       h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
       ptrChain_lowering_sim h_id_a h_wf_t h_schain RefKind.Shared csPrefix s_osea
         rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
-    have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancelS := resolvedAddr_cancel h_sle
     have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
       simp [blockSize]
     have h_sOut_eq : sOut = sOut0 := by
@@ -4599,8 +4589,7 @@ theorem copy_chaindst_chainsrc_simulation
     -- §8 the WRITE: transport, then execute the `RStore`
     have h_stmtRun := (h_run0 csPrefix).trans
       (compileStmt_copy_chaindst_run h_root h_sval h_sclean h_dval h_dclean)
-    have h_cancelD : rd.allocBase + (rd.addr - rd.allocBase) = rd.addr :=
-      Nat.add_sub_cancel' h_dle
+    have h_cancelD := resolvedAddr_cancel h_dle
     have h_w := h_step
     simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
@@ -4733,9 +4722,8 @@ theorem copy_chaindst_chainsrc_simulation
           refine TagRenameBounded.mono h_tbd (Nat.le_refl _) ?_
           rw [sb_read_NextTag h_read_tgt] at h_dnt2
           grind
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_memchain]
-          exact h_alloc
+        · simp only [h_memchain]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit]
           show _ = _
@@ -4933,8 +4921,7 @@ theorem copy_chaindst_projsrc_zero_simulation
       h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
       ptrChain_lowering_sim h_id_a h_wf_t h_schain RefKind.Shared csPrefix s_osea
         rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
-    have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancelS := resolvedAddr_cancel h_sle
     have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
       simp [blockSize]
     have h_sOut_eq : sOut = sOut0 := by
@@ -5154,8 +5141,7 @@ theorem copy_chaindst_projsrc_zero_simulation
     -- §8 the WRITE: transport, then execute the `RStore`
     have h_stmtRun := (h_run0 csPrefix).trans
       (compileStmt_copy_chaindst_projsrc_zero_run h_schain h_o h_root h_sval h_sclean h_dval h_dclean)
-    have h_cancelD : rd.allocBase + (rd.addr - rd.allocBase) = rd.addr :=
-      Nat.add_sub_cancel' h_dle
+    have h_cancelD := resolvedAddr_cancel h_dle
     have h_w := h_step
     simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
@@ -5288,9 +5274,8 @@ theorem copy_chaindst_projsrc_zero_simulation
           refine TagRenameBounded.mono h_tbd (Nat.le_refl _) ?_
           rw [sb_read_NextTag h_read_tgt] at h_dnt2
           grind
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_memchain]
-          exact h_alloc
+        · simp only [h_memchain]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit]
           show _ = _
@@ -5513,8 +5498,7 @@ theorem copy_chaindst_projsrc_offset_simulation
       rw [h_sval0] at h_sval
       exact (Except.ok.inj h_sval).symm
     subst h_sOut_eq
-    have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancelS := resolvedAddr_cancel h_sle
     have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
       simp [blockSize]
     -- §5 code inclusion at the post-`Die` compiler state, and at the
@@ -5814,8 +5798,7 @@ theorem copy_chaindst_projsrc_offset_simulation
     have h_stmtRun := (h_run0 csPrefix).trans
       (compileStmt_copy_chaindst_projsrc_offset_run h_np h_o h_root h_sval
         h_sclean h_dval h_dclean)
-    have h_cancelD : rd.allocBase + (rd.addr - rd.allocBase) = rd.addr :=
-      Nat.add_sub_cancel' h_dle
+    have h_cancelD := resolvedAddr_cancel h_dle
     have h_w := h_step
     simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
@@ -5957,9 +5940,8 @@ theorem copy_chaindst_projsrc_offset_simulation
           have h3 := h_dnt2
           have h4 := sb_read_NextTag h_read_tgt
           grind
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_memchain]
-          exact h_alloc
+        · simp only [h_memchain]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit]
           show _ = _
@@ -6523,8 +6505,7 @@ theorem copy_projlocal_fresh_zero_simulation
       (compileStmt_copy_projlocal_fresh_zero_run h_o h_pi_none h_sval h_sclean h_dpi)
     have h_gp : ∀ i, getPlaceInfo (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) i = getPlaceInfo (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)) i :=
       fun i => by simp only [getPlaceInfo, h_prmS]
-    have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancel := resolvedAddr_cancel h_sle
     -- §8 transports: the wide read, then the dst write
     obtain ⟨p2w, h_read2_tgt, h_psim2w⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t' h_srt h_snw h_read_src
@@ -7059,8 +7040,7 @@ theorem copy_projlocal_fresh_offset_simulation
       (compileStmt_copy_projlocal_fresh_offset_run h_o h_pi_none h_sval h_sclean h_dpi)
     have h_gp : ∀ i, getPlaceInfo (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) i = getPlaceInfo (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)) i :=
       fun i => by simp only [getPlaceInfo, h_prmS]
-    have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancel := resolvedAddr_cancel h_sle
     -- §8 the WRITE: the projection's own `Borrow`/`Die` sandwich the
     -- `RStore` through the FRESH root register — BRIDGE 1
     obtain ⟨p2w, h_read2_tgt, h_psim2w⟩ :=
@@ -7877,8 +7857,7 @@ theorem copy_projlocal_fresh_projsrc_offset_zero_simulation
         h_so h_pi_none h_sval h_sclean h_dpi)
     have h_gp : ∀ i, getPlaceInfo (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) i = getPlaceInfo (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)) i :=
       fun i => by simp only [getPlaceInfo, h_prmS]
-    have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancel := resolvedAddr_cancel h_sle
     -- §8 BRIDGE 1S: the source projection's borrow is taken, read
     -- through, and retired, all before the destination write
     obtain ⟨p2w, h_read2_tgt, h_psim2w⟩ :=
@@ -7911,8 +7890,7 @@ theorem copy_projlocal_fresh_projsrc_offset_zero_simulation
         -- §9 the three source instructions, then the write
         have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
           simp [blockSize]
-        have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-          Nat.add_sub_cancel' h_sle
+        have h_cancel := resolvedAddr_cancel h_sle
         have hFrag9 :=
           (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
             h_stmtRun h_spc
@@ -8451,8 +8429,7 @@ theorem copy_projlocal_fresh_projsrc_offset_offset_simulation
         h_so h_pi_none h_sval h_sclean h_dpi)
     have h_gp : ∀ i, getPlaceInfo (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) i = getPlaceInfo (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)) i :=
       fun i => by simp only [getPlaceInfo, h_prmS]
-    have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancel := resolvedAddr_cancel h_sle
     -- §8 BRIDGE 1S: the source projection's borrow is taken, read
     -- through, and retired, all before the destination write
     obtain ⟨p2w, h_read2_tgt, h_psim2w⟩ :=
@@ -8486,8 +8463,7 @@ theorem copy_projlocal_fresh_projsrc_offset_offset_simulation
         -- §9 the three source instructions, then the write
         have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
           simp [blockSize]
-        have h_cancel : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-          Nat.add_sub_cancel' h_sle
+        have h_cancel := resolvedAddr_cancel h_sle
         have hFrag10 :=
           (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
             h_stmtRun h_spc
@@ -9756,8 +9732,7 @@ theorem copy_projdst_zero_projsrc_offset_simulation
       rw [h_sval0] at h_sval
       exact (Except.ok.inj h_sval).symm
     subst h_sOut_eq
-    have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancelS := resolvedAddr_cancel h_sle
     have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
       simp [blockSize]
     -- §5 code inclusion at the post-`Die` compiler state, and at the
@@ -10025,8 +10000,7 @@ theorem copy_projdst_zero_projsrc_offset_simulation
     have h_stmtRun := (h_run0 csPrefix).trans
       (compileStmt_copy_projdst_zero_projsrc_offset_run h_npD h_np h_do h_o h_root
         h_sval h_sclean h_dval h_dclean)
-    have h_cancelD : rd.allocBase + (rd.addr - rd.allocBase) = rd.addr :=
-      Nat.add_sub_cancel' h_dle
+    have h_cancelD := resolvedAddr_cancel h_dle
     have h_w := h_step
     simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
@@ -10160,9 +10134,8 @@ theorem copy_projdst_zero_projsrc_offset_simulation
           have h3 := h_dnt2
           have h4 := sb_read_NextTag h_read_tgt
           grind
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_memchain]
-          exact h_alloc
+        · simp only [h_memchain]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit]
           show _ = _
@@ -10365,8 +10338,7 @@ theorem copy_projdst_offset_projsrc_offset_simulation
       rw [h_sval0] at h_sval
       exact (Except.ok.inj h_sval).symm
     subst h_sOut_eq
-    have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancelS := resolvedAddr_cancel h_sle
     have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
       simp [blockSize]
     -- §5 code inclusion at the post-`Die` compiler state, and at the
@@ -10640,8 +10612,7 @@ theorem copy_projdst_offset_projsrc_offset_simulation
     have h_stmtRun := (h_run0 csPrefix).trans
       (compileStmt_copy_projdst_offset_projsrc_offset_run h_npD h_np h_do h_o
         h_root h_sval h_sclean h_dval h_dclean)
-    have h_cancelD : rd.allocBase + (rd.addr - rd.allocBase) = rd.addr :=
-      Nat.add_sub_cancel' h_dle
+    have h_cancelD := resolvedAddr_cancel h_dle
     have h_w := h_step
     simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
@@ -10927,9 +10898,8 @@ theorem copy_projdst_offset_projsrc_offset_simulation
           have h5 := h_ntleD
           have h6 := sb_write_NextTag h_useMut_tgt
           grind
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_memchain]
-          exact h_alloc
+        · simp only [h_memchain]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_emit,
             getPlaceInfo_setNextReg]
@@ -11117,8 +11087,7 @@ theorem copy_projdst_zero_chainsrc_simulation
       h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
       h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csPrefix s_osea
         rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
-    have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancelS := resolvedAddr_cancel h_sle
     have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
       simp [blockSize]
     have h_sOut_eq : sOut = sOut0 := by
@@ -11341,8 +11310,7 @@ theorem copy_projdst_zero_chainsrc_simulation
     have h_stmtRun := (h_run0 csPrefix).trans
       (compileStmt_copy_projdst_zero_run h_dchain.not_proj h_o h_root
         h_sval h_sclean h_dval h_dclean)
-    have h_cancelD : rd.allocBase + (rd.addr - rd.allocBase) = rd.addr :=
-      Nat.add_sub_cancel' h_dle
+    have h_cancelD := resolvedAddr_cancel h_dle
     have h_w := h_step
     simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
@@ -11475,9 +11443,8 @@ theorem copy_projdst_zero_chainsrc_simulation
           refine TagRenameBounded.mono h_tbd (Nat.le_refl _) ?_
           rw [sb_read_NextTag h_read_tgt] at h_dnt2
           grind
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_memchain]
-          exact h_alloc
+        · simp only [h_memchain]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit]
           show _ = _
@@ -11666,8 +11633,7 @@ theorem copy_projdst_offset_chainsrc_simulation
       h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
       h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csPrefix s_osea
         rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
-    have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-      Nat.add_sub_cancel' h_sle
+    have h_cancelS := resolvedAddr_cancel h_sle
     have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
       simp [blockSize]
     have h_sOut_eq : sOut = sOut0 := by
@@ -11918,8 +11884,7 @@ theorem copy_projdst_offset_chainsrc_simulation
     have h_stmtRun := (h_run0 csPrefix).trans
       (compileStmt_copy_projdst_offset_run h_dchain.not_proj h_o h_root
         h_sval h_sclean h_dval h_dclean)
-    have h_cancelD : rd.allocBase + (rd.addr - rd.allocBase) = rd.addr :=
-      Nat.add_sub_cancel' h_dle
+    have h_cancelD := resolvedAddr_cancel h_dle
     have h_w := h_step
     simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
@@ -12311,9 +12276,8 @@ theorem copy_projdst_offset_chainsrc_simulation
             rw [← sb_write_NextTag h_useMut_tgt]
             exact h_ntle
           exact Nat.le_trans h_dnt2 hB
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_memchain]
-          exact h_alloc
+        · simp only [h_memchain]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_emit,
             getPlaceInfo_setNextReg]

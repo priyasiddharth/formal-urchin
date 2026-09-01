@@ -2467,8 +2467,7 @@ theorem writeThroughPtr_sim
     oseair.writeThroughPtr MSB s_osea dstReg vals msg
       = oseair.Result.Ok { s_osea with perms := p2, mem := oseair.writeWordSeq s_osea.mem resolved.addr vals, pc := s_osea.pc + 1 } ∧
     SourceMemSim ρa ρt s_mir'.mem (oseair.writeWordSeq s_osea.mem resolved.addr vals) := by
-  have h_addr : resolved.allocBase + (resolved.addr - resolved.allocBase)
-      = resolved.addr := Nat.add_sub_cancel' h_le
+  have h_addr := resolvedAddr_cancel h_le
   have h_len : values.length = vals.length := ListRel.length_eq h_rel
   simp only [mirlite.writeResolvedPlace] at h_write
   split at h_write

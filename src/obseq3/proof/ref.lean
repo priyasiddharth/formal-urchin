@@ -813,9 +813,7 @@ theorem ref_local_local_simulation
             rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
             exact h_tbd'
           · -- AllocLockstep: stores only
-            simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-              oseair_writeWordSeq_addrStart]
-            exact h_alloc
+            exact h_alloc.writeWordSeq _ _ _ _
           · -- UnboundLocalsUnmapped: env and placeRegMap both unchanged
             intro τ' loc' h_none
             rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit]
@@ -1365,9 +1363,7 @@ theorem ref_proj_local_simulation
           · show TagRenameBounded _ perms''.NextTag p2.NextTag
             rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
             exact h_tbd'
-          · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-              oseair_writeWordSeq_addrStart]
-            exact h_alloc
+          · exact h_alloc.writeWordSeq _ _ _ _
           · intro τ' loc' h_none
             rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit]
             exact h_unmap loc' h_none
@@ -1737,8 +1733,7 @@ theorem ref_deref_local_simulation
         resolved permsR h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
     have h_deq : dOut = dOut' := by grind
     subst h_deq
-    have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-        = resolved.addr := Nat.add_sub_cancel' h_dle
+    have h_cancel := resolvedAddr_cancel h_dle
     -- §4 the retag transported at the post-src state: the fresh pair
     -- extends ρt
     have h_tbd_mid : TagRenameBounded ρt permsR.NextTag s_mid.perms.NextTag := by
@@ -1889,9 +1884,8 @@ theorem ref_deref_local_simulation
         · show TagRenameBounded _ perms2.NextTag p3.NextTag
           rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
           exact h_tbd'
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_dmem]
-          exact h_alloc
+        · simp only [h_dmem]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ'' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_setNextReg]
           show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (Place.deref P)) csPrefix).placeRegMap.lookup loc'.idx.1 = none
@@ -2570,9 +2564,7 @@ theorem ref_local_projzero_simulation
           · show TagRenameBounded _ perms''.NextTag p2.NextTag
             rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
             exact h_tbd'
-          · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-              oseair_writeWordSeq_addrStart]
-            exact h_alloc
+          · exact h_alloc.writeWordSeq _ _ _ _
           · intro τ' loc' h_none
             rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit]
             exact h_unmap loc' h_none
@@ -3071,9 +3063,7 @@ theorem ref_local_projoffset_simulation
             refine TagRenameBounded.mono h_tbd' (Nat.le_refl _) ?_
             rw [← sb_write_NextTag h_useMut_tgt]
             exact h_ntle
-          · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-              oseair_writeWordSeq_addrStart]
-            exact h_alloc
+          · exact h_alloc.writeWordSeq _ _ _ _
           · intro τ' loc' h_none
             rw [h_stmtRun]; exact h_unmap loc' h_none
           · intro idx reg τ'' h_look
@@ -4772,8 +4762,7 @@ theorem ref_derefdst_local_simulation
               grind
             obtain ⟨a', ha'⟩ := h_drange _ h_lt
             have h_eq := h_id_a _ _ ha'
-            have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-                = resolved.addr := Nat.add_sub_cancel' h_dle
+            have h_cancel := resolvedAddr_cancel h_dle
             grind)
           h_step
       have h_run3 := runN_RStore_step compProg s_mid _
@@ -4804,9 +4793,8 @@ theorem ref_derefdst_local_simulation
         rw [sb_write_NextTag h_useMut_src, h_dnt1,
           sb_write_NextTag h_useMut_tgt]
         exact TagRenameBounded.mono h_tbd' (Nat.le_refl _) h_dnt2
-      · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-          oseair_writeWordSeq_addrStart, h_dmem]
-        exact h_alloc
+      · simp only [h_dmem]
+        exact h_alloc.writeWordSeq _ _ _ _
       · intro τ'' loc' h_none
         rw [h_stmtRun, getPlaceInfo_emit]
         show (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
@@ -6930,8 +6918,7 @@ theorem ref_fresh_derefsrc_simulation
     have h_deq : dOut = dOut0 := by
       rw [h_dval0] at h_dval; exact (Except.ok.inj h_dval).symm
     subst h_deq
-    have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-        = resolved.addr := Nat.add_sub_cancel' h_dle
+    have h_cancel := resolvedAddr_cancel h_dle
     have h_csAt1 : csAt cs0 prog s1.pc csPrefix := by rw [h_pc1]; exact h_csAt
     have h_stmt1 : prog.get? s1.pc = some stmt0 := by rw [h_pc1]; exact h_stmt
     -- §8 the rhs retag transported at the post-spine state
@@ -7294,9 +7281,7 @@ theorem ref_projzero_projsrc_simulation
           · show TagRenameBounded _ perms''.NextTag p2.NextTag
             rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
             exact h_tbd'
-          · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-              oseair_writeWordSeq_addrStart]
-            exact h_alloc
+          · exact h_alloc.writeWordSeq _ _ _ _
           · intro τ' loc' h_none
             rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit]
             exact h_unmap loc' h_none
@@ -7636,9 +7621,7 @@ theorem ref_projoffset_projsrc_simulation
             refine TagRenameBounded.mono h_tbd' (Nat.le_refl _) ?_
             rw [← sb_write_NextTag h_useMut_tgt]
             exact h_ntle
-          · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-              oseair_writeWordSeq_addrStart]
-            exact h_alloc
+          · exact h_alloc.writeWordSeq _ _ _ _
           · intro τ' loc' h_none
             rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_emit,
               getPlaceInfo_setNextReg, getPlaceInfo_emit, getPlaceInfo_setNextReg]
@@ -9500,8 +9483,7 @@ theorem ref_derefprojsrc_local_simulation
         resolved permsR h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
     have h_deq : dOut = dOut' := by grind
     subst h_deq
-    have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-        = resolved.addr := Nat.add_sub_cancel' h_dle
+    have h_cancel := resolvedAddr_cancel h_dle
     have h_off_eq := resolvedOffset_shift h_dle (pathOffset f)
     -- §4 the retag transported at the post-src state: the fresh pair
     -- extends ρt
@@ -9655,9 +9637,8 @@ theorem ref_derefprojsrc_local_simulation
         · show TagRenameBounded _ perms2.NextTag p3.NextTag
           rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
           exact h_tbd'
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_dmem]
-          exact h_alloc
+        · simp only [h_dmem]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ'' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_setNextReg]
           show (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).placeRegMap.lookup loc'.idx.1 = none
@@ -9938,8 +9919,7 @@ theorem ref_fresh_derefprojsrc_simulation
     have h_deq : dOut = dOut0 := by
       rw [h_dval0] at h_dval; exact (Except.ok.inj h_dval).symm
     subst h_deq
-    have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-        = resolved.addr := Nat.add_sub_cancel' h_dle
+    have h_cancel := resolvedAddr_cancel h_dle
     have h_off_eq := resolvedOffset_shift h_dle (pathOffset f)
     have h_csAt1 : csAt cs0 prog s1.pc csPrefix := by rw [h_pc1]; exact h_csAt
     have h_stmt1 : prog.get? s1.pc = some stmt0 := by rw [h_pc1]; exact h_stmt
@@ -10230,8 +10210,7 @@ theorem ref_projzero_derefsrc_simulation
         resolved permsR h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
     have h_deq : dOut = dOut' := by grind
     subst h_deq
-    have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-        = resolved.addr := Nat.add_sub_cancel' h_dle
+    have h_cancel := resolvedAddr_cancel h_dle
     have h_off_eq := resolvedOffset_shift h_dle (pathOffset f)
     -- §4 the retag transported at the post-src state: the fresh pair
     -- extends ρt
@@ -10385,9 +10364,8 @@ theorem ref_projzero_derefsrc_simulation
         · show TagRenameBounded _ perms2.NextTag p3.NextTag
           rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
           exact h_tbd'
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_dmem]
-          exact h_alloc
+        · simp only [h_dmem]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ'' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_setNextReg]
           show (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).placeRegMap.lookup loc'.idx.1 = none
@@ -10675,8 +10653,7 @@ theorem ref_projzero_fresh_derefsrc_simulation
     have h_deq : dOut = dOut0 := by
       rw [h_dval0] at h_dval; exact (Except.ok.inj h_dval).symm
     subst h_deq
-    have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-        = resolved.addr := Nat.add_sub_cancel' h_dle
+    have h_cancel := resolvedAddr_cancel h_dle
     have h_off_eq := resolvedOffset_shift h_dle (pathOffset f)
     have h_csAt1 : csAt cs0 prog s1.pc csPrefix := by rw [h_pc1]; exact h_csAt
     have h_stmt1 : prog.get? s1.pc = some stmt0 := by rw [h_pc1]; exact h_stmt
@@ -10972,8 +10949,7 @@ theorem ref_projoffset_derefsrc_simulation
         resolved permsR h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
     have h_deq : dOut = dOut' := by grind
     subst h_deq
-    have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-        = resolved.addr := Nat.add_sub_cancel' h_dle
+    have h_cancel := resolvedAddr_cancel h_dle
     have h_off_eq := resolvedOffset_shift h_dle (pathOffset f)
     -- §4 the retag transported at the post-src state: the fresh pair
     -- extends ρt
@@ -11166,9 +11142,8 @@ theorem ref_projoffset_derefsrc_simulation
           rw [sb_write_NextTag h_useMut_src]
           exact TagRenameBounded.mono h_tbd' (Nat.le_refl _)
             (by rw [← sb_write_NextTag h_useMut_tgt]; exact h_ntle)
-        · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-            oseair_writeWordSeq_addrStart, h_dmem]
-          exact h_alloc
+        · simp only [h_dmem]
+          exact h_alloc.writeWordSeq _ _ _ _
         · intro τ'' loc' h_none
           rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_emit,
             getPlaceInfo_setNextReg, getPlaceInfo_emit, getPlaceInfo_setNextReg]
@@ -11474,8 +11449,7 @@ theorem ref_projoffset_fresh_derefsrc_simulation
     have h_deq : dOut = dOut0 := by
       rw [h_dval0] at h_dval; exact (Except.ok.inj h_dval).symm
     subst h_deq
-    have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-        = resolved.addr := Nat.add_sub_cancel' h_dle
+    have h_cancel := resolvedAddr_cancel h_dle
     have h_off_eq := resolvedOffset_shift h_dle (pathOffset f)
     have h_csAt1 : csAt cs0 prog s1.pc csPrefix := by rw [h_pc1]; exact h_csAt
     have h_stmt1 : prog.get? s1.pc = some stmt0 := by rw [h_pc1]; exact h_stmt
@@ -12000,8 +11974,7 @@ theorem ref_derefdst_projsrc_simulation
               grind
             obtain ⟨a', ha'⟩ := h_drange _ h_lt
             have h_eq := h_id_a _ _ ha'
-            have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-                = resolved.addr := Nat.add_sub_cancel' h_dle
+            have h_cancel := resolvedAddr_cancel h_dle
             grind)
           h_step
       have h_run3 := runN_RStore_step compProg s_mid _
@@ -12032,9 +12005,8 @@ theorem ref_derefdst_projsrc_simulation
         rw [sb_write_NextTag h_useMut_src, h_dnt1,
           sb_write_NextTag h_useMut_tgt]
         exact TagRenameBounded.mono h_tbd' (Nat.le_refl _) h_dnt2
-      · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-          oseair_writeWordSeq_addrStart, h_dmem]
-        exact h_alloc
+      · simp only [h_dmem]
+        exact h_alloc.writeWordSeq _ _ _ _
       · intro τ'' loc' h_none
         rw [h_stmtRun, getPlaceInfo_emit]
         show (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
@@ -12229,8 +12201,7 @@ theorem ref_derefdst_derefprojsrc_simulation
     rw [h_sval0] at h_sval
     exact (Except.ok.inj h_sval).symm
   subst h_sOut_eq
-  have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-    Nat.add_sub_cancel' h_sle
+  have h_cancelS := resolvedAddr_cancel h_sle
   have h_off_eq := resolvedOffset_shift h_sle (pathOffset f)
   -- §7 the retag transported at the post-source state
   have h_tbd_mid : TagRenameBounded ρt permsR.NextTag s_mid.perms.NextTag := by
@@ -12415,8 +12386,7 @@ theorem ref_derefdst_derefprojsrc_simulation
               grind
             obtain ⟨a', ha'⟩ := h_drange _ h_lt
             have h_eq := h_id_a _ _ ha'
-            have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-                = resolved.addr := Nat.add_sub_cancel' h_dle
+            have h_cancel := resolvedAddr_cancel h_dle
             grind)
           h_step
       have h_run2 := runN_RStore_step compProg s_mid2 _
@@ -12447,9 +12417,8 @@ theorem ref_derefdst_derefprojsrc_simulation
       · show TagRenameBounded _ perms2.NextTag p3.NextTag
         rw [sb_write_NextTag h_useMut_src, h_dnt1, sb_write_NextTag h_useMut_tgt]
         exact TagRenameBounded.mono h_tbd' (Nat.le_refl _) h_dnt2
-      · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-          oseair_writeWordSeq_addrStart, h_dmem, h_smem]
-        exact h_alloc
+      · simp only [h_dmem, h_smem]
+        exact h_alloc.writeWordSeq _ _ _ _
       · intro τ'' loc' h_none
         rw [h_stmtRun, getPlaceInfo_emit]
         show (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref D))
@@ -12658,8 +12627,7 @@ theorem ref_projzero_derefdst_chainsrc_simulation
     rw [h_sval0] at h_sval
     exact (Except.ok.inj h_sval).symm
   subst h_sOut_eq
-  have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-    Nat.add_sub_cancel' h_sle
+  have h_cancelS := resolvedAddr_cancel h_sle
   have h_off_eq := resolvedOffset_shift h_sle (pathOffset f)
   -- §7 the retag transported at the post-source state
   have h_tbd_mid : TagRenameBounded ρt permsR.NextTag s_mid.perms.NextTag := by
@@ -12846,8 +12814,7 @@ theorem ref_projzero_derefdst_chainsrc_simulation
               grind
             obtain ⟨a', ha'⟩ := h_drange _ h_lt
             have h_eq := h_id_a _ _ ha'
-            have h_cancel : resolved.allocBase + (resolved.addr - resolved.allocBase)
-                = resolved.addr := Nat.add_sub_cancel' h_dle
+            have h_cancel := resolvedAddr_cancel h_dle
             grind)
           h_step
       have h_run2 := runN_RStore_step compProg s_mid2 _
@@ -12878,9 +12845,8 @@ theorem ref_projzero_derefdst_chainsrc_simulation
       · show TagRenameBounded _ perms2.NextTag p3.NextTag
         rw [sb_write_NextTag h_useMut_src, h_dnt1, sb_write_NextTag h_useMut_tgt]
         exact TagRenameBounded.mono h_tbd' (Nat.le_refl _) h_dnt2
-      · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-          oseair_writeWordSeq_addrStart, h_dmem, h_smem]
-        exact h_alloc
+      · simp only [h_dmem, h_smem]
+        exact h_alloc.writeWordSeq _ _ _ _
       · intro τ'' loc' h_none
         rw [h_stmtRun, getPlaceInfo_emit]
         show (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.proj (Place.deref pp) g))
@@ -13082,8 +13048,7 @@ theorem ref_projoffset_derefdst_chainsrc_simulation
     rw [h_sval0] at h_sval
     exact (Except.ok.inj h_sval).symm
   subst h_sOut_eq
-  have h_cancelS : rs.allocBase + (rs.addr - rs.allocBase) = rs.addr :=
-    Nat.add_sub_cancel' h_sle
+  have h_cancelS := resolvedAddr_cancel h_sle
   have h_off_eq := resolvedOffset_shift h_sle (pathOffset f)
   -- §7 the source retag transported
   have h_tbd_mid : TagRenameBounded ρt permsR.NextTag s_mid.perms.NextTag := by
@@ -13174,8 +13139,7 @@ theorem ref_projoffset_derefdst_chainsrc_simulation
     rw [h_bval0] at h_bval
     exact (Except.ok.inj h_bval).symm
   subst h_bOut_eq
-  have h_cancelD : rd.allocBase + (rd.addr - rd.allocBase) = rd.addr :=
-    Nat.add_sub_cancel' h_ble
+  have h_cancelD := resolvedAddr_cancel h_ble
   have h_goff_eq := resolvedOffset_shift h_ble (pathOffset g)
   -- §10 the mirlite write and BRIDGE 1
   have h_tbd2 : TagRenameBounded (ρt.extend permsR.NextTag s_mid.perms.NextTag)
@@ -13377,9 +13341,8 @@ theorem ref_projoffset_derefdst_chainsrc_simulation
         rw [sb_write_NextTag h_useMut_src]
         exact TagRenameBounded.mono h_tbd2 (Nat.le_refl _)
           (by rw [← sb_write_NextTag h_useMut_tgt]; exact h_ntle)
-      · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-          oseair_writeWordSeq_addrStart, h_bmem, h_smem]
-        exact h_alloc
+      · simp only [h_bmem, h_smem]
+        exact h_alloc.writeWordSeq _ _ _ _
       · intro τ'' loc' h_none
         rw [h_stmtRun, getPlaceInfo_emit, getPlaceInfo_emit, getPlaceInfo_emit,
           getPlaceInfo_setNextReg]
