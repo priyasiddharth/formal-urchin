@@ -939,7 +939,7 @@ theorem ref_local_local_simulation
             (RegMap.lookup_insert_self _ _ _)
             (by rw [RegMap.lookup_insert_ne _ h_regne]; exact h_entryD)
             h_wtp
-          have h_run := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
+          have h_run := (oseair_runN_trans h_run1 h_run2)
           -- §6 rebuild the invariant under the extended ρt
           refine ⟨_, _, 1 + 1, h_incr_t, h_run, ?_⟩
           refine ⟨CheckedCompilerM.run
@@ -1268,8 +1268,7 @@ theorem ref_fresh_dst_simulation
                         exact RegMap.lookup_insert_self _ _ _)
                     h_wtp
                   have h_run :=
-                    (oseair_runN_add (1 + 1) 1 s_osea compProg _
-                      ((oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2)).trans h_run3
+                    (oseair_runN_trans ((oseair_runN_trans h_run1 h_run2)) h_run3)
                   -- §10 rebuild the invariant under both extended renames
                   refine ⟨_, _, _, 1 + 1 + 1, h_incr_a, h_incr12, h_run, ?_⟩
                   refine ⟨CheckedCompilerM.run
@@ -1563,7 +1562,7 @@ theorem ref_proj_local_simulation
             (RegMap.lookup_insert_self _ _ _)
             (by rw [RegMap.lookup_insert_ne _ h_regne]; exact h_entryD)
             h_wtp
-          have h_run := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
+          have h_run := (oseair_runN_trans h_run1 h_run2)
           -- §6 rebuild the invariant under the extended ρt
           refine ⟨_, _, 1 + 1, h_incr_t, h_run, ?_⟩
           refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -2088,8 +2087,8 @@ theorem ref_deref_local_simulation
           (RegMap.lookup_insert_self _ _ _)
           (by rw [RegMap.lookup_insert_ne _ h_regne]; exact h_entryD2)
           h_wtp
-        have h_runA := (oseair_runN_add n1 1 s_osea compProg s_mid h_drun).trans h_run1
-        have h_runB := (oseair_runN_add (n1 + 1) 1 s_osea compProg _ h_runA).trans h_run2
+        have h_runA := (oseair_runN_trans h_drun h_run1)
+        have h_runB := (oseair_runN_trans h_runA h_run2)
         -- §7 rebuild the invariant under the extended ρt
         refine ⟨_, _, n1 + 1 + 1, h_incr_t, h_runB, ?_⟩
         refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -3063,7 +3062,7 @@ theorem ref_local_projzero_simulation
             (RegMap.lookup_insert_self _ _ _)
             (by rw [RegMap.lookup_insert_ne _ h_regne]; exact h_entryD)
             h_wtp
-          have h_run := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
+          have h_run := (oseair_runN_trans h_run1 h_run2)
           -- §6 rebuild the invariant under the extended ρt
           refine ⟨_, _, 1 + 1, h_incr_t, h_run, ?_⟩
           refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -3663,9 +3662,9 @@ theorem ref_local_projoffset_simulation
                 pc := s_osea.pc + 1 + 1 + 1 }
             (Register.R (csPrefix.nextReg + 1)) (blockSize (obseq.LayoutTy.PtrL τ))
             h_code4 (RegMap.lookup_insert_self _ _ _) h_die1'
-          have h_runA := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
-          have h_runB := (oseair_runN_add (1 + 1) 1 s_osea compProg _ h_runA).trans h_run3
-          have h_run := (oseair_runN_add (1 + 1 + 1) 1 s_osea compProg _ h_runB).trans h_run4
+          have h_runA := (oseair_runN_trans h_run1 h_run2)
+          have h_runB := (oseair_runN_trans h_runA h_run3)
+          have h_run := (oseair_runN_trans h_runB h_run4)
           -- §9 the final permission relation (BRIDGE 1 collapses the triple)
           have h_psim4 : PermSim (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
               perms'' q3 := by
@@ -5595,8 +5594,8 @@ theorem ref_derefdst_local_simulation
       have h_run3 := runN_RStore_step compProg s_mid _
         obseq.TyVal.PTy (Register.R csPrefix.nextReg) dOut.result.reg
         _ _ h_code3 h_borrow_mid h_dentry h_wtp
-      have h_runA := (oseair_runN_add 1 n1 s_osea compProg _ h_run1).trans h_drun
-      have h_runB := (oseair_runN_add (1 + n1) 1 s_osea compProg _ h_runA).trans h_run3
+      have h_runA := (oseair_runN_trans h_run1 h_drun)
+      have h_runB := (oseair_runN_trans h_runA h_run3)
       -- §9 rebuild the invariant under the extended ρt
       refine ⟨_, _, 1 + n1 + 1, h_incr_t, h_runB, ?_⟩
       refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -5963,8 +5962,7 @@ theorem ref_fresh_projsrc_simulation
                         exact RegMap.lookup_insert_self _ _ _)
                     h_wtp
                   have h_run :=
-                    (oseair_runN_add (1 + 1) 1 s_osea compProg _
-                      ((oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2)).trans h_run3
+                    (oseair_runN_trans ((oseair_runN_trans h_run1 h_run2)) h_run3)
                   -- §10 rebuild the invariant under both extended renames
                   refine ⟨_, _, _, 1 + 1 + 1, h_incr_a, h_incr12, h_run, ?_⟩
                   refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -7325,8 +7323,7 @@ theorem ref_projzero_fresh_simulation
                         exact RegMap.lookup_insert_self _ _ _)
                     h_wtp
                   have h_run :=
-                    (oseair_runN_add (1 + 1) 1 s_osea compProg _
-                      ((oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2)).trans h_run3
+                    (oseair_runN_trans ((oseair_runN_trans h_run1 h_run2)) h_run3)
                   -- §10 rebuild the invariant under both extended renames
                   refine ⟨_, _, _, 1 + 1 + 1, h_incr_a, h_incr12, h_run, ?_⟩
                   refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -7895,13 +7892,13 @@ theorem ref_projoffset_fresh_simulation
                     (Register.R (csPrefix.nextReg + 1 + 1))
                     (blockSize (obseq.LayoutTy.PtrL τ))
                     h_code5 (RegMap.lookup_insert_self _ _ _) h_die1'
-                  have h_runA := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
+                  have h_runA := (oseair_runN_trans h_run1 h_run2)
                   have h_runB :=
-                    (oseair_runN_add (1 + 1) 1 s_osea compProg _ h_runA).trans h_run3
+                    (oseair_runN_trans h_runA h_run3)
                   have h_runC :=
-                    (oseair_runN_add (1 + 1 + 1) 1 s_osea compProg _ h_runB).trans h_run4
+                    (oseair_runN_trans h_runB h_run4)
                   have h_run :=
-                    (oseair_runN_add (1 + 1 + 1 + 1) 1 s_osea compProg _ h_runC).trans h_run5
+                    (oseair_runN_trans h_runC h_run5)
                   -- §11 BRIDGE 1 collapses the triple to the parent write
                   have h_psim4 : PermSim
                       ((ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag).extend
@@ -8405,10 +8402,10 @@ theorem ref_fresh_derefsrc_simulation
           (RegMap.lookup_insert_self _ _ _)
           (by rw [RegMap.lookup_insert_ne _ h_regne]; exact h_entryD2)
           h_wtp
-        have h_runA := (oseair_runN_add 1 n1 s_osea compProg _ h_runAlloc).trans h_drun
-        have h_runB := (oseair_runN_add (1 + n1) 1 s_osea compProg _ h_runA).trans h_run1
+        have h_runA := (oseair_runN_trans h_runAlloc h_drun)
+        have h_runB := (oseair_runN_trans h_runA h_run1)
         have h_runC :=
-          (oseair_runN_add (1 + n1 + 1) 1 s_osea compProg _ h_runB).trans h_run2
+          (oseair_runN_trans h_runB h_run2)
         -- §11 rebuild the invariant under both extended renames
         refine ⟨_, _, _, 1 + n1 + 1 + 1, h_incr_a,
           TagRenameIncr.trans h_incr_t h_incr_t2, h_runC, ?_⟩
@@ -8663,7 +8660,7 @@ theorem ref_projzero_projsrc_simulation
             (RegMap.lookup_insert_self _ _ _)
             (by rw [RegMap.lookup_insert_ne _ h_regne]; exact h_entryD)
             h_wtp
-          have h_run := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
+          have h_run := (oseair_runN_trans h_run1 h_run2)
           -- §6 rebuild the invariant under the extended ρt
           refine ⟨_, _, 1 + 1, h_incr_t, h_run, ?_⟩
           refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -9025,9 +9022,9 @@ theorem ref_projoffset_projsrc_simulation
                 pc := s_osea.pc + 1 + 1 + 1 }
             (Register.R (csPrefix.nextReg + 1)) (blockSize (obseq.LayoutTy.PtrL τ))
             h_code4 (RegMap.lookup_insert_self _ _ _) h_die1'
-          have h_runA := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
-          have h_runB := (oseair_runN_add (1 + 1) 1 s_osea compProg _ h_runA).trans h_run3
-          have h_run := (oseair_runN_add (1 + 1 + 1) 1 s_osea compProg _ h_runB).trans h_run4
+          have h_runA := (oseair_runN_trans h_run1 h_run2)
+          have h_runB := (oseair_runN_trans h_runA h_run3)
+          have h_run := (oseair_runN_trans h_runB h_run4)
           -- §9 the final permission relation (BRIDGE 1 collapses the triple)
           have h_psim4 : PermSim (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
               perms'' q3 := by
@@ -9418,8 +9415,7 @@ theorem ref_projzero_fresh_projsrc_simulation
                         exact RegMap.lookup_insert_self _ _ _)
                     h_wtp
                   have h_run :=
-                    (oseair_runN_add (1 + 1) 1 s_osea compProg _
-                      ((oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2)).trans h_run3
+                    (oseair_runN_trans ((oseair_runN_trans h_run1 h_run2)) h_run3)
                   -- §10 rebuild the invariant under both extended renames
                   refine ⟨_, _, _, 1 + 1 + 1, h_incr_a, h_incr12, h_run, ?_⟩
                   refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -9996,13 +9992,13 @@ theorem ref_projoffset_fresh_projsrc_simulation
                     (Register.R (csPrefix.nextReg + 1 + 1))
                     (blockSize (obseq.LayoutTy.PtrL τ))
                     h_code5 (RegMap.lookup_insert_self _ _ _) h_die1'
-                  have h_runA := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
+                  have h_runA := (oseair_runN_trans h_run1 h_run2)
                   have h_runB :=
-                    (oseair_runN_add (1 + 1) 1 s_osea compProg _ h_runA).trans h_run3
+                    (oseair_runN_trans h_runA h_run3)
                   have h_runC :=
-                    (oseair_runN_add (1 + 1 + 1) 1 s_osea compProg _ h_runB).trans h_run4
+                    (oseair_runN_trans h_runB h_run4)
                   have h_run :=
-                    (oseair_runN_add (1 + 1 + 1 + 1) 1 s_osea compProg _ h_runC).trans h_run5
+                    (oseair_runN_trans h_runC h_run5)
                   -- §11 BRIDGE 1 collapses the triple to the parent write
                   have h_psim4 : PermSim
                       ((ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag).extend
@@ -10421,8 +10417,7 @@ theorem ref_projzero_fresh_selfsrc_simulation
                         exact RegMap.lookup_insert_self _ _ _)
                     h_wtp
                   have h_run :=
-                    (oseair_runN_add (1 + 1) 1 s_osea compProg _
-                      ((oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2)).trans h_run3
+                    (oseair_runN_trans ((oseair_runN_trans h_run1 h_run2)) h_run3)
                   -- §10 rebuild the invariant under both extended renames
                   refine ⟨_, _, _, 1 + 1 + 1, h_incr_a, h_incr12, h_run, ?_⟩
                   refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -10978,13 +10973,13 @@ theorem ref_projoffset_fresh_selfsrc_simulation
                     (Register.R (csPrefix.nextReg + 1 + 1))
                     (blockSize (obseq.LayoutTy.PtrL τ))
                     h_code5 (RegMap.lookup_insert_self _ _ _) h_die1'
-                  have h_runA := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
+                  have h_runA := (oseair_runN_trans h_run1 h_run2)
                   have h_runB :=
-                    (oseair_runN_add (1 + 1) 1 s_osea compProg _ h_runA).trans h_run3
+                    (oseair_runN_trans h_runA h_run3)
                   have h_runC :=
-                    (oseair_runN_add (1 + 1 + 1) 1 s_osea compProg _ h_runB).trans h_run4
+                    (oseair_runN_trans h_runB h_run4)
                   have h_run :=
-                    (oseair_runN_add (1 + 1 + 1 + 1) 1 s_osea compProg _ h_runC).trans h_run5
+                    (oseair_runN_trans h_runC h_run5)
                   -- §11 BRIDGE 1 collapses the triple to the parent write
                   have h_psim4 : PermSim
                       ((ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag).extend
@@ -11353,8 +11348,8 @@ theorem ref_derefprojsrc_local_simulation
           (RegMap.lookup_insert_self _ _ _)
           (by rw [RegMap.lookup_insert_ne _ h_regne]; exact h_entryD2)
           h_wtp
-        have h_runA := (oseair_runN_add n1 1 s_osea compProg s_mid h_drun).trans h_run1
-        have h_runB := (oseair_runN_add (n1 + 1) 1 s_osea compProg _ h_runA).trans h_run2
+        have h_runA := (oseair_runN_trans h_drun h_run1)
+        have h_runB := (oseair_runN_trans h_runA h_run2)
         -- §7 rebuild the invariant under the extended ρt
         refine ⟨_, _, n1 + 1 + 1, h_incr_t, h_runB, ?_⟩
         refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -11801,10 +11796,10 @@ theorem ref_fresh_derefprojsrc_simulation
           (RegMap.lookup_insert_self _ _ _)
           (by rw [RegMap.lookup_insert_ne _ h_regne]; exact h_entryD2)
           h_wtp
-        have h_runA := (oseair_runN_add 1 n1 s_osea compProg _ h_runAlloc).trans h_drun
-        have h_runB := (oseair_runN_add (1 + n1) 1 s_osea compProg _ h_runA).trans h_run1
+        have h_runA := (oseair_runN_trans h_runAlloc h_drun)
+        have h_runB := (oseair_runN_trans h_runA h_run1)
         have h_runC :=
-          (oseair_runN_add (1 + n1 + 1) 1 s_osea compProg _ h_runB).trans h_run2
+          (oseair_runN_trans h_runB h_run2)
         -- §11 rebuild the invariant under both extended renames
         refine ⟨_, _, _, 1 + n1 + 1 + 1, h_incr_a,
           TagRenameIncr.trans h_incr_t h_incr_t2, h_runC, ?_⟩
@@ -12126,8 +12121,8 @@ theorem ref_projzero_derefsrc_simulation
           (RegMap.lookup_insert_self _ _ _)
           (by rw [RegMap.lookup_insert_ne _ h_regne]; exact h_entryD2)
           h_wtp
-        have h_runA := (oseair_runN_add n1 1 s_osea compProg s_mid h_drun).trans h_run1
-        have h_runB := (oseair_runN_add (n1 + 1) 1 s_osea compProg _ h_runA).trans h_run2
+        have h_runA := (oseair_runN_trans h_drun h_run1)
+        have h_runB := (oseair_runN_trans h_runA h_run2)
         -- §7 rebuild the invariant under the extended ρt
         refine ⟨_, _, n1 + 1 + 1, h_incr_t, h_runB, ?_⟩
         refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -12582,10 +12577,10 @@ theorem ref_projzero_fresh_derefsrc_simulation
           (RegMap.lookup_insert_self _ _ _)
           (by rw [RegMap.lookup_insert_ne _ h_regne]; exact h_entryD2)
           h_wtp
-        have h_runA := (oseair_runN_add 1 n1 s_osea compProg _ h_runAlloc).trans h_drun
-        have h_runB := (oseair_runN_add (1 + n1) 1 s_osea compProg _ h_runA).trans h_run1
+        have h_runA := (oseair_runN_trans h_runAlloc h_drun)
+        have h_runB := (oseair_runN_trans h_runA h_run1)
         have h_runC :=
-          (oseair_runN_add (1 + n1 + 1) 1 s_osea compProg _ h_runB).trans h_run2
+          (oseair_runN_trans h_runB h_run2)
         -- §11 rebuild the invariant under both extended renames
         refine ⟨_, _, _, 1 + n1 + 1 + 1, h_incr_a,
           TagRenameIncr.trans h_incr_t h_incr_t2, h_runC, ?_⟩
@@ -12985,10 +12980,10 @@ theorem ref_projoffset_derefsrc_simulation
           { s_mid with perms := q2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid.reg (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg) (obseq.TyVal.PTy, [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase + pathOffset f) resolved.allocSize s_mid.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr bD.addr (pathOffset g) (blockSize σ) tgtPerms.NextTag]), mem := oseair.writeWordSeq s_mid.mem (bD.addr + g.offset) [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase + pathOffset f) resolved.allocSize s_mid.perms.NextTag], pc := s_mid.pc + 1 + 1 + 1 }
           (Register.R ((CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg + 1)) (blockSize (obseq.LayoutTy.PtrL τ))
           h_code4 (RegMap.lookup_insert_self _ _ _) h_die1'
-        have h_runA := (oseair_runN_add n1 1 s_osea compProg s_mid h_drun).trans h_run1
-        have h_runB := (oseair_runN_add (n1 + 1) 1 s_osea compProg _ h_runA).trans h_run2
-        have h_runC := (oseair_runN_add (n1 + 1 + 1) 1 s_osea compProg _ h_runB).trans h_run3
-        have h_run := (oseair_runN_add (n1 + 1 + 1 + 1) 1 s_osea compProg _ h_runC).trans h_run4
+        have h_runA := (oseair_runN_trans h_drun h_run1)
+        have h_runB := (oseair_runN_trans h_runA h_run2)
+        have h_runC := (oseair_runN_trans h_runB h_run3)
+        have h_run := (oseair_runN_trans h_runC h_run4)
         -- §9 BRIDGE 1 collapses the triple to the parent write
         have h_psim4 : PermSim (ρt.extend permsR.NextTag s_mid.perms.NextTag) perms'' q3 := by
           obtain ⟨hs, hp, he, hn⟩ := h_psim2
@@ -13545,11 +13540,11 @@ theorem ref_projoffset_fresh_derefsrc_simulation
         have h_run4 := runN_Die_step compProg { s_mid with perms := q2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid.reg (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (σ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (obseq.TyVal.PTy, [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase + pathOffset f) resolved.allocSize s_mid.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (σ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr s_mir.mem.addrStart (pathOffset g) (blockSize (σ)) tgtPerms.NextTag]), mem := oseair.writeWordSeq s_mid.mem (s_mir.mem.addrStart + g.offset) [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase + pathOffset f) resolved.allocSize s_mid.perms.NextTag], pc := s_mid.pc + 1 + 1 + 1 }
           (Register.R ((CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (σ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1)) (blockSize (obseq.LayoutTy.PtrL τ))
           h_code4 (RegMap.lookup_insert_self _ _ _) h_die1'
-        have h_runA := (oseair_runN_add 1 n1 s_osea compProg _ h_runAlloc).trans h_drun
-        have h_runB := (oseair_runN_add (1 + n1) 1 s_osea compProg _ h_runA).trans h_run1
-        have h_runC := (oseair_runN_add (1 + n1 + 1) 1 s_osea compProg _ h_runB).trans h_run2
-        have h_runD := (oseair_runN_add (1 + n1 + 1 + 1) 1 s_osea compProg _ h_runC).trans h_run3
-        have h_run := (oseair_runN_add (1 + n1 + 1 + 1 + 1) 1 s_osea compProg _ h_runD).trans h_run4
+        have h_runA := (oseair_runN_trans h_runAlloc h_drun)
+        have h_runB := (oseair_runN_trans h_runA h_run1)
+        have h_runC := (oseair_runN_trans h_runB h_run2)
+        have h_runD := (oseair_runN_trans h_runC h_run3)
+        have h_run := (oseair_runN_trans h_runD h_run4)
         -- §11 rebuild the invariant under both extended renames
         have h_psim4 : PermSim ((ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag).extend permsR.NextTag s_mid.perms.NextTag) perms2 q3 := by
           obtain ⟨hs, hp, he, hn⟩ := h_psim3
@@ -13934,8 +13929,8 @@ theorem ref_derefdst_projsrc_simulation
       have h_run3 := runN_RStore_step compProg s_mid _
         obseq.TyVal.PTy (Register.R csPrefix.nextReg) dOut.result.reg
         _ _ h_code3 h_borrow_mid h_dentry h_wtp
-      have h_runA := (oseair_runN_add 1 n1 s_osea compProg _ h_run1).trans h_drun
-      have h_runB := (oseair_runN_add (1 + n1) 1 s_osea compProg _ h_runA).trans h_run3
+      have h_runA := (oseair_runN_trans h_run1 h_drun)
+      have h_runB := (oseair_runN_trans h_runA h_run3)
       -- §9 rebuild the invariant under the extended ρt
       refine ⟨_, _, 1 + n1 + 1, h_incr_t, h_runB, ?_⟩
       refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -14380,9 +14375,9 @@ theorem ref_derefdst_derefprojsrc_simulation
       have h_run2 := runN_RStore_step compProg s_mid2 _
         obseq.TyVal.PTy (Register.R (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextReg) dOut.result.reg
         _ _ h_code2 h_vreg h_dentry h_wtp
-      have h_runA := (oseair_runN_add n1 1 s_osea compProg s_mid h_srun).trans h_run1
-      have h_runB := (oseair_runN_add (n1 + 1) n2 s_osea compProg _ h_runA).trans h_drun
-      have h_runC := (oseair_runN_add (n1 + 1 + n2) 1 s_osea compProg _ h_runB).trans h_run2
+      have h_runA := (oseair_runN_trans h_srun h_run1)
+      have h_runB := (oseair_runN_trans h_runA h_drun)
+      have h_runC := (oseair_runN_trans h_runB h_run2)
       -- §12 rebuild the invariant under the extended ρt
       refine ⟨_, _, n1 + 1 + n2 + 1, h_incr_t, h_runC, ?_⟩
       refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -14842,9 +14837,9 @@ theorem ref_projzero_derefdst_chainsrc_simulation
       have h_run2 := runN_RStore_step compProg s_mid2 _
         obseq.TyVal.PTy (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) dOut.result.reg
         _ _ h_code2 h_vreg h_dentry h_wtp
-      have h_runA := (oseair_runN_add n1 1 s_osea compProg s_mid h_srun).trans h_run1
-      have h_runB := (oseair_runN_add (n1 + 1) n2 s_osea compProg _ h_runA).trans h_drun
-      have h_runC := (oseair_runN_add (n1 + 1 + n2) 1 s_osea compProg _ h_runB).trans h_run2
+      have h_runA := (oseair_runN_trans h_srun h_run1)
+      have h_runB := (oseair_runN_trans h_runA h_drun)
+      have h_runC := (oseair_runN_trans h_runB h_run2)
       -- §12 rebuild the invariant under the extended ρt
       refine ⟨_, _, n1 + 1 + n2 + 1, h_incr_t, h_runC, ?_⟩
       refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -15349,11 +15344,11 @@ theorem ref_projoffset_derefdst_chainsrc_simulation
             pc := s_mid2.pc + 1 + 1 }
         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref pp)) (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut.result.reg (pathOffset f))])).nextReg) (blockSize (obseq.LayoutTy.PtrL τ))
         h_code4 (RegMap.lookup_insert_self _ _ _) h_die1'
-      have h_runA := (oseair_runN_add n1 1 s_osea compProg s_mid h_srun).trans h_run1
-      have h_runB := (oseair_runN_add (n1 + 1) n2 s_osea compProg _ h_runA).trans h_brun
-      have h_runC := (oseair_runN_add (n1 + 1 + n2) 1 s_osea compProg _ h_runB).trans h_run2
-      have h_runD := (oseair_runN_add (n1 + 1 + n2 + 1) 1 s_osea compProg _ h_runC).trans h_run3
-      have h_runE := (oseair_runN_add (n1 + 1 + n2 + 1 + 1) 1 s_osea compProg _ h_runD).trans h_run4
+      have h_runA := (oseair_runN_trans h_srun h_run1)
+      have h_runB := (oseair_runN_trans h_runA h_brun)
+      have h_runC := (oseair_runN_trans h_runB h_run2)
+      have h_runD := (oseair_runN_trans h_runC h_run3)
+      have h_runE := (oseair_runN_trans h_runD h_run4)
       -- §15 BRIDGE 1 collapses the triple to the parent write
       have h_psim4 : PermSim (ρt.extend permsR.NextTag s_mid.perms.NextTag)
           perms2 q3 := by

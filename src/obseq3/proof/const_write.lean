@@ -636,7 +636,7 @@ theorem const_store_fresh_local_simulation
           have h_run2 := runN_CStore_step compProg _ _
             (layoutToTyVal τ) vs' (Register.R csPrefix.nextReg)
             h_code2 h_size h_wtp
-          have h_run := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
+          have h_run := (oseair_runN_trans h_run1 h_run2)
           -- §8 rebuild the invariant under both extended renames
           refine ⟨_, _, _, 1 + 1, h_incr_a, h_incr_t, h_run, ?_⟩
           refine ⟨CheckedCompilerM.run
@@ -1459,7 +1459,7 @@ theorem const_store_proj_deref_zero_simulation
       have h_run2 := runN_CStore_step compProg s_mid _
         (layoutToTyVal τ) vs' dOut.result.reg h_code h_size h_wtp
       refine ⟨_, n1 + 1,
-        (oseair_runN_add n1 1 s_osea compProg s_mid h_drun).trans h_run2, ?_⟩
+        (oseair_runN_trans h_drun h_run2), ?_⟩
       refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
         ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
         h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
@@ -1960,9 +1960,9 @@ theorem const_store_proj_deref_simulation
         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csPrefix).nextReg)
         (blockSize τ)
         h_code3 (RegMap.lookup_insert_self _ _ _) h_die1'
-      have h_runA := (oseair_runN_add n1 1 s_osea compProg s_mid h_drun).trans h_run1
-      have h_runB := (oseair_runN_add (n1 + 1) 1 s_osea compProg _ h_runA).trans h_run2
-      have h_run := (oseair_runN_add (n1 + 1 + 1) 1 s_osea compProg _ h_runB).trans h_run3
+      have h_runA := (oseair_runN_trans h_drun h_run1)
+      have h_runB := (oseair_runN_trans h_runA h_run2)
+      have h_run := (oseair_runN_trans h_runB h_run3)
       have h_psim4 : PermSim ρt perms'' q3 := by
         obtain ⟨hs, hp, he, hn⟩ := h_psim3
         exact ⟨by rw [h_sm]; exact hs, by rw [h_pf]; exact hp,
@@ -2611,8 +2611,7 @@ theorem const_store_proj_offset_simulation
         h_code3 (RegMap.lookup_insert_self _ _ _)
           (by rw [← h_len]; simpa using h_die1)
       have h_run :=
-        (oseair_runN_add (1 + 1) 1 s_osea compProg _
-          ((oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2)).trans h_run3
+        (oseair_runN_trans ((oseair_runN_trans h_run1 h_run2)) h_run3)
       refine ⟨_, 1 + 1 + 1, h_run, ?_⟩
       -- PermSim across the triple: BRIDGE 1 says the net stack effect is
       -- the bare parent write, which BRIDGE 3 already related
@@ -3243,7 +3242,7 @@ theorem const_store_proj_fresh_simulation
         have h_run2 := runN_CStore_step compProg _ _
           (layoutToTyVal τ) vs' (Register.R csPrefix.nextReg)
           h_code2 h_size h_wtp
-        have h_run := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
+        have h_run := (oseair_runN_trans h_run1 h_run2)
         -- §8 rebuild the invariant under both extended renames
         refine ⟨_, _, _, 1 + 1, h_incr_a, h_incr_t, h_run, ?_⟩
         refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
@@ -3559,9 +3558,9 @@ theorem const_store_proj_fresh_simulation
               pc := s_osea.pc + 1 + 1 + 1 }
           (Register.R (csPrefix.nextReg + 1)) (blockSize τ)
           h_code4 (RegMap.lookup_insert_self _ _ _) h_die1'
-        have h_runA := (oseair_runN_add 1 1 s_osea compProg _ h_run1).trans h_run2
-        have h_runB := (oseair_runN_add (1 + 1) 1 s_osea compProg _ h_runA).trans h_run3
-        have h_run := (oseair_runN_add (1 + 1 + 1) 1 s_osea compProg _ h_runB).trans h_run4
+        have h_runA := (oseair_runN_trans h_run1 h_run2)
+        have h_runB := (oseair_runN_trans h_runA h_run3)
+        have h_run := (oseair_runN_trans h_runB h_run4)
         have h_psim4 : PermSim (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
             perms' q3 := by
           obtain ⟨hs, hp, he, hn⟩ := h_psim2
@@ -3993,7 +3992,7 @@ theorem const_store_deref_chain_simulation
       have h_run2 := runN_CStore_step compProg s_mid _
         (layoutToTyVal τ) vs' dOut.result.reg h_code h_size h_wtp
       refine ⟨_, n1 + 1,
-        (oseair_runN_add n1 1 s_osea compProg s_mid h_drun).trans h_run2, ?_⟩
+        (oseair_runN_trans h_drun h_run2), ?_⟩
       refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
         ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms', h_psim3,
         h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩

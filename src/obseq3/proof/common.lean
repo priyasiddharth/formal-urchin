@@ -2154,6 +2154,28 @@ theorem oseair_runN_add
       · exact ih _ h
       · simp at h
 
+/-- Sequential composition of two `runN` segments, with every state and
+    the program IMPLICIT — they are all determined by the two hypotheses,
+    and spelling them out is what made the 150-odd call sites two lines
+    each. The composite count is `m + n` in exactly that association, so a
+    LEFT-NESTED chain produces `1 + n1 + 1`, which is the spelling the
+    leaves already write into their existential witness. -/
+theorem oseair_runN_trans {m n : Nat} {s s' s'' : oseair.State MSB}
+    {prog : oseair.Prog}
+    (h₁ : oseair.runN MSB m s prog = oseair.Result.Ok s')
+    (h₂ : oseair.runN MSB n s' prog = oseair.Result.Ok s'') :
+    oseair.runN MSB (m + n) s prog = oseair.Result.Ok s'' :=
+  (oseair_runN_add m n s prog s' h₁).trans h₂
+
+/-- The same with the count supplied by the caller, for the leaves whose
+    own statement pins `n` to a different association. -/
+theorem oseair_runN_trans' {k m n : Nat} {s s' s'' : oseair.State MSB}
+    {prog : oseair.Prog} (h_k : k = m + n)
+    (h₁ : oseair.runN MSB m s prog = oseair.Result.Ok s')
+    (h₂ : oseair.runN MSB n s' prog = oseair.Result.Ok s'') :
+    oseair.runN MSB k s prog = oseair.Result.Ok s'' :=
+  h_k ▸ oseair_runN_trans h₁ h₂
+
 /-! ### The three bridge sorries (see the audit in `proof/compiler.lean`)
 
 These are the lemmas whose ABSENCE is where obseq2's three simulation
