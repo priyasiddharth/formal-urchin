@@ -2298,3 +2298,55 @@ statically or the program is rejected — which is what lets mirlite be
 flat with no value analysis, and why several of these are semantic
 divergences that live entirely above `compile_correct`.
 **No code changed.**
+
+## 2026-09-01 (twenty-seventh)
+
+**Skeleton refactor, items 3 and 5** — the two largest in-scope steps of
+`plans/floating-strolling-shannon.md`. Proof dir 42,526 → 39,819
+(with items 0–2 from earlier the same day, 43,694 → 39,819).
+
+**Item 3, `EmitTower`** — the `h_code*` idiom located one instruction of
+an emitted fragment by re-deriving the whole compiler-state tower as a
+literal, at O(n−k) rewrites for the k-th of n instructions. `EmittedAt`
+walks the tower instead of transcribing it; `EmitTower` makes that walk
+an *instance-resolution* problem with the instruction list as an
+`outParam`, so no call site spells the chain at all. 116 of 168 blocks
+converted, −1,921 lines.
+**The load-bearing accident:** `emitTower_nil` fires at the first state
+that is not `emit`/`setNextReg`/`setPlaceInfo`, which in a leaf that
+calls the mother lemma is `CheckedCompilerM.run (placeToRegChecked …)`.
+So the inferred base is the mother's output `nextLabel` — exactly what
+`h_dpc`/`h_spc` already say — and the indices come out *group-local*,
+matching the convention the hand-written blocks already used. Every
+`h_q` is `rfl`.
+
+**Item 5, `LowersTo`** — merges `X_run`/`X_value` so their shared
+preamble is paid once. Only 22 of 64 pairs may merge, and each filter
+was found by a failing build: hypotheses must agree (25 pairs have a
+`_run` that also needs `h_dclean`, and `ConstStoreFrags`'s `…Val` fields
+deliberately lack it); only `obtain`/`have`/`let` may be shared, because
+a goal-directed tactic means different things against a `run` goal and a
+`value` goal; and the `_value` conclusion must really be
+`∃ x, value … = .ok x` (several are congruences opening with `intro`).
+−851 lines.
+
+**Re-measured the plan — the original estimates are now stale.**
+Target C (`h_inst`/`StateIncr`, estimated 2,102 lines) was already
+absorbed by item 2's `CodeIncluded`: those blocks are 2 lines each now.
+Target A (`CompilerInv` rebuild tails) is not one 3,150-line win but a
+long tail: bullets 4–6 cost 1,453 lines, and the `getPlaceInfo` chase
+inside them is *pure defeq* (`getPlaceInfo_emit`/`_setNextReg` are
+`rfl`) — but sweeping that across 146 sites buys only 95 lines and
+breaks ~20 chains whose later `rw` depended on the peeling. Realistic
+remaining value in A is ~700 lines spread over many micro-lemmas.
+
+**Where the repetition actually lives now.** ref 69.5% and copy 71.9% of
+code lines sit in ≥8-line blocks repeated ≥2×, essentially unchanged by
+skeleton factoring — but const_write is at 38.2%, and const_write is the
+one file whose *leaves* were generalized over the rvalue
+(`ConstStoreFrags`). That is direct evidence that leaf-collapsing, not
+skeleton factoring, is what moves the number. It remains out of scope
+for this plan.
+
+**Validation after every commit:** 0 errors; audit OK, 0 sorries, axioms
+unchanged (propext, Classical.choice, Quot.sound); 17/17 + 104/104.
