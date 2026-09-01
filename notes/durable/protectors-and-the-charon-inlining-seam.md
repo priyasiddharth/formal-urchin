@@ -1,4 +1,4 @@
-# protectors, and where they come from: the Charon inlining seam
+# the Charon lowering: protectors, inlining, and every other non-trivial conversion
 
 Written 2026-09-01, from reading `syntax.lean`, both semantics,
 `sb.lean`, `compile.lean` and `src/conformance/lowering.lean`. Answers
@@ -127,3 +127,92 @@ tgt.protFrames`, with `ListRel R (a::as) (b::bs) = R a b ∧ ListRel R as bs`:
 No memory, no registers, no renames, no `placeRegMap` change. Far below
 the cost of any rvalue, and unlike `uninit` nothing needs generalizing
 first. `CoreStmt` currently excludes both.
+
+
+## [FACT] the other non-trivial conversions the lowering performs
+
+All in `src/conformance/lowering.lean`; line numbers as of 2026-09-01.
+The header docstring enumerates the passes, but these are the ones that
+CHANGE MEANING rather than reshape syntax.
+
+**Linearization — the CFG is erased** (`walkBlock`, :631). Follows
+`goto`/call-target edges from `bb0` and emits straight-line code; a
+revisited block is `"unsupported: control-flow loop"` (:637). Unwind
+edges are never followed; reaching one is
+`"unsupported: reached unwind path"` (:663). Real branches (`switchInt`)
+are rejected — the target has only forward-only `SkipIf`.
+
+**Asserts are discharged at lowering time, not compiled** (:652-661).
+`assert cond expected` is constant-folded: statically true -> dropped,
+statically false -> `"unsupported: statically failing assert"`, not
+foldable -> `"unsupported: dynamic assert condition"`. So bounds checks
+on constant indices vanish INTO the lowering and no bounds-check
+machinery ever reaches mirlite.
+
+**A small constant-propagation pass rides along.** `constOf` (:172)
+reads literals and const-tracked plain locals from `st.constVals`;
+`foldBinOp` (:179) folds Add/Sub/Mul — plain, `Checked` and `Wrapping`
+variants ALL to plain `Int` arithmetic — and the six comparisons to 0/1.
+DIVERGENCE worth knowing: no overflow or wrapping semantics, so an
+overflowing constant expression would silently disagree with Rust
+rather than be rejected. Unexercised while every folded value is small.
+
+**Array indices become field projections** (`resolveIdxPlace`, :153;
+`resolveIdxOperand` :165, `resolveIdxRvalue` :192, applied from
+`emitAssign` :271-272). Arrays are homogeneous tuples, so
+`.index (.const n)` and `.index (.fromLocal l)` with `l` const-tracked
+both become `UProj.field n`; anything else is
+`"unsupported: runtime array index"`. Indices MUST be static — the
+model has no dynamic value analysis and needs them to compute layouts.
+
+**Statics are hoisted but their initializers are NOT run**
+(`lowerCrate`, :783-793). Each global gets a local after `main`'s, the
+prologue materializes it with `uninit` (`hoistInit`), and
+`resolveGlobalsStmt` (:760) / `resolveGlobalRoot` (:737) rewrite
+`.global gid` roots to those locals. A program reading a static
+therefore sees undef where Rust would see the initializer. DOCUMENTED
+DIVERGENCE, listed in the header's coverage table.
+
+**Unit aggregates become access-free `uninit`** (`emitAssign`, :330).
+Deliberate, and the comment records why: Miri performs no memory access
+either, but the assignment still ALLOCATES its destination, and a ZST
+local is a real zero-sized allocation that can be borrowed. Before
+2026-08-22 this was dropped outright and `&mut z` for `z : ()` failed at
+resolution (`local/zst_ref`). This is the interaction that makes ZST
+locals and `uninit` load-bearing rather than hypothetical — cf. the
+`extendBlock` fix in the `uninit` widening.
+
+**Aggregates are desugared structurally** (:339, :345). Non-empty
+tuples become per-field assignments; an enum variant writes the
+discriminant to payload slot 0 and field `i` to slot `1+i`. Seam retags
+into enum payloads are guarded on the discriminant with `assignIf` —
+which is where `assignIf` comes from. It exists for enum payload
+retags, NOT for general branching.
+
+**Fn pointers are tracked statically** (:309, :324, :445). A flat
+local -> defId map (`st.fnPtrs`), propagated through plain copies and
+through `transmute`, so a statically-resolvable indirect call can be
+inlined (:675). A fn pointer stored into a PROJECTION is rejected —
+the map is flat, not per-place.
+
+**Heap and interior mutability are shimmed, not modeled**
+(`shimCall`, :375). `Box::new` / `alloc::alloc` / `dealloc` become
+dedicated `LStmt.alloc`/`.dealloc`; `Layout` is modeled as its size
+word; `UnsafeCell`/`Cell`/`RefCell` become type-directed freeze masks,
+with RefCell's borrow flag elided as SB-irrelevant.
+
+**Bookkeeping dropped:** `StorageLive`/`Dead`, `Borrowck`/`FakeRead`,
+`Nop`, `PlaceMention`.
+
+## [OBS] the pattern: everything dynamic is resolved statically or rejected
+
+Branches, indices, offsets, arithmetic, asserts, call targets — the
+lowering either settles them at compile time or refuses the program.
+That is exactly what lets mirlite be a flat straight-line machine with
+no value analysis, and it is why the rejected list in the header is
+about LANGUAGE complexity rather than missing SB rules.
+
+It also means several of these are SEMANTIC choices the theorem never
+sees: uninitialized statics and unchecked constant arithmetic in
+particular are divergences from Rust that live entirely above
+`compile_correct`.

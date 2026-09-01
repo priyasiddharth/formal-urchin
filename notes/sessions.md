@@ -2278,3 +2278,23 @@ none of that layer is verified — it is upstream of `compile_correct`.
 **Cross-linked** from durable/what-compile-correct-actually-says.md,
 which also now records `uninit` as a core rvalue.
 **No code changed.**
+
+## 2026-09-01 (twenty-sixth)
+
+**Extended the lowering note** with every other non-trivial conversion
+`src/conformance/lowering.lean` performs, with verified file:line
+refs: CFG linearization (loops/unwind rejected), asserts discharged by
+constant folding at lowering time, the constant-propagation pass
+(`constOf`/`foldBinOp` — which folds Checked/Wrapping arithmetic to
+plain `Int`, a live divergence), array indices resolved to field
+projections (`resolveIdxPlace`, NOT `resolveIdxProjs` — I had the name
+wrong), statics hoisted with initializers NOT run, unit aggregates kept
+as access-free `uninit` so ZST destinations still allocate, aggregate
+desugaring and where `assignIf` really comes from (enum payload seam
+retags, not branching), static fn-pointer tracking, and the heap /
+interior-mutability shims.
+**The pattern worth keeping:** everything dynamic is resolved
+statically or the program is rejected — which is what lets mirlite be
+flat with no value analysis, and why several of these are semantic
+divergences that live entirely above `compile_correct`.
+**No code changed.**
