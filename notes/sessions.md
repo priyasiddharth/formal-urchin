@@ -2566,3 +2566,34 @@ the prefix goes smoothly. Details in the plan (rev. 2).
 
 Validation, all four suites: 0 errors; audit OK, 0 sorries, axioms
 unchanged; 17/17 + 104/104; 82/0; osea 82/0/0. Proof dir 37,160.
+
+## 2026-09-01 (thirty-third)
+
+**2b landed by a different route than planned: offset-twin merges, −465**
+(`41b2017`). The FreshRootPrefix interface was measured and declined —
+its real coverage shrank as the anatomy came into focus (interleaved
+§1/§3 h_step inversions, §5b dst-offset fork, 61% cross-family
+similarity vs the 84–97% headline; realistic net ~330 for spike-level
+effort). The same measurement exposed the cheap move: destination-offset
+TWINS are byte-identical through `h_incrS1V` (422/488 lines for one
+pair, 194 shared middle for the other). Each pair is now ONE theorem
+with `by_cases h_o` at the first genuinely forked tactic — the 2-line
+offset-zeroing simp MOVES into the positive branch because nothing
+between §3 and the fork touches `h_step`. Both merges compiled on the
+FIRST build; the dispatch sites lost their by_cases.
+
+**Twin-merge preconditions** (worth reusing on ref): binders differ only
+in h_o; the h_o-consuming simp is movable; shared middle byte-identical
+sans the two h_o' lines. Two pairs checked and FAILED the test —
+fresh_projchain zero/offset (the read address itself differs at §3) and
+the cross-family projdst pairs (fork at ~40, all after duplicates).
+
+**Copy is swept.** 19 → 15 leaves: five on `copy_chainwrite_after_read`,
+two twin-merged. Remaining items (fresh ×3, projdst_offset ×2,
+projchain/small ×5) are break-even per the measured economics. Next is
+ref (step 3): the after-BORROW seam, a fresh extraction — and the
+twin-merge preconditions should be checked on ref's projzero/projoffset
+pairs FIRST, since that pattern is much cheaper than a seam.
+
+Validation, all four suites: 0 errors; audit OK, 0 sorries, axioms
+unchanged; 17/17 + 104/104; 82/0; osea 82/0/0. Proof dir 36,695.
