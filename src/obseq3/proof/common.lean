@@ -2039,6 +2039,85 @@ theorem CodeIncluded.mono {compProg : obseq3.oseair.Prog} {cs cs' : CompilerStat
     h q instr (Nat.lt_of_lt_of_le h_lt h_incr.nextLabel_le)
       (by rw [h_incr.code_eq q h_lt]; exact h_code)
 
+/-! ### Locating a fragment's instructions, without `StateIncr` towers
+
+    `EmittedAt cs base instrs` says the emitted tower that produced `cs`
+    laid `instrs` down contiguously at `base`, and that `base +
+    instrs.length` is EXACTLY `cs.nextLabel`. Exactness (rather than `≤`)
+    is what lets `snoc` compose with no side condition.
+
+    The chains are built BOTTOM-UP: `EmittedAt.nil cs` is a ground term
+    and each `.snoc` produces `emit <previous ground state> l'`, again
+    ground. No intermediate state is ever a metavariable, which is
+    precisely how this avoids the unification failure that limits
+    `StateIncr.trans` chains to about three steps
+    (durable/transport-compiled-states-by-defeq.md). The only unification
+    left is one ground-vs-ground defeq check against the leaf's
+    `h_stmtRun`. -/
+structure EmittedAt (cs : CompilerState) (base : Nat) (instrs : List Instr) : Prop where
+  code : ∀ k, k < instrs.length → cs.code (base + k) = instrs.get? k
+  nextLabel : cs.nextLabel = base + instrs.length
+
+theorem EmittedAt.nil (cs : CompilerState) : EmittedAt cs cs.nextLabel [] :=
+  ⟨fun k hk => absurd hk (by simp), by simp⟩
+
+theorem EmittedAt.snoc {cs : CompilerState} {base : Nat} {l : List Instr}
+    (h : EmittedAt cs base l) (l' : List Instr) :
+    EmittedAt (emit cs l') base (l ++ l') := by
+  refine ⟨?_, ?_⟩
+  · intro k hk
+    rw [List.length_append] at hk
+    by_cases hkl : k < l.length
+    · rw [emit_code_lt_nextLabel _ _ (by rw [h.nextLabel]; omega), h.code k hkl]
+      simp only [List.get?, List.getElem?_append_left hkl]
+    · have hge : l.length ≤ k := Nat.not_lt.mp hkl
+      have hj : k - l.length < l'.length := by omega
+      have hb : base + k = cs.nextLabel + (k - l.length) := by
+        rw [h.nextLabel]; omega
+      rw [hb, emit_code_at_new _ _ hj]
+      simp only [List.get?, List.getElem?_append_right hge]
+  · rw [emit, h.nextLabel, List.length_append]
+    simp [Nat.add_assoc]
+
+/-- Bumping `nextReg` or extending `placeRegMap` touches neither `code`
+    nor `nextLabel`, so an `EmittedAt` passes straight through. Both are
+    `h` itself — this is why the reindexing operations interleaved in a
+    tower cost nothing. -/
+theorem EmittedAt.setNextReg {cs : CompilerState} {base : Nat} {l : List Instr}
+    (h : EmittedAt cs base l) (n : Nat) :
+    EmittedAt { cs with nextReg := n } base l := ⟨h.code, h.nextLabel⟩
+
+theorem EmittedAt.setPlaceInfo {cs : CompilerState} {base : Nat} {l : List Instr}
+    (h : EmittedAt cs base l) (idx : Nat) (info : PlaceInfo) :
+    EmittedAt (setPlaceInfo cs idx info) base l := ⟨h.code, h.nextLabel⟩
+
+/-- A located fragment: the whole `h_code*` family of a leaf, as ONE
+    object. -/
+def FragmentAt (compProg : obseq3.oseair.Prog) (base : Nat) (instrs : List Instr) : Prop :=
+  ∀ k i, instrs.get? k = some i → compProg (base + k) = some i
+
+theorem CodeIncluded.fragmentAt {compProg : obseq3.oseair.Prog}
+    {cs : CompilerState} {base : Nat} {instrs : List Instr}
+    (h : CodeIncluded compProg cs) (h_em : EmittedAt cs base instrs) :
+    FragmentAt compProg base instrs := by
+  intro k i h_get
+  have hk : k < instrs.length := (List.get?_eq_some_iff.mp h_get).1
+  exact h _ _ (by rw [h_em.nextLabel]; omega) (by rw [h_em.code k hk]; exact h_get)
+
+/-- The leaf knows its fragment starts at `s_osea.pc`, not at
+    `csPrefix.nextLabel`; `h_pc` bridges them. -/
+theorem FragmentAt.rebase {compProg : obseq3.oseair.Prog} {base base' : Nat}
+    {instrs : List Instr} (h : FragmentAt compProg base instrs)
+    (h_b : base' = base) : FragmentAt compProg base' instrs := by
+  subst h_b; exact h
+
+/-- Read off one instruction. `at` is a keyword, hence `instrAt`. -/
+theorem FragmentAt.instrAt {compProg : obseq3.oseair.Prog} {base : Nat}
+    {instrs : List Instr} (h : FragmentAt compProg base instrs) (k : Nat)
+    {q : Nat} {i : Instr} (h_q : q = base + k) (h_i : instrs.get? k = some i) :
+    compProg q = some i := by
+  subst h_q; exact h k i h_i
+
 /-- One-step execution of an `RStore`: the source register's cells are
     written through the destination pointer register. The instruction's
     `srcTy != ty` guard is discharged by `LawfulBEq TyVal` — which is why

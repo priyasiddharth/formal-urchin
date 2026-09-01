@@ -1102,65 +1102,30 @@ theorem ref_fresh_dst_simulation
                 kind prot mask h_piD h_piS
               obtain ⟨stmtOut, h_stmtOut⟩ :=
                 compileStmt_ref_fresh_local_value (cs := csPrefix) kind prot mask h_piD h_piS
+              have h_frag : FragmentAt compProg s_osea.pc
+                  [Instr.Assgn (Register.R csPrefix.nextReg)
+                     (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ))),
+                   Instr.Assgn (Register.R (csPrefix.nextReg + 1))
+                     (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0),
+                   Instr.RStore obseq.TyVal.PTy (Register.R (csPrefix.nextReg + 1))
+                     (Register.R csPrefix.nextReg)] :=
+                ((CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentAt
+                  (by
+                    rw [h_stmtRun]
+                    exact ((((((EmittedAt.nil csPrefix).setNextReg _).snoc _).setPlaceInfo
+                      _ _).setNextReg _).snoc _).snoc _)).rebase h_pc
               have h_code1 : compProg s_osea.pc
                   = some (Instr.Assgn (Register.R csPrefix.nextReg)
-                      (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))) := by
-                rw [h_pc]
-                refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-                · rw [h_stmtRun]
-                  simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-                  omega
-                · rw [h_stmtRun]
-                  rw [emit_code_lt_nextLabel _ _ (by
-                    simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]; omega)]
-                  rw [emit_code_lt_nextLabel _ _ (by
-                    simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]; omega)]
-                  have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                    [Instr.Assgn (Register.R csPrefix.nextReg)
-                      (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))] (k := 0) (by simp)
-                  simpa [setPlaceInfo] using h
+                      (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))) :=
+                h_frag.instrAt 0 rfl rfl
               have h_code2 : compProg (s_osea.pc + 1)
                   = some (Instr.Assgn (Register.R (csPrefix.nextReg + 1))
-                      (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)) := by
-                rw [h_pc]
-                refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-                · rw [h_stmtRun]
-                  simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-                  omega
-                · rw [h_stmtRun]
-                  rw [emit_code_lt_nextLabel _ _ (by
-                    simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]; omega)]
-                  have h := emit_code_at_new
-                    { (setPlaceInfo
-                        (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                          [Instr.Assgn (Register.R csPrefix.nextReg)
-                            (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
-                        dstLoc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.PtrL τ)) with
-                        nextReg := csPrefix.nextReg + 1 + 1 }
-                    [Instr.Assgn (Register.R (csPrefix.nextReg + 1))
-                      (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)] (k := 0) (by simp)
-                  simpa [emit, setPlaceInfo] using h
+                      (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)) :=
+                h_frag.instrAt 1 rfl rfl
               have h_code3 : compProg (s_osea.pc + 1 + 1)
                   = some (Instr.RStore obseq.TyVal.PTy (Register.R (csPrefix.nextReg + 1))
-                      (Register.R csPrefix.nextReg)) := by
-                rw [h_pc]
-                refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-                · rw [h_stmtRun]
-                  simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-                  omega
-                · rw [h_stmtRun]
-                  have h := emit_code_at_new
-                    (emit { (setPlaceInfo
-                        (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                          [Instr.Assgn (Register.R csPrefix.nextReg)
-                            (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
-                        dstLoc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.PtrL τ)) with
-                        nextReg := csPrefix.nextReg + 1 + 1 }
-                      [Instr.Assgn (Register.R (csPrefix.nextReg + 1))
-                        (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)])
-                    [Instr.RStore obseq.TyVal.PTy (Register.R (csPrefix.nextReg + 1))
-                      (Register.R csPrefix.nextReg)] (k := 0) (by simp)
-                  simpa [emit, setPlaceInfo] using h
+                      (Register.R csPrefix.nextReg)) :=
+                h_frag.instrAt 2 rfl rfl
               -- §8 execute Alloc, then Borrow
               have h_own_tgt' : MSB.own s_osea.perms s_osea.mem.addrStart
                   (obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ)))
