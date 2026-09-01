@@ -1637,4 +1637,45 @@ theorem sb_own_respects_PermSim
         · simpa [h_apR_ex] using h_exp
         · simpa [h_apR_nt] using Nat.succ_le_succ h_next
 
+
+/-- BRIDGE 1S, packaged. Given a source read already transported to the
+    target, turn it into the *whole* borrow-read-die triple: take a
+    `Shared` borrow at the fresh tag, read through it, retire it — and
+    the result is still `PermSim` to the source's post-read state.
+
+    Every copy leaf that reads through a lowered place ran this same
+    eleven-line ritual: `freshTag_not_protected`, the `wildcardTag`
+    bound, `sb_ref_Shared_ok_of_sb_read_ok`, `sb_ref_read_die_cancels`,
+    then a hand-rebuilt `PermSim` stitching `h_sm`/`h_pfq`/`h_exq`/
+    `h_ntle` back into the four fields. None of it varies.
+
+    It takes the transported read rather than deriving it, because some
+    leaves need the intermediate `PermSim` earlier — before the write
+    transport — and cannot have it produced here. -/
+theorem bridge1S_of_read {ρt : TagRenameMap} {src tgt src' tgtAcc : AccessPerms}
+    {addr : Word} {len : Nat} {tagT : Tag}
+    (h_sim : PermSim ρt src tgt)
+    (h_wf : TagRenameWF ρt)
+    (h_bd : TagRenameBounded ρt src.NextTag tgt.NextTag)
+    (h_read_tgt : sb_read tgt addr len tagT = .ok tgtAcc)
+    (h_psim2 : PermSim ρt src' tgtAcc) :
+    ∃ q1 q2 q3,
+      sb_ref tgt addr len tagT .Shared false [] = .ok (q1, tgt.NextTag) ∧
+      sb_read q1 addr len tgt.NextTag = .ok q2 ∧
+      sb_die q2 addr len tgt.NextTag = .ok q3 ∧
+      PermSim ρt src' q3 ∧
+      tgtAcc.NextTag ≤ q3.NextTag := by
+  obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Shared_ok_of_sb_read_ok h_read_tgt
+  have h_unprot := freshTag_not_protected h_sim h_bd
+  have h0 : wildcardTag < tgt.NextTag := (h_bd _ _ h_wf.2).2
+  have h_ntw : (tgt.NextTag == wildcardTag) = false := by grind
+  obtain ⟨q2, q3, qAcc, h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle⟩ :=
+    sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
+  have h_qAcc : qAcc = tgtAcc := by grind
+  subst h_qAcc
+  refine ⟨q1, q2, q3, h_ref_tgt, h_rd1, h_die1, ?_, h_ntle⟩
+  obtain ⟨hs, hp, he, hn⟩ := h_psim2
+  exact ⟨by rw [h_sm]; exact hs, by rw [h_pfq]; exact hp,
+         by rw [h_exq]; exact he, Nat.le_trans hn h_ntle⟩
+
 end obseq3.proof

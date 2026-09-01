@@ -1078,24 +1078,11 @@ theorem copy_projchain_offset_simulation
         obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
           sb_write_respects_PermSim h_psim2 h_wf_t h_rtD2 h_nwD2 h_useMut_src'
         -- §5 BRIDGE 1S over the mother's register
-        obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Shared_ok_of_sb_read_ok h_read_tgt
         have h_tbd2 : TagRenameBounded ρt permsP'.NextTag s_mid.perms.NextTag := by
           rw [h_snt1]
           exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2
-        have h_unprot := freshTag_not_protected h_spsim h_tbd2
-        have h0 : wildcardTag < s_mid.perms.NextTag := (h_tbd2 _ _ h_wf_t.2).2
-        have h_ntw : (s_mid.perms.NextTag == wildcardTag) = false := by grind
-        obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle⟩ :=
-          sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
-        have h_qAcc : qAcc' = p2 := by grind
-        subst h_qAcc
-        -- §6 BRIDGE 1S: the temporary retires BEFORE the write, so the
-        -- keystone's Borrow/read/die is contiguous and the destination
-        -- write simply follows the parent read (no commutation needed)
-        have h_psim2q : PermSim ρt perms₂ q3 := by
-          obtain ⟨hs, hp, he, hn⟩ := h_psim2
-          exact ⟨by rw [h_sm]; exact hs, by rw [h_pfq]; exact hp,
-                 by rw [h_exq]; exact he, Nat.le_trans hn h_ntle⟩
+        obtain ⟨q1, q2, q3, h_ref_tgt, h_rd1, h_die1, h_psim2q, h_ntle⟩ :=
+          bridge1S_of_read h_spsim h_wf_t h_tbd2 h_read_tgt h_psim2
         obtain ⟨r', h_useMut_tgt', h_psim_final⟩ :=
           sb_write_respects_PermSim h_psim2q h_wf_t h_rtD2 h_nwD2 h_useMut_src'
         -- §7 the four instructions after the base lowering
@@ -3221,26 +3208,13 @@ theorem copy_fresh_projchain_offset_simulation
         obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
           sb_write_respects_PermSim h_psim2 h_wf_t' h_rtD2 h_nwD2 h_useMut_src'
         -- §9 BRIDGE 1S over the mother's register
-        obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Shared_ok_of_sb_read_ok h_read_tgt
         have h_tbd2 : TagRenameBounded
             (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
             permsP'.NextTag s_mid.perms.NextTag := by
           rw [h_snt1, h_perms1]
           exact TagRenameBounded.mono h_tbd' (Nat.le_refl _) h_snt2
-        have h_unprot := freshTag_not_protected h_spsim h_tbd2
-        have h0' : wildcardTag < s_mid.perms.NextTag := (h_tbd2 _ _ h_wf_t'.2).2
-        have h_ntw : (s_mid.perms.NextTag == wildcardTag) = false := by grind
-        obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle⟩ :=
-          sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
-        have h_qAcc : qAcc' = p2 := by grind
-        subst h_qAcc
-        -- §6 BRIDGE 1S: the temporary retires BEFORE the write, so the
-        -- keystone's Borrow/read/die is contiguous and the destination
-        -- write simply follows the parent read (no commutation needed)
-        have h_psim2q : PermSim (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) perms₂ q3 := by
-          obtain ⟨hs, hp, he, hn⟩ := h_psim2
-          exact ⟨by rw [h_sm]; exact hs, by rw [h_pfq]; exact hp,
-                 by rw [h_exq]; exact he, Nat.le_trans hn h_ntle⟩
+        obtain ⟨q1, q2, q3, h_ref_tgt, h_rd1, h_die1, h_psim2q, h_ntle⟩ :=
+          bridge1S_of_read h_spsim h_wf_t' h_tbd2 h_read_tgt h_psim2
         obtain ⟨r', h_useMut_tgt', h_psim_final⟩ :=
           sb_write_respects_PermSim h_psim2q h_wf_t' h_rtD2 h_nwD2 h_useMut_src'
         -- §7 the four instructions after the base lowering
@@ -5611,21 +5585,11 @@ theorem copy_chaindst_projsrc_offset_simulation
     -- retired, all before the destination lowering starts
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
-    obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Shared_ok_of_sb_read_ok h_read_tgt
     have h_tbd2 : TagRenameBounded ρt permsS.NextTag s_mid1.perms.NextTag := by
       rw [h_snt1]
       exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2
-    have h_unprot := freshTag_not_protected h_spsim h_tbd2
-    have h0 : wildcardTag < s_mid1.perms.NextTag := (h_tbd2 _ _ h_wf_t.2).2
-    have h_ntw : (s_mid1.perms.NextTag == wildcardTag) = false := by grind
-    obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle⟩ :=
-      sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
-    have h_qAcc : qAcc' = p2 := by grind
-    subst h_qAcc
-    have h_psim2q : PermSim ρt perms₂ q3 := by
-      obtain ⟨hs, hp, he, hn⟩ := h_psim2
-      exact ⟨by rw [h_sm]; exact hs, by rw [h_pfq]; exact hp,
-             by rw [h_exq]; exact he, Nat.le_trans hn h_ntle⟩
+    obtain ⟨q1, q2, q3, h_ref_tgt, h_rd1, h_die1, h_psim2q, h_ntle⟩ :=
+      bridge1S_of_read h_spsim h_wf_t h_tbd2 h_read_tgt h_psim2
     -- §7 execute the three source instructions
     have h_code1 : compProg s_mid1.pc
         = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
@@ -7919,23 +7883,13 @@ theorem copy_projlocal_fresh_projsrc_offset_zero_simulation
     -- through, and retired, all before the destination write
     obtain ⟨p2w, h_read2_tgt, h_psim2w⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t' h_srt h_snw h_read_src
-    obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Shared_ok_of_sb_read_ok h_read2_tgt
     have h_tbd2 : TagRenameBounded (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) permsP'.NextTag s_mid.perms.NextTag := by
       rw [h_snt1]
       refine TagRenameBounded.mono ?_
         (Nat.le_of_eq (congrArg AccessPerms.NextTag h_perms1.symm)) h_snt2
       exact h_tbd'
-    have h_unprot := freshTag_not_protected h_spsim h_tbd2
-    have h0 : wildcardTag < s_mid.perms.NextTag := (h_tbd2 _ _ h_wf_t'.2).2
-    have h_ntw : (s_mid.perms.NextTag == wildcardTag) = false := by grind
-    obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle⟩ :=
-      sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
-    have h_qAcc : qAcc' = p2w := by grind
-    subst h_qAcc
-    have h_psim2q : PermSim (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) perms₂ q3 := by
-      obtain ⟨hs, hp, he, hn⟩ := h_psim2w
-      exact ⟨by rw [h_sm]; exact hs, by rw [h_pfq]; exact hp,
-             by rw [h_exq]; exact he, Nat.le_trans hn h_ntle⟩
+    obtain ⟨q1, q2, q3, h_ref_tgt, h_rd1, h_die1, h_psim2q, h_ntle⟩ :=
+      bridge1S_of_read h_spsim h_wf_t' h_tbd2 h_read2_tgt h_psim2w
     have h_w := h_step
     simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
@@ -8503,23 +8457,13 @@ theorem copy_projlocal_fresh_projsrc_offset_offset_simulation
     -- through, and retired, all before the destination write
     obtain ⟨p2w, h_read2_tgt, h_psim2w⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t' h_srt h_snw h_read_src
-    obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Shared_ok_of_sb_read_ok h_read2_tgt
     have h_tbd2 : TagRenameBounded (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) permsP'.NextTag s_mid.perms.NextTag := by
       rw [h_snt1]
       refine TagRenameBounded.mono ?_
         (Nat.le_of_eq (congrArg AccessPerms.NextTag h_perms1.symm)) h_snt2
       exact h_tbd'
-    have h_unprot := freshTag_not_protected h_spsim h_tbd2
-    have h0 : wildcardTag < s_mid.perms.NextTag := (h_tbd2 _ _ h_wf_t'.2).2
-    have h_ntw : (s_mid.perms.NextTag == wildcardTag) = false := by grind
-    obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle⟩ :=
-      sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
-    have h_qAcc : qAcc' = p2w := by grind
-    subst h_qAcc
-    have h_psim2q : PermSim (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) perms₂ q3 := by
-      obtain ⟨hs, hp, he, hn⟩ := h_psim2w
-      exact ⟨by rw [h_sm]; exact hs, by rw [h_pfq]; exact hp,
-             by rw [h_exq]; exact he, Nat.le_trans hn h_ntle⟩
+    obtain ⟨q1, q2, q3, h_ref_tgt, h_rd1, h_die1, h_psim2q, h_ntle⟩ :=
+      bridge1S_of_read h_spsim h_wf_t' h_tbd2 h_read2_tgt h_psim2w
     have h_w := h_step
     simp only [mirlite.writeResolvedPlace] at h_w
     split at h_w
@@ -9886,21 +9830,11 @@ theorem copy_projdst_zero_projsrc_offset_simulation
     -- retired, all before the destination lowering starts
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
-    obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Shared_ok_of_sb_read_ok h_read_tgt
     have h_tbd2 : TagRenameBounded ρt permsS.NextTag s_mid1.perms.NextTag := by
       rw [h_snt1]
       exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2
-    have h_unprot := freshTag_not_protected h_spsim h_tbd2
-    have h0 : wildcardTag < s_mid1.perms.NextTag := (h_tbd2 _ _ h_wf_t.2).2
-    have h_ntw : (s_mid1.perms.NextTag == wildcardTag) = false := by grind
-    obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle⟩ :=
-      sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
-    have h_qAcc : qAcc' = p2 := by grind
-    subst h_qAcc
-    have h_psim2q : PermSim ρt perms₂ q3 := by
-      obtain ⟨hs, hp, he, hn⟩ := h_psim2
-      exact ⟨by rw [h_sm]; exact hs, by rw [h_pfq]; exact hp,
-             by rw [h_exq]; exact he, Nat.le_trans hn h_ntle⟩
+    obtain ⟨q1, q2, q3, h_ref_tgt, h_rd1, h_die1, h_psim2q, h_ntle⟩ :=
+      bridge1S_of_read h_spsim h_wf_t h_tbd2 h_read_tgt h_psim2
     -- §7 execute the three source instructions
     have h_code1 : compProg s_mid1.pc
         = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
@@ -10509,21 +10443,11 @@ theorem copy_projdst_offset_projsrc_offset_simulation
     -- retired, all before the destination lowering starts
     obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
       sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
-    obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Shared_ok_of_sb_read_ok h_read_tgt
     have h_tbd2 : TagRenameBounded ρt permsS.NextTag s_mid1.perms.NextTag := by
       rw [h_snt1]
       exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2
-    have h_unprot := freshTag_not_protected h_spsim h_tbd2
-    have h0 : wildcardTag < s_mid1.perms.NextTag := (h_tbd2 _ _ h_wf_t.2).2
-    have h_ntw : (s_mid1.perms.NextTag == wildcardTag) = false := by grind
-    obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle⟩ :=
-      sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
-    have h_qAcc : qAcc' = p2 := by grind
-    subst h_qAcc
-    have h_psim2q : PermSim ρt perms₂ q3 := by
-      obtain ⟨hs, hp, he, hn⟩ := h_psim2
-      exact ⟨by rw [h_sm]; exact hs, by rw [h_pfq]; exact hp,
-             by rw [h_exq]; exact he, Nat.le_trans hn h_ntle⟩
+    obtain ⟨q1, q2, q3, h_ref_tgt, h_rd1, h_die1, h_psim2q, h_ntle⟩ :=
+      bridge1S_of_read h_spsim h_wf_t h_tbd2 h_read_tgt h_psim2
     -- §7 execute the three source instructions
     have h_code1 : compProg s_mid1.pc
         = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
