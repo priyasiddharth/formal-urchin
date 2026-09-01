@@ -1221,6 +1221,53 @@ theorem placeToRegChecked_proj_zero_value
   rw [placeToRegChecked_proj_root_eq path h_np, CheckedCompilerM.value_bind, h]
   simp [h_o, CheckedCompilerM.value_pure]
 
+/-- At NONZERO offset the projection arm mints a fresh register and
+    emits one `Borrow` at the composed offset. This is the equation
+    `placeToRegChecked_proj_zero_run` could not have: the compiled state
+    GROWS, and the result carries a pending cleanup entry. -/
+theorem placeToRegChecked_proj_offset_run
+    {Γ : Ctx} {σ τ : LayoutTy}
+    {kind : RefKind} {base : Place Γ σ} (path : PathTo σ τ)
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      base = b.proj q → False)
+    (h_o : pathOffset path ≠ 0) {cs : CompilerState}
+    {o : ResultWithEvidence PtrResult (PlaceToRegEvidence kind base)}
+    (h : CheckedCompilerM.value (placeToRegChecked kind base) cs = Except.ok o) :
+    CheckedCompilerM.run (placeToRegChecked kind (.proj base path)) cs
+      = emit
+          { (CheckedCompilerM.run (placeToRegChecked kind base) cs) with
+            nextReg := (CheckedCompilerM.run (placeToRegChecked kind base) cs).nextReg + 1 }
+          [Instr.Assgn
+            (Register.R (CheckedCompilerM.run (placeToRegChecked kind base) cs).nextReg)
+            (borrowRhs kind (blockSize τ) o.result.reg (pathOffset path))] := by
+  rw [placeToRegChecked_proj_root_eq path h_np, CheckedCompilerM.run_bind, h]
+  simp only [csRun, csMonad, emit, freshReg, dif_neg h_o]
+
+/-- ... and the value it returns: the fresh register, with the base's
+    cleanup extended by this borrow's own `Die` entry. That extension is
+    exactly what puts a nonzero-offset projection outside `LoweringSim`'s
+    `cleanup = []` boundary. -/
+theorem placeToRegChecked_proj_offset_value
+    {Γ : Ctx} {σ τ : LayoutTy}
+    {kind : RefKind} {base : Place Γ σ} (path : PathTo σ τ)
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
+      base = b.proj q → False)
+    (h_o : pathOffset path ≠ 0) {cs : CompilerState}
+    {o : ResultWithEvidence PtrResult (PlaceToRegEvidence kind base)}
+    (h : CheckedCompilerM.value (placeToRegChecked kind base) cs = Except.ok o) :
+    ∃ out,
+      CheckedCompilerM.value (placeToRegChecked kind (.proj base path)) cs
+        = Except.ok out ∧
+      out.result.reg
+        = Register.R (CheckedCompilerM.run (placeToRegChecked kind base) cs).nextReg ∧
+      out.result.cleanup
+        = o.result.cleanup
+            ++ [(Register.R (CheckedCompilerM.run (placeToRegChecked kind base) cs).nextReg,
+                 blockSize τ)] := by
+  rw [placeToRegChecked_proj_root_eq path h_np, CheckedCompilerM.value_bind, h]
+  simp only [csRun, csMonad, emit, freshReg, dif_neg h_o]
+  exact ⟨_, rfl, rfl, rfl⟩
+
 /-- The reassociation arm's equation. -/
 theorem placeToRegChecked_proj_assoc_eq
     {Γ : Ctx} {ρ σ τ : LayoutTy}
