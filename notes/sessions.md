@@ -2449,3 +2449,62 @@ generalized over the rvalue. The remaining mass is leaf bodies, not
 skeleton, and getting at it is a design change (collapsing leaves onto
 bigger place classes), not a refactor — a new plan, explicitly out of
 scope for this one.
+
+## 2026-09-01 (thirtieth)
+
+**A second refactor seam, larger than the first: 39,609 → 37,769
+(−1,840) in seven commits, none of which touched a proof argument.**
+
+The skeleton plan was mined out (see the twenty-ninth entry). What was
+left turned out not to be proofs at all — it was tactic *invocations*
+re-listing what could be named once, and binder lists re-declaring what
+could be hoisted. Full mechanics in
+[[attribute-and-binder-mechanics]]; the headlines:
+
+| change | sites | lines |
+|---|---|---|
+| nine `@[grind]` registrations + 2 collapses | 27 | −187 |
+| **`csMonad` simp set** | **200** | **−659** |
+| `csRun` simp set | 142 | −91 |
+| `csCompile`/`mirPrep`/`mirAlloc`/`csCleanup` | 264 | −137 |
+| **`writeResolvedPlace_ok_inv`** | **52** | **−415** |
+| `variable` hoist of ambient implicits | 64 | −208 |
+| copy's towers in `with` form | 253 | −214 |
+
+**The two biggest were both invisible to "factor out a lemma".**
+`csMonad` is six lemmas that are ALREADY global `@[simp]` — every
+`simp only` site re-listed them because `simp only` excludes the default
+set. `writeResolvedPlace_ok_inv` replaced an eight-line `split`/`split`
+header whose dead branches wrapped the whole rest of each proof in
+nested bullets, so the real cost was four columns of indentation all the
+way down.
+
+**Method that found them:** rank repeated N-line windows across the leaf
+files, then score each candidate by MEASURED line saving rather than
+site count. That distinction mattered every time —
+`{emit, List.length_cons, List.length_nil}` occurs at 78 sites and is
+worth zero lines.
+
+**Three things measured and declined**, so they are not re-attempted:
+folding `compileRExprToChecked` into `csCompile` (27 lines, but 88 of
+162 sites would start unfolding the rvalue compiler); hoisting the
+explicit hypotheses alongside the implicits (~198 lines, but needs
+`include` and reorders every leaf's explicit arguments); and converting
+copy's NESTED tower records (92 more records, builds clean, makes the
+file 92 lines and 22 KB *bigger* — see the note).
+
+**Still open and correctly parked:** target A (rebuild tails, ~700),
+item 6 `assignPlaceArm` (dead — see loose-ends/parked.md), the 11
+AllocLockstep *allocate* bullets, and `csnorm` global `@[simp]`.
+
+**The structural position is unchanged and is the real finding of the
+day.** All of this was skeleton and notation. ref and copy still sit at
+~70% repeated lines against const_write's 38%, and const_write is the
+one file whose *leaves* were generalized over the rvalue. The remaining
+mass is leaf bodies. Getting at it means widening the source place class
+so all six source shapes go through one mother lemma — a design change
+and a new plan, not another sweep.
+
+**Validation after all seven commits, every time:** 0 errors; audit OK,
+0 sorries, axioms unchanged; 17/17 + 104/104; conformance 82 pass /
+0 fail; osea 82 matched / 0 mismatch / 0 skipped.
