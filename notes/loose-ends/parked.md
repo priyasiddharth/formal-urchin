@@ -529,3 +529,40 @@ ONE DECLARATION AT A TIME using
 `@[simp] PlaceRes.addr_shift : ({r with offset := r.offset + k}).addr = r.addr + k`,
 rebuilding per file rather than per pass. See
 durable/placeres-offset-reparameterization.md.
+
+---
+
+## the `_src_congr` destination merge (`assignPlaceArm`) — 2026-09-01
+
+**Status:** measured and dropped. Do not re-attempt from the plan's
+estimate; the plan valued it at ~160 lines and that number is dead.
+
+**What it would be:** factor the general `.assign dst rhs` arm of
+`compileStmtChecked` (compile.lean:773) into a named `assignPlaceArm`,
+then merge `compileStmt_ref_src_congr_{deref,proj}_{run,value}` into one
+destination-generic congruence. The `.local` arm (compile.lean:765) can
+never join — it is a genuinely different compiled shape (no
+`placeToRegChecked` on the destination).
+
+**Why it is not worth it.** Target E (`exceptMap_agree`, `e7079a0`)
+already took the value. The family is now 105 STATEMENT lines to 57
+proof lines; deref+proj proof bodies total 42, which is the whole merge
+ceiling. A generic congruence needs its own ~20-line statement and
+~20-line proof. Net: between +20 and −5 lines.
+
+**What it would cost.** Once the arm is a separate `def`,
+`simp only [compileStmtChecked]` no longer reaches the do-block, so
+every such site needs `assignPlaceArm` in its simp set — **159 sites**
+(const_write 30, ref 56, copy 73). Plus it edits the compiler, which
+sits under both audit roots.
+
+**No cheap route exists.** Stating the congruence with an
+`h_unfold : ∀ rhs, compileStmtChecked (.assign D rhs) = <do block>`
+hypothesis avoids both the production change and the simp churn, but the
+explicit do-block in the statement costs about what the merged bodies
+save. And no attribute helps: `simp only [X]` will not reach through a
+separate `def`, `@[reducible]` included.
+
+**When to do it anyway:** if `assignPlaceArm` is wanted STRUCTURALLY —
+to give future leaves a name for the arm — rather than for line count.
+The 159-site sweep is mechanical and the four suites catch slips.

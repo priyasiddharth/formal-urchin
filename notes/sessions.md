@@ -2387,3 +2387,65 @@ current tree: **82 pass / 0 fail / 41 unsupported (123 total)**, and
 noting — every program the mirlite side accepts, the compiler also
 handles, so `CoreProg` covers the whole live corpus.
 Run all four from now on, not just `--unit`.
+
+## 2026-09-01 (twenty-ninth)
+
+**Finished the skeleton refactor. 43,694 → 39,609 for the day (−9.35%),
+eight commits, zero sorries and an unchanged axiom set throughout.**
+
+This entry covers the last four steps and, more importantly, records
+which remaining plan items are DEAD so nobody re-attempts them from the
+stale estimates.
+
+**Target E — `exceptMap_agree`** (−91). All six `_src_congr` lemmas
+opened with the same four-way `cases` on two `placeToBorrowRegChecked`
+values. That is pure `Except` algebra. The catch: the two payload types
+must be allowed to DIFFER, because the evidence in a borrow result is
+indexed by the source place — which is exactly why the `_congr`
+hypotheses go through `.map (·.result)` in the first place. Family 283
+→ 168.
+
+**`bridge1S_of_read`** (−35). Eight copy leaves ran the same eleven-line
+ritual. Two shape decisions were forced by the sites: it takes the
+already-transported read (some leaves need that `PermSim` before the
+write transport), and it must return `tgtAcc.NextTag ≤ q3.NextTag`
+(eleven downstream sites wanted `h_ntle`).
+
+**Two adoptions** (−84). `resolvedAddr_cancel` at 44 sites — note it is
+*definitionally* `Nat.add_sub_cancel'`, so the term swap saves nothing;
+the saving is that the named lemma makes the type ascription inferable,
+collapsing a 2-line `have` to 1. `AllocLockstep.writeWordSeq` at 31 of
+53 bullets.
+
+**[DEAD] item 6, `assignPlaceArm` — do not attempt.** The plan valued it
+at ~160 lines on the assumption that the `_src_congr` proof BODIES were
+the cost. After target E they are not: the family is 105 statement lines
+to 57 proof lines, and deref+proj proof bodies total 42 — the entire
+merge ceiling. A generic congruence needs its own ~20-line statement and
+~20-line proof, so the net is between +20 and −5.
+Against that: once `.assign dst rhs` delegates to `assignPlaceArm`,
+`simp only [compileStmtChecked]` no longer reaches the do-block, so
+**159 sites** (const_write 30, ref 56, copy 73) need `assignPlaceArm`
+added to their simp sets — and it is a change to the compiler itself,
+under both audit roots. There is no cheap route: an `h_unfold`
+hypothesis avoids the churn but its explicit do-block costs what the
+merge saves, and no `@[reducible]`/`@[simp]` attribute makes
+`simp only [X]` reach through a separate `def`.
+Worth doing ONLY if `assignPlaceArm` is wanted structurally, for naming
+the arm — not for line count.
+
+**[DEAD] target A / item 4 remains parked**, and target C was absorbed
+by `CodeIncluded` back in item 2.
+
+**Still open, all small:** the 11 AllocLockstep bullets that end in
+`rw [h_addr_eq, h_sz]` (the *allocate* case, wanting
+`AllocLockstep.allocate_eq`; ~11 lines); the `csnorm` global `@[simp]`
+change (~20 lines, previously reverted because blind deletion of the
+redundant tactics broke three `rfl`s).
+
+**The plan is now mined out.** ref and copy are still ~70% repeated
+lines; const_write is at 38%, and it is the one file whose *leaves* were
+generalized over the rvalue. The remaining mass is leaf bodies, not
+skeleton, and getting at it is a design change (collapsing leaves onto
+bigger place classes), not a refactor — a new plan, explicitly out of
+scope for this one.
