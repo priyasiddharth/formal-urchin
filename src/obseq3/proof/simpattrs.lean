@@ -16,7 +16,22 @@ hold those declarations; the lemmas themselves are tagged in
 * `csRun` — the `CompilerM` plumbing a fragment lemma unfolds to reach
   the emitted instruction list (`CompilerM.run`/`value`, `emitM`,
   `freshReg`/`freshRegM`). 142 sites listed all five.
+* `csCompile` — the two compiler entry points a fragment lemma unfolds
+  before anything else (`compileStmtChecked`, `compileRExprPreChecked`).
+  162 sites listed both.
+
+* `mirPrep` / `mirAlloc` — the mirlite side of an assignment: resolving
+  the destination place, and (for an unbound root) the allocation path.
+
+* `csCleanup` — normalising an empty cleanup list to no instructions
+  (`cleanupInstrs` with `List.map_nil` / `List.reverse_nil`). The two
+  `List` lemmas are core `@[simp]`; as with `csMonad` they are listed by
+  hand only because these proofs use `simp only`.
 -/
 
 register_simp_attr csMonad
 register_simp_attr csRun
+register_simp_attr csCompile
+register_simp_attr mirPrep
+register_simp_attr mirAlloc
+register_simp_attr csCleanup

@@ -457,6 +457,10 @@ def TagRenameMap.extend (ρt : TagRenameMap) (s t : Tag) : TagRenameMap :=
 -- the default set, so all 205 sites listed the six by hand, three lines
 -- each. `csMonad` (registered in proof/simpattrs.lean) names them once.
 attribute [csRun] CompilerM.run CompilerM.value emitM freshReg freshRegM
+attribute [csCompile] compileStmtChecked compileRExprPreChecked
+attribute [mirPrep] mirlite.preparePlaceAssign mirlite.resolvePlace?
+attribute [mirAlloc] mirlite.allocateRoot mirlite.allocateBase mirlite.allocate
+attribute [csCleanup] cleanupInstrs List.map_nil List.reverse_nil
 
 attribute [csMonad] CheckedCompilerM.run_bind CheckedCompilerM.value_bind
 attribute [csMonad] CheckedCompilerM.run_lift CheckedCompilerM.value_lift
@@ -1657,8 +1661,7 @@ theorem compileStmt_local_fresh_run
         loc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.NatL))
       loc.idx.1 = some (Register.R cs.nextReg, obseq.LayoutTy.NatL) :=
     getPlaceInfo_setPlaceInfo_self _ _ _
-  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
-    CompilerM.run_bind, CompilerM.run_pure, h_run, h_val,
+  simp [csCompile, compileRExprToChecked, CompilerM.run_bind, CompilerM.run_pure, h_run, h_val,
     placeToRegChecked, h_pi]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, emit_nil]
 

@@ -28,7 +28,7 @@ theorem compileStmt_local_existing_run
         (compileStmtChecked (Stmt.assign (.local loc) (.constInit v))) cs
       = emit cs [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] reg] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h
-  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_run, h_val]
+  simp [csCompile, compileRExprToChecked, h_run, h_val]
   simp [CompilerM.run, emitM, cleanupInstrs, emit_nil]
 
 /-! ## §F What a constant-store rvalue supplies
@@ -411,7 +411,7 @@ theorem compileStmt_local_uninit_run
       = emit cs [Instr.CStore (layoutToTyVal τ)
           (List.replicate (blockSize τ) Val.Undef) reg] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h
-  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_run, h_val]
+  simp [csCompile, compileRExprToChecked, h_run, h_val]
   simp [CompilerM.run, emitM, cleanupInstrs, emit_nil]
 
 /-- REGIME A for `uninit`: undef-fill of an already-bound local. -/
@@ -496,8 +496,7 @@ theorem const_store_fresh_local_simulation
   -- the compiler has not mapped this local either (the converse conjunct)
   have h_pi_none : getPlaceInfo csPrefix loc.idx.1 = none := h_unmap loc h_env
   -- §1 invert mirlite's prepare: `resolvePlace?` is none, so `allocateBase` ran
-  simp only [mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_env,
-    mirlite.allocateRoot, mirlite.allocateBase, mirlite.allocate] at h_prep
+  simp only [mirAlloc, mirPrep, h_env] at h_prep
   cases h_own_src : MSB.own s_mir.perms s_mir.mem.addrStart
       (blockSize τ) with
   | error e => rw [h_own_src] at h_prep; simp at h_prep
@@ -750,8 +749,7 @@ theorem compileStmt_local_fresh_uninit_run
         loc.idx.1 (Register.R cs.nextReg, τ))
       loc.idx.1 = some (Register.R cs.nextReg, τ) :=
     getPlaceInfo_setPlaceInfo_self _ _ _
-  simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
-    CompilerM.run_bind, CompilerM.run_pure, h_run, h_val,
+  simp [csCompile, compileRExprToChecked, CompilerM.run_bind, CompilerM.run_pure, h_run, h_val,
     placeToRegChecked, h_pi]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, emit_nil]
 
@@ -844,8 +842,8 @@ theorem compileStmt_proj_zero_run
               evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
                 baseOut.evidence h_offset
             }) := placeToRegChecked_proj_root_eq path h_np
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_brun, h_bval, h_off, dif_pos]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval, h_off,
+    dif_pos]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, emit_nil]
 
 theorem compileStmt_proj_zero_uninit_run
@@ -886,8 +884,8 @@ theorem compileStmt_proj_zero_uninit_run
               evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
                 baseOut.evidence h_offset
             }) := placeToRegChecked_proj_root_eq path h_np
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_brun, h_bval, h_off, dif_pos]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval, h_off,
+    dif_pos]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, emit_nil]
 
 /-- Nonzero-offset projection off a mapped local: `Borrow; CStore; Die`.
@@ -936,8 +934,8 @@ theorem compileStmt_proj_offset_run
               evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
                 baseOut.evidence h_offset
             }) := placeToRegChecked_proj_root_eq path h_np
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_brun, h_bval, dif_neg h_off]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval,
+    dif_neg h_off]
   simp [csRun, cleanupInstrs, h_bres, emit_nil]
 
 theorem compileStmt_proj_offset_uninit_run
@@ -982,8 +980,8 @@ theorem compileStmt_proj_offset_uninit_run
               evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
                 baseOut.evidence h_offset
             }) := placeToRegChecked_proj_root_eq path h_np
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_brun, h_bval, dif_neg h_off]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval,
+    dif_neg h_off]
   simp [csRun, cleanupInstrs, h_bres, emit_nil]
 
 /-- The fragment of `(*P).path := v` at ZERO offset, over the OPAQUE
@@ -1007,8 +1005,7 @@ theorem compileStmt_proj_deref_zero_run
           [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] dOut.result.reg] := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_dval, h_o, dif_pos]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, h_o, dif_pos]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, emit_nil]
 
 theorem compileStmt_proj_deref_zero_run_uninit
@@ -1027,8 +1024,7 @@ theorem compileStmt_proj_deref_zero_run_uninit
           [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) dOut.result.reg] := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_dval, h_o, dif_pos]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, h_o, dif_pos]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, emit_nil]
 
 /-- The zero-offset projected statement lowers. -/
@@ -1047,8 +1043,7 @@ theorem compileStmt_proj_deref_zero_value
       = Except.ok so := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_dval, h_o, dif_pos]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, h_o, dif_pos]
   exact ⟨_, rfl⟩
 
 theorem compileStmt_proj_deref_zero_value_uninit
@@ -1065,8 +1060,7 @@ theorem compileStmt_proj_deref_zero_value_uninit
       = Except.ok so := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_dval, h_o, dif_pos]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, h_o, dif_pos]
   exact ⟨_, rfl⟩
 
 /-- The fragment of `(*P).path := v` (nonzero offset), over the OPAQUE
@@ -1101,8 +1095,7 @@ theorem compileStmt_proj_deref_run
             (blockSize obseq.LayoutTy.NatL)] := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_dval]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval]
   simp [csRun, cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs]
 
 theorem compileStmt_proj_deref_run_uninit
@@ -1133,8 +1126,7 @@ theorem compileStmt_proj_deref_run_uninit
             (blockSize τ)] := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_dval]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval]
   simp [csRun, cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs]
 
 /-- The nonzero-offset projected statement lowers. -/
@@ -1153,8 +1145,7 @@ theorem compileStmt_proj_deref_value
       = Except.ok so := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_dval, dif_neg h_off]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, dif_neg h_off]
   exact ⟨_, rfl⟩
 
 theorem compileStmt_proj_deref_value_uninit
@@ -1171,8 +1162,7 @@ theorem compileStmt_proj_deref_value_uninit
       = Except.ok so := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_dval, dif_neg h_off]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, dif_neg h_off]
   exact ⟨_, rfl⟩
 
 /-- REGIME C-deref-ZERO, COLLAPSED 2026-08-29 (2026-08-29: onto the
@@ -2612,8 +2602,8 @@ theorem compileStmt_proj_fresh_zero_run
     simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_brun, h_bval, h_off, dif_pos]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval, h_off,
+    dif_pos]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, emit_nil]
 
 theorem compileStmt_proj_fresh_zero_uninit_run
@@ -2649,8 +2639,8 @@ theorem compileStmt_proj_fresh_zero_uninit_run
     simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_brun, h_bval, h_off, dif_pos]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval, h_off,
+    dif_pos]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, emit_nil]
 
 theorem compileStmt_proj_fresh_offset_run
@@ -2692,8 +2682,7 @@ theorem compileStmt_proj_fresh_offset_run
     simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_brun, h_bval]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval]
   simp [csRun, cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
   rfl
 
@@ -2735,8 +2724,7 @@ theorem compileStmt_proj_fresh_offset_uninit_run
     simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_brun, h_bval]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval]
   simp [csRun, cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
   rfl
 
@@ -2769,8 +2757,7 @@ theorem compileStmt_proj_fresh_value
     simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_brun, h_bval]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval]
   by_cases h_off : pathOffset path = 0
   · simp only [h_off, dif_pos]
     exact ⟨_, rfl⟩
@@ -2807,8 +2794,7 @@ theorem compileStmt_proj_fresh_uninit_value
     simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
-    compileRExprPreChecked, h_root, h_brun, h_bval]
+  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval]
   by_cases h_off : pathOffset path = 0
   · simp only [h_off, dif_pos]
     exact ⟨_, rfl⟩
@@ -2894,8 +2880,7 @@ theorem const_store_proj_fresh_simulation
   have h_pi_none : getPlaceInfo csPrefix loc.idx.1 = none := h_unmap loc h_env
   -- §1 invert mirlite's prepare: the projected place does not resolve
   -- (its root is unbound), so `allocateRoot` allocated the σ-sized root
-  simp only [mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_env,
-    mirlite.allocateRoot, mirlite.allocateBase, mirlite.allocate] at h_prep
+  simp only [mirAlloc, mirPrep, h_env] at h_prep
   cases h_own_src : MSB.own s_mir.perms s_mir.mem.addrStart (blockSize σ) with
   | error e => rw [h_own_src] at h_prep; simp at h_prep
   | ok pr =>
@@ -3462,7 +3447,7 @@ theorem compileStmt_derefdst_run
         (compileStmtChecked (Stmt.assign (.deref P) (.constInit v))) cs
       = emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) cs)
           [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] dOut.result.reg] := by
-  simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_dval]
+  simp only [csCompile, csMonad, h_root, h_dval]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, emit_nil]
 
 theorem compileStmt_derefdst_run_uninit
@@ -3477,7 +3462,7 @@ theorem compileStmt_derefdst_run_uninit
         (compileStmtChecked (Stmt.assign (.deref P) .uninit)) cs
       = emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) cs)
           [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) dOut.result.reg] := by
-  simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_dval]
+  simp only [csCompile, csMonad, h_root, h_dval]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, emit_nil]
 
 /-- The chain-dst statement lowers. -/
@@ -3492,7 +3477,7 @@ theorem compileStmt_derefdst_value
     ∃ so, CheckedCompilerM.value
       (compileStmtChecked (Stmt.assign (.deref P) (.constInit v))) cs
       = Except.ok so := by
-  simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_dval]
+  simp only [csCompile, csMonad, h_root, h_dval]
   exact ⟨_, rfl⟩
 
 theorem compileStmt_derefdst_value_uninit
@@ -3505,7 +3490,7 @@ theorem compileStmt_derefdst_value_uninit
     ∃ so, CheckedCompilerM.value
       (compileStmtChecked (Stmt.assign (.deref P) .uninit)) cs
       = Except.ok so := by
-  simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_dval]
+  simp only [csCompile, csMonad, h_root, h_dval]
   exact ⟨_, rfl⟩
 
 /-- REGIME D over full chains, CLOSED 2026-08-29: `*P := v` for every
@@ -3745,7 +3730,7 @@ theorem const_write_deref_chain_simulation
     (fun cs {_} h_r h_d => compileStmt_derefdst_value v h_r h_d)
     (fun cs {_} h_r h_d h_c => compileStmt_derefdst_run v h_r h_d h_c)
     (fun cs h_root => by
-      simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root]
+      simp only [csCompile, csMonad, h_root]
       split
       · simp only [CompilerM.run, emitM]
         exact StateIncr.trans (emit_state_incr _ _)
@@ -3791,7 +3776,7 @@ theorem uninit_deref_chain_simulation
     (fun cs {_} h_r h_d => compileStmt_derefdst_value_uninit h_r h_d)
     (fun cs {_} h_r h_d h_c => compileStmt_derefdst_run_uninit h_r h_d h_c)
     (fun cs h_root => by
-      simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root]
+      simp only [csCompile, csMonad, h_root]
       split
       · simp only [CompilerM.run, emitM]
         exact StateIncr.trans (emit_state_incr _ _)
@@ -3969,7 +3954,7 @@ theorem const_store_proj_simulation
           -- the destination root is bound, so prepare is a no-op and the
           -- projected place resolves to base + offset
           have h_pre : s_pre = s_mir := by
-            simp only [mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_env] at h_prep
+            simp only [mirPrep, h_env] at h_prep
             cases h_prep
             rfl
           subst h_pre
@@ -4133,7 +4118,7 @@ theorem constInit_frags {Γ : Ctx} (v : Word) :
         by simp [compileStmtChecked, compileRExprPreChecked, h_d]⟩
   · exact
     (fun Q cs h_root => by
-      simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root]
+      simp only [csCompile, csMonad, h_root]
       split
       · simp only [CompilerM.run, emitM]
         exact StateIncr.trans (emit_state_incr _ _)
@@ -4209,7 +4194,7 @@ theorem uninit_frags {Γ : Ctx} (τ : LayoutTy) :
         by simp [compileStmtChecked, compileRExprPreChecked, h_d]⟩
   · exact
     (fun Q cs h_root => by
-      simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root]
+      simp only [csCompile, csMonad, h_root]
       split
       · simp only [CompilerM.run, emitM]
         exact StateIncr.trans (emit_state_incr _ _)
@@ -4473,7 +4458,7 @@ theorem const_store_resolved_simulation
       cases h_env : mirlite.Env.lookup s_mir.env loc with
       | some binding =>
           have h_pre : s_pre = s_mir := by
-            simp only [mirlite.preparePlaceAssign, mirlite.resolvePlace?, h_env] at h_prep
+            simp only [mirPrep, h_env] at h_prep
             cases h_prep
             rfl
           subst h_pre
