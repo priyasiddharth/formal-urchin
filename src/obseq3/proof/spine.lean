@@ -551,10 +551,7 @@ theorem placeToRegChecked_flatten_agree {Γ : Ctx} :
                 simpa [Except.map] using ihv
               subst h_e
               constructor <;>
-                simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-                  CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-                  CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
-                  hF, hO, ihr, Except.map]
+                simp only [csMonad, hF, hO, ihr, Except.map]
           | ok oO =>
               exfalso
               rw [hF, hO] at ihv
@@ -571,10 +568,7 @@ theorem placeToRegChecked_flatten_agree {Γ : Ctx} :
                 rw [hF, hO] at ihv
                 simpa [Except.map] using ihv
               constructor <;>
-                simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-                  CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-                  CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
-                  hF, hO] <;>
+                simp only [csMonad, hF, hO] <;>
                 split <;>
                 simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
                   cleanupInstrs, ihr, h_res, Except.map]
@@ -620,10 +614,7 @@ theorem placeToRegChecked_flatten_agree {Γ : Ctx} :
                 simpa [Except.map] using ihv
               subst h_e
               constructor <;>
-                simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-                  CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-                  CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
-                  hF, hO, ihr, Except.map]
+                simp only [csMonad, hF, hO, ihr, Except.map]
           | ok oO =>
               exfalso
               rw [hF, hO] at ihv
@@ -713,10 +704,7 @@ theorem placeToBorrowRegChecked_flatten_agree {Γ : Ctx}
                 simpa [Except.map] using ihv
               subst h_e
               constructor <;>
-                simp only [placeToBorrowRegChecked, CheckedCompilerM.run_bind,
-                  CheckedCompilerM.value_bind, CheckedCompilerM.run_lift,
-                  CheckedCompilerM.value_lift, CheckedCompilerM.run_pure,
-                  CheckedCompilerM.value_pure, hF, hO, ihr, Except.map]
+                simp only [csMonad, placeToBorrowRegChecked, hF, hO, ihr, Except.map]
           | ok oO =>
               exfalso
               rw [hF, hO] at ihv
@@ -754,10 +742,7 @@ theorem placeToBorrowRegChecked_flatten_agree {Γ : Ctx}
                 simpa [Except.map] using ihv
               subst h_e
               constructor <;>
-                simp only [placeToBorrowRegChecked, CheckedCompilerM.run_bind,
-                  CheckedCompilerM.value_bind, CheckedCompilerM.run_lift,
-                  CheckedCompilerM.value_lift, CheckedCompilerM.run_pure,
-                  CheckedCompilerM.value_pure, hF, hO, ihr, Except.map]
+                simp only [csMonad, placeToBorrowRegChecked, hF, hO, ihr, Except.map]
           | ok oO =>
               exfalso
               rw [hF, hO] at ihv
@@ -1004,9 +989,7 @@ theorem ptrChain_lowering_sim
                         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared q) cs).nextReg)
                         (Rhs.Load obseq.TyVal.PTy qOut.result.reg)] := by
                 rw [h_bind]
-                simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-                  CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-                  CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_qval]
+                simp only [csMonad, h_qval]
                 simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
                   cleanupInstrs, h_qclean, emit_nil]
               have h_valD : CheckedCompilerM.value (placeToRegChecked kind (.deref q)) cs
@@ -1020,9 +1003,7 @@ theorem ptrChain_lowering_sim
                           (CheckedCompilerM.run (placeToRegChecked RefKind.Shared q) cs).nextReg)
                         qOut.evidence } := by
                 rw [h_bind]
-                simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-                  CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-                  CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_qval]
+                simp only [csMonad, h_qval]
                 simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
                   cleanupInstrs, h_qclean, emit_nil]
               -- the Load's target read succeeds, PermSim-transported
@@ -1217,10 +1198,7 @@ theorem ptrChain_lowering_sim
                         [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                           (Rhs.Load obseq.TyVal.PTy bOut.result.reg)] := by
                   rw [h_bindD, h_bindP]
-                  simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-                    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-                    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_bval, h_off,
-                    dif_pos]
+                  simp only [csMonad, h_bval, h_off, dif_pos]
                   simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
                     cleanupInstrs, h_bclean, emit_nil]
                 have h_valD : CheckedCompilerM.value
@@ -1233,10 +1211,7 @@ theorem ptrChain_lowering_sim
                           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                           (PlaceToRegEvidence.projZero b f bOut.result bOut.evidence h_off) } := by
                   rw [h_bindD, h_bindP]
-                  simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-                    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-                    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_bval, h_off,
-                    dif_pos]
+                  simp only [csMonad, h_bval, h_off, dif_pos]
                   simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
                     cleanupInstrs, h_bclean, emit_nil]
                 obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
@@ -1341,10 +1316,7 @@ theorem ptrChain_lowering_sim
                       [Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                         (blockSize (obseq.LayoutTy.PtrL τ'))] := by
                   rw [h_bindD, h_bindP]
-                  simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-                    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-                    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_bval, h_off,
-                    dif_neg]
+                  simp only [csMonad, h_bval, h_off, dif_neg]
                   simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
                     cleanupInstrs, borrowRhs, h_bclean, emit_nil]
                   simp [emit]
@@ -1362,10 +1334,7 @@ theorem ptrChain_lowering_sim
                           (PlaceToRegEvidence.projOffset b f bOut.result
                             (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg) bOut.evidence h_off) } := by
                   rw [h_bindD, h_bindP]
-                  simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-                    CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-                    CheckedCompilerM.run_pure, CheckedCompilerM.value_pure, h_bval, h_off,
-                    dif_neg]
+                  simp only [csMonad, h_bval, h_off, dif_neg]
                   simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
                     cleanupInstrs, borrowRhs, h_bclean, emit_nil]
                   simp [emit]

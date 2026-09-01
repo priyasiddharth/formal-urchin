@@ -1,4 +1,5 @@
 import obseq3.compile
+import obseq3.proof.simpattrs
 import obseq3.mirlite_semantics
 import obseq3.permission
 
@@ -451,6 +452,14 @@ def TagRenameMap.extend (ρt : TagRenameMap) (s t : Tag) : TagRenameMap :=
     call `grind`: it changes no normal form. The registration is split in
     two only because the `AddrRenameMap` operations are defined further
     down the file, and an attribute must follow its definition. -/
+-- The six `CheckedCompilerM` run/value projections are already global
+-- `@[simp]`, but every fragment proof uses `simp only`, which excludes
+-- the default set, so all 205 sites listed the six by hand, three lines
+-- each. `csMonad` (registered in proof/simpattrs.lean) names them once.
+attribute [csMonad] CheckedCompilerM.run_bind CheckedCompilerM.value_bind
+attribute [csMonad] CheckedCompilerM.run_lift CheckedCompilerM.value_lift
+attribute [csMonad] CheckedCompilerM.run_pure CheckedCompilerM.value_pure
+
 attribute [grind] RegisterBelow IdentityOnDomain Fin.ext
 attribute [grind] mirlite.Env.lookup mirlite.Env.set
 attribute [grind] TagRenameBounded TagRenameMap.extend
