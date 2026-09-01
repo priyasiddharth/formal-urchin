@@ -146,8 +146,7 @@ theorem compileStmt_ref_local_local_lowers
       placeToRegChecked_local_existing (kind := kind) h_src
     simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, placeToBorrowRegChecked,
       h_run, h_val, h_prun, h_pval, h_pres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil]
+    simp [csRun, cleanupInstrs, emit_nil]
   · obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
       placeToRegChecked_local_existing (kind := kind) h_src
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
@@ -202,8 +201,7 @@ theorem compileStmt_ref_fresh_local_lowers
       placeToRegChecked_local_existing (kind := kind) h_srcPost
     simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, placeToBorrowRegChecked,
       h_run, h_val, h_prun, h_pval, h_pres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil, setPlaceInfo, emit]
+    simp [csRun, cleanupInstrs, emit_nil, setPlaceInfo, emit]
     funext label
     rw [if_neg (fun h => by rcases h with ⟨h1, h2⟩; omega)]
   · obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
@@ -279,8 +277,7 @@ theorem compileStmt_ref_fresh_projsrc_lowers
             }) := by simp only [placeToBorrowRegChecked]
     simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_borrow_eq,
       h_run, h_val, h_prun, h_pval, h_pres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil, setPlaceInfo, emit]
+    simp [csRun, cleanupInstrs, emit_nil, setPlaceInfo, emit]
     funext label
     rw [if_neg (fun h => by rcases h with ⟨h1, h2⟩; omega)]
   · have h_srcPost : getPlaceInfo
@@ -343,8 +340,7 @@ theorem compileStmt_ref_proj_local_lowers
             }) := by simp only [placeToBorrowRegChecked]
     simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_borrow_eq,
       h_run, h_run', h_val, h_prun, h_pval, h_pres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil]
+    simp [csRun, cleanupInstrs, emit_nil]
   · have h_borrow_eq : placeToBorrowRegChecked (Γ := Γ) kind prot mask
         (.proj (.local srcLoc) f)
         = (do
@@ -427,12 +423,11 @@ theorem compileStmt_ref_deref_lowers
     | ok pOut =>
         rw [h_bindD] at h_dval
         simp only [csMonad, h_x] at h_dval
-        simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM] at h_dval
+        simp only [csRun] at h_dval
         cases h_dval
         simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
           h_bindB, h_bindD, h_run, h_run', h_val, h_x]
-        simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-          cleanupInstrs, emit_nil]
+        simp [csRun, cleanupInstrs, emit_nil]
   · have h_bindB : placeToBorrowRegChecked (Γ := Γ) kind prot mask (.deref P)
         = (do
             let ptrOut ← placeToRegChecked RefKind.Shared P
@@ -563,12 +558,11 @@ theorem compileStmt_ref_fresh_derefsrc_lowers
     | ok pOut =>
         rw [h_bindD] at h_dval
         simp only [csMonad, h_x] at h_dval
-        simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM] at h_dval
+        simp only [csRun] at h_dval
         cases h_dval
         simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
           h_bindB, h_bindD, h_run, h_val, h_x]
-        simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-          cleanupInstrs, emit_nil, setPlaceInfo]
+        simp [csRun, cleanupInstrs, emit_nil, setPlaceInfo]
   · have h_bindD : placeToRegChecked (Γ := Γ) RefKind.Shared (.deref P)
         = (do
             let ptrOut ← placeToRegChecked RefKind.Shared P
@@ -595,11 +589,11 @@ theorem compileStmt_ref_fresh_derefsrc_lowers
     | ok pOut =>
         rw [h_bindD] at h_dval
         simp only [csMonad, h_x] at h_dval
-        simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM] at h_dval
+        simp only [csRun] at h_dval
         cases h_dval
         simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
           h_bindB, h_bindD, h_run, h_x]
-        simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+        simp only [csRun]
         exact ⟨_, rfl⟩
 /-! ## Regime L→L: `dstLocal := &srcLocal`, both bound -/
 
@@ -1882,8 +1876,7 @@ theorem compileStmt_ref_projzero_local_lowers
       exact ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       placeToBorrowRegChecked, h_proj_eq, h_root, h_prun, h_pval, h_g0, dif_pos]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_pres, emit_nil]
+    simp [csRun, cleanupInstrs, h_pres, emit_nil]
     simp only [h_bval, h_brun, h_bres]
     simp [cleanupInstrs, emit_nil]
   · have h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.local dstLoc) g)) cs
@@ -1891,7 +1884,7 @@ theorem compileStmt_ref_projzero_local_lowers
       ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       placeToBorrowRegChecked, h_proj_eq, h_root, h_prun, h_pval, h_g0, dif_pos]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_pres]
     simp only [h_bval]
     exact ⟨_, rfl⟩
@@ -1963,8 +1956,7 @@ theorem compileStmt_ref_projzero_fresh_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, placeToBorrowRegChecked,
       h_proj_eq, h_root, h_prun, h_pval, h_g0, dif_pos]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_pres, emit_nil]
+    simp [csRun, cleanupInstrs, h_pres, emit_nil]
     csnorm at h_bval h_brun h_bres ⊢
     simp only [h_bval, h_brun, h_bres]
     simp [emit_nil]
@@ -1972,7 +1964,7 @@ theorem compileStmt_ref_projzero_fresh_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, placeToBorrowRegChecked,
       h_proj_eq, h_root, h_prun, h_pval, h_g0, dif_pos]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_pres]
     csnorm at h_bval ⊢
     simp only [h_bval]
@@ -2032,8 +2024,7 @@ theorem compileStmt_ref_projzero_projsrc_lowers
       exact ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_borrow_eq, h_proj_eq, h_root, h_prun, h_pval, h_g0, dif_pos]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_pres, emit_nil]
+    simp [csRun, cleanupInstrs, h_pres, emit_nil]
     simp only [h_bval, h_brun, h_bres]
     simp [cleanupInstrs, emit_nil]
   · have h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.local dstLoc) g)) cs
@@ -2041,7 +2032,7 @@ theorem compileStmt_ref_projzero_projsrc_lowers
       ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_borrow_eq, h_proj_eq, h_root, h_prun, h_pval, h_g0, dif_pos]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_pres]
     simp only [h_bval]
     exact ⟨_, rfl⟩
@@ -2103,18 +2094,16 @@ theorem compileStmt_ref_projoffset_projsrc_lowers
       ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_borrow_eq, h_proj_eq, h_root, h_prun, h_pval, h_go, dif_neg]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_pres, emit_nil]
+    simp [csRun, cleanupInstrs, h_pres, emit_nil]
     simp only [h_pres, h_bval, h_brun, h_bres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil, borrowRhs]
+    simp [csRun, cleanupInstrs, emit_nil, borrowRhs]
     rfl
   · have h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.local dstLoc) g)) cs
         = cs :=
       ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_borrow_eq, h_proj_eq, h_root, h_prun, h_pval, h_go, dif_neg]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_pres]
     simp only [h_bval]
     exact ⟨_, rfl⟩
@@ -2179,15 +2168,14 @@ theorem compileStmt_ref_projzero_derefsrc_lowers
         = cs := ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_borrow_eq, h_proj_eq, h_root, h_dval, h_g0, dif_pos]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_dclean, emit_nil]
+    simp [csRun, cleanupInstrs, h_dclean, emit_nil]
     simp only [h_bval, h_brun, h_bres]
     simp [cleanupInstrs, emit_nil]
   · have h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.local dstLoc) g)) cs
         = cs := ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_borrow_eq, h_proj_eq, h_root, h_dval, h_g0, dif_pos]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_bval]
     exact ⟨_, rfl⟩
 /-! ## A CHAIN source under a PROJECTED destination at NONZERO offset:
@@ -2256,17 +2244,15 @@ theorem compileStmt_ref_projoffset_derefsrc_lowers
         = cs := ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_borrow_eq, h_proj_eq, h_root, h_dval, h_go, dif_neg]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_dclean, emit_nil]
+    simp [csRun, cleanupInstrs, h_dclean, emit_nil]
     simp only [h_bval, h_brun, h_bres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil, borrowRhs]
+    simp [csRun, cleanupInstrs, emit_nil, borrowRhs]
     rfl
   · have h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.local dstLoc) g)) cs
         = cs := ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_borrow_eq, h_proj_eq, h_root, h_dval, h_go, dif_neg]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_bval]
     exact ⟨_, rfl⟩
 /-- REGIME L→P0 (field destination, ZERO offset), CLOSED 2026-08-29:
@@ -2514,18 +2500,16 @@ theorem compileStmt_ref_projoffset_local_lowers
       ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       placeToBorrowRegChecked, h_proj_eq, h_root, h_prun, h_pval, h_go, dif_neg]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_pres, emit_nil]
+    simp [csRun, cleanupInstrs, h_pres, emit_nil]
     simp only [h_pres, h_bval, h_brun, h_bres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil, borrowRhs]
+    simp [csRun, cleanupInstrs, emit_nil, borrowRhs]
     rfl
   · have h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.local dstLoc) g)) cs
         = cs :=
       ensurePlaceRoot_run_eq_of_mapped ⟨dstReg, σ, h_dst⟩
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       placeToBorrowRegChecked, h_proj_eq, h_root, h_prun, h_pval, h_go, dif_neg]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_pres]
     simp only [h_bval]
     exact ⟨_, rfl⟩
@@ -2604,18 +2588,16 @@ theorem compileStmt_ref_projoffset_fresh_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, placeToBorrowRegChecked,
       h_proj_eq, h_root, h_prun, h_pval, h_go, dif_neg]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_pres, emit_nil]
+    simp [csRun, cleanupInstrs, h_pres, emit_nil]
     csnorm at h_bval h_brun h_bres ⊢
     simp only [h_pres, h_bval, h_brun, h_bres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil, borrowRhs]
+    simp [csRun, cleanupInstrs, emit_nil, borrowRhs]
     rfl
   · obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, placeToBorrowRegChecked,
       h_proj_eq, h_root, h_prun, h_pval, h_go, dif_neg]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_pres]
     csnorm at h_bval ⊢
     simp only [h_bval]
@@ -2989,8 +2971,7 @@ theorem compileStmt_ref_derefdst_run
   subst h_cs1
   simp [compileStmtChecked, compileRExprPreChecked, placeToBorrowRegChecked,
     h_root, h_prun, h_pval0, h_pres, h_dval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_dval, h_dclean, emit_nil]
+  simp [csRun, cleanupInstrs, h_dval, h_dclean, emit_nil]
 
 /-- The deref-dst statement lowers. -/
 theorem compileStmt_ref_derefdst_value
@@ -3015,7 +2996,7 @@ theorem compileStmt_ref_derefdst_value
   subst h_cs1
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, placeToBorrowRegChecked,
     h_root, h_prun, h_pval0, h_pres]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   simp only [csMonad, h_dval]
   exact ⟨_, rfl⟩
 
@@ -3280,8 +3261,7 @@ theorem compileStmt_ref_derefprojsrc_lowers
             }) := by simp only [placeToBorrowRegChecked]
     simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_bindB, h_run, h_val, h_dval]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil]
+    simp [csRun, cleanupInstrs, emit_nil]
   · have h_bindB : placeToBorrowRegChecked (Γ := Γ) kind prot mask (.proj (.deref P) f)
         = (do
             let baseOut ← placeToRegChecked kind (.deref P)
@@ -3338,8 +3318,7 @@ theorem compileStmt_ref_fresh_derefprojsrc_lowers
             }) := by simp only [placeToBorrowRegChecked]
     simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_bindB, h_run, h_val, h_dval]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil, setPlaceInfo]
+    simp [csRun, cleanupInstrs, emit_nil, setPlaceInfo]
   · have h_bindB : placeToBorrowRegChecked (Γ := Γ) kind prot mask (.proj (.deref P) f)
         = (do
             let baseOut ← placeToRegChecked kind (.deref P)
@@ -3927,8 +3906,7 @@ theorem compileStmt_ref_derefdst_projsrc_run
   subst h_cs1
   simp [compileStmtChecked, compileRExprPreChecked, placeToBorrowRegChecked,
     h_root, h_prun, h_pval0, h_pres, h_dval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_dval, h_dclean, emit_nil]
+  simp [csRun, cleanupInstrs, h_dval, h_dclean, emit_nil]
 
 theorem compileStmt_ref_derefdst_projsrc_value
     {Γ : Ctx} {τ σs : LayoutTy}
@@ -3954,7 +3932,7 @@ theorem compileStmt_ref_derefdst_projsrc_value
   subst h_cs1
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, placeToBorrowRegChecked,
     h_root, h_prun, h_pval0, h_pres]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   simp only [csMonad, h_dval]
   exact ⟨_, rfl⟩
 
@@ -4034,8 +4012,7 @@ theorem compileStmt_ref_projdst_chainsrc_run
   subst h_cs1
   simp [compileStmtChecked, compileRExprPreChecked, h_unfold,
     h_root, h_sval, h_dval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_dval, h_dclean, emit_nil]
+  simp [csRun, cleanupInstrs, h_dval, h_dclean, emit_nil]
 
 theorem compileStmt_ref_projdst_chainsrc_value
     {Γ : Ctx} {τ σd σs : LayoutTy}
@@ -4075,7 +4052,7 @@ theorem compileStmt_ref_projdst_chainsrc_value
       = Except.ok so := by
   subst h_cs1
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_unfold, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   simp only [csMonad, h_dval]
   exact ⟨_, rfl⟩
 
@@ -4131,10 +4108,9 @@ theorem compileStmt_ref_projoffsetdst_chainsrc_run
     (base := Place.deref pp) g (fun _ _ _ h => by cases h)
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_unfold, h_proj_eq, h_root,
     h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   simp only [csMonad, h_bval, h_go, dif_neg]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bclean, emit_nil, borrowRhs]
+  simp [csRun, cleanupInstrs, h_bclean, emit_nil, borrowRhs]
 
 theorem compileStmt_ref_projoffsetdst_chainsrc_value
     {Γ : Ctx} {τ σd σs : LayoutTy}
@@ -4179,7 +4155,7 @@ theorem compileStmt_ref_projoffsetdst_chainsrc_value
     (base := Place.deref pp) g (fun _ _ _ h => by cases h)
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_unfold, h_proj_eq, h_root,
     h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   simp only [csMonad, h_bval, h_go, dif_neg]
   exact ⟨_, rfl⟩
 
@@ -4239,8 +4215,7 @@ theorem compileStmt_ref_derefdst_derefprojsrc_run
   subst h_cs1
   simp [compileStmtChecked, compileRExprPreChecked, h_bindB,
     h_root, h_sval, h_dval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_dval, h_dclean, emit_nil]
+  simp [csRun, cleanupInstrs, h_dval, h_dclean, emit_nil]
 
 theorem compileStmt_ref_derefdst_derefprojsrc_value
     {Γ : Ctx} {τ σb : LayoutTy}
@@ -4284,7 +4259,7 @@ theorem compileStmt_ref_derefdst_derefprojsrc_value
           }) := by simp only [placeToBorrowRegChecked]
   subst h_cs1
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_bindB, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   simp only [csMonad, h_dval]
   exact ⟨_, rfl⟩
 
@@ -4424,7 +4399,7 @@ theorem ref_derefdst_local_simulation
     rw [h_run0]
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, placeToBorrowRegChecked,
       h_root, h_lprun, h_lpval, h_lpres]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [csMonad, h_dval0]
     exact StateIncr.trans (emit_state_incr _ _)
       (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))
@@ -5060,8 +5035,7 @@ theorem compileStmt_ref_projzero_fresh_projsrc_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_borrow_eq, h_proj_eq,
       h_root, h_prun, h_pval, h_g0, dif_pos]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_pres, emit_nil]
+    simp [csRun, cleanupInstrs, h_pres, emit_nil]
     csnorm at h_bval h_brun h_bres ⊢
     simp only [h_bval, h_brun, h_bres]
     simp [emit_nil]
@@ -5069,7 +5043,7 @@ theorem compileStmt_ref_projzero_fresh_projsrc_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_borrow_eq, h_proj_eq,
       h_root, h_prun, h_pval, h_g0, dif_pos]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_pres]
     csnorm at h_bval ⊢
     simp only [h_bval]
@@ -5159,18 +5133,16 @@ theorem compileStmt_ref_projoffset_fresh_projsrc_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_borrow_eq, h_proj_eq,
       h_root, h_prun, h_pval, h_go, dif_neg]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_pres, emit_nil]
+    simp [csRun, cleanupInstrs, h_pres, emit_nil]
     csnorm at h_bval h_brun h_bres ⊢
     simp only [h_pres, h_bval, h_brun, h_bres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil, borrowRhs]
+    simp [csRun, cleanupInstrs, emit_nil, borrowRhs]
     rfl
   · obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_borrow_eq, h_proj_eq,
       h_root, h_prun, h_pval, h_go, dif_neg]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_pres]
     csnorm at h_bval ⊢
     simp only [h_bval]
@@ -5254,8 +5226,7 @@ theorem compileStmt_ref_projzero_fresh_selfsrc_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_borrow_eq, h_proj_eq,
       h_root, h_prun, h_pval, h_g0, dif_pos]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_pres, emit_nil]
+    simp [csRun, cleanupInstrs, h_pres, emit_nil]
     csnorm at h_bval h_brun h_bres ⊢
     simp only [h_bval, h_brun, h_bres]
     simp [emit_nil]
@@ -5263,7 +5234,7 @@ theorem compileStmt_ref_projzero_fresh_selfsrc_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_borrow_eq, h_proj_eq,
       h_root, h_prun, h_pval, h_g0, dif_pos]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_pres]
     csnorm at h_bval ⊢
     simp only [h_bval]
@@ -5349,18 +5320,16 @@ theorem compileStmt_ref_projoffset_fresh_selfsrc_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_borrow_eq, h_proj_eq,
       h_root, h_prun, h_pval, h_go, dif_neg]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_pres, emit_nil]
+    simp [csRun, cleanupInstrs, h_pres, emit_nil]
     csnorm at h_bval h_brun h_bres ⊢
     simp only [h_pres, h_bval, h_brun, h_bres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil, borrowRhs]
+    simp [csRun, cleanupInstrs, emit_nil, borrowRhs]
     rfl
   · obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_borrow_eq, h_proj_eq,
       h_root, h_prun, h_pval, h_go, dif_neg]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [h_pres]
     csnorm at h_bval ⊢
     simp only [h_bval]
@@ -5425,8 +5394,7 @@ theorem compileStmt_ref_projzero_fresh_derefsrc_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_bindB, h_proj_eq, h_root, h_dval, h_g0, dif_pos]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_dclean, emit_nil]
+    simp [csRun, cleanupInstrs, h_dclean, emit_nil]
     csnorm at h_bval h_brun h_bres ⊢
     simp only [h_bval, h_brun, h_bres]
     simp [emit_nil]
@@ -5434,7 +5402,7 @@ theorem compileStmt_ref_projzero_fresh_derefsrc_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_bindB, h_proj_eq, h_root, h_dval, h_g0, dif_pos]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     csnorm at h_bval ⊢
     simp only [h_bval]
     exact ⟨_, rfl⟩
@@ -5507,18 +5475,16 @@ theorem compileStmt_ref_projoffset_fresh_derefsrc_lowers
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_bindB, h_proj_eq, h_root, h_dval, h_go, dif_neg]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, h_dclean, emit_nil]
+    simp [csRun, cleanupInstrs, h_dclean, emit_nil]
     csnorm at h_bval h_brun h_bres ⊢
     simp only [h_bval, h_brun, h_bres]
-    simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-      cleanupInstrs, emit_nil, borrowRhs]
+    simp [csRun, cleanupInstrs, emit_nil, borrowRhs]
     rfl
   · obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dstPost
     simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
       h_bindB, h_proj_eq, h_root, h_dval, h_go, dif_neg]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     csnorm at h_bval ⊢
     simp only [h_bval]
     exact ⟨_, rfl⟩
@@ -11471,7 +11437,7 @@ theorem ref_derefdst_projsrc_simulation
     rw [h_run0]
     simp only [csMonad, compileStmtChecked, compileRExprPreChecked, placeToBorrowRegChecked,
       h_root, h_lprun, h_lpval, h_lpres]
-    simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+    simp only [csRun]
     simp only [csMonad, h_dval0]
     exact StateIncr.trans (emit_state_incr _ _)
       (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))

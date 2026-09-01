@@ -456,6 +456,8 @@ def TagRenameMap.extend (ρt : TagRenameMap) (s t : Tag) : TagRenameMap :=
 -- `@[simp]`, but every fragment proof uses `simp only`, which excludes
 -- the default set, so all 205 sites listed the six by hand, three lines
 -- each. `csMonad` (registered in proof/simpattrs.lean) names them once.
+attribute [csRun] CompilerM.run CompilerM.value emitM freshReg freshRegM
+
 attribute [csMonad] CheckedCompilerM.run_bind CheckedCompilerM.value_bind
 attribute [csMonad] CheckedCompilerM.run_lift CheckedCompilerM.value_lift
 attribute [csMonad] CheckedCompilerM.run_pure CheckedCompilerM.value_pure

@@ -41,8 +41,7 @@ theorem compileStmt_copy_chainsrc_run
   have h_run' : (ensureLocalRegE dstLoc cs).snd.val = cs := h_run
   simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
     h_run, h_run', h_val, h_sval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_sclean, emit_nil]
+  simp [csRun, cleanupInstrs, h_sclean, emit_nil]
 
 /-- The chain-src copy lowers. -/
 theorem compileStmt_copy_chainsrc_value
@@ -318,7 +317,7 @@ theorem copy_chainsrc_local_simulation
       obtain ⟨h_erun, h_eval⟩ := ensureLocalRegE_existing h_piD
       simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
         h_erun, h_sval0]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
@@ -535,8 +534,7 @@ theorem compileStmt_copy_projchain_zero_run
     (kind := RefKind.Shared) (base := B) path h_np
   simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
     h_proj_eq, h_run, h_run', h_val, h_bval, h_off, dif_pos]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bclean, emit_nil]
+  simp [csRun, cleanupInstrs, h_bclean, emit_nil]
 
 theorem compileStmt_copy_projchain_zero_value
     {Γ : Ctx} {τ σb : LayoutTy}
@@ -593,8 +591,7 @@ theorem compileStmt_copy_projchain_offset_run
     (kind := RefKind.Shared) (base := B) path h_np
   simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
     h_proj_eq, h_run, h_run', h_val, h_bval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bclean, emit_nil, h_off, borrowRhs]
+  simp [csRun, cleanupInstrs, h_bclean, emit_nil, h_off, borrowRhs]
   rfl
 
 theorem compileStmt_copy_projchain_offset_value
@@ -711,7 +708,7 @@ theorem copy_projchain_zero_simulation
         (kind := RefKind.Shared) (base := B) path h_np
       simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
         h_proj_eq, h_erun, h_bval0, h_off, dif_pos]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
@@ -991,7 +988,7 @@ theorem copy_projchain_offset_simulation
         (kind := RefKind.Shared) (base := B) path h_np
       simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
         h_proj_eq, h_erun, h_bval0, dif_neg h_off]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (freshReg_state_incr _)
@@ -1463,7 +1460,7 @@ theorem compileStmt_copy_fresh_chainsrc_run
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := dstLoc) h_dst
   simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked, h_run,
     h_val, h_sval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM, cleanupInstrs, h_sclean, emit_nil]
+  simp [csRun, cleanupInstrs, h_sclean, emit_nil]
 
 theorem compileStmt_copy_fresh_chainsrc_value
     {Γ : Ctx} {τ : LayoutTy}
@@ -1713,7 +1710,7 @@ theorem copy_fresh_chainsrc_simulation
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
         h_erun, h_sval0]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
@@ -2069,8 +2066,7 @@ theorem compileStmt_copy_fresh_projchain_zero_run
     (kind := RefKind.Shared) (base := B) path h_np
   simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
     h_proj_eq, h_run, h_val, h_bval, h_off, dif_pos]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bclean, emit_nil]
+  simp [csRun, cleanupInstrs, h_bclean, emit_nil]
 
 theorem compileStmt_copy_fresh_projchain_zero_value
     {Γ : Ctx} {τ σb : LayoutTy}
@@ -2159,8 +2155,7 @@ theorem compileStmt_copy_fresh_projchain_offset_run
     (kind := RefKind.Shared) (base := B) path h_np
   simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
     h_proj_eq, h_run, h_val, h_bval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bclean, emit_nil, h_off, borrowRhs]
+  simp [csRun, cleanupInstrs, h_bclean, emit_nil, h_off, borrowRhs]
   rfl
 
 theorem compileStmt_copy_fresh_projchain_offset_value
@@ -2429,7 +2424,7 @@ theorem copy_fresh_projchain_zero_simulation
       simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) path h_np,
         h_erun, h_sval0, h_off, dif_pos]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
@@ -2986,7 +2981,7 @@ theorem copy_fresh_projchain_offset_simulation
       simp only [csMonad, compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) path h_np,
         h_erun, h_sval0, dif_neg h_off]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       exact StateIncr.trans (freshReg_state_incr _)
         (StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (freshReg_state_incr _)
@@ -3582,8 +3577,7 @@ theorem compileStmt_copy_chaindst_projsrc_zero_run
   have h_pr := placeToRegChecked_proj_zero_run (kind := RefKind.Shared)
     spath (PtrChain.not_proj h_chainB) h_o cs
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_pv, h_pr]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+  simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
     List.append_nil]
   split
   · rename_i o h_d
@@ -3624,7 +3618,7 @@ theorem compileStmt_copy_chaindst_projsrc_zero_value
   have h_pr := placeToRegChecked_proj_zero_run (kind := RefKind.Shared)
     spath (PtrChain.not_proj h_chainB) h_o cs
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_pv, h_pr]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   split
   · exact ⟨_, rfl⟩
   · rename_i e h_d
@@ -3689,8 +3683,7 @@ theorem compileStmt_copy_chaindst_projsrc_offset_run
     (kind := RefKind.Shared) (base := B) spath h_np
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_proj_eq, h_root, h_bval,
     dif_neg h_o]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bclean, List.nil_append, List.reverse_cons,
+  simp only [csRun, cleanupInstrs, h_bclean, List.nil_append, List.reverse_cons,
     List.reverse_nil, List.nil_append, List.map_cons, List.map_nil]
   split
   · rename_i o h_d
@@ -3764,7 +3757,7 @@ theorem compileStmt_copy_chaindst_projsrc_offset_value
     (kind := RefKind.Shared) (base := B) spath h_np
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_proj_eq, h_root, h_bval,
     dif_neg h_o]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   split
   · exact ⟨_, rfl⟩
   · rename_i e h_d
@@ -3820,8 +3813,7 @@ theorem compileStmt_copy_chaindst_run
               (placeToRegChecked RefKind.Shared src) cs).nextReg)
             dOut.result.reg] := by
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+  simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
     List.append_nil]
   split
   · rename_i o h_d
@@ -3855,7 +3847,7 @@ theorem compileStmt_copy_chaindst_value
       (compileStmtChecked (Stmt.assign (.deref P) (.copy src))) cs
       = Except.ok so := by
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   split
   · exact ⟨_, rfl⟩
   · rename_i e h_d
@@ -3958,7 +3950,7 @@ theorem compileStmt_copy_derefdst_dstflatten_run
   cases hS : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
   | error eS => simp only [hS]
   | ok oS =>
-      simp only [hS, CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun, hS]
       obtain ⟨h_dagr, h_dagv⟩ := placeToRegChecked_flatten_agree
         (Place.deref pp) RefKind.Mut (emit
           { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1,
@@ -4037,7 +4029,7 @@ theorem compileStmt_copy_derefdst_dstflatten_value
       simp at h_so
   | ok oS =>
       rw [hS] at h_so
-      simp only [hS, CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun, hS]
         at h_so ⊢
       obtain ⟨h_dagr, h_dagv⟩ := placeToRegChecked_flatten_agree
         (Place.deref pp) RefKind.Mut (emit
@@ -4178,7 +4170,7 @@ theorem copy_chaindst_chainsrc_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval0]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       refine StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix)) ?_
       split
       · rename_i a h_a
@@ -4239,8 +4231,7 @@ theorem copy_chaindst_chainsrc_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+      simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
         List.append_nil]
       split
       · rename_i a h_a
@@ -4294,8 +4285,7 @@ theorem copy_chaindst_chainsrc_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+      simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
         List.append_nil]
       split
       · rename_i a h_a
@@ -4721,7 +4711,7 @@ theorem copy_chaindst_projsrc_zero_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_pv0, h_pr0]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       refine StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix)) ?_
       split
       · rename_i a h_a
@@ -4782,8 +4772,7 @@ theorem copy_chaindst_projsrc_zero_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_pv0, h_pr0]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+      simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
         List.append_nil]
       split
       · rename_i a h_a
@@ -4837,8 +4826,7 @@ theorem copy_chaindst_projsrc_zero_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_pv0, h_pr0]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+      simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
         List.append_nil]
       split
       · rename_i a h_a
@@ -5307,7 +5295,7 @@ theorem copy_chaindst_projsrc_offset_simulation
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
         h_root, h_sval0, dif_neg h_o]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       split
       · rename_i a h_a
         exact StateIncr.trans
@@ -5351,10 +5339,9 @@ theorem copy_chaindst_projsrc_offset_simulation
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
         h_root, h_sval, dif_neg h_o]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
-        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons,
-        List.map_nil, emit_nil]
+      simp only [csRun, cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
+        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons, List.map_nil,
+        emit_nil]
       split
       · rename_i a h_a
         exact StateIncr.trans
@@ -5380,10 +5367,9 @@ theorem copy_chaindst_projsrc_offset_simulation
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
         h_root, h_sval, dif_neg h_o]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
-        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons,
-        List.map_nil, emit_nil]
+      simp only [csRun, cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
+        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons, List.map_nil,
+        emit_nil]
       split
       · rename_i a h_a
         exact StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)
@@ -5834,8 +5820,7 @@ theorem compileStmt_copy_projlocal_fresh_zero_run
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
   simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprPreChecked, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_sclean, List.reverse_nil, List.map_nil, List.append_nil,
+  simp only [csRun, cleanupInstrs, h_sclean, List.reverse_nil, List.map_nil, List.append_nil,
     emit_nil]
   rw [h_brun, h_bval]
   simp [h_off, dif_pos, CompilerM.run, CompilerM.value, emitM, cleanupInstrs,
@@ -5904,12 +5889,10 @@ theorem compileStmt_copy_projlocal_fresh_offset_run
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
   simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprPreChecked, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_sclean, List.reverse_nil, List.map_nil, List.append_nil,
+  simp only [csRun, cleanupInstrs, h_sclean, List.reverse_nil, List.map_nil, List.append_nil,
     emit_nil]
   rw [h_brun, h_bval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
+  simp [csRun, cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
   rfl
 
 theorem compileStmt_copy_projlocal_fresh_value
@@ -5946,7 +5929,7 @@ theorem compileStmt_copy_projlocal_fresh_value
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
   simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprPreChecked, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   rw [h_bval]
   by_cases h_off : pathOffset path = 0
   · simp only [h_off, dif_pos]
@@ -6213,7 +6196,7 @@ theorem copy_projlocal_fresh_zero_simulation
       have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
         (base := Place.local loc) path (fun _ _ _ h => by cases h)
       simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprPreChecked, h_erun, h_sval0]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       simp only [csMonad, h_bval0, h_brun0, h_o, dif_pos]
       simp only [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres0,
         List.reverse_nil, List.map_nil, emit_nil]
@@ -6731,10 +6714,9 @@ theorem copy_projlocal_fresh_offset_simulation
       have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
         (base := Place.local loc) path (fun _ _ _ h => by cases h)
       simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprPreChecked, h_erun, h_sval0]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       simp only [csMonad, h_bval0, h_brun0, h_o, dif_pos]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_bres0, List.reverse_nil, List.map_nil, List.nil_append,
+      simp only [csRun, cleanupInstrs, h_bres0, List.reverse_nil, List.map_nil, List.nil_append,
         List.reverse_cons, List.map_cons]
       exact StateIncr.trans (freshReg_state_incr (emit
           { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1,
@@ -7180,10 +7162,8 @@ theorem compileStmt_copy_projlocal_fresh_projsrc_offset_zero_run
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
   simp only [csMonad, compileStmtChecked, h_proj_eqS, h_proj_eqD, compileRExprPreChecked, h_root,
     h_bval, dif_neg h_so]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bclean, List.nil_append, List.cons_append,
-    List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons,
-    List.map_nil]
+  simp only [csRun, cleanupInstrs, h_bclean, List.nil_append, List.cons_append, List.append_nil,
+    List.reverse_cons, List.reverse_nil, List.map_cons, List.map_nil]
   simp only [csMonad, h_bval2, h_brun, h_do, dif_pos]
   simp only [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres,
     List.reverse_nil, List.map_nil, emit_nil]
@@ -7236,13 +7216,10 @@ theorem compileStmt_copy_projlocal_fresh_projsrc_offset_offset_run
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
   simp only [csMonad, compileStmtChecked, h_proj_eqS, h_proj_eqD, compileRExprPreChecked, h_root,
     h_bval, dif_neg h_so]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bclean, List.nil_append, List.cons_append,
-    List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons,
-    List.map_nil]
+  simp only [csRun, cleanupInstrs, h_bclean, List.nil_append, List.cons_append, List.append_nil,
+    List.reverse_cons, List.reverse_nil, List.map_cons, List.map_nil]
   simp only [csMonad, h_bval2, h_brun, dif_neg h_do]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bres, emit_nil, borrowRhs]
+  simp [csRun, cleanupInstrs, h_bres, emit_nil, borrowRhs]
 
 theorem compileStmt_copy_projlocal_fresh_projsrc_offset_value
     {Γ : Ctx} {τ σ σs : LayoutTy} {loc : Local Γ σ} {dpath : PathTo σ τ}
@@ -7284,7 +7261,7 @@ theorem compileStmt_copy_projlocal_fresh_projsrc_offset_value
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
   simp only [csMonad, compileStmtChecked, h_proj_eqS, h_proj_eqD, compileRExprPreChecked, h_root,
     h_bval, dif_neg h_so]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   simp only [h_bval2]
   by_cases h_do : pathOffset dpath = 0
   · simp only [h_do, dif_pos]
@@ -7534,7 +7511,7 @@ theorem copy_projlocal_fresh_projsrc_offset_zero_simulation
       simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_schain.not_proj,
         h_erun, h_sval0, dif_neg h_so]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       simp only [csMonad, h_bval0, h_brun0, h_o, dif_pos]
       simp only [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres0,
         List.reverse_nil, List.map_nil, emit_nil]
@@ -8092,7 +8069,7 @@ theorem copy_projlocal_fresh_projsrc_offset_offset_simulation
       simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_schain.not_proj,
         h_erun, h_sval0, dif_neg h_so]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       simp only [csMonad, h_bval0, h_brun0, dif_neg h_o]
       simp only [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres0,
         List.reverse_nil, List.map_nil, emit_nil]
@@ -8587,7 +8564,7 @@ theorem compileStmt_copy_projderefdst_dstflatten_run
   cases hS : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) path)) cs) with
   | error eS => simp only [hS]
   | ok oS =>
-      simp only [hS, CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun, hS]
       obtain ⟨h_dagr, h_dagv⟩ := placeToRegChecked_flatten_agree
         (Place.proj (Place.deref pp) path) RefKind.Mut (emit
           { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.proj (Place.deref pp) path) cs).snd.val).nextReg + 1,
@@ -8667,7 +8644,7 @@ theorem compileStmt_copy_projderefdst_dstflatten_value
       simp at h_so
   | ok oS =>
       rw [hS] at h_so
-      simp only [hS, CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun, hS]
         at h_so ⊢
       obtain ⟨h_dagr, h_dagv⟩ := placeToRegChecked_flatten_agree
         (Place.proj (Place.deref pp) path) RefKind.Mut (emit
@@ -8747,8 +8724,7 @@ theorem compileStmt_copy_projdst_zero_run
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := dbase) path h_np
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_proj_eq, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+  simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
     List.append_nil]
   rw [h_dval]
   simp [h_off, dif_pos, CompilerM.run, CompilerM.value, emitM, cleanupInstrs,
@@ -8785,7 +8761,7 @@ theorem compileStmt_copy_projdst_zero_value
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := dbase) path h_np
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_proj_eq, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   split
   · exact ⟨_, rfl⟩
   · rename_i e h_d
@@ -8869,12 +8845,10 @@ theorem compileStmt_copy_projdst_offset_run
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := dbase) path h_np
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_proj_eq, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+  simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
     List.append_nil]
   rw [h_dval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs]
+  simp [csRun, cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs]
 
 /-- The nonzero-offset projected copy statement lowers. -/
 theorem compileStmt_copy_projdst_offset_value
@@ -8908,9 +8882,9 @@ theorem compileStmt_copy_projdst_offset_value
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := dbase) path h_np
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_proj_eq, h_root, h_sval]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   rw [h_dval]
-  simp only [csMonad, dif_neg h_off, CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun, csMonad, dif_neg h_off]
   exact ⟨_, rfl⟩
 
 /-! ## PROJECTED destination with a PROJ-TOPPED source at NONZERO
@@ -8998,10 +8972,8 @@ theorem compileStmt_copy_projdst_zero_projsrc_offset_run
     (kind := RefKind.Mut) (base := dbase) dpath h_npD
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_proj_eqS, h_proj_eqD, h_root,
     h_bval, dif_neg h_so]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bclean, List.nil_append, List.cons_append,
-    List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons,
-    List.map_nil]
+  simp only [csRun, cleanupInstrs, h_bclean, List.nil_append, List.cons_append, List.append_nil,
+    List.reverse_cons, List.reverse_nil, List.map_cons, List.map_nil]
   simp only [csMonad, h_dval, h_do, dif_pos]
   simp only [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean,
     List.reverse_nil, List.map_nil, emit_nil]
@@ -9177,13 +9149,10 @@ theorem compileStmt_copy_projdst_offset_projsrc_offset_run
     (kind := RefKind.Mut) (base := dbase) dpath h_npD
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_proj_eqS, h_proj_eqD, h_root,
     h_bval, dif_neg h_so]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bclean, List.nil_append, List.cons_append,
-    List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons,
-    List.map_nil]
+  simp only [csRun, cleanupInstrs, h_bclean, List.nil_append, List.cons_append, List.append_nil,
+    List.reverse_cons, List.reverse_nil, List.map_cons, List.map_nil]
   simp only [csMonad, h_dval, dif_neg h_do]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_dclean, emit_nil, borrowRhs]
+  simp [csRun, cleanupInstrs, h_dclean, emit_nil, borrowRhs]
 
 theorem compileStmt_copy_projdst_projsrc_offset_value
     {Γ : Ctx} {τ σb σs : LayoutTy}
@@ -9233,7 +9202,7 @@ theorem compileStmt_copy_projdst_projsrc_offset_value
     (kind := RefKind.Mut) (base := dbase) dpath h_npD
   simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_proj_eqS, h_proj_eqD, h_root,
     h_bval, dif_neg h_so]
-  simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+  simp only [csRun]
   simp only [h_dval]
   by_cases h_do : pathOffset dpath = 0
   · simp only [h_do, dif_pos]
@@ -9405,7 +9374,7 @@ theorem copy_projdst_zero_projsrc_offset_simulation
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
         h_root, h_sval0, dif_neg h_o, h_proj_eqD, h_do, dif_pos]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       have h_d0 := h_dval0
       csnorm at h_d0 ⊢
       simp only [h_d0]
@@ -9442,10 +9411,9 @@ theorem copy_projdst_zero_projsrc_offset_simulation
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
         h_root, h_sval, dif_neg h_o, h_proj_eqD, h_do, dif_pos]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
-        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons,
-        List.map_nil, emit_nil]
+      simp only [csRun, cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
+        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons, List.map_nil,
+        emit_nil]
       trace_state
       have h_d1 := h_dval0
       simp only [h_sclean, cleanupInstrs, List.nil_append, List.cons_append,
@@ -9474,10 +9442,9 @@ theorem copy_projdst_zero_projsrc_offset_simulation
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
         h_root, h_sval, dif_neg h_o, h_proj_eqD, h_do, dif_pos]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
-        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons,
-        List.map_nil, emit_nil]
+      simp only [csRun, cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
+        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons, List.map_nil,
+        emit_nil]
       trace_state
       have h_d1 := h_dval0
       simp only [h_sclean, cleanupInstrs, List.nil_append, List.cons_append,
@@ -9997,7 +9964,7 @@ theorem copy_projdst_offset_projsrc_offset_simulation
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
         h_root, h_sval0, dif_neg h_o, h_proj_eqD, dif_neg h_do]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       have h_d0 := h_dval0
       csnorm at h_d0 ⊢
       simp only [h_d0]
@@ -10036,10 +10003,9 @@ theorem copy_projdst_offset_projsrc_offset_simulation
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
         h_root, h_sval, dif_neg h_o, h_proj_eqD, dif_neg h_do]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
-        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons,
-        List.map_nil, emit_nil]
+      simp only [csRun, cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
+        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons, List.map_nil,
+        emit_nil]
       trace_state
       have h_d1 := h_dval0
       simp only [h_sclean, cleanupInstrs, List.nil_append, List.cons_append,
@@ -10070,10 +10036,9 @@ theorem copy_projdst_offset_projsrc_offset_simulation
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked,
         placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
         h_root, h_sval, dif_neg h_o, h_proj_eqD, dif_neg h_do]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
-        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons,
-        List.map_nil, emit_nil]
+      simp only [csRun, cleanupInstrs, h_sclean, List.nil_append, List.cons_append,
+        List.append_nil, List.reverse_cons, List.reverse_nil, List.map_cons, List.map_nil,
+        emit_nil]
       trace_state
       have h_d1 := h_dval0
       simp only [h_sclean, cleanupInstrs, List.nil_append, List.cons_append,
@@ -10713,7 +10678,7 @@ theorem copy_projdst_zero_chainsrc_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval0]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       rw [placeToRegChecked_proj_zero_run path h_dchain.not_proj h_o]
       refine StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix)) ?_
       split
@@ -10775,8 +10740,7 @@ theorem copy_projdst_zero_chainsrc_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+      simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
         List.append_nil]
       rw [placeToRegChecked_proj_zero_run path h_dchain.not_proj h_o]
       split
@@ -10831,8 +10795,7 @@ theorem copy_projdst_zero_chainsrc_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+      simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
         List.append_nil]
       rw [placeToRegChecked_proj_zero_run path h_dchain.not_proj h_o]
       split
@@ -11251,7 +11214,7 @@ theorem copy_projdst_offset_chainsrc_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval0]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
+      simp only [csRun]
       refine StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix)) ?_
       split
       · rename_i a h_a
@@ -11312,8 +11275,7 @@ theorem copy_projdst_offset_chainsrc_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+      simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
         List.append_nil]
       split
       · rename_i a h_a
@@ -11395,8 +11357,7 @@ theorem copy_projdst_offset_chainsrc_simulation
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
       rw [h_run0]
       simp only [csMonad, compileStmtChecked, compileRExprPreChecked, h_root, h_sval]
-      simp only [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-        cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
+      simp only [csRun, cleanupInstrs, h_sclean, emit_nil, List.reverse_nil, List.map_nil,
         List.append_nil]
       split
       · rename_i a h_a

@@ -938,8 +938,7 @@ theorem compileStmt_proj_offset_run
             }) := placeToRegChecked_proj_root_eq path h_np
   simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
     compileRExprPreChecked, h_root, h_brun, h_bval, dif_neg h_off]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bres, emit_nil]
+  simp [csRun, cleanupInstrs, h_bres, emit_nil]
 
 theorem compileStmt_proj_offset_uninit_run
     {Γ : Ctx} {σ : LayoutTy} {base : Place Γ σ}
@@ -985,8 +984,7 @@ theorem compileStmt_proj_offset_uninit_run
             }) := placeToRegChecked_proj_root_eq path h_np
   simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
     compileRExprPreChecked, h_root, h_brun, h_bval, dif_neg h_off]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bres, emit_nil]
+  simp [csRun, cleanupInstrs, h_bres, emit_nil]
 
 /-- The fragment of `(*P).path := v` at ZERO offset, over the OPAQUE
     run of the pointer-place lowering `Mut (.deref P)` — the projection
@@ -1105,8 +1103,7 @@ theorem compileStmt_proj_deref_run
     (base := .deref P) path (fun _ _ _ h => by cases h)
   simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
     compileRExprPreChecked, h_root, h_dval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs]
+  simp [csRun, cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs]
 
 theorem compileStmt_proj_deref_run_uninit
     {Γ : Ctx} {σ : LayoutTy}
@@ -1138,8 +1135,7 @@ theorem compileStmt_proj_deref_run_uninit
     (base := .deref P) path (fun _ _ _ h => by cases h)
   simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
     compileRExprPreChecked, h_root, h_dval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs]
+  simp [csRun, cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs]
 
 /-- The nonzero-offset projected statement lowers. -/
 theorem compileStmt_proj_deref_value
@@ -2698,8 +2694,7 @@ theorem compileStmt_proj_fresh_offset_run
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
   simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
     compileRExprPreChecked, h_root, h_brun, h_bval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
+  simp [csRun, cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
   rfl
 
 theorem compileStmt_proj_fresh_offset_uninit_run
@@ -2742,8 +2737,7 @@ theorem compileStmt_proj_fresh_offset_uninit_run
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
   simp only [csMonad, compileStmtChecked, h_proj_eq, compileRExprToChecked,
     compileRExprPreChecked, h_root, h_brun, h_bval]
-  simp [CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM,
-    cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
+  simp [csRun, cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
   rfl
 
 /-- The fresh projected statement lowers (either offset). -/

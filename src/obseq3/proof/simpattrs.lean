@@ -13,6 +13,10 @@ hold those declarations; the lemmas themselves are tagged in
   `run_pure`/`value_pure`). They are already global `@[simp]`, but every
   fragment proof uses `simp only`, which excludes the default set, so
   each of the 205 call sites listed all six by hand.
+* `csRun` — the `CompilerM` plumbing a fragment lemma unfolds to reach
+  the emitted instruction list (`CompilerM.run`/`value`, `emitM`,
+  `freshReg`/`freshRegM`). 142 sites listed all five.
 -/
 
 register_simp_attr csMonad
+register_simp_attr csRun
