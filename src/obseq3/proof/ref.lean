@@ -950,6 +950,7 @@ theorem ref_fresh_dst_simulation
           -- `RStore` through the root, the memory extension, the rebuild
           simp only [hD1] at h_step
           exact copy_freshroot_write_after_read
+            (τ := obseq.LayoutTy.PtrL τ)
             (csR := (emit
               { (setPlaceInfo
                 (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
@@ -997,7 +998,7 @@ theorem ref_fresh_dst_simulation
               List.length_nil])
             (RegMap.lookup_insert_self _ _ _)
             (by simp [blockSize, obseq.layoutSize])
-            h_stmtRun (by simp [blockSize, obseq.layoutSize]) rfl rfl
+            h_stmtRun (by simp [blockSize, obseq.layoutSize]) (Nat.le_refl _) rfl rfl
             ⟨⟨h_raS', by simp, rfl, h_rt_new, h_nwR,
               fun k hk => ⟨(h_domS k hk).choose,
                 h_incr_a _ _ (h_domS k hk).choose_spec⟩⟩, trivial⟩
@@ -4500,6 +4501,7 @@ theorem ref_fresh_projsrc_simulation
           -- §9-§10 the fresh-root WRITE seam, shared with copy
           simp only [hD1] at h_step
           exact copy_freshroot_write_after_read
+            (τ := obseq.LayoutTy.PtrL τ)
             (csR := emit
               { (setPlaceInfo
                 (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
@@ -4547,7 +4549,7 @@ theorem ref_fresh_projsrc_simulation
               List.length_nil])
             (RegMap.lookup_insert_self _ _ _)
             (by simp [blockSize, obseq.layoutSize])
-            h_stmtRun (by simp [blockSize, obseq.layoutSize]) rfl rfl
+            h_stmtRun (by simp [blockSize, obseq.layoutSize]) (Nat.le_refl _) rfl rfl
             ⟨⟨h_raS', by simp [Nat.add_sub_cancel_left], rfl, h_rt_new, h_nwR,
               fun k hk => ⟨(h_domS k hk).choose,
                 h_incr_a _ _ (h_domS k hk).choose_spec⟩⟩, trivial⟩
@@ -6146,6 +6148,7 @@ theorem ref_fresh_derefsrc_simulation
       hFrag9.instrAt 1 rfl rfl
     -- §10-§11 the fresh-root WRITE seam, shared with copy
     exact copy_freshroot_write_after_read
+            (τ := obseq.LayoutTy.PtrL τ)
       (csR := (emit
           { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (Place.deref P)) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.PtrL τ))) with
             nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (Place.deref P)) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.PtrL τ))).nextReg + 1 }
@@ -6176,7 +6179,7 @@ theorem ref_fresh_derefsrc_simulation
           simp only [emit, List.length_cons, List.length_nil])
       (RegMap.lookup_insert_self _ _ _)
       (by simp [blockSize, obseq.layoutSize])
-      h_stmtRun (by simp [blockSize, obseq.layoutSize]) rfl rfl
+      h_stmtRun (by simp [blockSize, obseq.layoutSize]) (Nat.le_refl _) rfl rfl
       ⟨⟨h_dbase, by simp, rfl, h_rt_new2, h_nw_new,
         fun k hk => h_drange k hk⟩, trivial⟩
       h_step
@@ -8857,6 +8860,7 @@ theorem ref_fresh_derefprojsrc_simulation
       hFrag17.instrAt 1 rfl rfl
     -- §10-§11 the fresh-root WRITE seam, shared with copy
     exact copy_freshroot_write_after_read
+            (τ := obseq.LayoutTy.PtrL τ)
       (csR := (emit
           { (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.PtrL τ))) with
             nextReg := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.PtrL τ))).nextReg + 1 }
@@ -8888,7 +8892,7 @@ theorem ref_fresh_derefprojsrc_simulation
           simp only [emit, List.length_cons, List.length_nil])
       (RegMap.lookup_insert_self _ _ _)
       (by simp [blockSize, obseq.layoutSize])
-      h_stmtRun (by simp [blockSize, obseq.layoutSize]) rfl rfl
+      h_stmtRun (by simp [blockSize, obseq.layoutSize]) (Nat.le_refl _) rfl rfl
       ⟨⟨h_dbase, h_off_eq, rfl, h_rt_new2, h_nw_new,
         fun k hk => h_drange k hk⟩, trivial⟩
       h_step

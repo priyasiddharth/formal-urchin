@@ -2304,7 +2304,7 @@ theorem copy_fresh_chainsrc_simulation
       h_addr_eq h_sz h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
       (RegMap.lookup_insert_self _ _ _) (by rw [oseair_readWordSeq_length])
-      h_stmtRun (by rw [mirlite_readWordSeq_length]) rfl rfl h_rel h_step
+      h_stmtRun (by rw [mirlite_readWordSeq_length]) (Nat.le_refl _) rfl rfl h_rel h_step
 /-! ## FRESH destination with a PROJ-TOPPED source: the root `Alloc`,
     then the base lowering, then the projection's own shape. -/
 
@@ -2670,7 +2670,7 @@ theorem copy_fresh_projchain_zero_simulation
       h_addr_eq h_sz h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
       (RegMap.lookup_insert_self _ _ _) (by rw [oseair_readWordSeq_length])
-      h_stmtRun (by rw [mirlite_readWordSeq_length]) rfl rfl h_rel h_step
+      h_stmtRun (by rw [mirlite_readWordSeq_length]) (Nat.le_refl _) rfl rfl h_rel h_step
 /-- REGIME B for copy with a PROJ-TOPPED source at NONZERO offset,
     CLOSED 2026-08-29: `dst := copy B.f` with an UNBOUND destination.
     The root `Alloc` runs first and the mother lemma is called at the
@@ -2878,7 +2878,7 @@ theorem copy_fresh_projchain_offset_simulation
       h_addr_eq h_sz h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
       (RegMap.lookup_insert_self _ _ _) (by rw [oseair_readWordSeq_length])
-      h_stmtRun (by rw [mirlite_readWordSeq_length]) rfl rfl h_rel h_step
+      h_stmtRun (by rw [mirlite_readWordSeq_length]) (Nat.le_refl _) rfl rfl h_rel h_step
 /-! ## NON-LOCAL destination: the fragment composes TWO place lowerings.
 
 `compileStmtChecked`'s general assign arm runs the rhs pre-phase (the
