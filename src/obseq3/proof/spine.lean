@@ -2509,7 +2509,14 @@ theorem copy_freshroot_prologue
     (h_alloc : AllocLockstep s_mir.mem s_osea.mem)
     (h_lbs : LocalBindingSim ρa ρt s_mir.env s_osea csPrefix)
     (h_prb : PlaceRegMapBound csPrefix)
-    (h_pi_none : getPlaceInfo csPrefix dstLoc.idx.1 = none) :
+    (h_pi_none : getPlaceInfo csPrefix dstLoc.idx.1 = none)
+    -- the ADDRESS rename grows however the caller likes -- a whole block for
+    -- a copy, a single address for a borrow -- so its four facts come in
+    {ρa' : AddrRenameMap}
+    (h_incr_a : AddrRenameIncr ρa ρa') (h_id_a' : IdentityOnDomain ρa')
+    (h_ra_base : ρa' s_mir.mem.addrStart = some s_mir.mem.addrStart)
+    (h_ra_dom : ∀ k, k < blockSize τ →
+      ρa' (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k)) :
     ∃ (permsOwned tgtPerms : MSB.State),
       -- the two allocations
       MSB.own s_osea.perms s_osea.mem.addrStart (obseq.typeSize (layoutToTyVal τ))
@@ -2524,13 +2531,8 @@ theorem copy_freshroot_prologue
       s1.mem.addrStart = s_mir.mem.addrStart + blockSize τ ∧
       (∀ a, mirlite.Mem.find? s1.mem a = mirlite.Mem.find? s_mir.mem a) ∧
       -- the two renames grow
-      AddrRenameIncr ρa (ρa.extendBlock s_mir.mem.addrStart (blockSize τ)) ∧
       TagRenameIncr ρt (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) ∧
-      IdentityOnDomain (ρa.extendBlock s_mir.mem.addrStart (blockSize τ)) ∧
       TagRenameWF (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) ∧
-      (∀ k, k < blockSize τ →
-        (ρa.extendBlock s_mir.mem.addrStart (blockSize τ)) (s_mir.mem.addrStart + k)
-          = some (s_mir.mem.addrStart + k)) ∧
       TagRenameBounded (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) permsOwned.NextTag tgtPerms.NextTag ∧
       PermSim (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) permsOwned tgtPerms ∧
       -- and the post-`Alloc` states are a start state for a source package
@@ -2542,7 +2544,7 @@ theorem copy_freshroot_prologue
       (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
         [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
       dstLoc.idx.1 (Register.R csPrefix.nextReg, τ)) ∧
-      LocalBindingSim (ρa.extendBlock s_mir.mem.addrStart (blockSize τ)) (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) s1.env
+      LocalBindingSim ρa' (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) s1.env
         { s_osea with
       mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal τ))).2,
       perms := tgtPerms,
@@ -2565,15 +2567,6 @@ theorem copy_freshroot_prologue
     sb_own_respects_PermSim h_psim h_wf_t h_tbd h_own_src
   subst h_tagS_eq
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
-  have h_incr_a :=
-    AddrRenameIncr.extendBlock h_id_a s_mir.mem.addrStart (blockSize τ)
-  have h_id_a' :=
-    IdentityOnDomain.extendBlock h_id_a s_mir.mem.addrStart (blockSize τ)
-  have h_ra_dom : ∀ k, k < blockSize τ →
-      (ρa.extendBlock s_mir.mem.addrStart (blockSize τ)) (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
-    fun _ hk => AddrRenameMap.extendBlock_mem hk
-  have h_ra_base : (ρa.extendBlock s_mir.mem.addrStart (blockSize τ)) s_mir.mem.addrStart = some s_mir.mem.addrStart :=
-    AddrRenameMap.extendBlock_base _ _ _
   have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) s_mir.perms.NextTag = some s_osea.perms.NextTag :=
     TagRenameMap.extend_self _ _ _
   have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
@@ -2597,7 +2590,7 @@ theorem copy_freshroot_prologue
     (by rw [← h_s1]; simp [mirlite.Env.lookup, mirlite.Env.set]),
     (by rw [← h_s1]),
     (fun a => by rw [← h_s1]; rfl),
-    h_incr_a, h_incr_t, h_id_a', h_wf_t', h_ra_dom, h_tbd', h_psim',
+    h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erun, ?_, ?_⟩
   · intro idx reg τ'' h_look
     by_cases h_i : idx = dstLoc.idx.1

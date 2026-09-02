@@ -2183,11 +2183,20 @@ theorem copy_fresh_chainsrc_simulation
     simp only [mirPrep, mirAlloc, h_envD]] at h_prep
   -- §2 the allocation prologue: both roots, both renames, and the
   -- post-`Alloc` states a source package starts from
+  have h_incr_a :=
+    AddrRenameIncr.extendBlock h_id_a s_mir.mem.addrStart (blockSize τ)
+  have h_id_a' :=
+    IdentityOnDomain.extendBlock h_id_a s_mir.mem.addrStart (blockSize τ)
+  have h_ra_dom : ∀ k, k < blockSize τ →
+      (ρa.extendBlock s_mir.mem.addrStart (blockSize τ))
+        (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
+    fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_a, h_incr_t, h_id_a', h_wf_t',
-    h_ra_dom, h_tbd', h_psim', h_erun, h_prb1, h_lbs1⟩ :=
+    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_erun, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_pi_none
+      h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
+      h_ra_dom
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
   have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
     obseq.typeSize_layoutToTyVal _
@@ -2501,11 +2510,20 @@ theorem copy_fresh_projchain_zero_simulation
     simp only [mirPrep, mirAlloc, h_envD]] at h_prep
   -- §2 the allocation prologue: both roots, both renames, and the
   -- post-`Alloc` states a source package starts from
+  have h_incr_a :=
+    AddrRenameIncr.extendBlock h_id_a s_mir.mem.addrStart (blockSize τ)
+  have h_id_a' :=
+    IdentityOnDomain.extendBlock h_id_a s_mir.mem.addrStart (blockSize τ)
+  have h_ra_dom : ∀ k, k < blockSize τ →
+      (ρa.extendBlock s_mir.mem.addrStart (blockSize τ))
+        (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
+    fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_a, h_incr_t, h_id_a', h_wf_t',
-    h_ra_dom, h_tbd', h_psim', h_erun, h_prb1, h_lbs1⟩ :=
+    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_erun, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_pi_none
+      h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
+      h_ra_dom
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
   have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
     obseq.typeSize_layoutToTyVal _
@@ -2703,11 +2721,20 @@ theorem copy_fresh_projchain_offset_simulation
     simp only [mirPrep, mirAlloc, h_envD]] at h_prep
   -- §2 the allocation prologue: both roots, both renames, and the
   -- post-`Alloc` states a source package starts from
+  have h_incr_a :=
+    AddrRenameIncr.extendBlock h_id_a s_mir.mem.addrStart (blockSize τ)
+  have h_id_a' :=
+    IdentityOnDomain.extendBlock h_id_a s_mir.mem.addrStart (blockSize τ)
+  have h_ra_dom : ∀ k, k < blockSize τ →
+      (ρa.extendBlock s_mir.mem.addrStart (blockSize τ))
+        (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
+    fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_a, h_incr_t, h_id_a', h_wf_t',
-    h_ra_dom, h_tbd', h_psim', h_erun, h_prb1, h_lbs1⟩ :=
+    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_erun, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_pi_none
+      h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
+      h_ra_dom
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
   have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
     obseq.typeSize_layoutToTyVal _
@@ -3990,11 +4017,20 @@ theorem copy_projlocal_fresh_simulation
     simp only [mirPrep, mirAlloc, h_envD]] at h_prep
   -- §2 the allocation prologue: both roots, both renames, and the
   -- post-`Alloc` states a source package starts from
+  have h_incr_a :=
+    AddrRenameIncr.extendBlock h_id_a s_mir.mem.addrStart (blockSize σ)
+  have h_id_a' :=
+    IdentityOnDomain.extendBlock h_id_a s_mir.mem.addrStart (blockSize σ)
+  have h_ra_dom : ∀ k, k < blockSize σ →
+      (ρa.extendBlock s_mir.mem.addrStart (blockSize σ))
+        (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
+    fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_a, h_incr_t, h_id_a', h_wf_t',
-    h_ra_dom, h_tbd', h_psim', h_erunL, h_prb1, h_lbs1⟩ :=
+    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_erunL, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_pi_none
+      h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
+      h_ra_dom
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
   -- §3 the source read, kept OPAQUE at the chain
   simp only [mirlite.evalRExpr] at h_step
@@ -4937,11 +4973,20 @@ theorem copy_projlocal_fresh_projsrc_simulation
     simp only [mirPrep, mirAlloc, h_envD]] at h_prep
   -- §2 the allocation prologue: both roots, both renames, and the
   -- post-`Alloc` states a source package starts from
+  have h_incr_a :=
+    AddrRenameIncr.extendBlock h_id_a s_mir.mem.addrStart (blockSize σ)
+  have h_id_a' :=
+    IdentityOnDomain.extendBlock h_id_a s_mir.mem.addrStart (blockSize σ)
+  have h_ra_dom : ∀ k, k < blockSize σ →
+      (ρa.extendBlock s_mir.mem.addrStart (blockSize σ))
+        (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
+    fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_a, h_incr_t, h_id_a', h_wf_t',
-    h_ra_dom, h_tbd', h_psim', h_erunL, h_prb1, h_lbs1⟩ :=
+    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_erunL, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_pi_none
+      h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
+      h_ra_dom
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
   -- §3 the source read, kept OPAQUE at the chain
   simp only [mirlite.evalRExpr] at h_step
