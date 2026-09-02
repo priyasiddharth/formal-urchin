@@ -36,15 +36,18 @@ open obseq3.oseair (Instr Register Rhs Val)
 /-- The compiled fragment of a constant write to an already-mapped local is
     exactly one `CStore` through the mapped register. -/
 theorem compileStmt_local_existing_run
-    {Γ : Ctx} {loc : Local Γ obseq.LayoutTy.NatL} {cs : CompilerState}
+    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
     {reg : Register}
-    (v : Word)
-    (h : getPlaceInfo cs loc.idx.1 = some (reg, obseq.LayoutTy.NatL)) :
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
+    (h : getPlaceInfo cs loc.idx.1 = some (reg, τ)) :
     CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.local loc) (.constInit v))) cs
-      = emit cs [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] reg] := by
+        (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs
+      = emit cs [Instr.CStore ty vs' reg] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h
-  simp [csCompile, compileRExprToChecked, h_run, h_val]
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+  simp [compileStmtChecked, compileRExprToChecked, h_run, h_val, h_prun, h_pval,
+    h_pstore, h_pclean]
   simp [CompilerM.run, emitM, cleanupInstrs, emit_nil]
 
 /-! ## §F What a constant-store rvalue supplies
@@ -370,27 +373,6 @@ theorem blockSize_eq_typeSize (τ : LayoutTy) :
     blockSize τ = obseq.typeSize (layoutToTyVal τ) := by
   simp [blockSize]
 
-theorem compileStmt_local_uninit_run
-    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
-    {reg : Register}
-    (h : getPlaceInfo cs loc.idx.1 = some (reg, τ)) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.local loc) .uninit)) cs
-      = emit cs [Instr.CStore (layoutToTyVal τ)
-          (List.replicate (blockSize τ) Val.Undef) reg] := by
-  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h
-  simp [csCompile, compileRExprToChecked, h_run, h_val]
-  simp [CompilerM.run, emitM, cleanupInstrs, emit_nil]
-
-
-/-- REGIME B, CLOSED: constant write to a FRESH local. The destination is
-    unbound, so mirlite's `preparePlaceAssign` allocated it and the
-    compiled fragment is two instructions — the root `Alloc` that
-    `ensurePlaceRoot` emits, then the `CStore`. This is the only regime
-    that grows BOTH renames: `AllocLockstep` makes the two allocators hand
-    out the same address (so ρa extends by the identity pair) and the
-    `sb_own` member mints the root tag on both machines (so ρt extends at
-    the fresh pair). -/
 theorem const_store_fresh_local_simulation
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -622,43 +604,15 @@ theorem const_store_fresh_local_simulation
           grind
 
 
-/-- The compiled fragment for an undef-fill of a FRESH local: the root
-    `Alloc` that `ensurePlaceRoot` emits, then the wide `CStore`. -/
-theorem compileStmt_local_fresh_uninit_run
-    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
-    (h : getPlaceInfo cs loc.idx.1 = none) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.local loc) .uninit)) cs
-      = emit
-          (setPlaceInfo
-            (emit { cs with nextReg := cs.nextReg + 1 }
-              [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
-            loc.idx.1 (Register.R cs.nextReg, τ))
-          [Instr.CStore (layoutToTyVal τ)
-            (List.replicate (blockSize τ) Val.Undef) (Register.R cs.nextReg)] := by
-  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
-  have h_pi : getPlaceInfo
-      (setPlaceInfo
-        (emit { cs with nextReg := cs.nextReg + 1 }
-          [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
-        loc.idx.1 (Register.R cs.nextReg, τ))
-      loc.idx.1 = some (Register.R cs.nextReg, τ) :=
-    getPlaceInfo_setPlaceInfo_self _ _ _
-  simp [csCompile, compileRExprToChecked, CompilerM.run_bind, CompilerM.run_pure, h_run, h_val,
-    placeToRegChecked, h_pi]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, emit_nil]
-
-
-/-- Zero-offset projection off a mapped local: the fragment is one
-    `CStore` through the base's own register. -/
 theorem compileStmt_proj_zero_run
-    {Γ : Ctx} {σ : LayoutTy} {base : Place Γ σ}
-    {path : PathTo σ obseq.LayoutTy.NatL} {cs : CompilerState}
+    {Γ : Ctx} {σ τ : LayoutTy} {base : Place Γ σ}
+    {path : PathTo σ τ} {cs : CompilerState}
     {baseOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut base)}
     {reg : Register}
     (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
       base = b.proj q → False)
-    (v : Word)
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h_off : pathOffset path = 0)
     (h_root : CompilerM.run (ensurePlaceRoot (Place.proj base path)) cs = cs)
     (h_brun : CheckedCompilerM.run (placeToRegChecked RefKind.Mut base) cs = cs)
@@ -666,50 +620,8 @@ theorem compileStmt_proj_zero_run
       = Except.ok baseOut)
     (h_bres : baseOut.result = { reg := reg, cleanup := [] }) :
     CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj base path) (.constInit v))) cs
-      = emit cs [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] reg] := by
-  have h_proj_eq : placeToRegChecked (Γ := Γ) RefKind.Mut (.proj base path)
-      = (do
-          let baseOut ← placeToRegChecked RefKind.Mut base
-          let baseRes := baseOut.result
-          let offset := pathOffset path
-          if h_offset : offset = 0 then
-            pure {
-              result := baseRes,
-              evidence := PlaceToRegEvidence.projZero base path baseRes
-                baseOut.evidence h_offset
-            }
-          else
-            let tmpReg ← CheckedCompilerM.lift freshRegM
-            let _ ← CheckedCompilerM.lift
-              (emitM [Instr.Assgn tmpReg
-                (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL) baseRes.reg offset)])
-            pure {
-              result := { reg := tmpReg,
-                          cleanup := baseRes.cleanup ++ [(tmpReg, blockSize obseq.LayoutTy.NatL)] },
-              evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
-                baseOut.evidence h_offset
-            }) := placeToRegChecked_proj_root_eq path h_np
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval, h_off,
-    dif_pos]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, emit_nil]
-
-theorem compileStmt_proj_zero_uninit_run
-    {Γ : Ctx} {σ : LayoutTy} {base : Place Γ σ}
-    {τ : LayoutTy} {path : PathTo σ τ} {cs : CompilerState}
-    {baseOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut base)}
-    {reg : Register}
-    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
-      base = b.proj q → False)
-    (h_off : pathOffset path = 0)
-    (h_root : CompilerM.run (ensurePlaceRoot (Place.proj base path)) cs = cs)
-    (h_brun : CheckedCompilerM.run (placeToRegChecked RefKind.Mut base) cs = cs)
-    (h_bval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut base) cs
-      = Except.ok baseOut)
-    (h_bres : baseOut.result = { reg := reg, cleanup := [] }) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj base path) .uninit)) cs
-      = emit cs [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) reg] := by
+        (compileStmtChecked (Stmt.assign (.proj base path) rhs)) cs
+      = emit cs [Instr.CStore ty vs' reg] := by
   have h_proj_eq : placeToRegChecked (Γ := Γ) RefKind.Mut (.proj base path)
       = (do
           let baseOut ← placeToRegChecked RefKind.Mut base
@@ -732,21 +644,21 @@ theorem compileStmt_proj_zero_uninit_run
               evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
                 baseOut.evidence h_offset
             }) := placeToRegChecked_proj_root_eq path h_np
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval, h_off,
-    dif_pos]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, emit_nil]
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_prun, h_pval, h_brun,
+    h_bval, h_off, dif_pos]
+  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, h_pstore,
+    h_pclean, emit_nil]
 
-/-- Nonzero-offset projection off a mapped local: `Borrow; CStore; Die`.
-    The `Die` is the cleanup the assign arm emits after the rhs — the
-    only fragment so far that ends by killing a tag it minted. -/
 theorem compileStmt_proj_offset_run
-    {Γ : Ctx} {σ : LayoutTy} {base : Place Γ σ}
-    {path : PathTo σ obseq.LayoutTy.NatL} {cs : CompilerState}
+    {Γ : Ctx} {σ τ : LayoutTy} {base : Place Γ σ}
+    {path : PathTo σ τ} {cs : CompilerState}
     {baseOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut base)}
     {reg : Register}
     (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
       base = b.proj q → False)
-    (v : Word)
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h_off : pathOffset path ≠ 0)
     (h_root : CompilerM.run (ensurePlaceRoot (Place.proj base path)) cs = cs)
     (h_brun : CheckedCompilerM.run (placeToRegChecked RefKind.Mut base) cs = cs)
@@ -754,57 +666,11 @@ theorem compileStmt_proj_offset_run
       = Except.ok baseOut)
     (h_bres : baseOut.result = { reg := reg, cleanup := [] }) :
     CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj base path) (.constInit v))) cs
-      = emit (emit (emit { cs with nextReg := cs.nextReg + 1 }
-          [Instr.Assgn (Register.R cs.nextReg)
-            (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL) reg (pathOffset path))])
-          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] (Register.R cs.nextReg)])
-          [Instr.Die (Register.R cs.nextReg) (blockSize obseq.LayoutTy.NatL)] := by
-  have h_proj_eq : placeToRegChecked (Γ := Γ) RefKind.Mut (.proj base path)
-      = (do
-          let baseOut ← placeToRegChecked RefKind.Mut base
-          let baseRes := baseOut.result
-          let offset := pathOffset path
-          if h_offset : offset = 0 then
-            pure {
-              result := baseRes,
-              evidence := PlaceToRegEvidence.projZero base path baseRes
-                baseOut.evidence h_offset
-            }
-          else
-            let tmpReg ← CheckedCompilerM.lift freshRegM
-            let _ ← CheckedCompilerM.lift
-              (emitM [Instr.Assgn tmpReg
-                (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL) baseRes.reg offset)])
-            pure {
-              result := { reg := tmpReg,
-                          cleanup := baseRes.cleanup ++ [(tmpReg, blockSize obseq.LayoutTy.NatL)] },
-              evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
-                baseOut.evidence h_offset
-            }) := placeToRegChecked_proj_root_eq path h_np
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval,
-    dif_neg h_off]
-  simp [csRun, cleanupInstrs, h_bres, emit_nil]
-
-theorem compileStmt_proj_offset_uninit_run
-    {Γ : Ctx} {σ : LayoutTy} {base : Place Γ σ}
-    {τ : LayoutTy} {path : PathTo σ τ} {cs : CompilerState}
-    {baseOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut base)}
-    {reg : Register}
-    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
-      base = b.proj q → False)
-    (h_off : pathOffset path ≠ 0)
-    (h_root : CompilerM.run (ensurePlaceRoot (Place.proj base path)) cs = cs)
-    (h_brun : CheckedCompilerM.run (placeToRegChecked RefKind.Mut base) cs = cs)
-    (h_bval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut base) cs
-      = Except.ok baseOut)
-    (h_bres : baseOut.result = { reg := reg, cleanup := [] }) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj base path) .uninit)) cs
+        (compileStmtChecked (Stmt.assign (.proj base path) rhs)) cs
       = emit (emit (emit { cs with nextReg := cs.nextReg + 1 }
           [Instr.Assgn (Register.R cs.nextReg)
             (borrowRhs RefKind.Mut (blockSize τ) reg (pathOffset path))])
-          [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) (Register.R cs.nextReg)])
+          [Instr.CStore ty vs' (Register.R cs.nextReg)])
           [Instr.Die (Register.R cs.nextReg) (blockSize τ)] := by
   have h_proj_eq : placeToRegChecked (Γ := Γ) RefKind.Mut (.proj base path)
       = (do
@@ -828,136 +694,70 @@ theorem compileStmt_proj_offset_uninit_run
               evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg
                 baseOut.evidence h_offset
             }) := placeToRegChecked_proj_root_eq path h_np
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval,
-    dif_neg h_off]
-  simp [csRun, cleanupInstrs, h_bres, emit_nil]
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_prun, h_pval, h_brun,
+    h_bval, dif_neg h_off]
+  simp [csRun, cleanupInstrs, h_bres, h_pstore, h_pclean, emit_nil]
 
-/-- The fragment of `(*P).path := v` at ZERO offset, over the OPAQUE
-    run of the pointer-place lowering `Mut (.deref P)` — the projection
-    passes the loaded register through, so the statement adds one
-    `CStore` (the chain-dst shape). -/
 theorem compileStmt_proj_deref_zero_run
-    {Γ : Ctx} {σ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {path : PathTo σ obseq.LayoutTy.NatL}
+    {Γ : Ctx} {σ τ : LayoutTy}
+    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {path : PathTo σ τ}
     {cs : CompilerState}
     {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
-    (v : Word)
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h_o : pathOffset path = 0)
     (h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref P) path)) cs = cs)
     (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
       = Except.ok dOut)
     (h_dclean : dOut.result.cleanup = []) :
     CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.deref P) path) (.constInit v))) cs
+        (compileStmtChecked (Stmt.assign (.proj (.deref P) path) rhs)) cs
       = emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) cs)
-          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] dOut.result.reg] := by
+          [Instr.CStore ty vs' dOut.result.reg] := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, h_o, dif_pos]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, emit_nil]
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_prun, h_pval, h_dval,
+    h_o, dif_pos]
+  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, h_pstore,
+    h_pclean, emit_nil]
 
-theorem compileStmt_proj_deref_zero_run_uninit
-    {Γ : Ctx} {σ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {τ : LayoutTy} {path : PathTo σ τ}
-    {cs : CompilerState}
-    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
-    (h_o : pathOffset path = 0)
-    (h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref P) path)) cs = cs)
-    (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
-      = Except.ok dOut)
-    (h_dclean : dOut.result.cleanup = []) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.deref P) path) .uninit)) cs
-      = emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) cs)
-          [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) dOut.result.reg] := by
-  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-    (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, h_o, dif_pos]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, emit_nil]
-
-/-- The zero-offset projected statement lowers. -/
 theorem compileStmt_proj_deref_zero_value
-    {Γ : Ctx} {σ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {path : PathTo σ obseq.LayoutTy.NatL}
+    {Γ : Ctx} {σ τ : LayoutTy}
+    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {path : PathTo σ τ}
     {cs : CompilerState}
     {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
-    (v : Word)
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h_o : pathOffset path = 0)
     (h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref P) path)) cs = cs)
     (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
       = Except.ok dOut) :
     ∃ so, CheckedCompilerM.value
-      (compileStmtChecked (Stmt.assign (.proj (.deref P) path) (.constInit v))) cs
+      (compileStmtChecked (Stmt.assign (.proj (.deref P) path) rhs)) cs
       = Except.ok so := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, h_o, dif_pos]
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_prun, h_pval, h_dval,
+    h_o, dif_pos]
   exact ⟨_, rfl⟩
 
-theorem compileStmt_proj_deref_zero_value_uninit
-    {Γ : Ctx} {σ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {τ : LayoutTy} {path : PathTo σ τ}
-    {cs : CompilerState}
-    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
-    (h_o : pathOffset path = 0)
-    (h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref P) path)) cs = cs)
-    (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
-      = Except.ok dOut) :
-    ∃ so, CheckedCompilerM.value
-      (compileStmtChecked (Stmt.assign (.proj (.deref P) path) .uninit)) cs
-      = Except.ok so := by
-  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-    (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, h_o, dif_pos]
-  exact ⟨_, rfl⟩
-
-/-- The fragment of `(*P).path := v` (nonzero offset), over the OPAQUE
-    run of `Mut (.deref P)`: `[dst-code; Borrow(Mut); CStore; Die]` —
-    the depth-1 BRIDGE 1 shape over the mother lemma's register. -/
 theorem compileStmt_proj_deref_run
-    {Γ : Ctx} {σ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {path : PathTo σ obseq.LayoutTy.NatL}
+    {Γ : Ctx} {σ τ : LayoutTy}
+    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {path : PathTo σ τ}
     {cs : CompilerState}
     {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
-    (v : Word)
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h_off : pathOffset path ≠ 0)
     (h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref P) path)) cs = cs)
     (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
       = Except.ok dOut)
     (h_dclean : dOut.result.cleanup = []) :
     CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.deref P) path) (.constInit v))) cs
-      = emit (emit (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) cs) with
-              nextReg := (CheckedCompilerM.run
-                (placeToRegChecked RefKind.Mut (.deref P)) cs).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run
-              (placeToRegChecked RefKind.Mut (.deref P)) cs).nextReg)
-            (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL)
-              dOut.result.reg (pathOffset path))])
-          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v]
-            (Register.R (CheckedCompilerM.run
-              (placeToRegChecked RefKind.Mut (.deref P)) cs).nextReg)])
-          [Instr.Die (Register.R (CheckedCompilerM.run
-              (placeToRegChecked RefKind.Mut (.deref P)) cs).nextReg)
-            (blockSize obseq.LayoutTy.NatL)] := by
-  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-    (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval]
-  simp [csRun, cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs]
-
-theorem compileStmt_proj_deref_run_uninit
-    {Γ : Ctx} {σ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {τ : LayoutTy} {path : PathTo σ τ}
-    {cs : CompilerState}
-    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
-    (h_off : pathOffset path ≠ 0)
-    (h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref P) path)) cs = cs)
-    (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
-      = Except.ok dOut)
-    (h_dclean : dOut.result.cleanup = []) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.deref P) path) .uninit)) cs
+        (compileStmtChecked (Stmt.assign (.proj (.deref P) path) rhs)) cs
       = emit (emit (emit
           { (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) cs) with
               nextReg := (CheckedCompilerM.run
@@ -966,7 +766,7 @@ theorem compileStmt_proj_deref_run_uninit
               (placeToRegChecked RefKind.Mut (.deref P)) cs).nextReg)
             (borrowRhs RefKind.Mut (blockSize τ)
               dOut.result.reg (pathOffset path))])
-          [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef)
+          [Instr.CStore ty vs'
             (Register.R (CheckedCompilerM.run
               (placeToRegChecked RefKind.Mut (.deref P)) cs).nextReg)])
           [Instr.Die (Register.R (CheckedCompilerM.run
@@ -974,52 +774,31 @@ theorem compileStmt_proj_deref_run_uninit
             (blockSize τ)] := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval]
-  simp [csRun, cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs]
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_prun, h_pval, h_dval]
+  simp [csRun, cleanupInstrs, h_dclean, h_pstore, h_pclean, emit_nil, h_off, borrowRhs]
 
-/-- The nonzero-offset projected statement lowers. -/
 theorem compileStmt_proj_deref_value
-    {Γ : Ctx} {σ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {path : PathTo σ obseq.LayoutTy.NatL}
+    {Γ : Ctx} {σ τ : LayoutTy}
+    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {path : PathTo σ τ}
     {cs : CompilerState}
     {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
-    (v : Word)
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h_off : pathOffset path ≠ 0)
     (h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref P) path)) cs = cs)
     (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
       = Except.ok dOut) :
     ∃ so, CheckedCompilerM.value
-      (compileStmtChecked (Stmt.assign (.proj (.deref P) path) (.constInit v))) cs
+      (compileStmtChecked (Stmt.assign (.proj (.deref P) path) rhs)) cs
       = Except.ok so := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, dif_neg h_off]
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_prun, h_pval, h_dval,
+    dif_neg h_off]
   exact ⟨_, rfl⟩
 
-theorem compileStmt_proj_deref_value_uninit
-    {Γ : Ctx} {σ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL σ)} {τ : LayoutTy} {path : PathTo σ τ}
-    {cs : CompilerState}
-    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
-    (h_off : pathOffset path ≠ 0)
-    (h_root : CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref P) path)) cs = cs)
-    (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
-      = Except.ok dOut) :
-    ∃ so, CheckedCompilerM.value
-      (compileStmtChecked (Stmt.assign (.proj (.deref P) path) .uninit)) cs
-      = Except.ok so := by
-  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-    (base := .deref P) path (fun _ _ _ h => by cases h)
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_dval, dif_neg h_off]
-  exact ⟨_, rfl⟩
-
-/-- REGIME C-deref-ZERO, COLLAPSED 2026-08-29 (2026-08-29: onto the
-    mother lemma): `(*P).f := v` at ZERO offset for ANY canonical chain
-    `*P` — the projection passes the loaded register through, so the
-    mother lemma at `Mut` on `.deref P` delivers the write register and
-    the statement adds one `CStore`, exactly the chain-dst endgame with
-    the resolution carrying a `+ 0` the record η-rule erases. Takes the
-    `stmt0` transfer triple so flattening recursions land here. -/
 theorem const_store_proj_deref_zero_simulation
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -1919,20 +1698,26 @@ theorem const_store_proj_offset_simulation
 
 
 theorem compileStmt_proj_fresh_zero_run
-    {Γ : Ctx} {σ : LayoutTy} {loc : Local Γ σ}
-    {path : PathTo σ obseq.LayoutTy.NatL} {cs : CompilerState}
-    (v : Word)
+    {Γ : Ctx} {σ τ : LayoutTy} {loc : Local Γ σ}
+    {path : PathTo σ τ} {cs : CompilerState}
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h_off : pathOffset path = 0)
     (h : getPlaceInfo cs loc.idx.1 = none) :
     CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v))) cs
+        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) rhs)) cs
       = emit
           (setPlaceInfo
             (emit { cs with nextReg := cs.nextReg + 1 }
               [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
             loc.idx.1 (Register.R cs.nextReg, σ))
-          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] (Register.R cs.nextReg)] := by
+          [Instr.CStore ty vs' (Register.R cs.nextReg)] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure
+    (setPlaceInfo
+      (emit { cs with nextReg := cs.nextReg + 1 }
+        [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+      loc.idx.1 (Register.R cs.nextReg, σ))
   have h_pi : getPlaceInfo
       (setPlaceInfo
         (emit { cs with nextReg := cs.nextReg + 1 }
@@ -1952,97 +1737,20 @@ theorem compileStmt_proj_fresh_zero_run
     simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval, h_off,
-    dif_pos]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, emit_nil]
-
-theorem compileStmt_proj_fresh_zero_uninit_run
-    {Γ : Ctx} {σ : LayoutTy} {loc : Local Γ σ}
-    {τ : LayoutTy} {path : PathTo σ τ} {cs : CompilerState}
-    (h_off : pathOffset path = 0)
-    (h : getPlaceInfo cs loc.idx.1 = none) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) .uninit)) cs
-      = emit
-          (setPlaceInfo
-            (emit { cs with nextReg := cs.nextReg + 1 }
-              [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R cs.nextReg, σ))
-          [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) (Register.R cs.nextReg)] := by
-  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
-  have h_pi : getPlaceInfo
-      (setPlaceInfo
-        (emit { cs with nextReg := cs.nextReg + 1 }
-          [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-        loc.idx.1 (Register.R cs.nextReg, σ))
-      loc.idx.1 = some (Register.R cs.nextReg, σ) :=
-    getPlaceInfo_setPlaceInfo_self _ _ _
-  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-    (base := .local loc) path (fun _ _ _ h => by cases h)
-  have h_root : CompilerM.run
-      (ensurePlaceRoot (Place.proj (Place.local loc) path)) cs
-      = setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ) := by
-    show CompilerM.run (do let _ ← ensureLocalRegE loc; pure ()) cs = _
-    simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
-  obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
-    placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval, h_off,
-    dif_pos]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, emit_nil]
+  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_prun, h_pval, h_brun,
+    h_bval, h_off, dif_pos]
+  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_bres, h_pstore,
+    h_pclean, emit_nil]
 
 theorem compileStmt_proj_fresh_offset_run
-    {Γ : Ctx} {σ : LayoutTy} {loc : Local Γ σ}
-    {path : PathTo σ obseq.LayoutTy.NatL} {cs : CompilerState}
-    (v : Word)
+    {Γ : Ctx} {σ τ : LayoutTy} {loc : Local Γ σ}
+    {path : PathTo σ τ} {cs : CompilerState}
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h_off : pathOffset path ≠ 0)
     (h : getPlaceInfo cs loc.idx.1 = none) :
     CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v))) cs
-      = emit (emit (emit
-          { (setPlaceInfo
-              (emit { cs with nextReg := cs.nextReg + 1 }
-                [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R cs.nextReg, σ)) with
-              nextReg := cs.nextReg + 1 + 1 }
-          [Instr.Assgn (Register.R (cs.nextReg + 1))
-            (borrowRhs RefKind.Mut (blockSize obseq.LayoutTy.NatL)
-              (Register.R cs.nextReg) (pathOffset path))])
-          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] (Register.R (cs.nextReg + 1))])
-          [Instr.Die (Register.R (cs.nextReg + 1)) (blockSize obseq.LayoutTy.NatL)] := by
-  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
-  have h_pi : getPlaceInfo
-      (setPlaceInfo
-        (emit { cs with nextReg := cs.nextReg + 1 }
-          [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-        loc.idx.1 (Register.R cs.nextReg, σ))
-      loc.idx.1 = some (Register.R cs.nextReg, σ) :=
-    getPlaceInfo_setPlaceInfo_self _ _ _
-  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-    (base := .local loc) path (fun _ _ _ h => by cases h)
-  have h_root : CompilerM.run
-      (ensurePlaceRoot (Place.proj (Place.local loc) path)) cs
-      = setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ) := by
-    show CompilerM.run (do let _ ← ensureLocalRegE loc; pure ()) cs = _
-    simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
-  obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
-    placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval]
-  simp [csRun, cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
-  rfl
-
-theorem compileStmt_proj_fresh_offset_uninit_run
-    {Γ : Ctx} {σ : LayoutTy} {loc : Local Γ σ}
-    {τ : LayoutTy} {path : PathTo σ τ} {cs : CompilerState}
-    (h_off : pathOffset path ≠ 0)
-    (h : getPlaceInfo cs loc.idx.1 = none) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) .uninit)) cs
+        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) rhs)) cs
       = emit (emit (emit
           { (setPlaceInfo
               (emit { cs with nextReg := cs.nextReg + 1 }
@@ -2052,9 +1760,14 @@ theorem compileStmt_proj_fresh_offset_uninit_run
           [Instr.Assgn (Register.R (cs.nextReg + 1))
             (borrowRhs RefKind.Mut (blockSize τ)
               (Register.R cs.nextReg) (pathOffset path))])
-          [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) (Register.R (cs.nextReg + 1))])
+          [Instr.CStore ty vs' (Register.R (cs.nextReg + 1))])
           [Instr.Die (Register.R (cs.nextReg + 1)) (blockSize τ)] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure
+    (setPlaceInfo
+      (emit { cs with nextReg := cs.nextReg + 1 }
+        [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+      loc.idx.1 (Register.R cs.nextReg, σ))
   have h_pi : getPlaceInfo
       (setPlaceInfo
         (emit { cs with nextReg := cs.nextReg + 1 }
@@ -2074,20 +1787,26 @@ theorem compileStmt_proj_fresh_offset_uninit_run
     simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval]
-  simp [csRun, cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
+  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_prun, h_pval, h_brun,
+    h_bval]
+  simp [csRun, cleanupInstrs, h_bres, h_pstore, h_pclean, emit_nil, h_off, borrowRhs]
   rfl
 
-/-- The fresh projected statement lowers (either offset). -/
 theorem compileStmt_proj_fresh_value
-    {Γ : Ctx} {σ : LayoutTy} {loc : Local Γ σ}
-    {path : PathTo σ obseq.LayoutTy.NatL} {cs : CompilerState}
-    (v : Word)
+    {Γ : Ctx} {σ τ : LayoutTy} {loc : Local Γ σ}
+    {path : PathTo σ τ} {cs : CompilerState}
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h : getPlaceInfo cs loc.idx.1 = none) :
     ∃ so, CheckedCompilerM.value
-      (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.constInit v))) cs
+      (compileStmtChecked (Stmt.assign (.proj (.local loc) path) rhs)) cs
       = Except.ok so := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure
+    (setPlaceInfo
+      (emit { cs with nextReg := cs.nextReg + 1 }
+        [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+      loc.idx.1 (Register.R cs.nextReg, σ))
   have h_pi : getPlaceInfo
       (setPlaceInfo
         (emit { cs with nextReg := cs.nextReg + 1 }
@@ -2107,7 +1826,8 @@ theorem compileStmt_proj_fresh_value
     simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval]
+  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_prun, h_pval, h_brun,
+    h_bval]
   by_cases h_off : pathOffset path = 0
   · simp only [h_off, dif_pos]
     exact ⟨_, rfl⟩
@@ -2117,51 +1837,6 @@ theorem compileStmt_proj_fresh_value
       CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
     exact ⟨_, rfl⟩
 
-theorem compileStmt_proj_fresh_uninit_value
-    {Γ : Ctx} {σ : LayoutTy} {loc : Local Γ σ}
-    {τ : LayoutTy} {path : PathTo σ τ} {cs : CompilerState}
-    (h : getPlaceInfo cs loc.idx.1 = none) :
-    ∃ so, CheckedCompilerM.value
-      (compileStmtChecked (Stmt.assign (.proj (.local loc) path) .uninit)) cs
-      = Except.ok so := by
-  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
-  have h_pi : getPlaceInfo
-      (setPlaceInfo
-        (emit { cs with nextReg := cs.nextReg + 1 }
-          [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-        loc.idx.1 (Register.R cs.nextReg, σ))
-      loc.idx.1 = some (Register.R cs.nextReg, σ) :=
-    getPlaceInfo_setPlaceInfo_self _ _ _
-  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-    (base := .local loc) path (fun _ _ _ h => by cases h)
-  have h_root : CompilerM.run
-      (ensurePlaceRoot (Place.proj (Place.local loc) path)) cs
-      = setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ) := by
-    show CompilerM.run (do let _ ← ensureLocalRegE loc; pure ()) cs = _
-    simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
-  obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
-    placeToRegChecked_local_existing (kind := RefKind.Mut) h_pi
-  simp only [csCompile, csMonad, h_proj_eq, compileRExprToChecked, h_root, h_brun, h_bval]
-  by_cases h_off : pathOffset path = 0
-  · simp only [h_off, dif_pos]
-    exact ⟨_, rfl⟩
-  · simp only [dif_neg h_off,
-      CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-      CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-      CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
-    exact ⟨_, rfl⟩
-
-/-- REGIME B-proj: constant write to a projection over a FRESH root —
-    `s.f := v` with `s` unbound. mirlite's `preparePlaceAssign`
-    allocates the whole σ-sized root; the compiled fragment is the root
-    `Alloc` from `ensurePlaceRoot`, then the C0/C1 shape over the fresh
-    register. Both renames extend: ρa by the IDENTITY over the ENTIRE
-    fresh block (`extendIdRange` — the block-domain conjunct and the
-    projected write need every cell, not just the base), ρt at the
-    minted root tag. -/
 theorem const_store_proj_fresh_simulation
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -2677,69 +2352,40 @@ theorem const_store_proj_fresh_simulation
 
 
 theorem compileStmt_derefdst_run
-    {Γ : Ctx} {P : Place Γ (obseq.LayoutTy.PtrL obseq.LayoutTy.NatL)}
-    {cs : CompilerState}
-    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
-    (v : Word)
-    (h_root : CompilerM.run (ensurePlaceRoot (Place.deref P)) cs = cs)
-    (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
-      = Except.ok dOut)
-    (h_dclean : dOut.result.cleanup = []) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.deref P) (.constInit v))) cs
-      = emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) cs)
-          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] dOut.result.reg] := by
-  simp only [csCompile, csMonad, h_root, h_dval]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, emit_nil]
-
-theorem compileStmt_derefdst_run_uninit
     {Γ : Ctx} {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)}
     {cs : CompilerState}
     {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h_root : CompilerM.run (ensurePlaceRoot (Place.deref P)) cs = cs)
     (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
       = Except.ok dOut)
     (h_dclean : dOut.result.cleanup = []) :
     CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.deref P) .uninit)) cs
+        (compileStmtChecked (Stmt.assign (.deref P) rhs)) cs
       = emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref P)) cs)
-          [Instr.CStore (layoutToTyVal τ) (List.replicate (blockSize τ) Val.Undef) dOut.result.reg] := by
-  simp only [csCompile, csMonad, h_root, h_dval]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, emit_nil]
+          [Instr.CStore ty vs' dOut.result.reg] := by
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+  simp only [compileStmtChecked, csMonad, h_root, h_prun, h_pval, h_dval]
+  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, h_dclean, h_pstore,
+    h_pclean, emit_nil]
 
-/-- The chain-dst statement lowers. -/
 theorem compileStmt_derefdst_value
-    {Γ : Ctx} {P : Place Γ (obseq.LayoutTy.PtrL obseq.LayoutTy.NatL)}
-    {cs : CompilerState}
-    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
-    (v : Word)
-    (h_root : CompilerM.run (ensurePlaceRoot (Place.deref P)) cs = cs)
-    (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
-      = Except.ok dOut) :
-    ∃ so, CheckedCompilerM.value
-      (compileStmtChecked (Stmt.assign (.deref P) (.constInit v))) cs
-      = Except.ok so := by
-  simp only [csCompile, csMonad, h_root, h_dval]
-  exact ⟨_, rfl⟩
-
-theorem compileStmt_derefdst_value_uninit
     {Γ : Ctx} {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)}
     {cs : CompilerState}
     {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Mut (.deref P))}
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h_root : CompilerM.run (ensurePlaceRoot (Place.deref P)) cs = cs)
     (h_dval : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (.deref P)) cs
       = Except.ok dOut) :
     ∃ so, CheckedCompilerM.value
-      (compileStmtChecked (Stmt.assign (.deref P) .uninit)) cs
+      (compileStmtChecked (Stmt.assign (.deref P) rhs)) cs
       = Except.ok so := by
-  simp only [csCompile, csMonad, h_root, h_dval]
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+  simp only [compileStmtChecked, csMonad, h_root, h_prun, h_pval, h_dval]
   exact ⟨_, rfl⟩
 
-/-- REGIME D over full chains, CLOSED 2026-08-29: `*P := v` for every
-    dst that is a `PtrChain` — all-deref spines AND proj-topped pointer
-    places over chain bases (`*((*q).f) := v`, `*(s.f) := v`) in one
-    leaf. The mother lemma at `Mut` on the WHOLE dst delivers the
-    loaded pointer register; the statement adds one `CStore` (BRIDGE 2). -/
 theorem const_store_deref_chain_simulation
     {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
     {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -3189,22 +2835,22 @@ theorem const_store_proj_simulation
 theorem constInit_frags {Γ : Ctx} (v : Word) :
     ConstStoreFrags (Γ := Γ) (τ := obseq.LayoutTy.NatL) (.constInit v) [Val.Dat v] := by
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-  · exact fun loc cs reg h => compileStmt_local_existing_run (cs := cs) v h
+  · exact fun loc cs reg h => compileStmt_local_existing_run (cs := cs) (constInit_pureCStore v) h
   · exact fun loc cs => ⟨{ result := (), evidence := StmtEvidence.assignLocal loc (.constInit v) (CompilerM.value (ensureLocalRegE loc) cs).result (CompilerM.value (ensureLocalRegE loc) cs).evidence (RExprToEvidence.constInit v) },
       by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
         emitM, cleanupInstrs, emit_nil, CompilerM.run]⟩
-  · exact fun loc cs h => compileStmt_local_fresh_run (cs := cs) v h
+  · exact fun loc cs h => compileStmt_local_fresh_run (cs := cs) (constInit_pureCStore v) h
   · exact fun {_} loc path cs reg h_o h => by
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
         placeToRegChecked_local_existing (kind := RefKind.Mut) h
       exact compileStmt_proj_zero_run (cs := cs) (baseOut := baseOut)
-        (fun _ _ _ hh => by cases hh) v h_o
+        (fun _ _ _ hh => by cases hh) (constInit_pureCStore v) h_o
         (ensurePlaceRoot_run_eq_of_mapped ⟨reg, _, h⟩) h_brun h_bval h_bres
   · exact fun {_} loc path cs reg h_o h => by
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
         placeToRegChecked_local_existing (kind := RefKind.Mut) h
       exact compileStmt_proj_offset_run (cs := cs) (baseOut := baseOut)
-        (fun _ _ _ hh => by cases hh) v h_o
+        (fun _ _ _ hh => by cases hh) (constInit_pureCStore v) h_o
         (ensurePlaceRoot_run_eq_of_mapped ⟨reg, _, h⟩) h_brun h_bval h_bres
   · exact fun {_} loc path cs reg h => by
       have h_mapped : PlaceInputsMapped cs (Place.proj (Place.local loc) path) :=
@@ -3215,13 +2861,13 @@ theorem constInit_frags {Γ : Ctx} (v : Word) :
       exact ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj (.local loc) path) (.constInit v) dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
         by simp [compileStmtChecked, compileRExprPreChecked, h_dstOut,
           ensurePlaceRoot_run_eq_of_mapped h_mapped]⟩
-  · exact fun {_} loc path cs h => compileStmt_proj_fresh_value (cs := cs) v h
-  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_zero_run (cs := cs) v h_o h
-  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_offset_run (cs := cs) v h_o h
-  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_zero_value v h_o h_r h_d
-  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_value v h_o h_r h_d
-  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_zero_run v h_o h_r h_d h_c
-  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_run v h_o h_r h_d h_c
+  · exact fun {_} loc path cs h => compileStmt_proj_fresh_value (cs := cs) (constInit_pureCStore v) h
+  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_zero_run (cs := cs) (constInit_pureCStore v) h_o h
+  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_offset_run (cs := cs) (constInit_pureCStore v) h_o h
+  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_zero_value (constInit_pureCStore v) h_o h_r h_d
+  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_value (constInit_pureCStore v) h_o h_r h_d
+  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_zero_run (constInit_pureCStore v) h_o h_r h_d h_c
+  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_run (constInit_pureCStore v) h_o h_r h_d h_c
   · exact
     (fun {_} Q path cs h_root => by
       rw [show compileStmtChecked (Stmt.assign (.proj (.deref Q) path) (.constInit v))
@@ -3244,8 +2890,8 @@ theorem constInit_frags {Γ : Ctx} (v : Word) :
           (placeToRegChecked RefKind.Mut (.proj (.deref Q) path)) cs with
       | ok a => exact CheckedCompilerM.incr _ _
       | error e => exact StateIncr.refl _)
-  · exact fun Q cs {_} h_r h_d => compileStmt_derefdst_value v h_r h_d
-  · exact fun Q cs {_} h_r h_d h_c => compileStmt_derefdst_run v h_r h_d h_c
+  · exact fun Q cs {_} h_r h_d => compileStmt_derefdst_value (constInit_pureCStore v) h_r h_d
+  · exact fun Q cs {_} h_r h_d h_c => compileStmt_derefdst_run (constInit_pureCStore v) h_r h_d h_c
   · exact fun {_} base path cs {dstOut} h_d =>
       ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj base path) (.constInit v) dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
         by simp [compileStmtChecked, compileRExprPreChecked, h_d]⟩
@@ -3265,22 +2911,22 @@ theorem constInit_frags {Γ : Ctx} (v : Word) :
 theorem uninit_frags {Γ : Ctx} (τ : LayoutTy) :
     ConstStoreFrags (Γ := Γ) (τ := τ) .uninit (List.replicate (blockSize τ) Val.Undef) := by
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-  · exact fun loc cs reg h => compileStmt_local_uninit_run (cs := cs) h
+  · exact fun loc cs reg h => compileStmt_local_existing_run (cs := cs) (uninit_pureCStore _) h
   · exact fun loc cs => ⟨{ result := (), evidence := StmtEvidence.assignLocal loc .uninit (CompilerM.value (ensureLocalRegE loc) cs).result (CompilerM.value (ensureLocalRegE loc) cs).evidence RExprToEvidence.uninit },
       by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
         emitM, cleanupInstrs, emit_nil, CompilerM.run]⟩
-  · exact fun loc cs h => compileStmt_local_fresh_uninit_run (cs := cs) h
+  · exact fun loc cs h => compileStmt_local_fresh_run (cs := cs) (uninit_pureCStore _) h
   · exact fun {_} loc path cs reg h_o h => by
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
         placeToRegChecked_local_existing (kind := RefKind.Mut) h
-      exact compileStmt_proj_zero_uninit_run (cs := cs) (baseOut := baseOut)
-        (fun _ _ _ hh => by cases hh) h_o
+      exact compileStmt_proj_zero_run (cs := cs) (baseOut := baseOut)
+        (fun _ _ _ hh => by cases hh) (uninit_pureCStore _) h_o
         (ensurePlaceRoot_run_eq_of_mapped ⟨reg, _, h⟩) h_brun h_bval h_bres
   · exact fun {_} loc path cs reg h_o h => by
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
         placeToRegChecked_local_existing (kind := RefKind.Mut) h
-      exact compileStmt_proj_offset_uninit_run (cs := cs) (baseOut := baseOut)
-        (fun _ _ _ hh => by cases hh) h_o
+      exact compileStmt_proj_offset_run (cs := cs) (baseOut := baseOut)
+        (fun _ _ _ hh => by cases hh) (uninit_pureCStore _) h_o
         (ensurePlaceRoot_run_eq_of_mapped ⟨reg, _, h⟩) h_brun h_bval h_bres
   · exact fun {_} loc path cs reg h => by
       have h_mapped : PlaceInputsMapped cs (Place.proj (Place.local loc) path) :=
@@ -3291,13 +2937,13 @@ theorem uninit_frags {Γ : Ctx} (τ : LayoutTy) :
       exact ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj (.local loc) path) .uninit dstOut.result dstOut.evidence RExprToEvidence.uninit },
         by simp [compileStmtChecked, compileRExprPreChecked, h_dstOut,
           ensurePlaceRoot_run_eq_of_mapped h_mapped]⟩
-  · exact fun {_} loc path cs h => compileStmt_proj_fresh_uninit_value (cs := cs) h
-  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_zero_uninit_run (cs := cs) h_o h
-  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_offset_uninit_run (cs := cs) h_o h
-  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_zero_value_uninit h_o h_r h_d
-  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_value_uninit h_o h_r h_d
-  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_zero_run_uninit h_o h_r h_d h_c
-  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_run_uninit h_o h_r h_d h_c
+  · exact fun {_} loc path cs h => compileStmt_proj_fresh_value (cs := cs) (uninit_pureCStore _) h
+  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_zero_run (cs := cs) (uninit_pureCStore _) h_o h
+  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_offset_run (cs := cs) (uninit_pureCStore _) h_o h
+  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_zero_value (uninit_pureCStore _) h_o h_r h_d
+  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_value (uninit_pureCStore _) h_o h_r h_d
+  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_zero_run (uninit_pureCStore _) h_o h_r h_d h_c
+  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_run (uninit_pureCStore _) h_o h_r h_d h_c
   · exact
     (fun {_} Q path cs h_root => by
       rw [show compileStmtChecked (Stmt.assign (.proj (.deref Q) path) .uninit)
@@ -3320,8 +2966,8 @@ theorem uninit_frags {Γ : Ctx} (τ : LayoutTy) :
           (placeToRegChecked RefKind.Mut (.proj (.deref Q) path)) cs with
       | ok a => exact CheckedCompilerM.incr _ _
       | error e => exact StateIncr.refl _)
-  · exact fun Q cs {_} h_r h_d => compileStmt_derefdst_value_uninit h_r h_d
-  · exact fun Q cs {_} h_r h_d h_c => compileStmt_derefdst_run_uninit h_r h_d h_c
+  · exact fun Q cs {_} h_r h_d => compileStmt_derefdst_value (uninit_pureCStore _) h_r h_d
+  · exact fun Q cs {_} h_r h_d h_c => compileStmt_derefdst_run (uninit_pureCStore _) h_r h_d h_c
   · exact fun {_} base path cs {dstOut} h_d =>
       ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj base path) .uninit dstOut.result dstOut.evidence RExprToEvidence.uninit },
         by simp [compileStmtChecked, compileRExprPreChecked, h_d]⟩

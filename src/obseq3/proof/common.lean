@@ -1710,33 +1710,60 @@ theorem emit_nil (cs : CompilerState) : emit cs [] = cs := by
   show ({ cs with nextLabel := cs.nextLabel + 0 } : CompilerState) = cs
   rw [Nat.add_zero]
 
+/-- An rvalue whose lowering is a SINGLE `CStore` and nothing else: its
+    pre-phase emits no code, its store is one instruction through the
+    destination register, and it leaves no post-cleanup. Both constant
+    rvalues are of this shape — `.constInit v` stores `[Val.Dat v]`,
+    `.uninit` stores `blockSize τ` undefs — and every compiled-fragment
+    lemma below depends on the rvalue ONLY through this, which is what
+    collapses the constInit/uninit twins into one lemma apiece. -/
+def PureCStore {Γ : Ctx} {τ : LayoutTy} (rhs : RExpr Γ τ)
+    (ty : obseq.TyVal) (vs' : List Val) : Prop :=
+  ∀ cs : CompilerState,
+    CheckedCompilerM.run (compileRExprPreChecked rhs) cs = cs ∧
+    ∃ pre, CheckedCompilerM.value (compileRExprPreChecked rhs) cs = Except.ok pre ∧
+      (∀ r, pre.store r = [Instr.CStore ty vs' r]) ∧ pre.postCleanup = []
+
+theorem constInit_pureCStore {Γ : Ctx} (v : Word) :
+    PureCStore (Γ := Γ) (.constInit v) obseq.TyVal.NatTy [Val.Dat v] :=
+  fun cs => ⟨rfl, _, rfl, fun _ => rfl, rfl⟩
+
+theorem uninit_pureCStore {Γ : Ctx} (τ : LayoutTy) :
+    PureCStore (Γ := Γ) (τ := τ) .uninit (layoutToTyVal τ)
+      (List.replicate (blockSize τ) Val.Undef) :=
+  fun cs => ⟨rfl, _, rfl, fun _ => rfl, rfl⟩
+
 /-- The compiled fragment of a constant write to an UNMAPPED local is two
     instructions: the root `Alloc` that `ensurePlaceRoot` emits (mirroring
     mirlite's `preparePlaceAssign`) followed by the `CStore`. -/
 theorem compileStmt_local_fresh_run
-    {Γ : Ctx} {loc : Local Γ obseq.LayoutTy.NatL} {cs : CompilerState}
-    (v : Word)
+    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
+    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
+    (h_pure : PureCStore rhs ty vs')
     (h : getPlaceInfo cs loc.idx.1 = none) :
     CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.local loc) (.constInit v))) cs
+        (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs
       = emit
           (setPlaceInfo
             (emit { cs with nextReg := cs.nextReg + 1 }
-              [Instr.Assgn (Register.R cs.nextReg)
-                (Rhs.Alloc (layoutToTyVal obseq.LayoutTy.NatL))])
-            loc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.NatL))
-          [Instr.CStore obseq.TyVal.NatTy [Val.Dat v] (Register.R cs.nextReg)] := by
+              [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
+            loc.idx.1 (Register.R cs.nextReg, τ))
+          [Instr.CStore ty vs' (Register.R cs.nextReg)] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
+  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure
+    (setPlaceInfo
+      (emit { cs with nextReg := cs.nextReg + 1 }
+        [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
+      loc.idx.1 (Register.R cs.nextReg, τ))
   have h_pi : getPlaceInfo
       (setPlaceInfo
         (emit { cs with nextReg := cs.nextReg + 1 }
-          [Instr.Assgn (Register.R cs.nextReg)
-            (Rhs.Alloc (layoutToTyVal obseq.LayoutTy.NatL))])
-        loc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.NatL))
-      loc.idx.1 = some (Register.R cs.nextReg, obseq.LayoutTy.NatL) :=
+          [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
+        loc.idx.1 (Register.R cs.nextReg, τ))
+      loc.idx.1 = some (Register.R cs.nextReg, τ) :=
     getPlaceInfo_setPlaceInfo_self _ _ _
-  simp [csCompile, compileRExprToChecked, CompilerM.run_bind, CompilerM.run_pure, h_run, h_val,
-    placeToRegChecked, h_pi]
+  simp [compileStmtChecked, compileRExprToChecked, CompilerM.run_bind, CompilerM.run_pure,
+    h_run, h_val, placeToRegChecked, h_pi, h_prun, h_pval, h_pstore, h_pclean]
   simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, emit_nil]
 
 /-! ## §E Fragment layout + emit-preserves-memory -/
