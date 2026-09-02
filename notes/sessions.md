@@ -2597,3 +2597,32 @@ pairs FIRST, since that pattern is much cheaper than a seam.
 
 Validation, all four suites: 0 errors; audit OK, 0 sorries, axioms
 unchanged; 17/17 + 104/104; 82/0; osea 82/0/0. Proof dir 36,695.
+
+## 2026-09-02 (thirty-fourth)
+
+**Twin-merge preconditions checked on ref: all 8 candidate pairs FAIL.**
+Every projzero/projoffset pair passes the binder test (4-line diff:
+name + h_o) and shares 60-86% in-order — but the first structural fork
+sits at 12-42% of the body, not at the tail. The cause is categorical:
+in copy's projlocal family the destination offset only mattered at the
+WRITE, so everything through `h_incrS1V` was byte-identical; in ref the
+offset changes the EMITTED FRAGMENT (an extra dst Borrow), which
+permeates the middle — different `_lowers` fragment names mid-body,
+shifted `instrAt` indices, BRIDGE 1 appearing in §8b, different
+mother-call states (`tgtPerms` vs `q1`, double register insert).
+Fork-then-reconverge is the failing shape; a `by_cases` would duplicate
+the reconverged middle.
+
+**The after-borrow seam is confirmed instead, per family.** Within
+`projoffset_fresh`, 3 of 4 leaves (plain/projsrc/selfsrc) share a
+~210-line tail that is 95%+ identical, and the ONLY differences are
+parametric — the borrowed pointer's offset and length
+(`Val.Ptr bS.addr (0+0) (blockSize τ)` vs
+`... (pathOffset f) (blockSize σb)`). Same in `projzero_fresh`
+(188/200 normalized). Cross-family is only 95/200 — the seams are per
+family, two of them. `derefsrc` stays out of both (0/220 — its source
+mother ends in a Load with different registers).
+
+Value ≈ 500-600 lines across the two seams, each a copy-spike-style
+extraction (boundary-scan interface + parametric (boff, blen)).
+No code changed in this check.
