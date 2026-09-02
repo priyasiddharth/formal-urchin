@@ -2626,3 +2626,36 @@ mother ends in a Load with different registers).
 Value ≈ 500-600 lines across the two seams, each a copy-spike-style
 extraction (boundary-scan interface + parametric (boff, blen)).
 No code changed in this check.
+
+## 2026-09-02 (thirty-fifth)
+
+**The derefdst family is on the shared seam — first cross-file use**
+(`bb85c42`, −301). Three ref leaves end in a call to
+`copy_chainwrite_after_read` (spine.lean): 311→217, 324→228, and the
+two-mother leaf 384→273. Eight leaves across two files now share the
+one destination half. Instantiation: τ := PtrL τ, vals := the borrowed
+pointer as a one-word list, ambient renames at the extended ρt; the
+two-mother leaf passes sR at the post-source-mother state and composes
+h_runR from the source mother's run plus the Borrow step.
+
+**BRIDGE 2 dissolved into the interface**: ref's `writeThroughPtr_sim`
+call and the seam's manual write path meet at `h_valsRel` — the
+`ListRel (MemValSim ..)` evidence ref built inline moves verbatim into
+the argument list.
+
+**Elaboration trap, cost two red builds:** passing `rfl` for
+`h_prmR : csR.placeRegMap = csPrefix.placeRegMap` while `csR` is a
+metavariable lets unification solve csR := csPrefix, and every
+downstream argument then mistypes bizarrely. PIN the implicits
+(csR/sR/vreg/vals/mvals) before any rfl-shaped argument.
+
+**Adjacent candidates checked:** `ref_deref_local` is OUT — no
+destination mother at all (the store goes through the dst's own binding
+entry; different shape). `ref_projzero_derefdst_chainsrc` is VIABLE —
+its MOTHER 2 goes through the zero-offset package on the deref base, so
+the seam applies with dbase := the base and the projection absorbed by
+the proj-zero equations (~130 lines). Its projoffset sibling is NOT
+(write through a dst Borrow + Die — BRIDGE 1, the different seam).
+
+Validation, all four suites: 0 errors; audit OK, 0 sorries, axioms
+unchanged; 17/17 + 104/104; 82/0; osea 82/0/0. Proof dir 36,391.
