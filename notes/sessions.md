@@ -2966,3 +2966,47 @@ projection of a BOUND root (`ref_local_projzero/projoffset`,
 of a freshly allocated one. That is `copy_freshproj_write_after_read`
 with the allocation hypotheses replaced by the destination binding —
 worth ~100 a leaf, and it is the next thing to build.
+
+**Same session, sixth stretch — the bound-root projected write seam.**
+Two commits (`2699b65`, `b312bea`). ref 11,108 → 10,697.
+
+`copy_boundproj_write_after_read` (spine, 219) is the projected write
+when the destination's root is already bound: the same `Borrow(Mut)` /
+`RStore` / `Die` sandwich and the same BRIDGE 1 collapse as the fresh
+version, but no rename growth and no allocation lockstep, so its
+conclusion is the plain `CompilerInv` the chain-write seam returns.
+Written with the spelling-proof interface (three code facts plus
+`nextLabel`/`placeRegMap`/`nextReg` summaries) from the start.
+
+    ref_local_projoffset    293 -> 148
+    ref_projoffset_projsrc  322 -> 153
+    ref_projoffset_derefsrc 320 -> 223
+
+−411 for a 219-line seam: **net −192 from three leaves**, against the
+borrow package's −16 from six. That is the shape of the whole exercise
+in one comparison: in ref the DESTINATION side carries the mass, in
+copy it was the source side, and the deciding factor both times is
+whether the shared piece contains a MOTHER LEMMA or just an
+instruction.
+
+**Then generalised twice, cheaply.** The seam asked for the
+destination's `Binding` and `Local` and used neither: what it needs is
+the resolved root (base, tag, size) plus the register holding it and
+THAT REGISTER'S OWN OFFSET into the allocation. Restating it over
+`dbase`/`dtag`/`dsize`/`boff` costs the three call sites a `0` and two
+`by simp`s and admits chain-resolved destinations, whose register
+points into the middle of its block.
+
+**Where it stopped, and why.** `copy_projdst_offset_projsrc_offset`
+(814) is exactly that chain-resolved shape and was the intended fourth
+user; after a dozen build attempts it was reverted. Its towers are
+spelled with `{X with}` throughout, so the mother's `h_dprm`/`h_dlbs`
+carry the `let __src` form while every pin and `simp only [emit]`
+produces the flat one, and the mismatch propagates into unresolved
+metavariables — the seam's `h_lbsR` argument arrives with `?m` for the
+layout type and the arithmetic side goals then fail with nothing to
+work from. The fix is not more tactic-fiddling at the call site: it is
+to normalise that leaf's towers (a `csnorm` pass over its `have`
+statements) FIRST, and then the seam call is the same twenty lines as
+the three that landed. Same for `ref_projoffset_derefdst_chainsrc`
+(471), the other chain-resolved user.
