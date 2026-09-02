@@ -2918,3 +2918,51 @@ is now prologue → source package → write seam. What remains in ref is
 the BOUND-destination half (nineteen leaves, ~7,600 lines) whose source
 axis has no packages yet, and in copy the bound leaves that already sit
 on the chain-write seam.
+
+**Same session, fifth stretch — `ref_local_borrow`, and a measurement
+that says stop.** One commit (`6726451`). ref 11,227 → 11,108.
+
+The package is the borrow twin of `copy_chainsrc_read`: transported
+retag, executed `Borrow`, post-`Borrow` `LocalBindingSim`, pc equation,
+`ListRel` evidence — the bundle both write seams and the chain-write
+seam take. Its OFFSET parameter makes it serve two source shapes at
+once (`off = 0` a local, `off = pathOffset f` a projection of one), and
+the borrowed pointer keeps the ROOT's size field either way.
+
+    ref_local_local      160 -> 148
+    ref_local_projzero   178 -> 169
+    ref_local_projoffset 305 -> 293
+    ref_derefdst_local   217 -> 182
+    ref_projzero_projsrc 187 -> 176
+    ref_derefdst_projsrc 228 -> 188
+    ref_local_borrow (new)       98
+
+**−119 for a 98-line package is net −16, and the rest of the family is
+~12 a leaf.** The whole local/projsrc source axis in ref lands around
+−60 — well under the plan's ~150 bar. The reason is structural and
+worth writing down: **a borrow source is ONE instruction.** copy's
+chain sources carry a mother lemma (a whole recursive lowering) and
+that is what made `copy_chainsrc_read` pay; ref's `&x` carries a
+`sb_ref` transport and a single `Borrow` step. There is simply less to
+share. The one leaf that paid properly (`derefdst_local`, −35) did so
+because of the post-`Borrow` SCAFFOLDING it handed over — the
+`LocalBindingSim` at the emit tower the destination mother needs — not
+because of the borrow itself.
+
+Two interface points, both general:
+
+  - a package that consumes a mirlite step whose minted tag the CALLER
+    still names must RETURN the equation (`freshTag = sM.perms.NextTag`)
+    rather than assume it; call sites destructure it as `rfl`.
+  - `blockSize τ` is not injective for unification, so a layout type
+    that appears only under `blockSize` cannot be inferred — make it an
+    explicit argument.
+
+**Where the mass actually is.** Eight bound leaves write through a
+projection of a BOUND root (`ref_local_projzero/projoffset`,
+`ref_projzero/projoffset_projsrc`, `ref_projzero/projoffset_derefsrc`,
+`ref_proj_src_projdst`, `ref_proj_dst`): the destination `Borrow(Mut)` /
+`RStore` / `Die` sandwich again, but off a bound root register instead
+of a freshly allocated one. That is `copy_freshproj_write_after_read`
+with the allocation hypotheses replaced by the destination binding —
+worth ~100 a leaf, and it is the next thing to build.
