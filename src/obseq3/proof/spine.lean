@@ -3098,7 +3098,7 @@ theorem ref_local_borrow
     summary facts the rebuild needs, which keeps the seam immune to how
     a caller happens to spell its tower. -/
 theorem copy_boundproj_write_after_read
-    {σ τ : LayoutTy} {dstLoc : Local Γ σ} {bD : mirlite.Binding}
+    {τ : LayoutTy} {dbase : Word} {dtag : Tag} {dsize : Nat}
     (compProg : oseair.Prog)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     {stmt0 : Stmt Γ}
@@ -3111,19 +3111,20 @@ theorem copy_boundproj_write_after_read
     (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
     (h_prb : PlaceRegMapBound csPrefix)
-    -- the destination's binding, and its register at the POST-SOURCE state
-    {dstReg : Register} {tagD : Tag}
-    (h_piD : getPlaceInfo csPrefix dstLoc.idx.1 = some (dstReg, σ))
-    (h_raD : ρa bD.addr = some bD.addr)
-    (h_rtD : ρt bD.tag = some tagD)
-    (h_nwD : (bD.tag == wildcardTag) = false)
-    (h_domD : ∀ k, k < blockSize σ → ∃ a, ρa (bD.addr + k) = some a)
-    (off : Nat) (h_fit : off + blockSize τ ≤ blockSize σ)
+    -- the destination's RESOLVED root -- a bound local's binding or a
+    -- chain's resolution, the seam does not care which -- and the register
+    -- holding it at the POST-SOURCE state
+    {dstReg : Register} {tagD : Tag} (boff : Nat)
+    (h_raD : ρa dbase = some dbase)
+    (h_rtD : ρt dtag = some tagD)
+    (h_nwD : (dtag == wildcardTag) = false)
+    (h_domD : ∀ k, k < dsize → ∃ a, ρa (dbase + k) = some a)
+    (off : Nat) (h_fit : boff + off + blockSize τ ≤ dsize)
     -- the POST-SOURCE bundle
     {csR : CompilerState} {sR : oseair.State MSB} {vreg : Register}
     {vals : List Val} {nR : Nat} {perms₂ : MSB.State}
     (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
-    (h_entryD : PtrRegisterEntry sR.reg dstReg bD.addr 0 (blockSize σ) tagD)
+    (h_entryD : PtrRegisterEntry sR.reg dstReg dbase boff dsize tagD)
     (h_sms : SourceMemSim ρa ρt s_mir.mem sR.mem)
     (h_alloc : AllocLockstep s_mir.mem sR.mem)
     (h_prmR : csR.placeRegMap = csPrefix.placeRegMap)
@@ -3152,10 +3153,10 @@ theorem copy_boundproj_write_after_read
     -- the mirlite write, into the FIELD of the bound root
     {rd : mirlite.PlaceRes} {mvals : List mirlite.MemValue}
     (h_mlen : mvals.length = blockSize τ)
-    (h_rdaddr : rd.addr = bD.addr + off)
-    (h_rdtag : rd.tag = bD.tag)
-    (h_rdbase : rd.allocBase = bD.addr)
-    (h_rdsize : rd.allocSize = blockSize σ)
+    (h_rdaddr : rd.addr = dbase + (boff + off))
+    (h_rdtag : rd.tag = dtag)
+    (h_rdbase : rd.allocBase = dbase)
+    (h_rdsize : rd.allocSize = dsize)
     (h_valsRel : ListRel (MemValSim ρa ρt) mvals vals)
     (h_step : mirlite.writeResolvedPlace (τ := τ) MSB
       { s_mir with perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
@@ -3163,7 +3164,7 @@ theorem copy_boundproj_write_after_read
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
   obtain ⟨h_nb, perms₃, h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_step
-  have h_useMut_src' : MSB.useMut perms₂ (bD.addr + off) (blockSize τ) bD.tag
+  have h_useMut_src' : MSB.useMut perms₂ (dbase + (boff + off)) (blockSize τ) dtag
       = .ok perms₃ := by
     rw [← h_rdaddr, ← h_rdtag, ← h_mlen]
     exact h_useMut_src
@@ -3179,12 +3180,12 @@ theorem copy_boundproj_write_after_read
   have h_qAcc : qAcc' = qW := by grind
   subst h_qAcc
   -- the interior `Borrow(Mut)` off the destination's own register
-  have h_off_le : bD.addr + 0 + off + blockSize τ ≤ bD.addr + blockSize σ := by
-    simp only [Nat.add_zero, Nat.add_assoc]
-    exact Nat.add_le_add_left h_fit _
-  have h_ref_dst' : MSB.ref sR.perms (bD.addr + 0 + off) (blockSize τ) tagD
+  have h_off_le : dbase + boff + off + blockSize τ ≤ dbase + dsize := by
+    have h := Nat.add_le_add_left h_fit dbase
+    simpa only [Nat.add_assoc] using h
+  have h_ref_dst' : MSB.ref sR.perms (dbase + boff + off) (blockSize τ) tagD
       RefKind.Mut false [] = .ok (q1, sR.perms.NextTag) := by
-    simp only [Nat.add_zero]
+    rw [Nat.add_assoc]
     simpa using h_ref_dst
   have h_run1 := runN_Assgn_Borrow_step compProg sR
     (Register.R csR.nextReg) dstReg RefKind.Mut false [] (blockSize τ) off
@@ -3193,19 +3194,18 @@ theorem copy_boundproj_write_after_read
       = { sR with
           perms := q1,
           reg := oseair.RegMap.insert sR.reg (Register.R csR.nextReg)
-            (obseq.TyVal.PTy, [Val.Ptr bD.addr (0 + off) (blockSize σ) sR.perms.NextTag]),
+            (obseq.TyVal.PTy, [Val.Ptr dbase (boff + off) dsize sR.perms.NextTag]),
           pc := sR.pc + 1 } := ⟨_, rfl⟩
   rw [← hsB] at h_run1
   have h_sBreg : sB.reg = oseair.RegMap.insert sR.reg (Register.R csR.nextReg)
-      (obseq.TyVal.PTy, [Val.Ptr bD.addr (0 + off) (blockSize σ) sR.perms.NextTag]) := by rw [hsB]
+      (obseq.TyVal.PTy, [Val.Ptr dbase (boff + off) dsize sR.perms.NextTag]) := by rw [hsB]
   have h_sBperms : sB.perms = q1 := by rw [hsB]
   have h_sBmem : sB.mem = sR.mem := by rw [hsB]
   have h_sBpc : sB.pc = sR.pc + 1 := by rw [hsB]
   -- the store THROUGH the interior borrow (BRIDGE 2)
   have h_entry_tmp : PtrRegisterEntry sB.reg (Register.R csR.nextReg)
       rd.allocBase (rd.addr - rd.allocBase) rd.allocSize sR.perms.NextTag := by
-    rw [h_sBreg, h_rdaddr, h_rdbase, h_rdsize, Nat.add_sub_cancel_left,
-      Nat.zero_add]
+    rw [h_sBreg, h_rdaddr, h_rdbase, h_rdsize, Nat.add_sub_cancel_left]
     exact RegMap.lookup_insert_self _ _ _
   have h_wr1' : MSB.useMut sB.perms rd.addr vals.length sR.perms.NextTag
       = .ok q2 := by
@@ -3221,8 +3221,9 @@ theorem copy_boundproj_write_after_read
       h_entry_tmp h_wr1' h_smsB
       (by rw [h_rdaddr, h_rdbase]; exact Nat.le_add_right _ _)
       (fun k hk => by
-        rw [h_rdaddr, Nat.add_assoc]
-        obtain ⟨a', ha'⟩ := h_domD (off + k) (by rw [h_mlen] at hk; omega)
+        rw [show rd.addr + k = dbase + (boff + off + k) by
+          rw [h_rdaddr, Nat.add_assoc]]
+        obtain ⟨a', ha'⟩ := h_domD (boff + off + k) (by rw [h_mlen] at hk; omega)
         rw [ha', h_id_a _ _ ha'])
       h_step
   have h_vregB : oseair.RegMap.lookup sB.reg vreg

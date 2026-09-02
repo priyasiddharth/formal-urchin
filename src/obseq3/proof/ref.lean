@@ -2561,8 +2561,8 @@ theorem ref_local_projoffset_simulation
           (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr) (blockSize τ)
             s_mir.perms.NextTag])
           compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-          h_piD h_raD h_rtD' h_nwD h_domD (pathOffset g)
-          (PathTo.offset_add_size_le g) h_run1
+          0 h_raD h_rtD' h_nwD h_domD (pathOffset g)
+          (by simpa using PathTo.offset_add_size_le g) h_run1
           (by
             show oseair.RegMap.lookup _ _ = _
             rw [RegMap.lookup_insert_ne _ h_regne]
@@ -2576,7 +2576,7 @@ theorem ref_local_projoffset_simulation
           (by rw [h_stmtRun, h_len4]; rw [h_pc])
           (by rw [h_stmtRun]; simp only [emit])
           (by rw [h_stmtRun]; simp only [emit]; omega)
-          (by simp [blockSize, obseq.layoutSize]) rfl rfl rfl rfl h_relB h_step
+          (by simp [blockSize, obseq.layoutSize]) (by simp) rfl rfl rfl h_relB h_step
       exact ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩
 /-! ## The deref-dst fragments (MIR order: Borrow first, then the dst)
 
@@ -5966,8 +5966,8 @@ theorem ref_projoffset_projsrc_simulation
           (mvals := [mirlite.MemValue.ptrVal bS.addr
             (bS.addr + pathOffset f - bS.addr) (blockSize σb) s_mir.perms.NextTag])
           compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-          h_piD h_raD h_rtD' h_nwD h_domD (pathOffset g)
-          (PathTo.offset_add_size_le g) h_run1
+          0 h_raD h_rtD' h_nwD h_domD (pathOffset g)
+          (by simpa using PathTo.offset_add_size_le g) h_run1
           (by
             show oseair.RegMap.lookup _ _ = _
             rw [RegMap.lookup_insert_ne _ h_regne]
@@ -5981,7 +5981,7 @@ theorem ref_projoffset_projsrc_simulation
           (by rw [h_stmtRun, h_len4]; rw [h_pc])
           (by rw [h_stmtRun]; simp only [emit])
           (by rw [h_stmtRun]; simp only [emit]; omega)
-          (by simp [blockSize, obseq.layoutSize]) rfl rfl rfl rfl h_relB h_step
+          (by simp [blockSize, obseq.layoutSize]) (by simp) rfl rfl rfl h_relB h_step
       exact ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩
 /-- REGIME B-proj for the DESTINATION with a PROJ-TOPPED SOURCE:
     `dst.g := &kind s.f` at ZERO destination offset, `dst`'s root
@@ -8287,8 +8287,8 @@ theorem ref_projoffset_derefsrc_simulation
           (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
           permsR.NextTag])
         compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-        h_piD h_raD2 (h_incr_t _ _ h_rtD2) h_nwD2 h_domD (pathOffset g)
-        (PathTo.offset_add_size_le g)
+        0 h_raD2 (h_incr_t _ _ h_rtD2) h_nwD2 h_domD (pathOffset g)
+        (by simpa using PathTo.offset_add_size_le g)
         (oseair_runN_trans h_drun h_run1)
         (by
           show oseair.RegMap.lookup _ _ = _
@@ -8314,7 +8314,7 @@ theorem ref_projoffset_derefsrc_simulation
         (by rw [h_dpc, h_stmtRun]; simp [emit])
         (by rw [h_stmtRun]; simp only [emit]; try exact h_dprm)
         (by rw [h_stmtRun]; simp only [emit]; omega)
-        (by simp [blockSize, obseq.layoutSize]) rfl rfl rfl rfl
+        (by simp [blockSize, obseq.layoutSize]) (by simp) rfl rfl rfl
         ⟨⟨h_dbase, h_off_eq, rfl, h_rt_new, h_nw_new,
           fun k hk => h_drange k hk⟩, trivial⟩
         h_step
