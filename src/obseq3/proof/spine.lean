@@ -3083,6 +3083,225 @@ theorem ref_local_borrow
       h_prb (Nat.le_refl _) rfl)
 
 
+
+/-- **The bound-root projected write seam** — the destination half when
+    the destination is a FIELD of a local that is already BOUND, at a
+    nonzero offset. Same three instructions as
+    `copy_freshproj_write_after_read`, and the same BRIDGE 1 collapse of
+    the interior `Borrow(Mut)`'s ref/use/die to the parent's write; what
+    changes is where the root comes from — an existing binding rather
+    than the statement's own `Alloc`, so there is no rename growth and
+    no allocation lockstep to re-establish.
+
+    Interface as in the projected fresh seam: the statement's compiled
+    tower is NOT a hypothesis, only the three code facts and the two
+    summary facts the rebuild needs, which keeps the seam immune to how
+    a caller happens to spell its tower. -/
+theorem copy_boundproj_write_after_read
+    {σ τ : LayoutTy} {dstLoc : Local Γ σ} {bD : mirlite.Binding}
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    {csPrefix : CompilerState}
+    (h_csAt : csAt cs0 prog s_mir.pc csPrefix)
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt0)}
+    (h_stmtOut : CheckedCompilerM.value (compileStmtChecked stmt0) csPrefix
+      = Except.ok stmtOut)
+    (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
+    (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
+    (h_prb : PlaceRegMapBound csPrefix)
+    -- the destination's binding, and its register at the POST-SOURCE state
+    {dstReg : Register} {tagD : Tag}
+    (h_piD : getPlaceInfo csPrefix dstLoc.idx.1 = some (dstReg, σ))
+    (h_raD : ρa bD.addr = some bD.addr)
+    (h_rtD : ρt bD.tag = some tagD)
+    (h_nwD : (bD.tag == wildcardTag) = false)
+    (h_domD : ∀ k, k < blockSize σ → ∃ a, ρa (bD.addr + k) = some a)
+    (off : Nat) (h_fit : off + blockSize τ ≤ blockSize σ)
+    -- the POST-SOURCE bundle
+    {csR : CompilerState} {sR : oseair.State MSB} {vreg : Register}
+    {vals : List Val} {nR : Nat} {perms₂ : MSB.State}
+    (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
+    (h_entryD : PtrRegisterEntry sR.reg dstReg bD.addr 0 (blockSize σ) tagD)
+    (h_sms : SourceMemSim ρa ρt s_mir.mem sR.mem)
+    (h_alloc : AllocLockstep s_mir.mem sR.mem)
+    (h_prmR : csR.placeRegMap = csPrefix.placeRegMap)
+    (h_regmonoR : csPrefix.nextReg ≤ csR.nextReg)
+    (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
+    (h_psimR : PermSim ρt perms₂ sR.perms)
+    (h_tbdR : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag)
+    (h_pcR : sR.pc = csR.nextLabel)
+    (h_vregR : oseair.RegMap.lookup sR.reg vreg = some (layoutToTyVal τ, vals))
+    (h_vbelow : RegisterBelow csR.nextReg vreg)
+    (h_vlen : vals.length = blockSize τ)
+    -- the three instructions the destination costs, and the rebuild's two
+    (h_code1 : compProg sR.pc
+      = some (Instr.Assgn (Register.R csR.nextReg)
+          (Rhs.Borrow RefKind.Mut false [] (blockSize τ) dstReg off)))
+    (h_code2 : compProg (sR.pc + 1)
+      = some (Instr.RStore (layoutToTyVal τ) vreg (Register.R csR.nextReg)))
+    (h_code3 : compProg (sR.pc + 1 + 1)
+      = some (Instr.Die (Register.R csR.nextReg) (blockSize τ)))
+    (h_lab : sR.pc + 1 + 1 + 1
+      = (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix).nextLabel)
+    (h_prmS : (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix).placeRegMap
+      = csR.placeRegMap)
+    (h_nextRegLe : csR.nextReg
+      ≤ (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix).nextReg)
+    -- the mirlite write, into the FIELD of the bound root
+    {rd : mirlite.PlaceRes} {mvals : List mirlite.MemValue}
+    (h_mlen : mvals.length = blockSize τ)
+    (h_rdaddr : rd.addr = bD.addr + off)
+    (h_rdtag : rd.tag = bD.tag)
+    (h_rdbase : rd.allocBase = bD.addr)
+    (h_rdsize : rd.allocSize = blockSize σ)
+    (h_valsRel : ListRel (MemValSim ρa ρt) mvals vals)
+    (h_step : mirlite.writeResolvedPlace (τ := τ) MSB
+      { s_mir with perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
+    ∃ (s_osea' : oseair.State MSB) (n : Nat),
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
+  obtain ⟨h_nb, perms₃, h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_step
+  have h_useMut_src' : MSB.useMut perms₂ (bD.addr + off) (blockSize τ) bD.tag
+      = .ok perms₃ := by
+    rw [← h_rdaddr, ← h_rdtag, ← h_mlen]
+    exact h_useMut_src
+  -- BRIDGE 3 on the parent write, then BRIDGE 1 on the interior borrow
+  obtain ⟨qW, h_useMut_tgt, h_psim2⟩ :=
+    sb_write_respects_PermSim h_psimR h_wf_t h_rtD h_nwD h_useMut_src'
+  obtain ⟨q1, h_ref_dst⟩ := sb_ref_Mut_ok_of_sb_write_ok h_useMut_tgt
+  have h_unprot := freshTag_not_protected h_psimR h_tbdR
+  have h2 : wildcardTag < sR.perms.NextTag := (h_tbdR _ _ h_wf_t.2).2
+  have h_ntw' : (sR.perms.NextTag == wildcardTag) = false := by grind
+  obtain ⟨q2, q3, qAcc', h_wr1, h_die1, h_wr2, h_sm, h_ex, h_pf, h_ntle⟩ :=
+    sb_ref_use_die_cancels h_ntw' h_unprot h_ref_dst
+  have h_qAcc : qAcc' = qW := by grind
+  subst h_qAcc
+  -- the interior `Borrow(Mut)` off the destination's own register
+  have h_off_le : bD.addr + 0 + off + blockSize τ ≤ bD.addr + blockSize σ := by
+    simp only [Nat.add_zero, Nat.add_assoc]
+    exact Nat.add_le_add_left h_fit _
+  have h_ref_dst' : MSB.ref sR.perms (bD.addr + 0 + off) (blockSize τ) tagD
+      RefKind.Mut false [] = .ok (q1, sR.perms.NextTag) := by
+    simp only [Nat.add_zero]
+    simpa using h_ref_dst
+  have h_run1 := runN_Assgn_Borrow_step compProg sR
+    (Register.R csR.nextReg) dstReg RefKind.Mut false [] (blockSize τ) off
+    h_code1 h_entryD h_off_le h_ref_dst'
+  obtain ⟨sB, hsB⟩ : ∃ sB : oseair.State MSB, sB
+      = { sR with
+          perms := q1,
+          reg := oseair.RegMap.insert sR.reg (Register.R csR.nextReg)
+            (obseq.TyVal.PTy, [Val.Ptr bD.addr (0 + off) (blockSize σ) sR.perms.NextTag]),
+          pc := sR.pc + 1 } := ⟨_, rfl⟩
+  rw [← hsB] at h_run1
+  have h_sBreg : sB.reg = oseair.RegMap.insert sR.reg (Register.R csR.nextReg)
+      (obseq.TyVal.PTy, [Val.Ptr bD.addr (0 + off) (blockSize σ) sR.perms.NextTag]) := by rw [hsB]
+  have h_sBperms : sB.perms = q1 := by rw [hsB]
+  have h_sBmem : sB.mem = sR.mem := by rw [hsB]
+  have h_sBpc : sB.pc = sR.pc + 1 := by rw [hsB]
+  -- the store THROUGH the interior borrow (BRIDGE 2)
+  have h_entry_tmp : PtrRegisterEntry sB.reg (Register.R csR.nextReg)
+      rd.allocBase (rd.addr - rd.allocBase) rd.allocSize sR.perms.NextTag := by
+    rw [h_sBreg, h_rdaddr, h_rdbase, h_rdsize, Nat.add_sub_cancel_left,
+      Nat.zero_add]
+    exact RegMap.lookup_insert_self _ _ _
+  have h_wr1' : MSB.useMut sB.perms rd.addr vals.length sR.perms.NextTag
+      = .ok q2 := by
+    rw [h_sBperms, h_vlen, h_rdaddr]
+    exact h_wr1
+  have h_smsB : SourceMemSim ρa ρt { s_mir with perms := perms₂ }.mem sB.mem := by
+    rw [h_sBmem]
+    exact h_sms
+  obtain ⟨h_wtp, h_sms'⟩ :=
+    writeThroughPtr_sim (τ := τ) (s_osea := sB) (resolved := rd)
+      (s_pre := { s_mir with perms := perms₂ })
+      "RStore Invalid Regs" mvals vals h_mlen h_valsRel h_id_a
+      h_entry_tmp h_wr1' h_smsB
+      (by rw [h_rdaddr, h_rdbase]; exact Nat.le_add_right _ _)
+      (fun k hk => by
+        rw [h_rdaddr, Nat.add_assoc]
+        obtain ⟨a', ha'⟩ := h_domD (off + k) (by rw [h_mlen] at hk; omega)
+        rw [ha', h_id_a _ _ ha'])
+      h_step
+  have h_vregB : oseair.RegMap.lookup sB.reg vreg
+      = some (layoutToTyVal τ, vals) := by
+    rw [h_sBreg, RegMap.lookup_insert_ne _ (by
+      intro h_eq
+      cases vreg with
+      | R m =>
+        injection h_eq with h_eq
+        subst h_eq
+        exact absurd h_vbelow (Nat.not_lt.mpr (Nat.le_refl _)))]
+    exact h_vregR
+  have h_run2 := runN_RStore_step compProg sB _
+    (layoutToTyVal τ) vreg (Register.R csR.nextReg) vals _
+    (by rw [h_sBpc]; exact h_code2) h_vregB h_entry_tmp h_wtp
+  -- and the `Die` that retires the interior borrow
+  have h_run3 := runN_Die_step compProg
+    { sB with
+        perms := q2,
+        mem := oseair.writeWordSeq sB.mem rd.addr vals,
+        pc := sB.pc + 1 }
+    (Register.R csR.nextReg) (blockSize τ)
+    (by show compProg (sB.pc + 1) = _; rw [h_sBpc]; exact h_code3)
+    (by
+      show oseair.RegMap.lookup sB.reg _ = _
+      have h := h_entry_tmp
+      rw [h_rdaddr, h_rdbase, h_rdsize, Nat.add_sub_cancel_left] at h
+      exact h)
+    (by simpa using h_die1)
+  have h_run := oseair_runN_trans
+    (oseair_runN_trans (oseair_runN_trans h_runR h_run1) h_run2) h_run3
+  -- BRIDGE 1 collapses the triple to the parent's write
+  have h_psim4 : PermSim ρt perms₃ q3 := by
+    obtain ⟨hs, hp, he, hn⟩ := h_psim2
+    exact ⟨by rw [h_sm]; exact hs, by rw [h_pf]; exact hp,
+           by rw [h_ex]; exact he, Nat.le_trans hn h_ntle⟩
+  -- rebuild the invariant
+  refine ⟨_, _, h_run, ?_⟩
+  refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
+    ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms',
+    h_psim4, h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
+  · show sB.pc + 1 + 1 = _
+    rw [h_sBpc]
+    exact h_lab
+  · refine LocalBindingSim.placeRegMap_congr h_prmS
+      (LocalBindingSim.insert_fresh_reg h_lbsR
+        (by
+          intro idx reg τ'' h_look
+          have h_cs : getPlaceInfo csPrefix idx = some (reg, τ'') := by
+            show csPrefix.placeRegMap.lookup _ = _
+            rw [← h_prmR]
+            exact h_look
+          exact RegisterBelow.mono h_regmonoR (h_prb _ _ _ h_cs))
+        (Nat.le_refl _) (by show sB.reg = _; exact h_sBreg))
+  · show TagRenameBounded _ perms₃.NextTag q3.NextTag
+    rw [sb_write_NextTag h_useMut_src']
+    exact TagRenameBounded.mono h_tbdR (Nat.le_refl _)
+      (by rw [← sb_write_NextTag h_useMut_tgt]; exact h_ntle)
+  · show AllocLockstep (mirlite.writeWordSeq s_mir.mem rd.addr mvals) _
+    rw [h_sBmem]
+    exact h_alloc.writeWordSeq _ _ _ _
+  · intro τ' loc' h_none
+    show getPlaceInfo _ _ = _
+    simp only [getPlaceInfo]
+    rw [h_prmS, h_prmR]
+    exact h_unmap loc' h_none
+  · intro idx reg'' τ'' h_look
+    have h_look' : getPlaceInfo csR idx = some (reg'', τ'') := by
+      show csR.placeRegMap.lookup _ = _
+      rw [← h_prmS]
+      exact h_look
+    have h_cs : getPlaceInfo csPrefix idx = some (reg'', τ'') := by
+      show csPrefix.placeRegMap.lookup _ = _
+      rw [← h_prmR]
+      exact h_look'
+    refine RegisterBelow.mono ?_ (h_prb _ _ _ h_cs)
+    exact Nat.le_trans h_regmonoR h_nextRegLe
+
+
 end
 
 end obseq3.proof
