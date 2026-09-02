@@ -3151,3 +3151,56 @@ named opportunity is const_write's eight CStore leaves (1,891 lines,
 est. −500 to −700), which needs the store step abstracted or three
 CStore siblings — see the ninth stretch for why the abstraction was
 reverted rather than forced.
+
+**Eleventh stretch — const_write, and what it actually was.** Three
+commits (`6cb9042`, `04cb33f`, `2ad64c6`). const_write 4,496 → 3,300
+(−27%); proof dir 32,031 → 30,862.
+
+I came in expecting to need CStore siblings of the five write seams.
+That was the wrong model of the file. const_write's repetition is not
+on the destination axis at all — it is the **rvalue axis**, `constInit`
+vs `uninit`, duplicated from top to bottom.
+
+**1. Sixteen dead wrappers (−765).** Each generic leaf
+(`const_store_*_simulation`) is already parameterised over the rvalue,
+and `ConstStoreFrags` bundles the nineteen fragment facts per rvalue.
+The per-leaf instance wrappers — `const_write_*_simulation` and
+`uninit_*_simulation`, two per leaf — predate that bundle. Every
+reference to all sixteen was in a DOC COMMENT. The live dispatch
+reaches each leaf through the frags.
+
+**2. Thirteen twin fragment lemmas (−362 net).** `compileStmt_proj_zero_run`
+and `compileStmt_proj_zero_uninit_run`, and twelve more pairs, differed
+only in the rvalue and the values it stores. `ConstStoreFrags`' own doc
+said these "CANNOT be shared between rvalues — for a variable `rhs`,
+`compileRExprPreChecked rhs` does not reduce". True, and beside the
+point: the lemmas never needed it to reduce, only to be a single
+`CStore`. That is
+
+    def PureCStore (rhs) (ty) (vs') : Prop :=
+      ∀ cs, run (compileRExprPreChecked rhs) cs = cs ∧
+        ∃ pre, value (compileRExprPreChecked rhs) cs = ok pre ∧
+          (∀ r, pre.store r = [Instr.CStore ty vs' r]) ∧ pre.postCleanup = []
+
+and both rvalues prove it by `rfl`. The proof edit is one move: where a
+lemma unfolded `csCompile` (which drags in `compileRExprPreChecked`) it
+now unfolds `compileStmtChecked` alone and rewrites with the witness.
+
+**3. The bundle itself (−69).** With the twins gone the two frags
+instances were the same 75 lines twice. `pureCStore_frags` builds all
+nineteen fields from one witness, taking the rvalue's evidence from
+`pre.ev` instead of naming a constructor; each instance is now one line.
+A third constant rvalue would cost one `PureCStore` proof.
+
+**The one real surprise.** Two frag fields were written as "destination
+lowering, THEN `compileRExprToChecked`". That is defeq to the compiler's
+actual order only because a constant rvalue's pre-phase is a `pure`.
+With `rhs` opaque the true order shows: `ensurePlaceRoot`, then the rhs
+PRE-phase, then the destination lowering — exactly the d34 ordering the
+compiler's own comment describes. Generalising made the proof say what
+the compiler does.
+
+**Session totals.** proof dir 36,060 → 30,862 (−14.4%); copy 10,686 →
+7,966; ref 12,998 → 10,244; const_write 4,497 → 3,300. ~42 commits,
+zero sorries and the same three axioms throughout, four suites green at
+every one.
