@@ -3963,219 +3963,6 @@ theorem compileStmt_copy_derefdst_dstflatten_value
             simp only [h_dF] at h_so
             simp at h_so
 
-/-- The DESTINATION half of a copy into a CHAIN-resolved destination —
-    `chain := copy src` and `dst.f := copy src` at zero offset alike —
-    stated over an abstract POST-READ state: the
-    source has been lowered, loaded into `vreg`, and (if it borrowed) its
-    temporary already retired — `sR`/`csR` are whatever states that left
-    behind. Every source shape that can deliver these hypotheses gets the
-    whole destination argument for free; this is the read-level interface
-    the `LoweringSim` package could not be (its `cleanup = []` boundary),
-    extracted verbatim from the chain-source leaf. -/
-theorem copy_chainwrite_after_read
-    {τ σb : LayoutTy}
-    {dbase : Place Γ σb}
-    (compProg : oseair.Prog)
-    (h_dchain : PtrChain dbase)
-    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
-    {stmt0 : Stmt Γ}
-    (h_stmt : prog.get? s_mir.pc = some stmt0)
-    {csPrefix : CompilerState}
-    (h_csAt : csAt cs0 prog s_mir.pc csPrefix)
-    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt0)}
-    (h_stmtOut : CheckedCompilerM.value (compileStmtChecked stmt0) csPrefix
-      = Except.ok stmtOut)
-    (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
-    (h_tbd : TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag)
-    (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
-    (h_alloc : AllocLockstep s_mir.mem s_osea.mem)
-    (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
-    (h_prb : PlaceRegMapBound csPrefix)
-    {rd : mirlite.PlaceRes} {permsD : MSB.State} {perms₂ : MSB.State}
-    (h_dres : mirlite.resolvePlaceAcc MSB { s_mir with perms := perms₂ } (dbase)
-      = .ok (rd, permsD))
-    {mvals : List mirlite.MemValue} (h_mlen : mvals.length = blockSize τ)
-    (h_step : mirlite.writeResolvedPlace (τ := τ) MSB { s_mir with perms := permsD }
-      rd mvals h_mlen = mirlite.Result.ok s_mir')
-    (h_ntEq : perms₂.NextTag = s_mir.perms.NextTag)
-    {csR : CompilerState} {sR : oseair.State MSB} {vreg : Register}
-    {vals : List Val} {nR : Nat}
-    (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
-    (h_prmR : csR.placeRegMap = csPrefix.placeRegMap)
-    (h_regmonoR : csPrefix.nextReg ≤ csR.nextReg)
-    (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
-    (h_psimR : PermSim ρt perms₂ sR.perms)
-    (h_tbdR : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag)
-    (h_ntR : s_osea.perms.NextTag ≤ sR.perms.NextTag)
-    (h_memR : sR.mem = s_osea.mem)
-    (h_pcR : sR.pc = csR.nextLabel)
-    (h_vregR : oseair.RegMap.lookup sR.reg vreg = some (layoutToTyVal τ, vals))
-    (h_vbelow : RegisterBelow csR.nextReg vreg)
-    (h_vlen : vals.length = blockSize τ)
-    (h_valsRel : ListRel (MemValSim ρa ρt) mvals vals)
-    (h_instR : ∀ q instr,
-      q < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase)) csR).nextLabel →
-      (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase)) csR).code q
-        = some instr →
-      compProg q = some instr)
-    (h_frag : ∀ (dOut : ResultWithEvidence PtrResult
-        (PlaceToRegEvidence RefKind.Mut (dbase))),
-      CheckedCompilerM.value (placeToRegChecked RefKind.Mut (dbase)) csR
-        = Except.ok dOut →
-      dOut.result.cleanup = [] →
-      CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix
-        = emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase)) csR)
-            [Instr.RStore (layoutToTyVal τ) vreg dOut.result.reg]) :
-    ∃ (s_osea' : oseair.State MSB) (n : Nat),
-      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
-    -- §7 the DESTINATION mother lemma, at the post-read states
-    have h_prmCS1 : csR.placeRegMap = csPrefix.placeRegMap := h_prmR
-    have h_lbs1 : LocalBindingSim ρa ρt s_mir.env sR csR := h_lbsR
-    have h_prb1 : PlaceRegMapBound csR := by
-      intro idx reg τ'' h_look
-      have h_cs : getPlaceInfo csPrefix idx = some (reg, τ'') := by
-        show csPrefix.placeRegMap.lookup idx = _
-        rw [← h_prmR]
-        exact h_look
-      exact RegisterBelow.mono h_regmonoR (h_prb _ _ _ h_cs)
-    have h_tbd1 : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag := h_tbdR
-    obtain ⟨dOut, n2, s_mid2, tresD, h_dval, h_dclean, h_drun, h_dpc, h_dmem,
-      h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dnw, h_dle, h_drange,
-      h_dbelow, h_dprm, h_dregmono, h_dlabmono, h_dframe, -⟩ :=
-      ptrChain_lowering_sim (s_mir := { s_mir with perms := perms₂ })
-        (compProg := compProg) h_id_a h_wf_t h_dchain RefKind.Mut csR
-        sR rd permsD h_dres h_tbd1 h_lbs1 h_prb1
-        (by rw [show sR.mem = s_osea.mem from h_memR]; exact h_sms)
-        h_psimR h_pcR h_instR
-    -- §8 the WRITE: transport, then execute the `RStore`
-    have h_stmtRun := h_frag dOut h_dval h_dclean
-    have h_cancelD := resolvedAddr_cancel h_dle
-    obtain ⟨h_nb, perms₃, h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_step
-    obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
-      sb_write_respects_PermSim h_dpsim h_wf_t h_drt h_dnw h_useMut_src
-    -- the temporary register survives the destination lowering
-    have h_regbelow : RegisterBelow csR.nextReg vreg := h_vbelow
-    have h_vreg : oseair.RegMap.lookup s_mid2.reg vreg
-        = some (layoutToTyVal τ, vals) := by
-      rw [h_dframe vreg h_regbelow]
-      exact h_vregR
-    have h_code2 : compProg s_mid2.pc
-        = some (Instr.RStore (layoutToTyVal τ) vreg dOut.result.reg) := by
-      rw [h_dpc]
-      refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-      · rw [h_stmtRun]
-        show _ < _ + 1
-        exact Nat.lt_succ_self _
-      · rw [h_stmtRun]
-        have h := emit_code_at_new
-          (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
-      csR)
-          [Instr.RStore (layoutToTyVal τ) vreg dOut.result.reg]
-          (k := 0) (by simp)
-        simpa using h
-    have h_useMut2t : MSB.useMut s_mid2.perms
-        (rd.allocBase + (rd.addr - rd.allocBase)) vals.length tresD = .ok p3 := by
-      rw [h_cancelD, h_vlen]
-      simpa only [h_mlen] using h_useMut_tgt
-    have h_wtp : oseair.writeThroughPtr MSB s_mid2 dOut.result.reg vals
-        "RStore Invalid Regs"
-        = oseair.Result.Ok
-          { s_mid2 with
-              perms := p3,
-              mem := oseair.writeWordSeq s_mid2.mem rd.addr vals,
-              pc := s_mid2.pc + 1 } := by
-      have h_dl : oseair.RegMap.lookup s_mid2.reg dOut.result.reg
-          = some (obseq.TyVal.PTy,
-              [Val.Ptr rd.allocBase (rd.addr - rd.allocBase) rd.allocSize
-                tresD]) := h_dentry
-      simp only [oseair.writeThroughPtr, h_dl]
-      rw [if_neg (by
-        rw [h_vlen, h_cancelD]
-        have h1 := Nat.not_lt.mp h_nb
-        simp only [h_mlen] at h1
-        exact Nat.not_lt.mpr (by grind))]
-      rw [h_cancelD] at h_useMut2t
-      simp only [h_useMut2t, h_cancelD]
-    have h_run2 := runN_RStore_step compProg s_mid2 _
-      (layoutToTyVal τ) vreg dOut.result.reg vals
-      _ h_code2 h_vreg h_dentry h_wtp
-    have h_runB := (oseair_runN_trans h_runR h_drun)
-    have h_run := (oseair_runN_trans h_runB h_run2)
-    -- §9 memory: the same values land at the same addresses
-    have h_memchain : s_mid2.mem = s_osea.mem := by
-      rw [h_dmem]
-      exact h_memR
-    have h_rel : ListRel (MemValSim ρa ρt) mvals vals := h_valsRel
-    have h_dom : ∀ k,
-        k < mvals.length →
-        ρa (rd.addr + k) = some (rd.addr + k) := by
-      intro k hk
-      rw [h_mlen] at hk
-      have h_lt : rd.addr - rd.allocBase + k < rd.allocSize := by
-        have h1 := Nat.not_lt.mp h_nb
-        have h2 := h_dle
-        simp only [h_mlen] at h1
-        grind
-      obtain ⟨a', ha'⟩ := h_drange _ h_lt
-      have h_addr : rd.allocBase + (rd.addr - rd.allocBase + k) = rd.addr + k := by
-        have h2 := h_dle
-        grind
-      rw [h_addr] at ha'
-      grind
-    have h_sms' : SourceMemSim ρa ρt
-        (mirlite.writeWordSeq s_mir.mem rd.addr
-          mvals)
-        (oseair.writeWordSeq s_mid2.mem rd.addr vals) := by
-      refine SourceMemSim.writeWordSeq_extend h_id_a _ _ _ _ _ h_rel h_dom ?_
-      rw [h_memchain]
-      exact h_sms
-    -- §10 rebuild the invariant
-    refine ⟨_, nR + n2 + 1, h_run, ?_⟩
-    refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
-      ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, ?_, h_psim3,
-      h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
-    · show s_mid2.pc + 1 = _
-      rw [h_dpc, h_stmtRun]
-      simp [emit]
-    · intro τ' loc' binding' h_env'
-      obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
-        h_dlbs loc' binding' h_env'
-      refine ⟨reg', base', tag', ?_, h_entry', h_ra', h_rt', h_nw', h_dom'⟩
-      rw [h_stmtRun, getPlaceInfo_emit]
-      show _ = _
-      simp only [getPlaceInfo, h_dprm]
-      exact h_pi'
-    · exact h_sms'
-    · show TagRenameBounded ρt perms₃.NextTag p3.NextTag
-      rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt, h_dnt1]
-      show TagRenameBounded ρt perms₂.NextTag _
-      rw [h_ntEq]
-      exact TagRenameBounded.mono h_tbd (Nat.le_refl _) (Nat.le_trans h_ntR h_dnt2)
-    · simp only [h_memchain]
-      exact h_alloc.writeWordSeq _ _ _ _
-    · intro τ' loc' h_none
-      rw [h_stmtRun, getPlaceInfo_emit]
-      show _ = _
-      simp only [getPlaceInfo, h_dprm]
-      have h_p : csR.placeRegMap = csPrefix.placeRegMap := h_prmR
-      simp only [getPlaceInfo] at h_p ⊢
-      rw [h_p]
-      exact h_unmap loc' h_none
-    · intro idx reg'' τ'' h_look
-      rw [h_stmtRun] at h_look ⊢
-      rw [getPlaceInfo_emit] at h_look
-      have h_p : csR.placeRegMap = csPrefix.placeRegMap := h_prmR
-      have h_cs : getPlaceInfo csPrefix idx = some (reg'', τ'') := by
-        show csPrefix.placeRegMap.lookup idx = _
-        rw [← h_p, ← h_dprm]
-        exact h_look
-      refine RegisterBelow.mono ?_ (h_prb _ _ _ h_cs)
-      simp only [emit]
-      exact Nat.le_trans h_regmonoR h_dregmono
-
-
-
 /-- NON-LOCAL destination, CLOSED 2026-08-30: `*Q := copy src` for a
     canonical-chain destination and source. The first leaf that composes
     TWO mother-lemma calls. The rhs pre-phase lowers the source and the
@@ -4454,16 +4241,14 @@ theorem copy_chaindst_chainsrc_simulation
       rw [h_sprm]
       exact h_pi'
     exact copy_chainwrite_after_read compProg h_dchain h_comp h_stmt h_csAt
-      h_stmtOut h_id_a h_wf_t h_tbd h_sms h_alloc h_unmap h_prb
+      h_stmtOut h_id_a h_wf_t h_sms h_alloc h_unmap h_prb
       h_dres (by rw [mirlite_readWordSeq_length]) h_step
-      ((sb_read_NextTag h_read_src).trans h_snt1)
       (oseair_runN_trans h_srun h_run1)
       (by simp only [emit]; exact h_sprm)
       (by simp only [emit]; exact Nat.le_trans h_sregmono (Nat.le_succ _))
       h_lbsR h_psim2
       (by rw [sb_read_NextTag h_read_src, sb_read_NextTag h_read_tgt, h_snt1]
           exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2)
-      (by rw [sb_read_NextTag h_read_tgt]; exact h_snt2)
       h_smem
       (by show s_mid1.pc + 1 = _
           rw [h_spc]
@@ -4761,16 +4546,14 @@ theorem copy_chaindst_projsrc_zero_simulation
       rw [h_sprm]
       exact h_pi'
     exact copy_chainwrite_after_read compProg h_dchain h_comp h_stmt h_csAt
-      h_stmtOut h_id_a h_wf_t h_tbd h_sms h_alloc h_unmap h_prb
+      h_stmtOut h_id_a h_wf_t h_sms h_alloc h_unmap h_prb
       h_dres (by rw [mirlite_readWordSeq_length]) h_step
-      ((sb_read_NextTag h_read_src).trans h_snt1)
       (oseair_runN_trans h_srun h_run1)
       (by simp only [emit]; exact h_sprm)
       (by simp only [emit]; exact Nat.le_trans h_sregmono (Nat.le_succ _))
       h_lbsR h_psim2
       (by rw [sb_read_NextTag h_read_src, sb_read_NextTag h_read_tgt, h_snt1]
           exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2)
-      (by rw [sb_read_NextTag h_read_tgt]; exact h_snt2)
       h_smem
       (by show s_mid1.pc + 1 = _
           rw [h_spc]
@@ -5215,16 +4998,12 @@ theorem copy_chaindst_projsrc_offset_simulation
       rw [← sb_read_NextTag h_read_tgt]
       exact h_ntle
     exact copy_chainwrite_after_read compProg h_dchain h_comp h_stmt h_csAt
-      h_stmtOut h_id_a h_wf_t h_tbd h_sms h_alloc h_unmap h_prb
+      h_stmtOut h_id_a h_wf_t h_sms h_alloc h_unmap h_prb
       h_dres (by rw [mirlite_readWordSeq_length]) h_step
-      ((sb_read_NextTag h_read_src).trans h_snt1)
       (oseair_runN_trans (oseair_runN_trans (oseair_runN_trans h_srun h_run1) h_run2) h_run3)
       (by simp only [emit]; exact h_sprm)
       (by simp only [emit]; omega)
       h_lbs1 h_psim2q h_tbd1
-      (by refine Nat.le_trans h_snt2 ?_
-          rw [← sb_read_NextTag h_read_tgt]
-          exact h_ntle)
       h_smem
       (by show s_mid1.pc + 1 + 1 + 1 = _
           rw [h_spc]
@@ -8401,16 +8180,12 @@ theorem copy_projdst_zero_projsrc_offset_simulation
       rw [← sb_read_NextTag h_read_tgt]
       exact h_ntle
     exact copy_chainwrite_after_read compProg h_dchain h_comp h_stmt h_csAt
-      h_stmtOut h_id_a h_wf_t h_tbd h_sms h_alloc h_unmap h_prb
+      h_stmtOut h_id_a h_wf_t h_sms h_alloc h_unmap h_prb
       h_dres (by rw [mirlite_readWordSeq_length]) h_step
-      ((sb_read_NextTag h_read_src).trans h_snt1)
       (oseair_runN_trans (oseair_runN_trans (oseair_runN_trans h_srun h_run1) h_run2) h_run3)
       (by simp only [emit]; exact h_sprm)
       (by simp only [emit]; omega)
       h_lbs1 h_psim2q h_tbd1
-      (by refine Nat.le_trans h_snt2 ?_
-          rw [← sb_read_NextTag h_read_tgt]
-          exact h_ntle)
       h_smem
       (by show s_mid1.pc + 1 + 1 + 1 = _
           rw [h_spc]
@@ -9529,16 +9304,14 @@ theorem copy_projdst_zero_chainsrc_simulation
       rw [h_sprm]
       exact h_pi'
     exact copy_chainwrite_after_read compProg h_dchain h_comp h_stmt h_csAt
-      h_stmtOut h_id_a h_wf_t h_tbd h_sms h_alloc h_unmap h_prb
+      h_stmtOut h_id_a h_wf_t h_sms h_alloc h_unmap h_prb
       h_dres (by rw [mirlite_readWordSeq_length]) h_step
-      ((sb_read_NextTag h_read_src).trans h_snt1)
       (oseair_runN_trans h_srun h_run1)
       (by simp only [emit]; exact h_sprm)
       (by simp only [emit]; exact Nat.le_trans h_sregmono (Nat.le_succ _))
       h_lbsR h_psim2
       (by rw [sb_read_NextTag h_read_src, sb_read_NextTag h_read_tgt, h_snt1]
           exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2)
-      (by rw [sb_read_NextTag h_read_tgt]; exact h_snt2)
       h_smem
       (by show s_mid1.pc + 1 = _
           rw [h_spc]
