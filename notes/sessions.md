@@ -3045,3 +3045,34 @@ Rule of thumb from this: when a seam call fails, do not reach for
 `csnorm` first. Ask which of the three it is — wrong tactic for the
 arithmetic domain, a goal elaborated too early, or a fact that needs
 lifting rather than proving.
+
+**Same session, eighth stretch — the projzero variants.** Two commits
+(`421fba5`, and local_local). ref 10,573 → 10,393; proof dir 32,198.
+
+At ZERO offset a projected destination needs no interior borrow: the
+store goes straight through the root's register. So the third write
+seam, `copy_boundplain_write_after_read` (124), is the projected one
+minus the `Borrow(Mut)`, the `Die` and BRIDGE 1 — one code fact instead
+of three, same resolved-root interface.
+
+    ref_local_projzero    169 -> 130
+    ref_projzero_projsrc  176 -> 133
+    ref_projzero_derefsrc 276 -> 218
+    ref_local_local       148 -> 108
+
+The fourth projzero leaf, `ref_projzero_derefdst_chainsrc`, needed
+nothing: its destination is a deref CHAIN whose projection collapses at
+zero offset, and it has been on `copy_chainwrite_after_read` since the
+thirty-sixth session. That is the tidy end of the classification:
+
+    destination            write seam
+    ---------------------  ---------------------------------
+    chain, any offset      copy_chainwrite_after_read
+    bound root, zero       copy_boundplain_write_after_read
+    bound root, nonzero    copy_boundproj_write_after_read
+    fresh root, zero       copy_freshroot_write_after_read
+    fresh root, nonzero    copy_freshproj_write_after_read
+
+Five seams, and every leaf in copy and ref whose statement writes to
+memory now goes through exactly one of them. Each conversion after the
+recipe settled took one build attempt.
