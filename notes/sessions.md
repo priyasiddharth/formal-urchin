@@ -3010,3 +3010,38 @@ to normalise that leaf's towers (a `csnorm` pass over its `have`
 statements) FIRST, and then the seam call is the same twenty lines as
 the three that landed. Same for `ref_projoffset_derefdst_chainsrc`
 (471), the other chain-resolved user.
+
+**Same session, seventh stretch — the two chain-resolved users, and the
+diagnosis that unblocked them.** Two commits (`9657d59`, and the ref
+one). copy 8,188 → 7,984; ref 10,697 → 10,573; proof dir 32,253.
+
+    copy_projdst_offset_projsrc_offset  814 -> 610
+    ref_projoffset_derefdst_chainsrc    471 -> 347
+
+**It was never the tower spellings.** The previous stretch blamed
+`{X with}` vs flat records; a dozen failed builds later the real causes
+were three, and all three are general:
+
+  1. **`omega` cannot do this codebase's ADDRESS arithmetic.** Addresses
+     are `Word` (coerced), so omega silently DROPS every hypothesis and
+     goal atom mentioning `rd.addr`/`rd.allocBase`/`rd.allocSize` — its
+     "possible counterexample" then lists only register and label
+     atoms, which is exactly why the failures looked inexplicable. Use
+     `grind` for addresses; `omega` is right for registers and labels,
+     which are plain `Nat`.
+  2. **Arithmetic side conditions must be hoisted out of the seam
+     call.** Inside the application their goals still carry unassigned
+     implicits, so a tactic sees metavariables where the leaf's facts
+     should be.
+  3. **Facts about compiler states are LIFTED, not re-proven.** A
+     mother returns its `LocalBindingSim` and `RegisterBelow` at its
+     INPUT state; the seam wants them at the output.
+     `LocalBindingSim.placeRegMap_congr h_dprm h_dlbs`,
+     `RegisterBelow.mono h_dregmono h_regbelow` and
+     `h_dprm.trans h_prmCS2` say so in one line each, where a tactic
+     proof cannot see past the tower.
+
+Rule of thumb from this: when a seam call fails, do not reach for
+`csnorm` first. Ask which of the three it is — wrong tactic for the
+arithmetic domain, a goal elaborated too early, or a fact that needs
+lifting rather than proving.
