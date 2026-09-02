@@ -3076,3 +3076,40 @@ thirty-sixth session. That is the tidy end of the classification:
 Five seams, and every leaf in copy and ref whose statement writes to
 memory now goes through exactly one of them. Each conversion after the
 recipe settled took one build attempt.
+
+**Same session, ninth stretch — the last bound leaves in ref.** One
+commit (`e116ea6`). ref 10,393 → 10,244; proof dir 32,049.
+
+    ref_proj_local          177 -> 146
+    ref_deref_local         263 -> 204
+    ref_derefprojsrc_local  270 -> 211
+
+All three wrote through a BOUND local's register at offset zero, so all
+three took `copy_boundplain_write_after_read`. **`grep
+writeThroughPtr_sim` now matches no `*_simulation` in copy.lean or
+ref.lean**: every statement in those two files that writes memory goes
+through one of the five write seams, and BRIDGE 2 is called from
+spine.lean only.
+
+**const_write is NOT reachable by these seams as they stand, and the
+reason is instructive.** Its eight `const_store_*` leaves (1,891 lines)
+store with `CStore` — the value is an IMMEDIATE operand of the
+instruction, not a register — so they end in `runN_CStore_step`, not
+`runN_RStore_step`, while everything else (the resolution, BRIDGE 2,
+the whole rebuild) is identical.
+
+I tried abstracting the seam's store step into a hypothesis
+(`h_store : ∀ s', writeThroughPtr … = Ok s' → runN 1 sR compProg = Ok s'`,
+plus the message as a parameter) so that both instructions could
+instantiate it. The seam itself took the change in one build. The
+REVERT was about the call sites: each of the seven existing users then
+has to hand the step lemma its own `h_ptr` (the destination register's
+lookup), which the seam currently derives internally from `h_entryD` —
+so the change costs a hoisted `have` at every site to buy a hypothesis
+none of them needs. Not worth churning seven green proofs for.
+
+The right shape for const_write, when it is worth doing: three CStore
+siblings (plain / projected / fresh) sharing the resolved-root
+interface, OR the `h_store` abstraction done ONCE while a call site is
+already being rewritten for another reason. Estimated −500 to −700
+across the eight leaves.
