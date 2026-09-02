@@ -55,10 +55,10 @@ theorem compileStmt_local_existing_run
     Every leaf below needs the same kind of fact about the rvalue: at
     each destination shape, the statement lowers to the destination's
     own code plus one `CStore` of a fixed value list, and it lowers at
-    all. Those facts CANNOT be shared between rvalues — for a variable
-    `rhs`, `compileRExprPreChecked rhs` does not reduce, so each
-    concrete rvalue proves its own — but they can be BUNDLED, which is
-    what keeps the dispatchers from carrying twenty arguments. -/
+    all. A variable `rhs` never REDUCES, but these facts do not need it
+    to — they need only `PureCStore rhs`, and `pureCStore_frags` builds
+    the whole bundle from that one witness. Each rvalue's instance is
+    therefore a single line. -/
 
 structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
     (rhs : RExpr Γ τ) (vs' : List Val) : Prop where
@@ -2832,25 +2832,27 @@ theorem const_store_proj_simulation
           h_run, h_inv'⟩
 
 /-- The `constInit` rvalue supplies every constant-store fragment. -/
-theorem constInit_frags {Γ : Ctx} (v : Word) :
-    ConstStoreFrags (Γ := Γ) (τ := obseq.LayoutTy.NatL) (.constInit v) [Val.Dat v] := by
+theorem pureCStore_frags {Γ : Ctx} {τ : LayoutTy} {rhs : RExpr Γ τ} {vs' : List Val}
+    (h_pure : PureCStore rhs (layoutToTyVal τ) vs') : ConstStoreFrags rhs vs' := by
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-  · exact fun loc cs reg h => compileStmt_local_existing_run (cs := cs) (constInit_pureCStore v) h
-  · exact fun loc cs => ⟨{ result := (), evidence := StmtEvidence.assignLocal loc (.constInit v) (CompilerM.value (ensureLocalRegE loc) cs).result (CompilerM.value (ensureLocalRegE loc) cs).evidence (RExprToEvidence.constInit v) },
-      by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
-        emitM, cleanupInstrs, emit_nil, CompilerM.run]⟩
-  · exact fun loc cs h => compileStmt_local_fresh_run (cs := cs) (constInit_pureCStore v) h
+  · exact fun loc cs reg h => compileStmt_local_existing_run (cs := cs) h_pure h
+  · exact fun loc cs => by
+      obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ :=
+        h_pure (CompilerM.run (ensureLocalRegE loc) cs)
+      exact ⟨{ result := (), evidence := StmtEvidence.assignLocal loc rhs (CompilerM.value (ensureLocalRegE loc) cs).result (CompilerM.value (ensureLocalRegE loc) cs).evidence (pre.ev _) },
+        by simp only [compileStmtChecked, compileRExprToChecked, csMonad, h_pval]⟩
+  · exact fun loc cs h => compileStmt_local_fresh_run (cs := cs) h_pure h
   · exact fun {_} loc path cs reg h_o h => by
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
         placeToRegChecked_local_existing (kind := RefKind.Mut) h
       exact compileStmt_proj_zero_run (cs := cs) (baseOut := baseOut)
-        (fun _ _ _ hh => by cases hh) (constInit_pureCStore v) h_o
+        (fun _ _ _ hh => by cases hh) h_pure h_o
         (ensurePlaceRoot_run_eq_of_mapped ⟨reg, _, h⟩) h_brun h_bval h_bres
   · exact fun {_} loc path cs reg h_o h => by
       obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
         placeToRegChecked_local_existing (kind := RefKind.Mut) h
       exact compileStmt_proj_offset_run (cs := cs) (baseOut := baseOut)
-        (fun _ _ _ hh => by cases hh) (constInit_pureCStore v) h_o
+        (fun _ _ _ hh => by cases hh) h_pure h_o
         (ensurePlaceRoot_run_eq_of_mapped ⟨reg, _, h⟩) h_brun h_bval h_bres
   · exact fun {_} loc path cs reg h => by
       have h_mapped : PlaceInputsMapped cs (Place.proj (Place.local loc) path) :=
@@ -2858,130 +2860,59 @@ theorem constInit_frags {Γ : Ctx} (v : Word) :
       obtain ⟨dstOut, h_dstOut⟩ :=
         placeToRegChecked_ok_of_placeInputsMapped (cs := cs)
           (kind := RefKind.Mut) (p := Place.proj (Place.local loc) path) h_mapped
-      exact ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj (.local loc) path) (.constInit v) dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
-        by simp [compileStmtChecked, compileRExprPreChecked, h_dstOut,
+      obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+      exact ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj (.local loc) path) rhs dstOut.result dstOut.evidence (pre.ev _) },
+        by simp only [compileStmtChecked, csMonad, h_prun, h_dstOut, h_pval,
           ensurePlaceRoot_run_eq_of_mapped h_mapped]⟩
-  · exact fun {_} loc path cs h => compileStmt_proj_fresh_value (cs := cs) (constInit_pureCStore v) h
-  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_zero_run (cs := cs) (constInit_pureCStore v) h_o h
-  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_offset_run (cs := cs) (constInit_pureCStore v) h_o h
-  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_zero_value (constInit_pureCStore v) h_o h_r h_d
-  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_value (constInit_pureCStore v) h_o h_r h_d
-  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_zero_run (constInit_pureCStore v) h_o h_r h_d h_c
-  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_run (constInit_pureCStore v) h_o h_r h_d h_c
+  · exact fun {_} loc path cs h => compileStmt_proj_fresh_value (cs := cs) h_pure h
+  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_zero_run (cs := cs) h_pure h_o h
+  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_offset_run (cs := cs) h_pure h_o h
+  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_zero_value h_pure h_o h_r h_d
+  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_value h_pure h_o h_r h_d
+  · exact fun {_} Q path cs {_} h_o h_r h_d h_c =>
+      compileStmt_proj_deref_zero_run h_pure h_o h_r h_d h_c
+  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_run h_pure h_o h_r h_d h_c
   · exact
     (fun {_} Q path cs h_root => by
-      rw [show compileStmtChecked (Stmt.assign (.proj (.deref Q) path) (.constInit v))
-          = (do
-              let _ ← CheckedCompilerM.lift
-                (ensurePlaceRoot (Place.proj (Place.deref Q) path))
-              let dstOut ← placeToRegChecked RefKind.Mut (.proj (.deref Q) path)
-              let dstRes := dstOut.result
-              let rhsOut ← compileRExprToChecked dstRes.reg (.constInit v)
-              let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
-              pure {
-                result := (),
-                evidence := StmtEvidence.assignPlace (.proj (.deref Q) path) (.constInit v)
-                  dstRes dstOut.evidence rhsOut.evidence
-              }) from rfl]
-      rw [CheckedCompilerM.run_bind]
-      simp only [CheckedCompilerM.value_lift, CheckedCompilerM.run_lift, h_root]
-      rw [CheckedCompilerM.run_bind]
+      obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+      simp only [compileStmtChecked, csMonad, h_root, h_prun, h_pval]
       cases h : CheckedCompilerM.value
           (placeToRegChecked RefKind.Mut (.proj (.deref Q) path)) cs with
-      | ok a => exact CheckedCompilerM.incr _ _
-      | error e => exact StateIncr.refl _)
-  · exact fun Q cs {_} h_r h_d => compileStmt_derefdst_value (constInit_pureCStore v) h_r h_d
-  · exact fun Q cs {_} h_r h_d h_c => compileStmt_derefdst_run (constInit_pureCStore v) h_r h_d h_c
-  · exact fun {_} base path cs {dstOut} h_d =>
-      ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj base path) (.constInit v) dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
-        by simp [compileStmtChecked, compileRExprPreChecked, h_d]⟩
-  · exact fun Q cs {dstOut} h_d =>
-      ⟨{ result := (), evidence := StmtEvidence.assignPlace (.deref Q) (.constInit v) dstOut.result dstOut.evidence (RExprToEvidence.constInit v) },
-        by simp [compileStmtChecked, compileRExprPreChecked, h_d]⟩
+      | ok a =>
+          simp only [h, CompilerM.run, emitM]
+          exact StateIncr.trans (emit_state_incr _ _)
+            (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))
+      | error e => simp only [h]; exact StateIncr.refl _)
+  · exact fun Q cs {_} h_r h_d => compileStmt_derefdst_value h_pure h_r h_d
+  · exact fun Q cs {_} h_r h_d h_c => compileStmt_derefdst_run h_pure h_r h_d h_c
+  · exact fun {_} base path cs {dstOut} h_d => by
+      obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ :=
+        h_pure (CompilerM.run (ensurePlaceRoot (Place.proj base path)) cs)
+      exact ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj base path) rhs dstOut.result dstOut.evidence (pre.ev _) },
+        by simp only [compileStmtChecked, csMonad, h_prun, h_d, h_pval]⟩
+  · exact fun Q cs {dstOut} h_d => by
+      obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ :=
+        h_pure (CompilerM.run (ensurePlaceRoot (Place.deref Q)) cs)
+      exact ⟨{ result := (), evidence := StmtEvidence.assignPlace (.deref Q) rhs dstOut.result dstOut.evidence (pre.ev _) },
+        by simp only [compileStmtChecked, csMonad, h_prun, h_d, h_pval]⟩
   · exact
     (fun Q cs h_root => by
-      simp only [csCompile, csMonad, h_root]
+      obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure cs
+      simp only [compileStmtChecked, csMonad, h_root, h_prun, h_pval]
       split
       · simp only [CompilerM.run, emitM]
         exact StateIncr.trans (emit_state_incr _ _)
           (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))
       · exact StateIncr.refl _)
 
-/-- The `uninit` rvalue supplies every constant-store fragment. -/
+/-- The `constInit` rvalue supplies every constant-store fragment. -/
+theorem constInit_frags {Γ : Ctx} (v : Word) :
+    ConstStoreFrags (Γ := Γ) (τ := obseq.LayoutTy.NatL) (.constInit v) [Val.Dat v] :=
+  pureCStore_frags (constInit_pureCStore v)
+
 theorem uninit_frags {Γ : Ctx} (τ : LayoutTy) :
-    ConstStoreFrags (Γ := Γ) (τ := τ) .uninit (List.replicate (blockSize τ) Val.Undef) := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-  · exact fun loc cs reg h => compileStmt_local_existing_run (cs := cs) (uninit_pureCStore _) h
-  · exact fun loc cs => ⟨{ result := (), evidence := StmtEvidence.assignLocal loc .uninit (CompilerM.value (ensureLocalRegE loc) cs).result (CompilerM.value (ensureLocalRegE loc) cs).evidence RExprToEvidence.uninit },
-      by simp [compileStmtChecked, compileRExprToChecked, compileRExprPreChecked,
-        emitM, cleanupInstrs, emit_nil, CompilerM.run]⟩
-  · exact fun loc cs h => compileStmt_local_fresh_run (cs := cs) (uninit_pureCStore _) h
-  · exact fun {_} loc path cs reg h_o h => by
-      obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
-        placeToRegChecked_local_existing (kind := RefKind.Mut) h
-      exact compileStmt_proj_zero_run (cs := cs) (baseOut := baseOut)
-        (fun _ _ _ hh => by cases hh) (uninit_pureCStore _) h_o
-        (ensurePlaceRoot_run_eq_of_mapped ⟨reg, _, h⟩) h_brun h_bval h_bres
-  · exact fun {_} loc path cs reg h_o h => by
-      obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
-        placeToRegChecked_local_existing (kind := RefKind.Mut) h
-      exact compileStmt_proj_offset_run (cs := cs) (baseOut := baseOut)
-        (fun _ _ _ hh => by cases hh) (uninit_pureCStore _) h_o
-        (ensurePlaceRoot_run_eq_of_mapped ⟨reg, _, h⟩) h_brun h_bval h_bres
-  · exact fun {_} loc path cs reg h => by
-      have h_mapped : PlaceInputsMapped cs (Place.proj (Place.local loc) path) :=
-        ⟨reg, _, h⟩
-      obtain ⟨dstOut, h_dstOut⟩ :=
-        placeToRegChecked_ok_of_placeInputsMapped (cs := cs)
-          (kind := RefKind.Mut) (p := Place.proj (Place.local loc) path) h_mapped
-      exact ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj (.local loc) path) .uninit dstOut.result dstOut.evidence RExprToEvidence.uninit },
-        by simp [compileStmtChecked, compileRExprPreChecked, h_dstOut,
-          ensurePlaceRoot_run_eq_of_mapped h_mapped]⟩
-  · exact fun {_} loc path cs h => compileStmt_proj_fresh_value (cs := cs) (uninit_pureCStore _) h
-  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_zero_run (cs := cs) (uninit_pureCStore _) h_o h
-  · exact fun {_} loc path cs h_o h => compileStmt_proj_fresh_offset_run (cs := cs) (uninit_pureCStore _) h_o h
-  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_zero_value (uninit_pureCStore _) h_o h_r h_d
-  · exact fun {_} Q path cs {_} h_o h_r h_d => compileStmt_proj_deref_value (uninit_pureCStore _) h_o h_r h_d
-  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_zero_run (uninit_pureCStore _) h_o h_r h_d h_c
-  · exact fun {_} Q path cs {_} h_o h_r h_d h_c => compileStmt_proj_deref_run (uninit_pureCStore _) h_o h_r h_d h_c
-  · exact
-    (fun {_} Q path cs h_root => by
-      rw [show compileStmtChecked (Stmt.assign (.proj (.deref Q) path) .uninit)
-          = (do
-              let _ ← CheckedCompilerM.lift
-                (ensurePlaceRoot (Place.proj (Place.deref Q) path))
-              let dstOut ← placeToRegChecked RefKind.Mut (.proj (.deref Q) path)
-              let dstRes := dstOut.result
-              let rhsOut ← compileRExprToChecked dstRes.reg .uninit
-              let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
-              pure {
-                result := (),
-                evidence := StmtEvidence.assignPlace (.proj (.deref Q) path) .uninit
-                  dstRes dstOut.evidence rhsOut.evidence
-              }) from rfl]
-      rw [CheckedCompilerM.run_bind]
-      simp only [CheckedCompilerM.value_lift, CheckedCompilerM.run_lift, h_root]
-      rw [CheckedCompilerM.run_bind]
-      cases h : CheckedCompilerM.value
-          (placeToRegChecked RefKind.Mut (.proj (.deref Q) path)) cs with
-      | ok a => exact CheckedCompilerM.incr _ _
-      | error e => exact StateIncr.refl _)
-  · exact fun Q cs {_} h_r h_d => compileStmt_derefdst_value (uninit_pureCStore _) h_r h_d
-  · exact fun Q cs {_} h_r h_d h_c => compileStmt_derefdst_run (uninit_pureCStore _) h_r h_d h_c
-  · exact fun {_} base path cs {dstOut} h_d =>
-      ⟨{ result := (), evidence := StmtEvidence.assignPlace (.proj base path) .uninit dstOut.result dstOut.evidence RExprToEvidence.uninit },
-        by simp [compileStmtChecked, compileRExprPreChecked, h_d]⟩
-  · exact fun Q cs {dstOut} h_d =>
-      ⟨{ result := (), evidence := StmtEvidence.assignPlace (.deref Q) .uninit dstOut.result dstOut.evidence RExprToEvidence.uninit },
-        by simp [compileStmtChecked, compileRExprPreChecked, h_d]⟩
-  · exact
-    (fun Q cs h_root => by
-      simp only [csCompile, csMonad, h_root]
-      split
-      · simp only [CompilerM.run, emitM]
-        exact StateIncr.trans (emit_state_incr _ _)
-          (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))
-      · exact StateIncr.refl _)
+    ConstStoreFrags (Γ := Γ) (τ := τ) .uninit (List.replicate (blockSize τ) Val.Undef) :=
+  pureCStore_frags (uninit_pureCStore τ)
 
 /-! ## Flatten transfer for regime D: every deref dst normalizes into
     the chain grammar, so the chain leaf serves ALL of them. -/
