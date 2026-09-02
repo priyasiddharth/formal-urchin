@@ -4474,112 +4474,46 @@ theorem copy_chaindst_projsrc_zero_simulation
       copy_derefdst_incrs csPrefix h_pv0 h_pr0 h_root (h_run0 csPrefix)
     have h_instS :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
-    -- §4 the SOURCE mother lemma
-    obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
-      h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
-      h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
-      ptrChain_lowering_sim h_id_a h_wf_t h_schain RefKind.Shared csPrefix s_osea
-        rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
-    have h_cancelS := resolvedAddr_cancel h_sle
-    have h_ts : obseq.typeSize (layoutToTyVal τ) = blockSize τ := by
-      simp [blockSize]
-    have h_sOut_eq : sOut = sOut0 := by
-      rw [h_sval0] at h_sval
-      exact (Except.ok.inj h_sval).symm
-    subst h_sOut_eq
-    -- §5 code inclusion at the post-`Load` state and at the destination
-    -- lowering's own state: the symbolic source cleanup is now known empty
-    have h_incrCS1 : StateIncr (emit
-        { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-          nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-        [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-          (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])
-        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      simpa only [csCleanup, h_sclean, List.append_nil] using h_incrCS1'
-    have h_instD :=
-      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
+    -- §4-§6 the SOURCE package at the PROJECTED place -- its lowering is the
+    -- base's at zero offset -- then its outputs moved onto the base's tower
+    have h_sres' : mirlite.resolvePlaceAcc MSB s_mir (Place.proj B spath)
+        = .ok (rs, permsS) := by
+      rw [resolvePlaceAcc_proj_base_ok h_sres]
+      simp only [h_o', Nat.add_zero]
+    obtain ⟨h_sclean, n1, s_mid1, p2, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
+      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_valsRel⟩ :=
+      copy_chainsrc_read compProg
+        (LoweringSimAny.projZero h_schain.not_proj h_o h_schain.loweringSimAny)
+        s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc
+        h_sres' h_fit h_read_src h_pv0 (by rw [h_pr0]; exact h_instS)
+        (by rw [h_pr0]
+            exact (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1')
+    rw [h_pr0] at h_runR h_prmR h_regmonoR h_lbsR h_spc h_pcR h_vbelow
+    -- the package's cleanup fact is about the PROJECTED evidence; its result
+    -- is the base's, so the fact transports by defeq
+    have h_sclean0 : sOut0.result.cleanup = [] := h_sclean
+    -- code inclusion for the DESTINATION lowering's own instructions
     have h_incrDrun : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
         (emit
           { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
             nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
           [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
+            (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]))
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      simpa only [csCleanup, h_sclean, List.append_nil] using h_incrDrun'
+      simpa only [csCleanup, h_sclean0, List.append_nil] using h_incrDrun'
     have h_instDst :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
-    -- §6 the READ: transport, then execute the `Load`
-    obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
-      sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
-    have h_code1 : compProg s_mid1.pc
-        = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (Rhs.Load (layoutToTyVal τ) sOut.result.reg)) := by
-      rw [h_spc]
-      refine h_instD _ _ ?_ ?_
-      · simp only [emit, List.length_cons, List.length_nil]
-        omega
-      · have h := emit_code_at_new
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]
-          (k := 0) (by simp)
-        simpa using h
-    have h_read2t : MSB.read s_mid1.perms
-        (rs.allocBase + (rs.addr - rs.allocBase))
-        (obseq.typeSize (layoutToTyVal τ)) tres = .ok p2 := by
-      rw [h_ts, h_cancelS]
-      exact h_read_tgt
-    have h_run1 := runN_Assgn_Load_ptr_step compProg s_mid1
-      (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) sOut.result.reg (layoutToTyVal τ) h_code1 h_sentry
-      (by rw [h_ts]; grind) h_read2t
-    rw [h_ts, h_cancelS] at h_run1
     -- §7-§10: the destination half, shared with every other source shape
-    have h_lbsR : LocalBindingSim ρa ρt s_mir.env
-        { s_mid1 with
-          perms := p2,
-          reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-            (layoutToTyVal τ, (oseair.readWordSeq s_mid1.mem rs.addr (blockSize τ))),
-          pc := s_mid1.pc + 1 } (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]) := by
-      have h_ins : LocalBindingSim ρa ρt s_mir.env
-          { s_mid1 with
-              perms := p2,
-              reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                (layoutToTyVal τ, (oseair.readWordSeq s_mid1.mem rs.addr (blockSize τ))),
-              pc := s_mid1.pc + 1 } csPrefix :=
-        LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
-      intro τ' loc' binding' h_env'
-      obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
-        h_ins loc' binding' h_env'
-      refine ⟨reg', base', tag', ?_, h_entry', h_ra', h_rt', h_nw', h_dom'⟩
-      show getPlaceInfo _ loc'.idx.1 = _
-      simp only [getPlaceInfo, emit]
-      rw [h_sprm]
-      exact h_pi'
     exact copy_chainwrite_after_read compProg h_dchain h_comp h_stmt h_csAt
       h_stmtOut h_id_a h_wf_t h_sms h_alloc h_unmap h_prb
       h_dres (by rw [mirlite_readWordSeq_length]) h_step
-      (oseair_runN_trans h_srun h_run1)
-      (by simp only [emit]; exact h_sprm)
-      (by simp only [emit]; exact Nat.le_trans h_sregmono (Nat.le_succ _))
-      h_lbsR h_psim2
-      (by rw [sb_read_NextTag h_read_src, sb_read_NextTag h_read_tgt, h_snt1]
-          exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2)
-      h_smem
-      (by show s_mid1.pc + 1 = _
-          rw [h_spc]
-          simp only [emit, List.length_cons, List.length_nil])
-      (RegMap.lookup_insert_self _ _ _)
-      (by show _ < _; simp only [emit]; omega)
-      (by rw [oseair_readWordSeq_length])
-      (by rw [h_smem]; exact readWordSeq_sim h_id_a h_sms (blockSize τ) rs.addr)
+      h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
+      (RegMap.lookup_insert_self _ _ _) h_vbelow
+      (by rw [oseair_readWordSeq_length]) h_valsRel
       h_instDst
       (fun dOut h_dval h_dclean => (h_run0 csPrefix).trans
         (compileStmt_copy_chaindst_projsrc_zero_run h_schain h_o h_root
-          h_sval h_sclean h_dval h_dclean))
-
+          h_sval0 h_sclean0 h_dval h_dclean))
 
 /-- REGIME copy, chain destination with a PROJ-TOPPED source at NONZERO
     offset (`*p := copy s.f` with the field off zero). The source
