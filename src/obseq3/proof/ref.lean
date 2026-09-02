@@ -657,17 +657,8 @@ theorem ref_local_local_simulation
       obtain ⟨perms', freshTag⟩ := pr
       rw [h_ref_src] at h_step
       simp only at h_step
-      -- §2 the retag on the target, with ρt extended at the fresh pair
-      obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
-        sb_ref_respects_PermSim h_psim h_wf_t h_tbd h_rtS h_nwS h_ref_src
-      subst h_fresh_eq
-      have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
-          s_mir.perms.NextTag = some s_osea.perms.NextTag :=
-        TagRenameMap.extend_self _ _ _
       have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
       have h_nw_new : (s_mir.perms.NextTag == wildcardTag) = false := by grind
-      have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
-          = some tagD := h_incr_t _ _ h_rtD
       -- §3 the fragment and its two instructions
       have h_stmtRun := (compileStmt_ref_local_local_lowers (cs := csPrefix) kind prot mask
         h_piD h_piS).run
@@ -683,16 +674,17 @@ theorem ref_local_local_simulation
       have h_code2 : compProg (s_osea.pc + 1)
           = some (Instr.RStore obseq.TyVal.PTy (Register.R csPrefix.nextReg) dstReg) :=
         hFrag.instrAt 1 rfl rfl
-      -- §4 execute the Borrow
-      have h_ref_tgt' : MSB.ref s_osea.perms (bS.addr + 0 + 0) (blockSize τ) tagS kind prot mask
-          = .ok (tgtPerms, s_osea.perms.NextTag) := by
-        simpa using h_ref_tgt
-      have h_run1 := runN_Assgn_Borrow_step compProg s_osea
-        (Register.R csPrefix.nextReg) srcReg kind prot mask (blockSize τ) 0
-        h_code1 h_entryS (by
-          show bS.addr + 0 + 0 + blockSize τ ≤ bS.addr + blockSize τ
-          simp only [Nat.add_zero]
-          exact Nat.le_refl _) h_ref_tgt'
+      -- §4 the SOURCE package: the retag transported, the `Borrow` executed
+      obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB,
+        h_pcB, h_relB⟩ :=
+        ref_local_borrow τ τ kind prot mask 0 compProg s_mir s_osea csPrefix
+          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS h_nwS
+          h_domS (by simp) (by simpa using h_ref_src) h_code1
+      have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
+          s_mir.perms.NextTag = some s_osea.perms.NextTag :=
+        TagRenameMap.extend_self _ _ _
+      have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
+          = some tagD := h_incr_t _ _ h_rtD
       -- §5 the pointer write: source side destructured, target via BRIDGE 2
       simp only [h_envD] at h_step
       obtain ⟨h_nb, perms'', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_step
@@ -726,8 +718,7 @@ theorem ref_local_local_simulation
           "RStore Invalid Regs"
           [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr) (blockSize τ) s_mir.perms.NextTag]
           [Val.Ptr bS.addr (0 + 0) (blockSize τ) s_osea.perms.NextTag] rfl
-          ⟨⟨h_raS, by simp, rfl, h_rt_new, h_nw_new,
-            h_domS⟩, trivial⟩
+          h_relB
           h_id_a h_entryD1 h_useMut_tgt
           (by exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
           (Nat.le_refl _)
@@ -754,10 +745,7 @@ theorem ref_local_local_simulation
         rw [h_pc, h_stmtRun]
         simp [emit]
       · -- LocalBindingSim: env unchanged; fresh temp register; ρt grew
-        refine LocalBindingSim.placeRegMap_congr ?_
-          (LocalBindingSim.insert_fresh_reg
-            (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_lbs)
-            h_prb (Nat.le_refl _) rfl)
+        refine LocalBindingSim.placeRegMap_congr ?_ h_lbsB
         rw [h_stmtRun]
         rfl
       · -- TagRenameBounded: the write mints nothing beyond the retag's tag
@@ -2174,16 +2162,6 @@ theorem ref_local_projzero_simulation
       simp only at h_step
       rw [show g.offset = 0 from h_g0] at h_step
       -- §2 the retag on the target, with ρt extended at the fresh pair
-      obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
-        sb_ref_respects_PermSim h_psim h_wf_t h_tbd h_rtS h_nwS h_ref_src
-      subst h_fresh_eq
-      have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
-          s_mir.perms.NextTag = some s_osea.perms.NextTag :=
-        TagRenameMap.extend_self _ _ _
-      have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
-      have h_nw_new : (s_mir.perms.NextTag == wildcardTag) = false := by grind
-      have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
-          = some tagD := h_incr_t _ _ h_rtD
       -- §3 the fragment and its two instructions
       have h_stmtRunC := (compileStmt_ref_projzero_local_lowers (cs := csPrefix)
         kind prot mask h_g0 h_piD h_piS).run
@@ -2203,15 +2181,17 @@ theorem ref_local_projzero_simulation
           = some (Instr.RStore obseq.TyVal.PTy (Register.R csPrefix.nextReg) dstReg) :=
         hFrag4.instrAt 1 rfl rfl
       -- §4 execute the Borrow
-      have h_ref_tgt' : MSB.ref s_osea.perms (bS.addr + 0 + 0) (blockSize τ) tagS kind prot mask
-          = .ok (tgtPerms, s_osea.perms.NextTag) := by
-        simpa using h_ref_tgt
-      have h_run1 := runN_Assgn_Borrow_step compProg s_osea
-        (Register.R csPrefix.nextReg) srcReg kind prot mask (blockSize τ) 0
-        h_code1 h_entryS (by
-          show bS.addr + 0 + 0 + blockSize τ ≤ bS.addr + blockSize τ
-          simp only [Nat.add_zero]
-          exact Nat.le_refl _) h_ref_tgt'
+      -- §4 the SOURCE package: the retag transported, the `Borrow` executed
+      obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB,
+        h_pcB, h_relB⟩ :=
+        ref_local_borrow τ τ kind prot mask 0 compProg s_mir s_osea csPrefix
+          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS h_nwS
+          h_domS (by simp) (by simpa using h_ref_src) h_code1
+      have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
+          s_mir.perms.NextTag = some s_osea.perms.NextTag :=
+        TagRenameMap.extend_self _ _ _
+      have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
+          = some tagD := h_incr_t _ _ h_rtD
       -- §5 the pointer write into the base block via BRIDGE 2
       simp only [h_envD] at h_step
       obtain ⟨h_nb, perms'', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_step
@@ -2251,8 +2231,7 @@ theorem ref_local_projzero_simulation
           "RStore Invalid Regs"
           [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr) (blockSize τ) s_mir.perms.NextTag]
           [Val.Ptr bS.addr (0 + 0) (blockSize τ) s_osea.perms.NextTag] rfl
-          ⟨⟨h_raS, by simp, rfl, h_rt_new, h_nw_new,
-            h_domS⟩, trivial⟩
+          h_relB
           h_id_a h_entryD1 h_useMut_tgt
           (by exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
           (Nat.le_add_right _ _)
@@ -2505,32 +2484,7 @@ theorem ref_local_projoffset_simulation
       obtain ⟨perms', freshTag⟩ := pr
       rw [h_ref_src] at h_step
       simp only at h_step
-      -- §2 the rhs retag on the target, ρt extended at the fresh pair
-      obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
-        sb_ref_respects_PermSim h_psim h_wf_t h_tbd h_rtS h_nwS h_ref_src
-      subst h_fresh_eq
-      have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
-          s_mir.perms.NextTag = some s_osea.perms.NextTag :=
-        TagRenameMap.extend_self _ _ _
-      have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
-      have h_nw_new : (s_mir.perms.NextTag == wildcardTag) = false := by grind
-      have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
-          = some tagD := h_incr_t _ _ h_rtD
-      -- §3 the dst write transported under ρt'; its Mut retag succeeds and
-      -- BRIDGE 1 cancels the triple to the parent write
-      simp only [h_envD] at h_step
-      obtain ⟨h_nb, perms'', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_step
-      obtain ⟨qW, h_useMut_tgt, h_psim2⟩ :=
-        sb_write_respects_PermSim h_psim' h_wf_t' h_rtD' h_nwD h_useMut_src
-      obtain ⟨q1, h_ref_dst⟩ := sb_ref_Mut_ok_of_sb_write_ok h_useMut_tgt
-      have h_unprot := freshTag_not_protected h_psim' h_tbd'
-      have h0' : wildcardTag < tgtPerms.NextTag := (h_tbd' _ _ h_wf_t'.2).2
-      have h_ntw' : (tgtPerms.NextTag == wildcardTag) = false := by grind
-      obtain ⟨q2, q3, qAcc', h_wr1, h_die1, h_wr2, h_sm, h_ex, h_pf, h_ntle⟩ :=
-        sb_ref_use_die_cancels h_ntw' h_unprot h_ref_dst
-      have h_qAcc : qAcc' = qW := by grind
-      subst h_qAcc
-      -- §4 the fragment and its four instructions
+      -- §2 the fragment and its four instructions
       have h_stmtRunC := (compileStmt_ref_projoffset_local_lowers (cs := csPrefix)
         kind prot mask h_go h_piD h_piS).run
       have h_stmtRun := (h_run0 csPrefix).trans h_stmtRunC
@@ -2572,18 +2526,31 @@ theorem ref_local_projoffset_simulation
           = some (Instr.Die (Register.R (csPrefix.nextReg + 1))
               (blockSize (obseq.LayoutTy.PtrL τ))) :=
         hFrag5.instrAt 3 rfl rfl
-      -- §5 execute the rhs Borrow
-      have h_ref_tgt' : MSB.ref s_osea.perms (bS.addr + 0 + 0) (blockSize τ)
-          tagS kind prot mask
-          = .ok (tgtPerms, s_osea.perms.NextTag) := by
-        simpa using h_ref_tgt
-      have h_run1 := runN_Assgn_Borrow_step compProg s_osea
-        (Register.R csPrefix.nextReg) srcReg kind prot mask (blockSize τ) 0
-        h_code1 h_entryS (by
-          show bS.addr + 0 + 0 + blockSize τ ≤ bS.addr + blockSize τ
-          simp only [Nat.add_zero]
-          exact Nat.le_refl _) h_ref_tgt'
-      simp only [Nat.add_zero] at h_run1
+      -- §3 the SOURCE package: the retag transported, the `Borrow` executed
+      obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB,
+        h_pcB, h_relB⟩ :=
+        ref_local_borrow τ τ kind prot mask 0 compProg s_mir s_osea csPrefix
+          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS h_nwS
+          h_domS (by simp) (by simpa using h_ref_src) h_code1
+      have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
+          s_mir.perms.NextTag = some s_osea.perms.NextTag :=
+        TagRenameMap.extend_self _ _ _
+      have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
+          = some tagD := h_incr_t _ _ h_rtD
+      -- §3 the dst write transported under ρt'; its Mut retag succeeds and
+      -- BRIDGE 1 cancels the triple to the parent write
+      simp only [h_envD] at h_step
+      obtain ⟨h_nb, perms'', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_step
+      obtain ⟨qW, h_useMut_tgt, h_psim2⟩ :=
+        sb_write_respects_PermSim h_psim' h_wf_t' h_rtD' h_nwD h_useMut_src
+      obtain ⟨q1, h_ref_dst⟩ := sb_ref_Mut_ok_of_sb_write_ok h_useMut_tgt
+      have h_unprot := freshTag_not_protected h_psim' h_tbd'
+      have h0' : wildcardTag < tgtPerms.NextTag := (h_tbd' _ _ h_wf_t'.2).2
+      have h_ntw' : (tgtPerms.NextTag == wildcardTag) = false := by grind
+      obtain ⟨q2, q3, qAcc', h_wr1, h_die1, h_wr2, h_sm, h_ex, h_pf, h_ntle⟩ :=
+        sb_ref_use_die_cancels h_ntw' h_unprot h_ref_dst
+      have h_qAcc : qAcc' = qW := by grind
+      subst h_qAcc
       -- §6 execute the dst field Borrow through the base register
       have h_regne : dstReg ≠ Register.R csPrefix.nextReg := by
         cases dstReg with
@@ -2656,7 +2623,7 @@ theorem ref_local_projoffset_simulation
           [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr) (blockSize τ)
             s_mir.perms.NextTag]
           [Val.Ptr bS.addr 0 (blockSize τ) s_osea.perms.NextTag] rfl
-          ⟨⟨h_raS, by simp, rfl, h_rt_new, h_nw_new, h_domS⟩, trivial⟩
+          h_relB
           h_id_a h_entry_tmpD h_wr1'
           (by exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
           (Nat.le_add_right _ _)
@@ -4159,45 +4126,17 @@ theorem ref_derefdst_local_simulation
   obtain ⟨resolved, permsD⟩ := pr2
   rw [h_dres] at h_step
   simp only at h_step
-  -- §4 the retag transported: the fresh pair extends ρt
-  obtain ⟨tgtP1, h_ref_tgt, h_mint_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
-    sb_ref_respects_PermSim h_psim h_wf_t h_tbd h_rtS h_nwS h_ref_src
-  subst h_mint_eq
-  have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
-      s_mir.perms.NextTag = some s_osea.perms.NextTag :=
-    TagRenameMap.extend_self _ _ _
-  have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
-  have h_nw_new : (s_mir.perms.NextTag == wildcardTag) = false := by grind
   -- §5 compiler-side scaffolding: the post-Borrow LocalBindingSim feeds
   -- both the mapped-ness of the dst at cs1 and the mother lemma
   have h_mapped : PlaceInputsMapped csPrefix (Place.deref P) :=
     placeInputsMapped_of_localBindingSim_resolvePlace h_lbs h_resolved
   have h_root := ensurePlaceRoot_run_eq_of_mapped h_mapped
-  have h_lbs0 : LocalBindingSim ρa
-      (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
-      s_mir.env s_osea csPrefix :=
-    LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_lbs
-  have h_lbs1 : LocalBindingSim ρa
-      (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
-      s_mir.env
-      { s_osea with
-          perms := tgtP1,
-          reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
-            (obseq.TyVal.PTy,
-              [Val.Ptr bS.addr (0 + 0) (blockSize τ) s_osea.perms.NextTag]),
-          pc := s_osea.pc + 1 }
-      (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-        [Instr.Assgn (Register.R csPrefix.nextReg)
-          (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)]) :=
-    LocalBindingSim.insert_fresh_reg h_lbs0 h_prb (Nat.le_refl _) rfl
   obtain ⟨dOut0, h_dval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
     (cs := emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
       [Instr.Assgn (Register.R csPrefix.nextReg)
         (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)])
     (kind := RefKind.Mut)
-    (placeInputsMapped_of_localBindingSim_resolvePlace
-      (s_mir := { s_mir with perms := perms1 }) h_lbs1
-      (resolvePlace?_of_resolveAcc h_dres))
+    (PlaceInputsMapped.placeRegMap_congr (by simp only [emit]) _ h_mapped)
   obtain ⟨stmtOutC, h_stmtOutC⟩ :=
     compileStmt_ref_derefdst_value kind prot mask h_root h_piS rfl h_dval0
   obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
@@ -4243,13 +4182,13 @@ theorem ref_derefdst_local_simulation
       [Instr.Assgn (Register.R csPrefix.nextReg)
         (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)] (k := 0) (by simp)
     simpa using h
-  have h_le1 : bS.addr + 0 + 0 + blockSize τ ≤ bS.addr + blockSize τ := by grind
-  have h_ref_tgt' : MSB.ref s_osea.perms (bS.addr + 0 + 0) (blockSize τ) tagS
-      kind prot mask = .ok (tgtP1, s_osea.perms.NextTag) := by
-    simpa using h_ref_tgt
-  have h_run1 := runN_Assgn_Borrow_step compProg s_osea
-    (Register.R csPrefix.nextReg) srcReg kind prot mask (blockSize τ) 0
-    h_code1 h_entryS h_le1 h_ref_tgt'
+  -- the SOURCE package: the retag transported, the `Borrow` executed, and
+  -- the post-`Borrow` binding simulation the destination mother wants
+  obtain ⟨tgtP1, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbs1,
+    h_pc1, h_relB⟩ :=
+    ref_local_borrow τ τ kind prot mask 0 compProg s_mir s_osea csPrefix
+      h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS h_nwS
+      h_domS (by simp) (by simpa using h_ref_src) h_code1
   -- §7 the WHOLE dst lowering via the mother lemma, from the
   -- post-Borrow state under the extended rename
   have h_prb1 : PlaceRegMapBound
@@ -4264,12 +4203,6 @@ theorem ref_derefdst_local_simulation
       (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
       s_mir.mem s_osea.mem :=
     SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms
-  have h_pc1 : s_osea.pc + 1
-      = (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-          [Instr.Assgn (Register.R csPrefix.nextReg)
-            (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)]).nextLabel := by
-    simp only [emit, List.length_cons, List.length_nil]
-    omega
   -- §7-§9: the shared chain-write seam (spine.lean) does the destination
   -- mother, the store, the memory argument and the rebuild
   obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
@@ -4299,8 +4232,7 @@ theorem ref_derefdst_local_simulation
       (RegMap.lookup_insert_self _ _ _)
       (by show _ < _; simp only [emit]; exact Nat.lt_succ_self _)
       rfl
-      ⟨⟨h_raS, by simp, rfl, h_rt_new, h_nw_new,
-        fun k hk => h_domS k hk⟩, trivial⟩
+      h_relB
       h_instD
       (fun dOut h_dval h_dclean => (h_run0 csPrefix).trans
         (compileStmt_ref_derefdst_run kind prot mask h_root h_piS rfl
@@ -5924,16 +5856,6 @@ theorem ref_projzero_projsrc_simulation
       simp only at h_step
       rw [show g.offset = 0 from h_g0] at h_step
       -- §2 the retag on the target, with ρt extended at the fresh pair
-      obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
-        sb_ref_respects_PermSim h_psim h_wf_t h_tbd h_rtS h_nwS h_ref_src
-      subst h_fresh_eq
-      have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
-          s_mir.perms.NextTag = some s_osea.perms.NextTag :=
-        TagRenameMap.extend_self _ _ _
-      have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
-      have h_nw_new : (s_mir.perms.NextTag == wildcardTag) = false := by grind
-      have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
-          = some tagD := h_incr_t _ _ h_rtD
       -- §3 the fragment and its two instructions
       have h_stmtRunC := (compileStmt_ref_projzero_projsrc_lowers (cs := csPrefix) (f := f)
         kind prot mask h_g0 h_piD h_piS).run
@@ -5952,18 +5874,18 @@ theorem ref_projzero_projsrc_simulation
       have h_code2 : compProg (s_osea.pc + 1)
           = some (Instr.RStore obseq.TyVal.PTy (Register.R csPrefix.nextReg) dstReg) :=
         hFrag10.instrAt 1 rfl rfl
-      -- §4 execute the Borrow
-      have h_ref_tgt' : MSB.ref s_osea.perms (bS.addr + 0 + pathOffset f) (blockSize τ)
-          tagS kind prot mask
-          = .ok (tgtPerms, s_osea.perms.NextTag) := by
-        simpa using h_ref_tgt
-      have h_run1 := runN_Assgn_Borrow_step compProg s_osea
-        (Register.R csPrefix.nextReg) srcReg kind prot mask (blockSize τ) (pathOffset f)
-        h_code1 h_entryS (by
-          show bS.addr + 0 + pathOffset f + blockSize τ ≤ bS.addr + blockSize σb
-          have h_fit := PathTo.offset_add_size_le f
-          simp only [Nat.add_zero, Nat.add_assoc]
-          exact Nat.add_le_add_left h_fit _) h_ref_tgt'
+      -- §4 the SOURCE package: the projected retag transported, the `Borrow`
+      obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB,
+        h_pcB, h_relB⟩ :=
+        ref_local_borrow τ σb kind prot mask (pathOffset f) compProg s_mir s_osea
+          csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS
+          h_rtS h_nwS h_domS (PathTo.offset_add_size_le f)
+          (by simpa using h_ref_src) h_code1
+      have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
+          s_mir.perms.NextTag = some s_osea.perms.NextTag :=
+        TagRenameMap.extend_self _ _ _
+      have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
+          = some tagD := h_incr_t _ _ h_rtD
       -- §5 the pointer write into the base block via BRIDGE 2
       simp only [h_envD] at h_step
       obtain ⟨h_nb, perms'', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_step
@@ -6004,8 +5926,7 @@ theorem ref_projzero_projsrc_simulation
           [mirlite.MemValue.ptrVal bS.addr (bS.addr + pathOffset f - bS.addr) (blockSize σb)
             s_mir.perms.NextTag]
           [Val.Ptr bS.addr (0 + pathOffset f) (blockSize σb) s_osea.perms.NextTag] rfl
-          ⟨⟨h_raS, by simp, rfl, h_rt_new, h_nw_new,
-            h_domS⟩, trivial⟩
+          h_relB
           h_id_a h_entryD1 h_useMut_tgt
           (by exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
           (Nat.le_add_right _ _)
@@ -9202,45 +9123,17 @@ theorem ref_derefdst_projsrc_simulation
   obtain ⟨resolved, permsD⟩ := pr2
   rw [h_dres] at h_step
   simp only at h_step
-  -- §4 the retag transported: the fresh pair extends ρt
-  obtain ⟨tgtP1, h_ref_tgt, h_mint_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
-    sb_ref_respects_PermSim h_psim h_wf_t h_tbd h_rtS h_nwS h_ref_src
-  subst h_mint_eq
-  have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
-      s_mir.perms.NextTag = some s_osea.perms.NextTag :=
-    TagRenameMap.extend_self _ _ _
-  have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
-  have h_nw_new : (s_mir.perms.NextTag == wildcardTag) = false := by grind
   -- §5 compiler-side scaffolding: the post-Borrow LocalBindingSim feeds
   -- both the mapped-ness of the dst at cs1 and the mother lemma
   have h_mapped : PlaceInputsMapped csPrefix (Place.deref P) :=
     placeInputsMapped_of_localBindingSim_resolvePlace h_lbs h_resolved
   have h_root := ensurePlaceRoot_run_eq_of_mapped h_mapped
-  have h_lbs0 : LocalBindingSim ρa
-      (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
-      s_mir.env s_osea csPrefix :=
-    LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_lbs
-  have h_lbs1 : LocalBindingSim ρa
-      (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
-      s_mir.env
-      { s_osea with
-          perms := tgtP1,
-          reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
-            (obseq.TyVal.PTy,
-              [Val.Ptr bS.addr (0 + pathOffset f) (blockSize σb) s_osea.perms.NextTag]),
-          pc := s_osea.pc + 1 }
-      (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-        [Instr.Assgn (Register.R csPrefix.nextReg)
-          (Rhs.Borrow kind prot mask (blockSize τ) srcReg (pathOffset f))]) :=
-    LocalBindingSim.insert_fresh_reg h_lbs0 h_prb (Nat.le_refl _) rfl
   obtain ⟨dOut0, h_dval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
     (cs := emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
       [Instr.Assgn (Register.R csPrefix.nextReg)
         (Rhs.Borrow kind prot mask (blockSize τ) srcReg (pathOffset f))])
     (kind := RefKind.Mut)
-    (placeInputsMapped_of_localBindingSim_resolvePlace
-      (s_mir := { s_mir with perms := perms1 }) h_lbs1
-      (resolvePlace?_of_resolveAcc h_dres))
+    (PlaceInputsMapped.placeRegMap_congr (by simp only [emit]) _ h_mapped)
   obtain ⟨stmtOutC, h_stmtOutC⟩ :=
     compileStmt_ref_derefdst_projsrc_value kind prot mask h_root h_piS rfl h_dval0
   obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
@@ -9286,19 +9179,14 @@ theorem ref_derefdst_projsrc_simulation
       [Instr.Assgn (Register.R csPrefix.nextReg)
         (Rhs.Borrow kind prot mask (blockSize τ) srcReg (pathOffset f))] (k := 0) (by simp)
     simpa using h
-  have h_le1 : bS.addr + 0 + pathOffset f + blockSize τ
-      ≤ bS.addr + blockSize σb := by
-    have h_fit := PathTo.offset_add_size_le f
-    show bS.addr + 0 + pathOffset f + blockSize τ ≤ bS.addr + blockSize σb
-    simp only [Nat.add_zero, Nat.add_assoc]
-    exact Nat.add_le_add_left h_fit _
-  have h_ref_tgt' : MSB.ref s_osea.perms (bS.addr + 0 + pathOffset f)
-      (blockSize τ) tagS kind prot mask
-      = .ok (tgtP1, s_osea.perms.NextTag) := by
-    simpa using h_ref_tgt
-  have h_run1 := runN_Assgn_Borrow_step compProg s_osea
-    (Register.R csPrefix.nextReg) srcReg kind prot mask (blockSize τ)
-    (pathOffset f) h_code1 h_entryS h_le1 h_ref_tgt'
+  -- the SOURCE package: the projected retag transported, the `Borrow`
+  -- executed, and the post-`Borrow` binding simulation
+  obtain ⟨tgtP1, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbs1,
+    h_pc1, h_relB⟩ :=
+    ref_local_borrow τ σb kind prot mask (pathOffset f) compProg s_mir s_osea
+      csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS
+      h_nwS h_domS (PathTo.offset_add_size_le f) (by simpa using h_ref_src)
+      h_code1
   -- §7 the WHOLE dst lowering via the mother lemma, from the
   -- post-Borrow state under the extended rename
   have h_prb1 : PlaceRegMapBound
@@ -9313,12 +9201,6 @@ theorem ref_derefdst_projsrc_simulation
       (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
       s_mir.mem s_osea.mem :=
     SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms
-  have h_pc1 : s_osea.pc + 1
-      = (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-          [Instr.Assgn (Register.R csPrefix.nextReg)
-            (Rhs.Borrow kind prot mask (blockSize τ) srcReg (pathOffset f))]).nextLabel := by
-    simp only [emit, List.length_cons, List.length_nil]
-    omega
   -- §7-§9: the shared chain-write seam (spine.lean)
   obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
     copy_chainwrite_after_read (τ := obseq.LayoutTy.PtrL τ)
@@ -9347,8 +9229,7 @@ theorem ref_derefdst_projsrc_simulation
       (RegMap.lookup_insert_self _ _ _)
       (by show _ < _; simp only [emit]; exact Nat.lt_succ_self _)
       rfl
-      ⟨⟨h_raS, by simp [Nat.add_sub_cancel_left], rfl, h_rt_new, h_nw_new,
-        fun k hk => h_domS k hk⟩, trivial⟩
+      h_relB
       h_instD
       (fun dOut h_dval h_dclean => (h_run0 csPrefix).trans
         (compileStmt_ref_derefdst_projsrc_run kind prot mask h_root h_piS rfl

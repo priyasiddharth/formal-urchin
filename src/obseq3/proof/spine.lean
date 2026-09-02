@@ -2980,6 +2980,109 @@ theorem copy_freshproj_write_after_read
     exact Nat.le_trans h_regmonoR h_nextRegLe
 
 
+
+/-- **The local-root borrow** — ref's source package, the borrow twin of
+    copy's `copy_chainsrc_read`. The rvalue `&kind x` or `&kind x.f`
+    lowers to ONE instruction, a `Borrow` off the source local's own
+    register at the path offset, so the package is short; what it is
+    for is the BUNDLE it hands back, which is exactly what both write
+    seams take.
+
+    The offset makes it serve both source shapes: `off = 0` is the plain
+    local, `off = pathOffset f` a projection of one, and the borrowed
+    pointer keeps the ROOT's size field (`blockSize σs`) either way —
+    the borrow narrows the permission, not the provenance.
+
+    Stated at an abstract start `(sM, sA, csA)` like copy's packages, so
+    a FRESH leaf can call it at its post-`Alloc` states, with `ρa`/`ρt`
+    already extended by the allocation. -/
+theorem ref_local_borrow
+    (τ σs : LayoutTy) {bS : mirlite.Binding}
+    (kind : RefKind) (prot : Bool) (mask : List Bool) (off : Nat)
+    (compProg : oseair.Prog)
+    (sM : mirlite.State MSB Γ) (sA : oseair.State MSB) (csA : CompilerState)
+    (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
+    (h_tbd : TagRenameBounded ρt sM.perms.NextTag sA.perms.NextTag)
+    (h_lbs : LocalBindingSim ρa ρt sM.env sA csA)
+    (h_prb : PlaceRegMapBound csA)
+    (h_psim : PermSim ρt sM.perms sA.perms)
+    (h_pc : sA.pc = csA.nextLabel)
+    {srcReg : Register} {tagS : Tag}
+    (h_entryS : PtrRegisterEntry sA.reg srcReg bS.addr 0 (blockSize σs) tagS)
+    (h_raS : ρa bS.addr = some bS.addr)
+    (h_rtS : ρt bS.tag = some tagS)
+    (h_nwS : (bS.tag == wildcardTag) = false)
+    (h_domS : ∀ k, k < blockSize σs → ∃ a, ρa (bS.addr + k) = some a)
+    (h_fit : off + blockSize τ ≤ blockSize σs)
+    {perms' : MSB.State} {freshTag : Tag}
+    (h_ref_src : MSB.ref sM.perms (bS.addr + off) (blockSize τ) bS.tag kind prot mask
+      = .ok (perms', freshTag))
+    (h_code : compProg sA.pc
+      = some (Instr.Assgn (Register.R csA.nextReg)
+          (Rhs.Borrow kind prot mask (blockSize τ) srcReg off))) :
+    ∃ tgtPerms : MSB.State,
+      -- the tag mirlite minted IS its next tag (the caller's `h_step` still
+      -- says `freshTag`, so this comes back as an `rfl` to substitute)
+      freshTag = sM.perms.NextTag ∧
+      TagRenameIncr ρt (ρt.extend sM.perms.NextTag sA.perms.NextTag) ∧
+      TagRenameWF (ρt.extend sM.perms.NextTag sA.perms.NextTag) ∧
+      TagRenameBounded (ρt.extend sM.perms.NextTag sA.perms.NextTag) perms'.NextTag tgtPerms.NextTag ∧
+      PermSim (ρt.extend sM.perms.NextTag sA.perms.NextTag) perms' tgtPerms ∧
+      oseair.runN MSB 1 sA compProg = oseair.Result.Ok
+        { sA with
+        perms := tgtPerms,
+        reg := oseair.RegMap.insert sA.reg (Register.R csA.nextReg)
+          (obseq.TyVal.PTy, [Val.Ptr bS.addr (0 + off) (blockSize σs) sA.perms.NextTag]),
+        pc := sA.pc + 1 } ∧
+      LocalBindingSim ρa (ρt.extend sM.perms.NextTag sA.perms.NextTag) sM.env
+        { sA with
+        perms := tgtPerms,
+        reg := oseair.RegMap.insert sA.reg (Register.R csA.nextReg)
+          (obseq.TyVal.PTy, [Val.Ptr bS.addr (0 + off) (blockSize σs) sA.perms.NextTag]),
+        pc := sA.pc + 1 }
+        (emit csA
+          [Instr.Assgn (Register.R csA.nextReg)
+        (Rhs.Borrow kind prot mask (blockSize τ) srcReg off)]) ∧
+      ({ sA with
+        perms := tgtPerms,
+        reg := oseair.RegMap.insert sA.reg (Register.R csA.nextReg)
+          (obseq.TyVal.PTy, [Val.Ptr bS.addr (0 + off) (blockSize σs) sA.perms.NextTag]),
+        pc := sA.pc + 1 }).pc
+        = (emit csA
+            [Instr.Assgn (Register.R csA.nextReg)
+        (Rhs.Borrow kind prot mask (blockSize τ) srcReg off)]).nextLabel ∧
+      ListRel (MemValSim ρa (ρt.extend sM.perms.NextTag sA.perms.NextTag))
+        [mirlite.MemValue.ptrVal bS.addr (bS.addr + off - bS.addr) (blockSize σs)
+          sM.perms.NextTag]
+        [Val.Ptr bS.addr (0 + off) (blockSize σs) sA.perms.NextTag] := by
+  obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
+    sb_ref_respects_PermSim h_psim h_wf_t h_tbd h_rtS h_nwS h_ref_src
+  subst h_fresh_eq
+  have h_rt_new : (ρt.extend sM.perms.NextTag sA.perms.NextTag) sM.perms.NextTag = some sA.perms.NextTag :=
+    TagRenameMap.extend_self _ _ _
+  have h0 : wildcardTag < sM.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
+  have h_nw_new : (sM.perms.NextTag == wildcardTag) = false := by grind
+  have h_ref_tgt' : MSB.ref sA.perms (bS.addr + 0 + off) (blockSize τ) tagS
+      kind prot mask = .ok (tgtPerms, sA.perms.NextTag) := by
+    simpa using h_ref_tgt
+  have h_le : bS.addr + 0 + off + blockSize τ ≤ bS.addr + blockSize σs := by
+    simp only [Nat.add_zero, Nat.add_assoc]
+    exact Nat.add_le_add_left h_fit _
+  have h_run := runN_Assgn_Borrow_step compProg sA
+    (Register.R csA.nextReg) srcReg kind prot mask (blockSize τ) off
+    h_code h_entryS h_le h_ref_tgt'
+  refine ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', by simpa using h_run, ?_,
+    (by show sA.pc + 1 = _
+        rw [h_pc]
+        simp only [emit, List.length_cons, List.length_nil]),
+    ⟨⟨h_raS, by simp [Nat.add_sub_cancel_left], rfl, h_rt_new, h_nw_new,
+      h_domS⟩, trivial⟩⟩
+  exact LocalBindingSim.placeRegMap_congr rfl
+    (LocalBindingSim.insert_fresh_reg
+      (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_lbs)
+      h_prb (Nat.le_refl _) rfl)
+
+
 end
 
 end obseq3.proof
