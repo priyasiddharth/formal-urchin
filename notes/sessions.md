@@ -2831,3 +2831,43 @@ those is within reach of the existing seam if it is generalised to two
 types (local `σ`, value `τ`, write at `pathOffset path` with
 `pathOffset path + blockSize τ ≤ blockSize σ`); the nonzero-offset half
 needs the `Borrow`/`RStore`/`Die` sandwich and is a second seam.
+
+**Same session, third stretch — the two-type root.** Three commits
+more (`0522f61`, `a31da5c`, `67563d3`). Proof dir 34,419 → 33,896.
+
+**One inequality unlocked ten leaves.** `copy_freshroot_write_after_read`
+had silently assumed the allocated root and the stored value share a
+type. Splitting them (root `σ`, value `τ`) and replacing the
+`writeThroughPtr` bound's `Nat.le_refl` with
+`h_fit : blockSize τ ≤ blockSize σ` is the whole change — and every
+ZERO-offset projected destination on a fresh root then IS the plain
+fresh case, because at zero offset the store goes through the ROOT
+register, not through a projection borrow. `h_fit` is
+`PathTo.offset_add_size_le g` every time.
+
+    ref_projzero_fresh          335 -> 239
+    ref_projzero_fresh_projsrc  345 -> 244
+    ref_projzero_fresh_derefsrc 421 -> 289
+    ref_projzero_fresh_selfsrc  325 -> 228
+    copy_projlocal_fresh        784 -> 691   (its zero branch)
+
+`selfsrc` is the case worth remembering: the source borrows out of the
+root the statement just allocated, so there is no pre-existing source
+local and the `ListRel` evidence is built from the prologue's own
+`h_ra_base`/`h_ra_dom`. The seam takes the evidence and never asks
+where it came from — the same property that let it take ref's borrow
+pointers and copy's read words.
+
+**Two type variables need pinning.** With one type, `vals` determined
+it; with two, ref's `RStore obseq.TyVal.PTy` unified against the ROOT
+type and every later argument mistyped. All ref call sites now pass
+`(τ := obseq.LayoutTy.PtrL τ)` explicitly.
+
+**Where it stands.** Eight of ref's twelve fresh leaves and one of
+copy's two `projlocal_fresh` branches are on prologue + package + seam.
+The remaining six (ref's four `ref_projoffset_fresh_*`, 1,936 lines,
+and the two `projlocal_fresh` NONZERO branches) write through a
+destination `Borrow`/`RStore`/`Die` sandwich. That is the second
+fresh-write seam and the next item; it is worth roughly 700 lines, and
+its interface is the current seam's plus a destination offset and the
+two extra instructions.
