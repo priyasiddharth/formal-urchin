@@ -3963,6 +3963,136 @@ theorem compileStmt_copy_derefdst_dstflatten_value
             simp only [h_dF] at h_so
             simp at h_so
 
+/-- The three code-inclusion facts every `*chain := copy src` leaf needs,
+    proven ONCE, generic in the source. Each says a compiler state along
+    the statement's lowering is below the statement's final state:
+    after the source lowering, after the `Load` (with the source's
+    cleanup kept SYMBOLIC — it is not known to be empty until the source
+    mother has run), and after the destination lowering. Every leaf used
+    to re-prove all three by unfolding the whole statement (~120 lines);
+    the unfolding mentions the destination, so this is per destination
+    constructor, but the source is only ever the opaque term
+    `run (placeToRegChecked Shared src) cs`. -/
+theorem copy_derefdst_incrs
+    {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)} {src : Place Γ τ}
+    {stmt0 : Stmt Γ} (cs : CompilerState)
+    {sOut0 : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared src)}
+    (h_sval0 : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) cs
+      = Except.ok sOut0)
+    {csS : CompilerState}
+    (h_srun : CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs = csS)
+    (h_root : CompilerM.run (ensurePlaceRoot (Place.deref P)) cs = cs)
+    (h_run0 : CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked (Stmt.assign (.deref P) (.copy src))) cs) :
+    StateIncr csS
+        (CheckedCompilerM.run (compileStmtChecked stmt0) cs) ∧
+    StateIncr (emit
+        { csS with
+          nextReg := csS.nextReg + 1 }
+        ([Instr.Assgn (Register.R csS.nextReg)
+            (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
+          ++ cleanupInstrs sOut0.result.cleanup))
+        (CheckedCompilerM.run (compileStmtChecked stmt0) cs) ∧
+    StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
+        (emit
+          { csS with
+            nextReg := csS.nextReg + 1 }
+          ([Instr.Assgn (Register.R csS.nextReg)
+              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
+            ++ cleanupInstrs sOut0.result.cleanup)))
+        (CheckedCompilerM.run (compileStmtChecked stmt0) cs) := by
+  rw [h_run0]
+  simp only [csCompile, csMonad, h_root, h_sval0]
+  simp only [csRun]
+  rw [h_srun]
+  -- name the post-Load state once
+  generalize hR : emit { csS with nextReg := csS.nextReg + 1 }
+      ([Instr.Assgn (Register.R csS.nextReg) (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
+        ++ cleanupInstrs sOut0.result.cleanup) = csR
+  have hSR : StateIncr csS csR := by
+    rw [← hR]
+    exact StateIncr.trans (freshReg_state_incr csS) (emit_state_incr _ _)
+  have hRD : StateIncr csR (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csR) :=
+    CheckedCompilerM.incr _ _
+  split
+  · rename_i a h_a
+    have hD : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csR)
+        (emit (emit (emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P)) csR)
+          [Instr.RStore (layoutToTyVal τ) (Register.R csS.nextReg) a.result.reg])
+          (cleanupInstrs [])) (cleanupInstrs a.result.cleanup)) :=
+      emit_tower_incr₃ _ _ _ _
+    exact ⟨StateIncr.trans hSR (StateIncr.trans hRD hD), StateIncr.trans hRD hD, hD⟩
+  · exact ⟨StateIncr.trans hSR hRD, hRD, StateIncr.refl _⟩
+
+/-- `copy_derefdst_incrs` for a ZERO-offset projected destination over a
+    chain: the same three facts, with the destination lowering rewritten
+    to its base by `placeToRegChecked_proj_zero_run`. The original docstring:
+    The three code-inclusion facts every `*chain := copy src` leaf needs,
+    proven ONCE, generic in the source. Each says a compiler state along
+    the statement's lowering is below the statement's final state:
+    after the source lowering, after the `Load` (with the source's
+    cleanup kept SYMBOLIC — it is not known to be empty until the source
+    mother has run), and after the destination lowering. Every leaf used
+    to re-prove all three by unfolding the whole statement (~120 lines);
+    the unfolding mentions the destination, so this is per destination
+    constructor, but the source is only ever the opaque term
+    `run (placeToRegChecked Shared src) cs`. -/
+theorem copy_projzerodst_incrs
+    {τ σb : LayoutTy} {dbase : Place Γ σb} {path : PathTo σb τ} {src : Place Γ τ}
+    {stmt0 : Stmt Γ} (cs : CompilerState)
+    {sOut0 : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared src)}
+    (h_sval0 : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) cs
+      = Except.ok sOut0)
+    {csS : CompilerState}
+    (h_srun : CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) cs = csS)
+    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σb), dbase = b.proj q → False)
+    (h_o : pathOffset path = 0)
+    (h_root : CompilerM.run (ensurePlaceRoot (Place.proj dbase path)) cs = cs)
+    (h_run0 : CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked (Stmt.assign (.proj dbase path) (.copy src))) cs) :
+    StateIncr csS
+        (CheckedCompilerM.run (compileStmtChecked stmt0) cs) ∧
+    StateIncr (emit
+        { csS with
+          nextReg := csS.nextReg + 1 }
+        ([Instr.Assgn (Register.R csS.nextReg)
+            (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
+          ++ cleanupInstrs sOut0.result.cleanup))
+        (CheckedCompilerM.run (compileStmtChecked stmt0) cs) ∧
+    StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase)
+        (emit
+          { csS with
+            nextReg := csS.nextReg + 1 }
+          ([Instr.Assgn (Register.R csS.nextReg)
+              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
+            ++ cleanupInstrs sOut0.result.cleanup)))
+        (CheckedCompilerM.run (compileStmtChecked stmt0) cs) := by
+  rw [h_run0]
+  simp only [csCompile, csMonad, h_root, h_sval0]
+  rw [placeToRegChecked_proj_zero_run path h_np h_o]
+  simp only [csRun]
+  rw [h_srun]
+  -- name the post-Load state once
+  generalize hR : emit { csS with nextReg := csS.nextReg + 1 }
+      ([Instr.Assgn (Register.R csS.nextReg) (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
+        ++ cleanupInstrs sOut0.result.cleanup) = csR
+  have hSR : StateIncr csS csR := by
+    rw [← hR]
+    exact StateIncr.trans (freshReg_state_incr csS) (emit_state_incr _ _)
+  have hRD : StateIncr csR (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase) csR) :=
+    CheckedCompilerM.incr _ _
+  split
+  · rename_i a h_a
+    have hD : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase) csR)
+        (emit (emit (emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase) csR)
+          [Instr.RStore (layoutToTyVal τ) (Register.R csS.nextReg) a.result.reg])
+          (cleanupInstrs [])) (cleanupInstrs a.result.cleanup)) :=
+      emit_tower_incr₃ _ _ _ _
+    exact ⟨StateIncr.trans hSR (StateIncr.trans hRD hD), StateIncr.trans hRD hD, hD⟩
+  · exact ⟨StateIncr.trans hSR hRD, hRD, StateIncr.refl _⟩
+
 /-- NON-LOCAL destination, CLOSED 2026-08-30: `*Q := copy src` for a
     canonical-chain destination and source. The first leaf that composes
     TWO mother-lemma calls. The rhs pre-phase lowers the source and the
@@ -4059,42 +4189,9 @@ theorem copy_chaindst_chainsrc_simulation
     obtain ⟨stmtOutC, h_stmtOutC⟩ :=
       compileStmt_copy_chaindst_value h_root h_sval0 h_dval0
     obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
-    -- §3 code inclusion for the SOURCE lowering
-    have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix)
-        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad, h_root, h_sval0]
-      simp only [csRun]
-      refine StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix)) ?_
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (emit_state_incr _ ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-            ++ cleanupInstrs sOut0.result.cleanup))
-          (StateIncr.trans
-            (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P))
-              (emit
-                { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-                  nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-                ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-                    (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-                  ++ cleanupInstrs sOut0.result.cleanup)))
-            (emit_tower_incr₃ (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-            (emit
-              { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-                nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-              ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-                  (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-                ++ cleanupInstrs sOut0.result.cleanup)))
-              [Instr.RStore (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg) a.result.reg]
-              (cleanupInstrs [])
-              (cleanupInstrs a.result.cleanup)))
-      · exact StateIncr.trans
-          (emit_state_incr _ ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-            ++ cleanupInstrs sOut0.result.cleanup))
-          (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P)) _)
+    -- §3 code inclusion for the SOURCE lowering (the three facts, once)
+    obtain ⟨h_incrS, h_incrCS1', h_incrDrun'⟩ :=
+      copy_derefdst_incrs csPrefix h_sval0 rfl h_root (h_run0 csPrefix)
     have h_instS :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma
@@ -4110,51 +4207,17 @@ theorem copy_chaindst_chainsrc_simulation
       rw [h_sval0] at h_sval
       exact (Except.ok.inj h_sval).symm
     subst h_sOut_eq
-    -- §5 code inclusion at the post-`Load` compiler state
+    -- §5 code inclusion at the post-`Load` state and at the destination
+    -- lowering's own state: the symbolic source cleanup is now known empty
     have h_incrCS1 : StateIncr (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
           nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
         [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
           (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad, h_root, h_sval]
-      simp only [csCleanup, csRun, h_sclean, emit_nil, List.append_nil]
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P))
-            (emit
-              { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-                nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-              [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-                (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-          (StateIncr.trans
-            (emit_state_incr
-              (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-              (emit
-                { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-                  nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-                [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-                  (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-              [Instr.RStore (layoutToTyVal τ)
-                (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg) a.result.reg])
-            (emit_state_incr
-              (emit
-                (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-              (emit
-                { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-                  nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-                [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-                  (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-                [Instr.RStore (layoutToTyVal τ)
-                  (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg) a.result.reg])
-              (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
-                a.result.cleanup.reverse)))
-      · exact CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P)) _
+      simpa only [csCleanup, h_sclean, List.append_nil] using h_incrCS1'
     have h_instD :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
-    -- code inclusion for the DESTINATION lowering's own instructions
     have h_incrDrun : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
         (emit
           { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
@@ -4162,32 +4225,7 @@ theorem copy_chaindst_chainsrc_simulation
           [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
             (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad, h_root, h_sval]
-      simp only [csCleanup, csRun, h_sclean, emit_nil, List.append_nil]
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (emit_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-        (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-            [Instr.RStore (layoutToTyVal τ)
-              (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg) a.result.reg])
-          (emit_state_incr
-            (emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-        (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-              [Instr.RStore (layoutToTyVal τ)
-                (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg) a.result.reg])
-            (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
-              a.result.cleanup.reverse))
-      · exact StateIncr.refl _
+      simpa only [csCleanup, h_sclean, List.append_nil] using h_incrDrun'
     have h_instDst :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 the READ: transport, then execute the `Load`
@@ -4364,42 +4402,9 @@ theorem copy_chaindst_projsrc_zero_simulation
     obtain ⟨stmtOutC, h_stmtOutC⟩ :=
       compileStmt_copy_chaindst_projsrc_zero_value h_schain h_o h_root h_sval0 h_dval0
     obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
-    -- §3 code inclusion for the SOURCE lowering
-    have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix)
-        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad, h_root, h_pv0, h_pr0]
-      simp only [csRun]
-      refine StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix)) ?_
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (emit_state_incr _ ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-            ++ cleanupInstrs sOut0.result.cleanup))
-          (StateIncr.trans
-            (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P))
-              (emit
-                { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                  nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                    (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-                  ++ cleanupInstrs sOut0.result.cleanup)))
-            (emit_tower_incr₃ (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-            (emit
-              { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-              ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                  (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-                ++ cleanupInstrs sOut0.result.cleanup)))
-              [Instr.RStore (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) a.result.reg]
-              (cleanupInstrs [])
-              (cleanupInstrs a.result.cleanup)))
-      · exact StateIncr.trans
-          (emit_state_incr _ ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-            ++ cleanupInstrs sOut0.result.cleanup))
-          (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P)) _)
+    -- §3 code inclusion for the SOURCE lowering (the three facts, once)
+    obtain ⟨h_incrS, h_incrCS1', h_incrDrun'⟩ :=
+      copy_derefdst_incrs csPrefix h_pv0 h_pr0 h_root (h_run0 csPrefix)
     have h_instS :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma
@@ -4415,51 +4420,17 @@ theorem copy_chaindst_projsrc_zero_simulation
       rw [h_sval0] at h_sval
       exact (Except.ok.inj h_sval).symm
     subst h_sOut_eq
-    -- §5 code inclusion at the post-`Load` compiler state
+    -- §5 code inclusion at the post-`Load` state and at the destination
+    -- lowering's own state: the symbolic source cleanup is now known empty
     have h_incrCS1 : StateIncr (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
           nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
         [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
           (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad, h_root, h_pv0, h_pr0]
-      simp only [csCleanup, csRun, h_sclean, emit_nil, List.append_nil]
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P))
-            (emit
-              { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-              [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-          (StateIncr.trans
-            (emit_state_incr
-              (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-              (emit
-                { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                  nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                  (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-              [Instr.RStore (layoutToTyVal τ)
-                (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) a.result.reg])
-            (emit_state_incr
-              (emit
-                (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-              (emit
-                { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                  nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                  (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-                [Instr.RStore (layoutToTyVal τ)
-                  (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) a.result.reg])
-              (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
-                a.result.cleanup.reverse)))
-      · exact CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P)) _
+      simpa only [csCleanup, h_sclean, List.append_nil] using h_incrCS1'
     have h_instD :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
-    -- code inclusion for the DESTINATION lowering's own instructions
     have h_incrDrun : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
         (emit
           { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
@@ -4467,32 +4438,7 @@ theorem copy_chaindst_projsrc_zero_simulation
           [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
             (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad, h_root, h_pv0, h_pr0]
-      simp only [csCleanup, csRun, h_sclean, emit_nil, List.append_nil]
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (emit_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-        (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-            [Instr.RStore (layoutToTyVal τ)
-              (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) a.result.reg])
-          (emit_state_incr
-            (emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (Place.deref P))
-        (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-              [Instr.RStore (layoutToTyVal τ)
-                (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) a.result.reg])
-            (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
-              a.result.cleanup.reverse))
-      · exact StateIncr.refl _
+      simpa only [csCleanup, h_sclean, List.append_nil] using h_incrDrun'
     have h_instDst :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 the READ: transport, then execute the `Load`
@@ -9119,43 +9065,9 @@ theorem copy_projdst_zero_chainsrc_simulation
       compileStmt_copy_projdst_zero_value h_dchain.not_proj h_o h_root
         h_sval0 h_dval0
     obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
-    -- §3 code inclusion for the SOURCE lowering
-    have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix)
-        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad, h_root, h_sval0]
-      simp only [csRun]
-      rw [placeToRegChecked_proj_zero_run path h_dchain.not_proj h_o]
-      refine StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix)) ?_
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (emit_state_incr _ ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-            ++ cleanupInstrs sOut0.result.cleanup))
-          (StateIncr.trans
-            (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (dbase))
-              (emit
-                { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-                  nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-                ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-                    (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-                  ++ cleanupInstrs sOut0.result.cleanup)))
-            (emit_tower_incr₃ (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
-            (emit
-              { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-                nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-              ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-                  (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-                ++ cleanupInstrs sOut0.result.cleanup)))
-              [Instr.RStore (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg) a.result.reg]
-              (cleanupInstrs [])
-              (cleanupInstrs a.result.cleanup)))
-      · exact StateIncr.trans
-          (emit_state_incr _ ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-            ++ cleanupInstrs sOut0.result.cleanup))
-          (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (dbase)) _)
+    -- §3 code inclusion for the SOURCE lowering (the three facts, once)
+    obtain ⟨h_incrS, h_incrCS1', h_incrDrun'⟩ :=
+      copy_projzerodst_incrs csPrefix h_sval0 rfl h_dchain.not_proj h_o h_root (h_run0 csPrefix)
     have h_instS :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma
@@ -9171,52 +9083,17 @@ theorem copy_projdst_zero_chainsrc_simulation
       rw [h_sval0] at h_sval
       exact (Except.ok.inj h_sval).symm
     subst h_sOut_eq
-    -- §5 code inclusion at the post-`Load` compiler state
+    -- §5 code inclusion at the post-`Load` state and at the destination
+    -- lowering's own state: the symbolic source cleanup is now known empty
     have h_incrCS1 : StateIncr (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
           nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
         [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
           (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad, h_root, h_sval]
-      simp only [csCleanup, csRun, h_sclean, emit_nil, List.append_nil]
-      rw [placeToRegChecked_proj_zero_run path h_dchain.not_proj h_o]
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (dbase))
-            (emit
-              { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-                nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-              [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-                (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-          (StateIncr.trans
-            (emit_state_incr
-              (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
-              (emit
-                { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-                  nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-                [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-                  (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-              [Instr.RStore (layoutToTyVal τ)
-                (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg) a.result.reg])
-            (emit_state_incr
-              (emit
-                (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
-              (emit
-                { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-                  nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-                [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-                  (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-                [Instr.RStore (layoutToTyVal τ)
-                  (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg) a.result.reg])
-              (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
-                a.result.cleanup.reverse)))
-      · exact CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (dbase)) _
+      simpa only [csCleanup, h_sclean, List.append_nil] using h_incrCS1'
     have h_instD :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS1
-    -- code inclusion for the DESTINATION lowering's own instructions
     have h_incrDrun : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
         (emit
           { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
@@ -9224,33 +9101,7 @@ theorem copy_projdst_zero_chainsrc_simulation
           [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
             (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad, h_root, h_sval]
-      simp only [csCleanup, csRun, h_sclean, emit_nil, List.append_nil]
-      rw [placeToRegChecked_proj_zero_run path h_dchain.not_proj h_o]
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (emit_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
-        (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-            [Instr.RStore (layoutToTyVal τ)
-              (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg) a.result.reg])
-          (emit_state_incr
-            (emit (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (dbase))
-        (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]))
-              [Instr.RStore (layoutToTyVal τ)
-                (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix).nextReg) a.result.reg])
-            (List.map (fun (x : Register × Nat) => Instr.Die x.fst x.snd)
-              a.result.cleanup.reverse))
-      · exact StateIncr.refl _
+      simpa only [csCleanup, h_sclean, List.append_nil] using h_incrDrun'
     have h_instDst :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 the READ: transport, then execute the `Load`
