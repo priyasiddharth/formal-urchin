@@ -2781,3 +2781,53 @@ should take its `ρa'` facts as INPUTS (incr, identity, base, dom)
 rather than producing the literal `extendBlock` — four one-line
 arguments at copy's call sites — and ref's leaves transport the
 prologue's singly-extended `ρt` facts once themselves.
+
+**Same session, second half — the trio ported to ref.** Four commits
+more (`aee6137`, `0b6abfc`, `89df0e2`, `5423c0e`, `93b1017`).
+ref.lean 12,998 → 12,528; proof dir 34,850 → 34,419.
+
+**The fresh skeleton is rvalue-agnostic, and that is now demonstrated,
+not conjectured.** All four `ref_fresh_*` leaves call
+`copy_freshroot_prologue` and `copy_freshroot_write_after_read` — the
+lemmas written for copy, unchanged except for step 1 below.
+
+    ref_fresh_dst          314 -> 216
+    ref_fresh_projsrc      339 -> 240
+    ref_fresh_derefsrc     407 -> 271
+    ref_fresh_derefprojsrc 413 -> 277
+
+**Step 1, the one generalisation:** the prologue produced
+`ρa.extendBlock a (blockSize τ)` and its four facts; ref's fresh leaves
+extend the address rename at a SINGLE address (`ρa.extend a a`) because
+the root holds a pointer. The four facts became hypotheses over an
+abstract `ρa'` (+38 lines at copy's five call sites, −7 in spine).
+Interesting: two of ref's four fresh leaves (`derefsrc`,
+`derefprojsrc`) already used `extendBlock` — the two conventions were
+living side by side in the same file.
+
+**What a ref leaf pays that a copy leaf does not.** (1) The prologue
+keeps `s1` ABSTRACT; ref's leaves used to `subst` it, so every
+`Env.lookup s1.env` site now goes through `h_env1`, `csAt`/`get?`
+through `h_pc1`, and the `AllocLockstep` bullet through `h_memstart1`
+instead of `rw [← h_s1]`. (2) The tag rename is extended TWICE (root
+tag, then the borrow's), so the seam's `ρt'` is instantiated at the
+composite and the prologue's singly-extended `LocalBindingSim` is
+transported by `rename_mono` → `insert_fresh_reg` →
+`placeRegMap_congr`. For a leaf whose source went through the MOTHER,
+that last congruence needs the mother's `h_dprm`, not an `emit` peel —
+it crosses the whole source lowering.
+
+**Pinning is not optional here.** Every seam call in ref pins
+`csR`, `sR`, `vreg`, `vals`, `mvals` explicitly. Without the pin,
+unification fixes `csR` from the `LocalBindingSim` argument (whose
+compiler state is the post-`Alloc` one, not the post-source one) and
+every later argument mistypes.
+
+**Next, and it is the biggest single item left:** ten leaves write
+through a destination PROJECTION on a fresh root — ref's four
+`ref_projzero_fresh_*` and four `ref_projoffset_fresh_*` (3,285 lines)
+plus copy's two `projlocal_fresh` (1,657). The ZERO-offset half of
+those is within reach of the existing seam if it is generalised to two
+types (local `σ`, value `τ`, write at `pathOffset path` with
+`pathOffset path + blockSize τ ≤ blockSize σ`); the nonzero-offset half
+needs the `Borrow`/`RStore`/`Die` sandwich and is a second seam.
