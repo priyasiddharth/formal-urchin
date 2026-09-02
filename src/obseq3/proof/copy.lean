@@ -7762,6 +7762,49 @@ theorem copy_projdst_projsrc_offset_simulation
         exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
           h_run, h_inv'⟩
 
+/-- The source-flattening bridge, at a LOCAL destination. Every
+    dispatch branch whose source flattens to a projection needs the
+    same pair — the compiled run agrees at the two spellings, and a
+    compiled value at the normal form yields one at the original — so
+    state it once, parameterised by the normal form. -/
+theorem copy_local_srcflat_bridge {Γ : Ctx} {τ σ' : LayoutTy}
+    {dstLoc : Local Γ τ} (src : Place Γ τ) {B : Place Γ σ'} {path' : PathTo σ' τ}
+    (h_flat : flattenPlace src = Place.proj B path') :
+    (∀ cs, CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.local dstLoc) (.copy src))) cs
+      = CheckedCompilerM.run (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.copy (.proj B path')))) cs)
+    ∧ (∀ cs so, CheckedCompilerM.value (compileStmtChecked
+        (Stmt.assign (.local dstLoc) (.copy (.proj B path')))) cs = Except.ok so →
+        ∃ so', CheckedCompilerM.value (compileStmtChecked
+          (Stmt.assign (.local dstLoc) (.copy src))) cs = Except.ok so') := by
+  refine ⟨fun cs => ?_, fun cs so h => ?_⟩
+  · rw [compileStmt_copy_srcflatten_run src cs, h_flat]
+  · refine compileStmt_copy_srcflatten_value src cs ?_
+    rw [h_flat]
+    exact ⟨so, h⟩
+
+/-- The same bridge at a DEREF destination, where BOTH places flatten.
+    `X` is the source's normal form; pass `rfl` when it is literally
+    `flattenPlace src`. -/
+theorem copy_derefdst_flat_bridge {Γ : Ctx} {τ : LayoutTy}
+    (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τ)
+    {X : Place Γ τ} (h_seq : flattenPlace src = X) :
+    (∀ cs, CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.deref pp) (.copy src))) cs
+      = CheckedCompilerM.run (compileStmtChecked
+          (Stmt.assign (.deref (flattenPlace pp)) (.copy X))) cs)
+    ∧ (∀ cs so, CheckedCompilerM.value (compileStmtChecked
+        (Stmt.assign (.deref (flattenPlace pp)) (.copy X))) cs = Except.ok so →
+        ∃ so', CheckedCompilerM.value (compileStmtChecked
+          (Stmt.assign (.deref pp) (.copy src))) cs = Except.ok so') := by
+  subst h_seq
+  refine ⟨fun cs => ?_, fun cs so h => ?_⟩
+  · exact (compileStmt_copy_derefdst_srcflatten_run pp src cs).trans
+      (compileStmt_copy_derefdst_dstflatten_run pp (flattenPlace src) cs)
+  · exact compileStmt_copy_derefdst_srcflatten_value pp src cs
+      (compileStmt_copy_derefdst_dstflatten_value pp (flattenPlace src) cs ⟨so, h⟩)
+
 /-- LEAF SORRY 2 → DISPATCHER 2026-08-28: per-statement simulation for
     `.assign dst (.copy src)`, decomposed by the shapes of the two
     places. Regime L→L (both bound locals, any layout) is CLOSED by
@@ -7800,29 +7843,14 @@ theorem CompilerInv_step_copy
                 (PtrChain.base srcLoc) h_comp h_inv h_stmt
                 (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_envD h_step
       | proj sbase ff =>
+          -- FLATTEN the whole src BEFORE the destination split: its normal
+          -- form is ONE projection over a canonical chain, and both env
+          -- cases hand that same normal form to their collapsed leaves
+          obtain ⟨σ', Bc, path', h_flat, h_chain⟩ := flatten_proj_chainish sbase ff
+          rw [stepStmt_assign_copysrc_anyflatten, h_flat] at h_step
+          obtain ⟨h_run0, h_val0⟩ := copy_local_srcflat_bridge (dstLoc := dstLoc) _ h_flat
           cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
           | some bD =>
-              -- FLATTEN the whole src: its normal form is ONE projection
-              -- over a canonical chain, which the two collapsed leaves own
-              obtain ⟨σ', Bc, path', h_flat, h_chain⟩ :=
-                flatten_proj_chainish sbase ff
-              rw [stepStmt_assign_copysrc_anyflatten, h_flat] at h_step
-              have h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked
-                  (Stmt.assign (.local dstLoc) (.copy (.proj sbase ff)))) cs
-                  = CheckedCompilerM.run (compileStmtChecked
-                      (Stmt.assign (.local dstLoc) (.copy (.proj Bc path')))) cs := by
-                intro cs
-                rw [compileStmt_copy_srcflatten_run (Place.proj sbase ff) cs, h_flat]
-              have h_val0 : ∀ cs so, CheckedCompilerM.value (compileStmtChecked
-                  (Stmt.assign (.local dstLoc) (.copy (.proj Bc path')))) cs
-                  = Except.ok so →
-                  ∃ so', CheckedCompilerM.value (compileStmtChecked
-                    (Stmt.assign (.local dstLoc) (.copy (.proj sbase ff)))) cs
-                    = Except.ok so' := by
-                intro cs so h
-                refine compileStmt_copy_srcflatten_value (Place.proj sbase ff) cs ?_
-                rw [h_flat]
-                exact ⟨so, h⟩
               by_cases h_off : pathOffset path' = 0
               · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
                   copy_projchain_zero_simulation compProg h_chain h_off h_comp h_inv
@@ -7836,25 +7864,6 @@ theorem CompilerInv_step_copy
                   TagRenameIncr.refl ρt, h_run, h_inv'⟩
           | none =>
               -- CLOSED: fresh destination, proj-topped source (regime B)
-              obtain ⟨σ', Bc, path', h_flat, h_chain⟩ :=
-                flatten_proj_chainish sbase ff
-              rw [stepStmt_assign_copysrc_anyflatten, h_flat] at h_step
-              have h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked
-                  (Stmt.assign (.local dstLoc) (.copy (.proj sbase ff)))) cs
-                  = CheckedCompilerM.run (compileStmtChecked
-                      (Stmt.assign (.local dstLoc) (.copy (.proj Bc path')))) cs := by
-                intro cs
-                rw [compileStmt_copy_srcflatten_run (Place.proj sbase ff) cs, h_flat]
-              have h_val0 : ∀ cs so, CheckedCompilerM.value (compileStmtChecked
-                  (Stmt.assign (.local dstLoc) (.copy (.proj Bc path')))) cs
-                  = Except.ok so →
-                  ∃ so', CheckedCompilerM.value (compileStmtChecked
-                    (Stmt.assign (.local dstLoc) (.copy (.proj sbase ff)))) cs
-                    = Except.ok so' := by
-                intro cs so h
-                refine compileStmt_copy_srcflatten_value (Place.proj sbase ff) cs ?_
-                rw [h_flat]
-                exact ⟨so, h⟩
               by_cases h_off : pathOffset path' = 0
               · exact copy_fresh_projchain_zero_simulation compProg h_chain h_off
                   h_comp h_inv h_stmt h_run0 h_val0 h_envD h_step
@@ -7922,13 +7931,8 @@ theorem CompilerInv_step_copy
           copy_chaindst_chainsrc_simulation (P := flattenPlace pp)
             (src := flattenPlace src) compProg
             (PtrChain_flatten_deref pp) h_sch h_comp h_inv h_stmt
-            (fun cs =>
-              ((compileStmt_copy_derefdst_srcflatten_run pp src cs).trans
-                (compileStmt_copy_derefdst_dstflatten_run pp (flattenPlace src) cs)))
-            (fun cs so h =>
-              compileStmt_copy_derefdst_srcflatten_value pp src cs
-                (compileStmt_copy_derefdst_dstflatten_value pp (flattenPlace src) cs
-                  ⟨so, h⟩))
+            (copy_derefdst_flat_bridge pp src rfl).1
+            (copy_derefdst_flat_bridge pp src rfl).2
             h_step
         exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
           h_run, h_inv'⟩
@@ -7941,19 +7945,8 @@ theorem CompilerInv_step_copy
             copy_chaindst_projsrc_zero_simulation (P := flattenPlace pp) (B := B)
               (spath := spath) compProg (PtrChain_flatten_deref pp) h_B h_o
               h_comp h_inv h_stmt
-              (fun cs => by
-                rw [← h_seq]
-                exact ((compileStmt_copy_derefdst_srcflatten_run pp src cs).trans
-                  (compileStmt_copy_derefdst_dstflatten_run pp (flattenPlace src) cs)))
-              (fun cs so h => by
-                have h' : ∃ so', CheckedCompilerM.value
-                    (compileStmtChecked (Stmt.assign (.deref (flattenPlace pp))
-                      (.copy (flattenPlace src)))) cs = Except.ok so' := by
-                  rw [h_seq]
-                  exact ⟨so, h⟩
-                exact compileStmt_copy_derefdst_srcflatten_value pp src cs
-                  (compileStmt_copy_derefdst_dstflatten_value pp (flattenPlace src) cs
-                    h'))
+              (copy_derefdst_flat_bridge pp src h_seq).1
+              (copy_derefdst_flat_bridge pp src h_seq).2
               h_step
           exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
             h_run, h_inv'⟩
@@ -7964,19 +7957,8 @@ theorem CompilerInv_step_copy
             copy_chaindst_projsrc_offset_simulation (P := flattenPlace pp) (B := B)
               (spath := spath) compProg (PtrChain_flatten_deref pp) h_B h_o
               h_comp h_inv h_stmt
-              (fun cs => by
-                rw [← h_seq]
-                exact ((compileStmt_copy_derefdst_srcflatten_run pp src cs).trans
-                  (compileStmt_copy_derefdst_dstflatten_run pp (flattenPlace src) cs)))
-              (fun cs so h => by
-                have h' : ∃ so', CheckedCompilerM.value
-                    (compileStmtChecked (Stmt.assign (.deref (flattenPlace pp))
-                      (.copy (flattenPlace src)))) cs = Except.ok so' := by
-                  rw [h_seq]
-                  exact ⟨so, h⟩
-                exact compileStmt_copy_derefdst_srcflatten_value pp src cs
-                  (compileStmt_copy_derefdst_dstflatten_value pp (flattenPlace src) cs
-                    h'))
+              (copy_derefdst_flat_bridge pp src h_seq).1
+              (copy_derefdst_flat_bridge pp src h_seq).2
               h_step
           exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
             h_run, h_inv'⟩
