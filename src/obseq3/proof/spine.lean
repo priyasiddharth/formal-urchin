@@ -3303,6 +3303,131 @@ theorem copy_boundproj_write_after_read
     exact Nat.le_trans h_regmonoR h_nextRegLe
 
 
+
+/-- **The bound-root plain write seam** — the destination half when the
+    destination resolves to a register that already points AT the target
+    (a bound local, or a projection of one at zero offset, or a
+    chain-resolved place): one `RStore` through that register, no
+    interior borrow and so no BRIDGE 1, just BRIDGE 2 for the store.
+
+    The zero-offset sibling of `copy_boundproj_write_after_read`, with
+    the same resolved-root interface (`dbase`/`dtag`/`dsize`/`boff`) and
+    the same spelling-proof statement facts. -/
+theorem copy_boundplain_write_after_read
+    {τ : LayoutTy} {dbase : Word} {dtag : Tag} {dsize : Nat}
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    {csPrefix : CompilerState}
+    (h_csAt : csAt cs0 prog s_mir.pc csPrefix)
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt0)}
+    (h_stmtOut : CheckedCompilerM.value (compileStmtChecked stmt0) csPrefix
+      = Except.ok stmtOut)
+    (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
+    (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
+    (h_prb : PlaceRegMapBound csPrefix)
+    {dstReg : Register} {tagD : Tag} (boff : Nat)
+    (h_raD : ρa dbase = some dbase)
+    (h_rtD : ρt dtag = some tagD)
+    (h_nwD : (dtag == wildcardTag) = false)
+    (h_domD : ∀ k, k < dsize → ∃ a, ρa (dbase + k) = some a)
+    -- the POST-SOURCE bundle
+    {csR : CompilerState} {sR : oseair.State MSB} {vreg : Register}
+    {vals : List Val} {nR : Nat} {perms₂ : MSB.State}
+    (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
+    (h_entryD : PtrRegisterEntry sR.reg dstReg dbase boff dsize tagD)
+    (h_sms : SourceMemSim ρa ρt s_mir.mem sR.mem)
+    (h_alloc : AllocLockstep s_mir.mem sR.mem)
+    (h_prmR : csR.placeRegMap = csPrefix.placeRegMap)
+    (h_regmonoR : csPrefix.nextReg ≤ csR.nextReg)
+    (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
+    (h_psimR : PermSim ρt perms₂ sR.perms)
+    (h_tbdR : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag)
+    (h_pcR : sR.pc = csR.nextLabel)
+    (h_vregR : oseair.RegMap.lookup sR.reg vreg = some (layoutToTyVal τ, vals))
+    (h_vlen : vals.length = blockSize τ)
+    (h_fit : boff + blockSize τ ≤ dsize)
+    -- the one instruction, and the rebuild's three facts
+    (h_code : compProg sR.pc
+      = some (Instr.RStore (layoutToTyVal τ) vreg dstReg))
+    (h_lab : sR.pc + 1
+      = (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix).nextLabel)
+    (h_prmS : (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix).placeRegMap
+      = csR.placeRegMap)
+    (h_nextRegLe : csR.nextReg
+      ≤ (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix).nextReg)
+    -- the mirlite write
+    {rd : mirlite.PlaceRes} {mvals : List mirlite.MemValue}
+    (h_mlen : mvals.length = blockSize τ)
+    (h_rdaddr : rd.addr = dbase + boff)
+    (h_rdtag : rd.tag = dtag)
+    (h_rdbase : rd.allocBase = dbase)
+    (h_rdsize : rd.allocSize = dsize)
+    (h_valsRel : ListRel (MemValSim ρa ρt) mvals vals)
+    (h_step : mirlite.writeResolvedPlace (τ := τ) MSB
+      { s_mir with perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
+    ∃ (s_osea' : oseair.State MSB) (n : Nat),
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
+  obtain ⟨h_nb, perms₃, h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_step
+  have h_useMut_src' : MSB.useMut perms₂ (dbase + boff) (blockSize τ) dtag
+      = .ok perms₃ := by
+    rw [← h_rdaddr, ← h_rdtag, ← h_mlen]
+    exact h_useMut_src
+  obtain ⟨p2, h_useMut_tgt, h_psim2⟩ :=
+    sb_write_respects_PermSim h_psimR h_wf_t h_rtD h_nwD h_useMut_src'
+  -- the destination register, at the resolution's own spelling
+  have h_entry' : PtrRegisterEntry sR.reg dstReg rd.allocBase
+      (rd.addr - rd.allocBase) rd.allocSize tagD := by
+    rw [h_rdaddr, h_rdbase, h_rdsize, Nat.add_sub_cancel_left]
+    exact h_entryD
+  have h_wr : MSB.useMut sR.perms rd.addr vals.length tagD = .ok p2 := by
+    rw [h_vlen, h_rdaddr]
+    exact h_useMut_tgt
+  obtain ⟨h_wtp, h_sms'⟩ :=
+    writeThroughPtr_sim (τ := τ) (s_osea := sR) (resolved := rd)
+      (s_pre := { s_mir with perms := perms₂ })
+      "RStore Invalid Regs" mvals vals h_mlen h_valsRel h_id_a h_entry' h_wr h_sms
+      (by rw [h_rdaddr, h_rdbase]; exact Nat.le_add_right _ _)
+      (fun k hk => by
+        rw [show rd.addr + k = dbase + (boff + k) by
+          rw [h_rdaddr, Nat.add_assoc]]
+        obtain ⟨a', ha'⟩ := h_domD (boff + k) (by rw [h_mlen] at hk; omega)
+        rw [ha', h_id_a _ _ ha'])
+      h_step
+  have h_run2 := runN_RStore_step compProg sR _
+    (layoutToTyVal τ) vreg dstReg vals _ h_code h_vregR h_entry' h_wtp
+  have h_run := oseair_runN_trans h_runR h_run2
+  refine ⟨_, _, h_run, ?_⟩
+  refine ⟨CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix,
+    ⟨prefixCompileState_succ h_csAt h_stmt h_stmtOut, ?_⟩, ?_, h_sms',
+    h_psim2, h_id_a, h_wf_t, ?_, ?_, ?_, ?_⟩
+  · show sR.pc + 1 = _
+    exact h_lab
+  · exact LocalBindingSim.placeRegMap_congr h_prmS h_lbsR
+  · show TagRenameBounded _ perms₃.NextTag p2.NextTag
+    rw [sb_write_NextTag h_useMut_src', sb_write_NextTag h_useMut_tgt]
+    exact h_tbdR
+  · exact h_alloc.writeWordSeq _ _ _ _
+  · intro τ' loc' h_none
+    show getPlaceInfo _ _ = _
+    simp only [getPlaceInfo]
+    rw [h_prmS, h_prmR]
+    exact h_unmap loc' h_none
+  · intro idx reg'' τ'' h_look
+    have h_look' : getPlaceInfo csR idx = some (reg'', τ'') := by
+      show csR.placeRegMap.lookup _ = _
+      rw [← h_prmS]
+      exact h_look
+    have h_cs : getPlaceInfo csPrefix idx = some (reg'', τ'') := by
+      show csPrefix.placeRegMap.lookup _ = _
+      rw [← h_prmR]
+      exact h_look'
+    refine RegisterBelow.mono ?_ (h_prb _ _ _ h_cs)
+    exact Nat.le_trans h_regmonoR h_nextRegLe
+
+
 end
 
 end obseq3.proof
