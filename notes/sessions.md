@@ -2871,3 +2871,50 @@ destination `Borrow`/`RStore`/`Die` sandwich. That is the second
 fresh-write seam and the next item; it is worth roughly 700 lines, and
 its interface is the current seam's plus a destination offset and the
 two extra instructions.
+
+**Same session, fourth stretch — the second fresh-write seam.** Four
+commits (`2880ae5`, `ae3aae3`, `48cd646`, `2a9bf49`). Proof dir
+33,896 → 32,788; ref 12,106 → 11,227; copy 8,754 → 8,188.
+
+`copy_freshproj_write_after_read` (spine, 307) is the write half when
+the destination is a FIELD of the fresh root at a nonzero offset: the
+compiler mints an interior `Borrow(Mut)`, stores through it, and
+retires it with a `Die`, and BRIDGE 1 (`sb_ref_use_die_cancels`)
+collapses that ref/use/die triple to the parent's single write. Six
+users, and the last leaf of the fresh family with it:
+
+    ref_projoffset_fresh          477 -> 248
+    ref_projoffset_fresh_projsrc  488 -> 255
+    ref_projoffset_fresh_selfsrc  468 -> 240
+    ref_projoffset_fresh_derefsrc 503 -> 314
+    copy_projlocal_fresh          691 -> 478  (its offset branch)
+    copy_projlocal_fresh_projsrc  882 -> 529  (both branches)
+
+**The interface lesson, and it is general.** The first seam takes the
+statement's compiled tower (`h_stmtRun`) as a hypothesis. That works
+only while the caller's spelling of the tower matches the seam's. It
+stopped working here: a leaf's `h_stmtRun` comes from its compile lemma
+(elaborated with `have __src := …`) while the seam's pinned `csR` is a
+`{X with}` update (elaborated with `let __src := …`), and `csnorm`
+flattens one side one level further than the other. The fix was to stop
+passing the tower at all: the seam takes the THREE code facts (which
+every leaf already derives from its fragment) plus the two summary
+facts the rebuild actually needs — the statement's `nextLabel` and its
+`placeRegMap`, each one `rw [h_stmtRun]; simp` at the call site. That
+interface is spelling-proof, and the next seam should be written that
+way from the start.
+
+**And a second, smaller one:** a nested record update does not
+elaborate inside a `have` TYPE (the structure's model argument stays a
+metavariable), so the post-borrow state is NAMED
+(`obtain ⟨sB, hsB⟩ : ∃ sB : oseair.State MSB, sB = …`) and every fact
+about it is stated on `sB.reg`/`sB.perms`/`sB.mem` with `hsB` as the
+bridge. In argument position the same update elaborates fine — it is
+only the unknown-expected-type position that breaks.
+
+**The fresh family is finished.** Every fresh leaf in copy and ref —
+fourteen of them, plus the two two-branch `projlocal_fresh` leaves —
+is now prologue → source package → write seam. What remains in ref is
+the BOUND-destination half (nineteen leaves, ~7,600 lines) whose source
+axis has no packages yet, and in copy the bound leaves that already sit
+on the chain-write seam.
