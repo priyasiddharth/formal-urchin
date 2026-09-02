@@ -2694,3 +2694,90 @@ since without that reuse the package does not clear the bar.
 Validation, all four suites, both commits: 0 errors; audit OK,
 0 sorries, axioms unchanged; 17/17 + 104/104; 82/0; osea 82/0/0.
 Proof dir 36,035.
+
+## 2026-09-02 (thirty-seventh)
+
+**Rev. 3 executed end to end on copy, and the answer changed shape
+twice.** Seven commits, copy.lean 10,393 → 8,811, proof dir 36,060 →
+34,850 (−1,210), zero sorries, axioms untouched, four suites green at
+every one.
+
+**A1b/A4 — the source packages, and what they are actually worth.**
+`copy_chainsrc_read` (the chain read) and `copy_projsrc_offset_read`
+(the Borrow/Load/Die read, BRIDGE 1S inside) both take an ABSTRACT
+start state `(sM, sA, csA)` and hand back the seam's input bundle. On
+the BOUND-destination leaves they pay about what the previous session
+predicted (chaindst_projsrc_offset 382→138, projdst_zero_projsrc_offset
+370→148). The multiplier the design was for is real: the fresh leaves
+call them at their post-`Alloc` states and shed 165–263 each.
+
+**A3 answered itself: zero-offset projections are not a source shape.**
+`copy_chaindst_projsrc_zero` (209→143) is `copy_chainsrc_read` composed
+with `LoweringSimAny.projZero`, plus `resolvePlaceAcc_proj_base_ok` on
+the mirlite side and one `rw [h_pr0] at h_runR h_prmR h_regmonoR
+h_lbsR h_spc h_pcR h_vbelow` to move the returned bundle from the
+projected tower onto the base's. Same three lines convert
+`copy_fresh_projchain_zero`. So copy needs TWO source packages, not
+three.
+
+**The real find: the fresh family is three shared pieces, not one.**
+Once the source halves were packaged, the leaves' remaining text was
+visibly the same at both ends. Two more shared lemmas fell out, and
+they are bigger than the packages:
+
+  - `copy_freshroot_write_after_read` (spine, 249) — the mirror of
+    `copy_chainwrite_after_read` for a destination the statement
+    ALLOCATES. Abstract post-source state, abstract renames
+    (`ρa'`/`ρt'` with their `Incr` facts, not the literal
+    `extendBlock`/`extend`), destination resolution as an abstract `rd`
+    plus `rd.addr = s_mir.mem.addrStart` / `rd.tag =
+    s_mir.perms.NextTag` (both `rfl` at every call). Owns the write
+    transport, the `RStore`, the memory extension and all six
+    `CompilerInv` bullets. Three leaves, −494.
+  - `copy_freshroot_prologue` (spine, 164) — everything BEFORE the
+    rvalue. Its input is `allocateBase MSB s_mir loc = ok s1`, NOT
+    `preparePlaceAssign`: that is what makes it serve both a leaf
+    assigning to `loc` and one assigning to `loc.f`, since both reduce
+    to the same `allocateBase` on the root local. Five leaves, −557.
+
+A fresh leaf is now prologue → source package → write seam, ~150 lines
+of glue where it was ~500.
+
+**Honest non-win, kept anyway:** `copy_projlocal_fresh`'s zero branch
+onto the chainsrc package is a WASH (88 in, 88 out) — a fresh leaf must
+spell its post-`Alloc` state and compiler state as package arguments,
+where a bound leaf passes `s_mir s_osea csPrefix` and pays nothing. It
+was worth landing only because it made that leaf's tail match the other
+three, which is what let the write seam and the prologue apply.
+
+**Two spelling traps, each one red build.** (1) A package output stated
+about a PROJECTED evidence (`{result := sOut0.result, evidence :=
+.projZero …}.result.cleanup`) has to be restated at the base by defeq
+before `simp only [h_sclean]` will fire. (2) `LocalBindingSim`/
+`PlaceInputsMapped` facts proven at a projection and used at its base
+must go through two `have`s (`h_mappedP` then `h_mappedB`); a
+`show … from` forces the resolution hypothesis to the base and fails.
+
+**Process note, cost a full rebuild:** a splice script that computes
+`s.index(marker)` on the WHOLE FILE rather than on the theorem's own
+slice deleted 2,800 lines between an early leaf and the intended one.
+The build caught it instantly and `git checkout` plus a re-splice from
+the scratchpad copy restored it, but the rule is now: every in-place
+edit script slices the target theorem FIRST and indexes only inside it.
+
+**Where copy stands.** Remaining mass: the two `projlocal_fresh` leaves
+(784, 873 — projected destinations on a fresh root, whose write is a
+`Borrow`/`RStore`/`Die` sandwich, i.e. a second fresh-write seam), and
+`copy_projdst_offset_projsrc_offset` (814, its own destination
+projection). ref.lean is untouched by rev. 3 and is now the bulk:
+12,998 lines, 31 leaves, TWELVE of them fresh (~4,800 lines).
+
+**For ref, the pieces port with one generalisation each.** The write
+seam is rvalue-agnostic already (it takes `vals`/`mvals` abstractly),
+but ref's fresh leaves extend `ρa` at a single address
+(`ρa.extend a a`) where copy extends a block (`ρa.extendBlock a n`),
+and extend `ρt` TWICE (root tag, then the borrow's). So the prologue
+should take its `ρa'` facts as INPUTS (incr, identity, base, dom)
+rather than producing the literal `extendBlock` — four one-line
+arguments at copy's call sites — and ref's leaves transport the
+prologue's singly-extended `ρt` facts once themselves.
