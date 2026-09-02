@@ -2659,3 +2659,38 @@ the proj-zero equations (~130 lines). Its projoffset sibling is NOT
 
 Validation, all four suites: 0 errors; audit OK, 0 sorries, axioms
 unchanged; 17/17 + 104/104; 82/0; osea 82/0/0. Proof dir 36,391.
+
+## 2026-09-02 (thirty-sixth)
+
+**Rev. 3 (source packages) approved; A1a landed as two lemmas rather
+than a package** (`9f42d02`, `715ed5b`; −271). Reading the residual
+source halves before extracting showed they were only ~40% source: the
+other ~120 lines per leaf were three `StateIncr` code-inclusion proofs
+(after the source lowering / after the Load with SYMBOLIC cleanup /
+after the destination lowering), each by unfolding the whole statement.
+They mention the destination, so one lemma per destination constructor
+— `copy_derefdst_incrs`, `copy_projzerodst_incrs` — but the source only
+ever appears as the opaque `run (placeToRegChecked Shared src) cs`, so
+each is source-generic, with the post-source state abstract (`csS`,
+`h_srun`): variables pass `rfl`, zero-offset projections pass the
+`proj_zero` equations, and the NONZERO-offset pair passes the
+`proj_offset_{value,run}` equations from `29513f6` plus the leaf's own
+`csnorm at h ⊢` as the spelling bridge. Five leaves, all first-build.
+
+**The re-measure the plan demanded.** Residual composition of the
+one-Load seam users is now hdr 25 / §1 40 / §2 25 / §3 5 / §4 13 /
+§5 21 / §6 24 / tail 48. The source-only remainder (mother + read +
+`h_lbsR`) is ~62 lines per leaf; the offset pair's §6–§7 (BRIDGE 1S +
+three instruction steps) is ~120. So A1b's read packages are worth
+~−50 (chainsrc, 3 users) and ~−100 (projsrc_offset, 2 users) on the
+seam users alone — under the plan's ~150 bar — and pay only through the
+fresh-family multiplier, whose source sections start at a
+`setPlaceInfo` post-alloc state and carry a different (single)
+code-inclusion fact. That multiplier is real but each package is a
+spike. Checkpoint, not a stop: the next increment should be sized by
+attempting `copy_chainsrc_read` against fresh_chainsrc's §7–§9 first,
+since without that reuse the package does not clear the bar.
+
+Validation, all four suites, both commits: 0 errors; audit OK,
+0 sorries, axioms unchanged; 17/17 + 104/104; 82/0; osea 82/0/0.
+Proof dir 36,035.
