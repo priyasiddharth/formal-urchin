@@ -3113,3 +3113,41 @@ siblings (plain / projected / fresh) sharing the resolved-root
 interface, OR the `h_store` abstraction done ONCE while a call site is
 already being rewritten for another reason. Estimated −500 to −700
 across the eight leaves.
+
+**Tenth stretch — step 6, and where it bottoms out.** Commit
+`8d4c842`. copy 7,984 → 7,966; dispatch 215 → 155.
+
+The plan's last item was "rewrite the dispatchers to case on semantic
+outcomes rather than place constructors". I measured the dispatchers
+before redesigning them, and the repetition was NOT in the case
+structure — it was in the flatten bridges each branch restated
+verbatim:
+
+    copy_local_srcflat_bridge     (local dst, proj src)   2 users
+    copy_derefdst_flat_bridge     (deref dst, any src)    3 users
+
+Each is the same pair — the compiled RUN agrees at the original and
+normalized spellings, and a compiled VALUE at the normal form yields
+one at the original. Stating them once turned ~20 lines per branch into
+one `obtain`. `copy_derefdst_flat_bridge` takes the source's normal
+form as a parameter (`h_seq`), so the chain case passes `rfl` and the
+two projection cases pass their own `h_seq` — one lemma, three
+callers. The local-destination projection prelude also moved ABOVE the
+env split; both env cases were flattening the same source.
+
+**What's left in the dispatcher is irreducible at this design.** 155
+lines / 13 branches ≈ 12 lines per branch, and a branch IS a leaf
+invocation with its implicits pinned. The `exact ⟨ρa, ρt, …,
+AddrRenameIncr.refl ρa, …⟩` tail repeats five times, but a helper to
+absorb it costs about what it saves. Casing on semantic outcomes would
+change WHICH LEAVES EXIST — a redesign of the leaf set, not a shrink of
+the dispatcher. Under the plan's own stopping rule (under ~150 net with
+no multiplier in sight, stop and re-measure) step 6 is finished.
+
+**Session totals.** proof dir 36,060 → 32,031 (−11.2%); copy.lean
+10,686 → 7,966 (−25%); ref.lean 12,998 → 10,244 (−21%). Zero sorries
+and the same three axioms at every one of ~38 commits. The remaining
+named opportunity is const_write's eight CStore leaves (1,891 lines,
+est. −500 to −700), which needs the store step abstracted or three
+CStore siblings — see the ninth stretch for why the abstraction was
+reverted rather than forced.
