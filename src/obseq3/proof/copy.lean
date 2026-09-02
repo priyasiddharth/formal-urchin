@@ -4619,66 +4619,17 @@ theorem copy_chaindst_projsrc_offset_simulation
     obtain ⟨stmtOutC, h_stmtOutC⟩ :=
       compileStmt_copy_chaindst_projsrc_offset_value h_np h_o h_root h_sval0 h_dval0
     obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
-    -- §3 code inclusion for the SOURCE (chain-base) lowering. The
-    -- source tower is FIVE steps deep here, and a single
-    -- `StateIncr.trans` chain across all of it leaves the intermediate
-    -- instruction lists as metavariables, which the unifier cannot
-    -- reconcile with the record-literal spelling the goal is in. Split
-    -- it: a GROUND prefix up to the post-cleanup state, then the short
-    -- chain the other leaves use.
-    have h_incrPre : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) 
-                (emit
-                  { (emit
-                    { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                    [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                      (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
-                      nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                  ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg))]
-                    ++ cleanupInstrs (sOut0.result.cleanup ++ [((Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg), blockSize τ)]))) :=
-      StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix))
-        (StateIncr.trans
-          (emit_state_incr _
-            [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-              (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg
-                (pathOffset spath))])
-          (StateIncr.trans (freshReg_state_incr 
-                (emit
-                  { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                      nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                  [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                    (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]))
-            (emit_state_incr _
-              ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg))]
-                ++ cleanupInstrs (sOut0.result.cleanup
-                    ++ [((Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg), blockSize τ)])))))
-    have h_incrCS2V : StateIncr 
-                (emit
-                  { (emit
-                    { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                    [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                      (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
-                      nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                  ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg))]
-                    ++ cleanupInstrs (sOut0.result.cleanup ++ [((Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg), blockSize τ)])))
-        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad,
-        placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
-        h_root, h_sval0, dif_neg h_o]
-      simp only [csRun]
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (CheckedCompilerM.incr
-            (placeToRegChecked RefKind.Mut (Place.deref P)) _)
-          (emit_tower_incr₃ _ _ _ _)
-      · exact CheckedCompilerM.incr
-          (placeToRegChecked RefKind.Mut (Place.deref P)) _
+    -- §3 code inclusion for the SOURCE lowering: the three facts, once,
+    -- with the projection's Borrow supplied by the nonzero-offset equations
+    obtain ⟨sOutP, h_svalP, h_regP, h_clP⟩ :=
+      placeToRegChecked_proj_offset_value (kind := RefKind.Shared) spath h_np h_o h_sval0
+    obtain ⟨h_incrS', h_incrCS1', h_incrDrun'⟩ :=
+      copy_derefdst_incrs csPrefix h_svalP
+        (placeToRegChecked_proj_offset_run (kind := RefKind.Shared) spath h_np h_o h_sval0)
+        h_root (h_run0 csPrefix)
     have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix)
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
-      StateIncr.trans h_incrPre h_incrCS2V
+      StateIncr.trans (StateIncr.trans (freshReg_state_incr _) (emit_state_incr _ _)) h_incrS'
     have h_instS :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma on the chain BASE
@@ -4707,19 +4658,12 @@ theorem copy_chaindst_projsrc_offset_simulation
                   [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
                    Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)])
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad,
-        placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
-        h_root, h_sval, dif_neg h_o]
-      simp only [csCleanup, csRun, h_sclean, List.nil_append, List.cons_append, List.append_nil,
-        List.reverse_cons, List.map_cons, emit_nil]
-      split
-      · rename_i a h_a
-        exact StateIncr.trans
-          (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut (Place.deref P)) _)
-          (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))
-      · exact CheckedCompilerM.incr
-          (placeToRegChecked RefKind.Mut (Place.deref P)) _
+      have h := h_incrCS1'
+      rw [h_regP, h_clP] at h
+      simp only [csCleanup, h_sclean, List.nil_append, List.append_nil,
+        List.reverse_cons, List.map_cons] at h
+      csnorm at h ⊢
+      exact h
     have h_instCS2 :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS2
     have h_incrDrun : StateIncr 
@@ -4734,16 +4678,12 @@ theorem copy_chaindst_projsrc_offset_simulation
                     [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
                      Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)]))
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad,
-        placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
-        h_root, h_sval, dif_neg h_o]
-      simp only [csCleanup, csRun, h_sclean, List.nil_append, List.cons_append, List.append_nil,
-        List.reverse_cons, List.map_cons, emit_nil]
-      split
-      · rename_i a h_a
-        exact StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)
-      · exact StateIncr.refl _
+      have h := h_incrDrun'
+      rw [h_regP, h_clP] at h
+      simp only [csCleanup, h_sclean, List.nil_append, List.append_nil,
+        List.reverse_cons, List.map_cons] at h
+      csnorm at h ⊢
+      exact h
     have h_instDst :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 BRIDGE 1S: the projection's borrow is taken, read through, and
@@ -7822,64 +7762,17 @@ theorem copy_projdst_zero_projsrc_offset_simulation
       compileStmt_copy_projdst_projsrc_offset_value h_npD h_np h_o h_root
         h_sval0 h_dval0
     obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
-    -- §3 code inclusion for the SOURCE (chain-base) lowering. The
-    -- source tower is FIVE steps deep here, and a single
-    -- `StateIncr.trans` chain across all of it leaves the intermediate
-    -- instruction lists as metavariables, which the unifier cannot
-    -- reconcile with the record-literal spelling the goal is in. Split
-    -- it: a GROUND prefix up to the post-cleanup state, then the short
-    -- chain the other leaves use.
-    have h_incrPre : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) 
-                (emit
-                  { (emit
-                    { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                    [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                      (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
-                      nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                  ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg))]
-                    ++ cleanupInstrs (sOut0.result.cleanup ++ [((Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg), blockSize τ)]))) :=
-      StateIncr.trans (freshReg_state_incr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix))
-        (StateIncr.trans
-          (emit_state_incr _
-            [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-              (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg
-                (pathOffset spath))])
-          (StateIncr.trans (freshReg_state_incr 
-                (emit
-                  { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                      nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                  [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                    (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]))
-            (emit_state_incr _
-              ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg))]
-                ++ cleanupInstrs (sOut0.result.cleanup
-                    ++ [((Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg), blockSize τ)])))))
-    have h_incrCS2V : StateIncr 
-                (emit
-                  { (emit
-                    { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
-                        nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 }
-                    [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)
-                      (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
-                      nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 + 1 }
-                  ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg))]
-                    ++ cleanupInstrs (sOut0.result.cleanup ++ [((Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg), blockSize τ)])))
-        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad,
-        placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
-        h_root, h_sval0, dif_neg h_o, h_proj_eqD, h_do, dif_pos]
-      simp only [csRun]
-      have h_d0 := h_dval0
-      csnorm at h_d0 ⊢
-      simp only [h_d0]
-      exact StateIncr.trans
-        (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut dbase) _)
-        (emit_tower_incr₃ _ _ _ _)
+    -- §3 code inclusion for the SOURCE lowering: the three facts, once,
+    -- with the projection's Borrow supplied by the nonzero-offset equations
+    obtain ⟨sOutP, h_svalP, h_regP, h_clP⟩ :=
+      placeToRegChecked_proj_offset_value (kind := RefKind.Shared) spath h_np h_o h_sval0
+    obtain ⟨h_incrS', h_incrCS1', h_incrDrun'⟩ :=
+      copy_projzerodst_incrs csPrefix h_svalP
+        (placeToRegChecked_proj_offset_run (kind := RefKind.Shared) spath h_np h_o h_sval0)
+        h_npD h_do h_root (h_run0 csPrefix)
     have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix)
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
-      StateIncr.trans h_incrPre h_incrCS2V
+      StateIncr.trans (StateIncr.trans (freshReg_state_incr _) (emit_state_incr _ _)) h_incrS'
     have h_instS :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
     -- §4 the SOURCE mother lemma on the chain BASE
@@ -7905,20 +7798,12 @@ theorem copy_projdst_zero_projsrc_offset_simulation
                         nextReg := (emit { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1, nextLabel := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextLabel, code := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).code, placeRegMap := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).placeRegMap } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextReg + 1 } [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix) with
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)])
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad,
-        placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
-        h_root, h_sval, dif_neg h_o, h_proj_eqD, h_do, dif_pos]
-      simp only [csCleanup, csRun, h_sclean, List.nil_append, List.cons_append, List.append_nil,
-        List.reverse_cons, List.map_cons, emit_nil]
-      have h_d1 := h_dval0
-      simp only [csCleanup, h_sclean, List.nil_append, List.cons_append, List.append_nil,
-        List.reverse_cons, List.map_cons] at h_d1
-      csnorm at h_d1 ⊢
-      simp only [h_d1]
-      exact StateIncr.trans
-        (CheckedCompilerM.incr (placeToRegChecked RefKind.Mut dbase) _)
-        (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))
+      have h := h_incrCS1'
+      rw [h_regP, h_clP] at h
+      simp only [csCleanup, h_sclean, List.nil_append, List.append_nil,
+        List.reverse_cons, List.map_cons] at h
+      csnorm at h ⊢
+      exact h
     have h_instCS2 :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrCS2
     have h_incrDrun : StateIncr 
@@ -7933,18 +7818,12 @@ theorem copy_projdst_zero_projsrc_offset_simulation
                     [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg + 1)) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg)),
                      Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csPrefix).nextReg) (blockSize τ)]))
         (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [csCompile, csMonad,
-        placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_np,
-        h_root, h_sval, dif_neg h_o, h_proj_eqD, h_do, dif_pos]
-      simp only [csCleanup, csRun, h_sclean, List.nil_append, List.cons_append, List.append_nil,
-        List.reverse_cons, List.map_cons, emit_nil]
-      have h_d1 := h_dval0
-      simp only [csCleanup, h_sclean, List.nil_append, List.cons_append, List.append_nil,
-        List.reverse_cons, List.map_cons] at h_d1
-      csnorm at h_d1 ⊢
-      simp only [h_d1]
-      exact StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)
+      have h := h_incrDrun'
+      rw [h_regP, h_clP] at h
+      simp only [csCleanup, h_sclean, List.nil_append, List.append_nil,
+        List.reverse_cons, List.map_cons] at h
+      csnorm at h ⊢
+      exact h
     have h_instDst :=
       (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrDrun
     -- §6 BRIDGE 1S: the projection's borrow is taken, read through, and
