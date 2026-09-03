@@ -3278,3 +3278,60 @@ Two lessons, one already recorded and one new:
   bug does not touch) and every one was confirmed by deletion + build.
 
 The build test remains the only evidence worth acting on.
+
+**Fourteenth stretch — the chain-source borrow package.** Two commits
+(`dcc802d`, `6137b29`). ref 10,244 → 9,529; spine 3,433 → 3,563; net
+−585.
+
+The measured next step was the six projzero/projoffset twin pairs
+(~3,200 lines, 80% identical). The twins differ in WHICH WRITE SEAM
+they call (one instruction vs `Borrow; RStore; Die`), so the collapse
+had to be on the source half, which is the same in both — and shared
+across pairs. `ref_chainsrc_borrow` (spine.lean, 130 lines) is that
+half for a source `&kind (B.f)` with `B` a pointer chain: the mother
+lemma, the retag transport, the `Borrow` step, and the post-Borrow
+bundle in `ref_local_borrow`'s shape (named state `sB`, extended ρt,
+`LocalBindingSim` at the post-Borrow compiler state, the pointer-value
+`ListRel`).
+
+    ref_projzero_derefsrc            218 -> 160
+    ref_projoffset_derefsrc          223 -> 168
+    ref_projzero_fresh_derefsrc      289 -> 224
+    ref_projoffset_fresh_derefsrc    314 -> 254
+    ref_derefprojsrc_local           211 -> 150
+    ref_fresh_derefprojsrc           278 -> 214
+    ref_derefdst_derefprojsrc        273 -> 182
+    ref_projzero_derefdst_chainsrc   320 -> 224
+    ref_projoffset_derefdst_chainsrc 347 -> 295
+    ref_deref_local                  204 -> 149   (nil projection)
+    ref_fresh_derefsrc               272 -> 214   (nil projection)
+                                            -715
+
+**Two interface decisions carried all eleven call sites.**
+1. The post-chain compiler state is an explicit argument WITH AN
+   EQUATION (`csD`, `h_csD := rfl`). The caller's spelling of that
+   state is a page long in the fresh leaves; by equation it never has
+   to unify with anything.
+2. The Borrow's code fact is stated at `csD.nextLabel`, not at the
+   mother's state — the package never exposes the mother's pc. The
+   fragment is built BEFORE the package with an explicit
+   `(base := csD.nextLabel)`; passing `rfl` alone left `EmitTower`'s
+   base a metavariable and the instance search stuck.
+
+**The bare derefs needed one more parameter.** `&kind *P` lowers its
+chain `Shared` and mints the Borrow at `kind`; the projected sources use
+one kind for both. The package now takes `kindL` and `kind` separately
+(the nine projected callers pass `kind kind`), and `f := PathTo.nil`
+meets mirlite's offset-free spelling by `simpa` at two hypotheses and
+by defeq everywhere else (`x + pathOffset nil ≡ x`).
+
+**Dead weight the conversions exposed.** The fresh leaves' destination
+lookup and `h_regne` fed nothing the fresh seam takes; derefdst's
+`h_prb1` block fed nothing the chain-write seam takes; the zero chainsrc
+twin carried an unused `LoweringSim`. None of that was visible while
+the leaves were 300 lines each.
+
+The opaque `sB` costs two `rw [hsB]` per call site (the seam wants
+PermSim/TagRenameBounded at `sB.perms`, the package gives them at
+`tgtPerms`) and one `subst hsB` for the value-register lookup. Cheaper
+than substituting the record into every hypothesis.
