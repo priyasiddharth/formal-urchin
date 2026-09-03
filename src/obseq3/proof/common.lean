@@ -2491,15 +2491,6 @@ theorem oseair_runN_trans {m n : Nat} {s s' s'' : oseair.State MSB}
     oseair.runN MSB (m + n) s prog = oseair.Result.Ok s'' :=
   (oseair_runN_add m n s prog s' h₁).trans h₂
 
-/-- The same with the count supplied by the caller, for the leaves whose
-    own statement pins `n` to a different association. -/
-theorem oseair_runN_trans' {k m n : Nat} {s s' s'' : oseair.State MSB}
-    {prog : oseair.Prog} (h_k : k = m + n)
-    (h₁ : oseair.runN MSB m s prog = oseair.Result.Ok s')
-    (h₂ : oseair.runN MSB n s' prog = oseair.Result.Ok s'') :
-    oseair.runN MSB k s prog = oseair.Result.Ok s'' :=
-  h_k ▸ oseair_runN_trans h₁ h₂
-
 /-! ### The three bridge sorries (see the audit in `proof/compiler.lean`)
 
 These are the lemmas whose ABSENCE is where obseq2's three simulation

@@ -1365,7 +1365,6 @@ def ΓD61 : Ctx := [sD61L, natL, natL, pairD52L]
 def sD61 : Place ΓD61 sD61L := .local ⟨⟨0, by decide⟩, rfl⟩
 def xD61 : Place ΓD61 natL := .local ⟨⟨1, by decide⟩, rfl⟩
 def yD61 : Place ΓD61 natL := .local ⟨⟨2, by decide⟩, rfl⟩
-def tD61 : Place ΓD61 pairD52L := .local ⟨⟨3, by decide⟩, rfl⟩
 
 /-- Positive: a copy into a deref destination whose pointer place is a
     PROJ-OF-PROJ (`*(s.f.g) := copy x`) and out of a nested source —
