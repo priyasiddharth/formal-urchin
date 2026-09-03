@@ -3084,6 +3084,134 @@ theorem ref_local_borrow
 
 
 
+/-- The CHAIN-source borrow package: `&kind (B.f)` for a chain `B`, from
+    the pre-source state `sA` through the mother lemma (the whole chain
+    lowering), the retag transport (BRIDGE: `sb_ref_respects_PermSim`)
+    and the `Borrow` step — the source half of every leaf whose source is
+    a projection over a pointer chain.
+
+    Where `ref_local_borrow` starts at a REGISTER ENTRY and is one
+    instruction, this one starts at the chain's mirlite RESOLUTION and
+    hands back the same post-`Borrow` bundle: the fresh pair extends ρt,
+    the target state is named (`sB`) with its register map, and the
+    pointer-value relation is ready for the write seam. The leaf keeps
+    only what depends on the STATEMENT — the code facts and the
+    destination — and passes `csD` (the post-chain compiler state) by
+    equation so its spelling never has to unify. -/
+theorem ref_chainsrc_borrow
+    {σb τ : LayoutTy} {B : Place Γ σb} (h_spine : PtrChain B) (f : PathTo σb τ)
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (compProg : oseair.Prog)
+    (sM : mirlite.State MSB Γ) (sA : oseair.State MSB) (csA : CompilerState)
+    (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
+    (h_tbd : TagRenameBounded ρt sM.perms.NextTag sA.perms.NextTag)
+    (h_lbs : LocalBindingSim ρa ρt sM.env sA csA)
+    (h_prb : PlaceRegMapBound csA)
+    (h_sms : SourceMemSim ρa ρt sM.mem sA.mem)
+    (h_psim : PermSim ρt sM.perms sA.perms)
+    (h_pc : sA.pc = csA.nextLabel)
+    {resolved : mirlite.PlaceRes} {permsR : MSB.State}
+    (h_dres : mirlite.resolvePlaceAcc MSB sM B = .ok (resolved, permsR))
+    (h_fit : ¬ (resolved.addr + PathTo.offset f + blockSize τ
+      > resolved.allocBase + resolved.allocSize))
+    {perms' : MSB.State} {freshTag : Tag}
+    (h_ref_src : MSB.ref permsR (resolved.addr + PathTo.offset f) (blockSize τ)
+      resolved.tag kind prot mask = .ok (perms', freshTag))
+    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence kind B)}
+    (h_dval : CheckedCompilerM.value (placeToRegChecked kind B) csA = Except.ok dOut)
+    (csD : CompilerState)
+    (h_csD : csD = CheckedCompilerM.run (placeToRegChecked kind B) csA)
+    (h_instS : ∀ q' instr, q' < csD.nextLabel → csD.code q' = some instr →
+      compProg q' = some instr)
+    (h_code1 : compProg csD.nextLabel
+      = some (Instr.Assgn (Register.R csD.nextReg)
+          (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f)))) :
+    ∃ (n : Nat) (s_mid sB : oseair.State MSB) (tgtPerms : MSB.State),
+      sB = { s_mid with
+        perms := tgtPerms,
+        reg := oseair.RegMap.insert s_mid.reg (Register.R csD.nextReg)
+          (obseq.TyVal.PTy, [Val.Ptr resolved.allocBase
+            (resolved.addr - resolved.allocBase + pathOffset f) resolved.allocSize
+            s_mid.perms.NextTag]),
+        pc := s_mid.pc + 1 } ∧
+      freshTag = permsR.NextTag ∧
+      TagRenameIncr ρt (ρt.extend permsR.NextTag s_mid.perms.NextTag) ∧
+      TagRenameWF (ρt.extend permsR.NextTag s_mid.perms.NextTag) ∧
+      TagRenameBounded (ρt.extend permsR.NextTag s_mid.perms.NextTag)
+        perms'.NextTag tgtPerms.NextTag ∧
+      PermSim (ρt.extend permsR.NextTag s_mid.perms.NextTag) perms' tgtPerms ∧
+      oseair.runN MSB n sA compProg = oseair.Result.Ok sB ∧
+      LocalBindingSim ρa (ρt.extend permsR.NextTag s_mid.perms.NextTag) sM.env sB
+        (emit { csD with nextReg := csD.nextReg + 1 }
+          [Instr.Assgn (Register.R csD.nextReg)
+            (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f))]) ∧
+      sB.pc = (emit { csD with nextReg := csD.nextReg + 1 }
+          [Instr.Assgn (Register.R csD.nextReg)
+            (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f))]).nextLabel ∧
+      csD.placeRegMap = csA.placeRegMap ∧
+      csA.nextReg ≤ csD.nextReg ∧
+      sB.mem = sA.mem ∧
+      dOut.result.cleanup = [] ∧
+      (ρt.extend permsR.NextTag s_mid.perms.NextTag) permsR.NextTag
+        = some s_mid.perms.NextTag ∧
+      (permsR.NextTag == wildcardTag) = false ∧
+      ListRel (MemValSim ρa (ρt.extend permsR.NextTag s_mid.perms.NextTag))
+        [mirlite.MemValue.ptrVal resolved.allocBase
+          (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
+          permsR.NextTag]
+        [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase + pathOffset f)
+          resolved.allocSize s_mid.perms.NextTag] := by
+  subst h_csD
+  obtain ⟨dOut', n1, s_mid, tres, h_dval', h_dclean, h_drun, h_dpc, h_dmem,
+    h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dnw, h_dle, h_drange,
+    -, h_dprm, h_dregmono, -, -, h_dbase⟩ :=
+    ptrChain_lowering_sim h_id_a h_wf_t h_spine kind csA sA resolved permsR h_dres
+      h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
+  have h_deq : dOut = dOut' := by grind
+  subst h_deq
+  have h_cancel := resolvedAddr_cancel h_dle
+  have h_off_eq := resolvedOffset_shift h_dle (pathOffset f)
+  have h_tbd_mid : TagRenameBounded ρt permsR.NextTag s_mid.perms.NextTag := by
+    rw [h_dnt1]
+    exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_dnt2
+  obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
+    sb_ref_respects_PermSim h_dpsim h_wf_t h_tbd_mid h_drt h_dnw h_ref_src
+  subst h_fresh_eq
+  have h_rt_new : (ρt.extend permsR.NextTag s_mid.perms.NextTag) permsR.NextTag
+      = some s_mid.perms.NextTag := TagRenameMap.extend_self _ _ _
+  have h0 : wildcardTag < permsR.NextTag := (h_tbd_mid _ _ h_wf_t.2).1
+  have h_nw_new : (permsR.NextTag == wildcardTag) = false := by grind
+  have h_code1' : compProg s_mid.pc
+      = some (Instr.Assgn
+          (Register.R (CheckedCompilerM.run (placeToRegChecked kind B) csA).nextReg)
+          (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f))) := by
+    rw [h_dpc]; exact h_code1
+  have h_le1 : resolved.allocBase + (resolved.addr - resolved.allocBase)
+      + pathOffset f + blockSize τ ≤ resolved.allocBase + resolved.allocSize := by
+    rw [h_cancel]
+    grind
+  have h_ref_tgt' : MSB.ref s_mid.perms
+      (resolved.allocBase + (resolved.addr - resolved.allocBase) + pathOffset f)
+      (blockSize τ) tres kind prot mask
+      = .ok (tgtPerms, s_mid.perms.NextTag) := by
+    rw [h_cancel]
+    exact h_ref_tgt
+  have h_run1 := runN_Assgn_Borrow_step compProg s_mid
+    (Register.R (CheckedCompilerM.run (placeToRegChecked kind B) csA).nextReg)
+    dOut.result.reg kind prot mask (blockSize τ) (pathOffset f)
+    h_code1' h_dentry h_le1 h_ref_tgt'
+  refine ⟨_, s_mid, _, tgtPerms, rfl, rfl, h_incr_t, h_wf_t', h_tbd', h_psim',
+    oseair_runN_trans h_drun h_run1, ?_, ?_, h_dprm, h_dregmono, h_dmem, h_dclean,
+    h_rt_new, h_nw_new,
+    ⟨⟨h_dbase, h_off_eq, rfl, h_rt_new, h_nw_new, fun k hk => h_drange k hk⟩, trivial⟩⟩
+  · exact LocalBindingSim.placeRegMap_congr (by simp only [emit]; exact h_dprm)
+      (LocalBindingSim.insert_fresh_reg
+        (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_dlbs)
+        h_prb h_dregmono rfl)
+  · show s_mid.pc + 1 = _
+    rw [h_dpc]
+    simp only [emit, List.length_cons, List.length_nil]
+
 /-- **The bound-root projected write seam** — the destination half when
     the destination is a FIELD of a local that is already BOUND, at a
     nonzero offset. Same three instructions as
