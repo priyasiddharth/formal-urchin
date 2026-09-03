@@ -3335,3 +3335,52 @@ The opaque `sB` costs two `rw [hsB]` per call site (the seam wants
 PermSim/TagRenameBounded at `sB.perms`, the package gives them at
 `tgtPerms`) and one `subst hsB` for the value-register lookup. Cheaper
 than substituting the record into every hypothesis.
+
+**Fifteenth stretch — the last nine inline borrows.** Two commits
+(`5a4f756`, `a4181bb`). ref 9,529 → 9,225 (−304).
+
+The census after the chain package showed nine leaves still inlining
+`sb_ref_respects_PermSim` + `runN_Assgn_Borrow_step` — every one a
+LOCAL source (bare, projected, or the freshly allocated root itself)
+under a fresh destination, plus one bound one. That is exactly what
+`ref_local_borrow` does; it had only been used at the prefix state. It
+takes an arbitrary start state, so the fresh leaves hand it the
+prologue's outputs (s1, the post-Alloc oseair state, the setPlaceInfo
+tower) and the source's register entry under the Alloc's insert.
+
+    ref_projzero_fresh            239 -> 203
+    ref_projoffset_fresh          248 -> 213
+    ref_projzero_fresh_projsrc    244 -> 206
+    ref_projoffset_fresh_projsrc  255 -> 217
+    ref_projzero_fresh_selfsrc    228 -> 193
+    ref_projoffset_fresh_selfsrc  240 -> 205
+    ref_fresh_dst                 217 -> 186
+    ref_fresh_projsrc             243 -> 209
+    ref_proj_local                150 -> 128   (commit message says 126)
+
+**What the conversions found underneath.** Each fresh leaf carried a
+SECOND copy of the four ρa-extension facts it had already proved for
+the prologue call (`h_incr_a`, `h_id_a'`, `h_ra_base`/`h_ra_new`,
+`h_ra_dom`) — twelve lines of literal duplication per leaf — and two
+`have`s (`h_rtD_new`, `h_nwD`) that nothing read. None of it was
+visible at 240 lines.
+
+Three details worth keeping:
+* The self-source pair borrows out of the root the statement just
+  allocated; nothing in scope names that binding as a record, so
+  `(bS := { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })`
+  is pinned explicitly — `?bS.addr =?= s_mir.mem.addrStart` cannot be
+  solved by unification.
+* The leaves used to `rw [h_perms1] at h_ref_src` (s1.perms →
+  permsOwned) before the transport. Dropping that keeps the minted tag
+  spelled `s1.perms.NextTag` everywhere, which is what mirlite's own
+  `h_step` says; only the `mvals` pin changes.
+* `h_lbsB`/`h_pcB` at `emit csA [Borrow]` feed a seam whose `csR` is
+  `emit { csA with nextReg := … } [Borrow]` by defeq — `LocalBindingSim`
+  only projects `placeRegMap`, and `emit` does not touch it. Confirmed
+  by the bound leaves that used the package first.
+
+**Not done, on purpose.** `copy_freshroot_prologue` takes its four ρa
+facts as inputs because two leaves (`ref_fresh_dst`, `ref_fresh_projsrc`)
+extend ρa at a single address, not a block. A block-specialised wrapper
+would save ~12 lines at fifteen sites for a ~20-line wrapper; deferred.
