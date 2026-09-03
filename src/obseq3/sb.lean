@@ -180,14 +180,8 @@ def resolveWildcardIn (exposed : List Tag) (stack : BorrowStack) (needWrite : Bo
     | .Disabled _ => false
     | _ => exposed.contains k.tag && (!needWrite || k.grantsWrite))).map (·.tag)
 
-def resolveWildcard (ap : AccessPerms) : BorrowStack → Bool → Option Tag :=
-  resolveWildcardIn ap.exposed
-
 def isProtectedIn (pf : List (List Tag)) (tag : Tag) : Bool :=
   pf.any (·.contains tag)
-
-def AccessPerms.isProtected (ap : AccessPerms) (tag : Tag) : Bool :=
-  isProtectedIn ap.protFrames tag
 
 /-- First item whose protection blocks a pop. Protection is *weak* on
     SharedReadWrite items (`RawPtr true`): Miri allows popping and even
