@@ -3097,10 +3097,12 @@ theorem ref_local_borrow
     pointer-value relation is ready for the write seam. The leaf keeps
     only what depends on the STATEMENT — the code facts and the
     destination — and passes `csD` (the post-chain compiler state) by
-    equation so its spelling never has to unify. -/
+    equation so its spelling never has to unify. The chain is lowered
+    with `kindL` and the `Borrow` minted with `kind`: a projected source
+    uses one kind for both, a bare deref lowers its chain `Shared`. -/
 theorem ref_chainsrc_borrow
     {σb τ : LayoutTy} {B : Place Γ σb} (h_spine : PtrChain B) (f : PathTo σb τ)
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (kindL kind : RefKind) (prot : Bool) (mask : List Bool)
     (compProg : oseair.Prog)
     (sM : mirlite.State MSB Γ) (sA : oseair.State MSB) (csA : CompilerState)
     (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
@@ -3117,10 +3119,10 @@ theorem ref_chainsrc_borrow
     {perms' : MSB.State} {freshTag : Tag}
     (h_ref_src : MSB.ref permsR (resolved.addr + PathTo.offset f) (blockSize τ)
       resolved.tag kind prot mask = .ok (perms', freshTag))
-    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence kind B)}
-    (h_dval : CheckedCompilerM.value (placeToRegChecked kind B) csA = Except.ok dOut)
+    {dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence kindL B)}
+    (h_dval : CheckedCompilerM.value (placeToRegChecked kindL B) csA = Except.ok dOut)
     (csD : CompilerState)
-    (h_csD : csD = CheckedCompilerM.run (placeToRegChecked kind B) csA)
+    (h_csD : csD = CheckedCompilerM.run (placeToRegChecked kindL B) csA)
     (h_instS : ∀ q' instr, q' < csD.nextLabel → csD.code q' = some instr →
       compProg q' = some instr)
     (h_code1 : compProg csD.nextLabel
@@ -3165,7 +3167,7 @@ theorem ref_chainsrc_borrow
   obtain ⟨dOut', n1, s_mid, tres, h_dval', h_dclean, h_drun, h_dpc, h_dmem,
     h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dnw, h_dle, h_drange,
     -, h_dprm, h_dregmono, -, -, h_dbase⟩ :=
-    ptrChain_lowering_sim h_id_a h_wf_t h_spine kind csA sA resolved permsR h_dres
+    ptrChain_lowering_sim h_id_a h_wf_t h_spine kindL csA sA resolved permsR h_dres
       h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
   have h_deq : dOut = dOut' := by grind
   subst h_deq
@@ -3183,7 +3185,7 @@ theorem ref_chainsrc_borrow
   have h_nw_new : (permsR.NextTag == wildcardTag) = false := by grind
   have h_code1' : compProg s_mid.pc
       = some (Instr.Assgn
-          (Register.R (CheckedCompilerM.run (placeToRegChecked kind B) csA).nextReg)
+          (Register.R (CheckedCompilerM.run (placeToRegChecked kindL B) csA).nextReg)
           (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f))) := by
     rw [h_dpc]; exact h_code1
   have h_le1 : resolved.allocBase + (resolved.addr - resolved.allocBase)
@@ -3197,7 +3199,7 @@ theorem ref_chainsrc_borrow
     rw [h_cancel]
     exact h_ref_tgt
   have h_run1 := runN_Assgn_Borrow_step compProg s_mid
-    (Register.R (CheckedCompilerM.run (placeToRegChecked kind B) csA).nextReg)
+    (Register.R (CheckedCompilerM.run (placeToRegChecked kindL B) csA).nextReg)
     dOut.result.reg kind prot mask (blockSize τ) (pathOffset f)
     h_code1' h_dentry h_le1 h_ref_tgt'
   refine ⟨_, s_mid, _, tgtPerms, rfl, rfl, h_incr_t, h_wf_t', h_tbd', h_psim',
