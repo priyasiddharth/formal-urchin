@@ -3204,3 +3204,47 @@ the compiler does.
 7,966; ref 12,998 → 10,244; const_write 4,497 → 3,300. ~42 commits,
 zero sorries and the same three axioms throughout, four suites green at
 every one.
+
+**Twelfth stretch — the dead-code sweep, and why it found so little.**
+Commit `7f66618`. −95 lines; proof dir 30,862 → 30,768.
+
+Swept all 538 declarations in `src/obseq3/proof` (plus the non-proof
+obseq3 sources). Thirteen had no qualified reference outside their own
+definition. **Eleven of the thirteen were live.**
+
+They are reached by generalized field notation, which no name-based
+search can tell from an unrelated lemma with the same suffix:
+
+    h.find?_some / h.find?_none    StackMapSim.*
+    i.out.snoc / .setNextReg / .setPlaceInfo   EmittedAt.*, via the
+                                    EmitTower instances
+    h.loweringSim                  PtrChain.loweringSim
+    .fragmentOf .fragmentAt .rebase .instrAt .mono
+                                   CodeIncluded.*, FragmentAt.*
+
+`.mono` alone has 137 occurrences across the tree, nearly all of them
+`RegisterBelow.mono` or `AddrRenameIncr.mono`. A suffix count is
+therefore worthless as evidence in either direction: it neither
+confirms life nor confirms death. **The only sound test is deletion
+plus a build**, so each candidate was cut and rebuilt, restoring the
+ones that broke — six rounds.
+
+Actually dead: `oseair_runN_trans'` (9), `dieCellContent_transport`
+(85), and `tD61` (1) — a Place in ΓD61 that the d61 program never
+assigns, unlike every other D-series test.
+
+Left in place deliberately: `resolveWildcard`, `AccessPerms.isProtected`
+(sb.lean) and `Mem.removeRange` (oseair.lean) are unreferenced one-line
+wrappers that keep the model's vocabulary symmetric with mirlite's.
+Removing them is a statement about what the semantics SAYS, not a
+cleanup, so it is the human's call.
+
+Not swept: `src/obseq/` (the v1 reference implementation) and
+`src/obseq2/` (the port source). Unreferenced declarations there are
+the point of those directories.
+
+**Contrast with the const_write find.** That sweep removed 765 lines in
+one go because those sixteen wrappers were referenced by FULLY
+QUALIFIED name — in doc comments only. Qualified-name evidence is
+reliable; suffix evidence is not. Worth remembering before the next
+sweep: the cheap grep is only a candidate generator.
