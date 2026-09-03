@@ -3248,3 +3248,33 @@ one go because those sixteen wrappers were referenced by FULLY
 QUALIFIED name — in doc comments only. Qualified-name evidence is
 reliable; suffix evidence is not. Worth remembering before the next
 sweep: the cheap grep is only a candidate generator.
+
+**Thirteenth stretch — the three wrappers, and a bug in my own sweep.**
+Commit `4a8b1e2`-ish (`sb: drop the two unused AccessPerms wrappers`).
+
+Asked to remove the three wrappers I had flagged but left. Two went:
+`resolveWildcard` and `AccessPerms.isProtected`, each of which wrapped a
+live function (`resolveWildcardIn`, `isProtectedIn`) by supplying one
+field of an `AccessPerms`. Nothing called either; every call site uses
+the wrapped form directly.
+
+The third, `Mem.removeRange`, is **live** — `oseair.lean:358` calls it
+as `state.mem.removeRange`. My sweep had reported `fld=0` for it. The
+counter's guard was
+
+    (?<![A-Za-z0-9_])\.removeRange(?![A-Za-z0-9_])
+
+which requires the `.` NOT be preceded by an identifier character — and
+that excludes exactly the common shape `x.y.method`. So the guard was
+inverted for chained projections: it could only ever see field notation
+on a bare variable.
+
+Two lessons, one already recorded and one new:
+* the suffix count proves nothing either way (twelfth stretch), and
+* **my "clean, fld=0" classification was not even a correct suffix
+  count.** The non-proof candidate list was therefore untrustworthy in
+  BOTH directions. The proof-directory conclusions still stand, because
+  candidates there were selected by qualified-reference count (which the
+  bug does not touch) and every one was confirmed by deletion + build.
+
+The build test remains the only evidence worth acting on.
