@@ -6230,7 +6230,7 @@ theorem ref_proj_src_projdst_simulation
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   induction sbase with
   | @«local» σ' srcLoc =>
-            cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
+      cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
       | some bD =>
           cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
           | some bS =>
@@ -6356,7 +6356,7 @@ theorem ref_proj_dst_simulation
   | «local» dstLoc =>
       cases src with
       | «local» srcLoc =>
-                    cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
+          cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
           | some bD =>
               cases h_envS : mirlite.Env.lookup s_mir.env srcLoc with
               | some bS =>
