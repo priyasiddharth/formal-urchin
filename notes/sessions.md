@@ -3468,3 +3468,40 @@ destination now goes through `copy_bound_write_after_read` or
 `copy_fresh_write_after_read`; the four originals remain as branch
 bodies and as the seams of the six leaves whose destination is not a
 projection.
+
+**Eighteenth stretch — the chainsrc pair, and a red commit.** Commits
+`f6d9403` (amended), `e1c6161`. ref 7,212 → 6,832 (−380).
+
+The one pair the offset collapse had skipped. Its zero twin wrote
+through the chain-write seam at the projection's BASE (recovering the
+base resolution behind the projected one, `placeToRegChecked_proj_zero_
+run/value`); its offset twin ran the destination mother itself and
+wrote through the projected bound seam at the chain-resolved root. The
+merged bound seam handles offset zero at that root too, so the merged
+leaf is the OFFSET twin's proof with its offset assumption removed —
+the zero twin's whole base-recovery apparatus was never needed. Its
+lowers pair merged the same way (`compileStmt_ref_projderefdst_chainsrc_
+run/_value`), and the zero twin's generic-`dbase` lowers turned out to
+have no other caller.
+
+    ref_projderefdst_chainsrc   224 + 295 -> 241
+
+**The slip.** My collapse script crashed halfway (its marker matched
+the block it had just rewritten), and the command chain then ran the
+four suites on binaries built BEFORE the edit and committed. The suites
+passed; the build had not. Two lessons, both now in the working
+recipe: gate every commit on `grep -c "^error"` of a fresh build being
+zero — never on `tail` succeeding — and never chain the suites to a
+build with `;`. The commit was amended once green.
+
+**The second slip, found by the first.** The collapse kept the
+`by_cases` line's own indentation in front of the dedented first
+tactic: sixteen spaces where eight were meant. Lean accepted the three
+earlier ones because the first tactic was a `cases` whose alternatives
+sat at the right column; the chainsrc one was an `obtain … :=` after an
+`exact`, which parsed as an argument of the `exact`. A sweep found two
+more accepted-but-doubled lines; normalised in `e1c6161`.
+
+**No `projzero_`/`projoffset_` twin remains in ref.lean.** Every write
+through a projected destination, in ref and copy, goes through
+`copy_bound_write_after_read` or `copy_fresh_write_after_read`.
