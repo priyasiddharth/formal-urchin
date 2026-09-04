@@ -1,0 +1,65 @@
+# Lean CI: build the obseq3 development, machine-check the axiom audit of
+# the compiler-correctness theorem, and run the four test suites.
+#
+# The lakefile declares no `require`, so nothing is fetched (the mathlib
+# entry in lake-manifest.json is inert); a from-scratch build is ~2 CPU-min.
+#
+# What each step guards:
+#   build       every proof in Obseq3Proof type-checks
+#   audit       obseq3.proof.compile_correct (the CompilerInv simulation,
+#               rooted at compile_correct / compile_correct_from_initial)
+#               rests on propext / Classical.choice / Quot.sound only, with
+#               NO sorry — scripts/axiom_whitelist.txt pins it, and the
+#               audit fails on drift in either direction
+#   unit        mirlite SB semantics (17) + compiler witness corpus (104);
+#               any failed assertion throws, so the process exits nonzero
+#   corpus      ULLBC corpus, Charon artifacts vs Miri verdicts (exit 1 on
+#               any FAIL/XPASS)
+#   osea        differential: mirlite and oseair must agree on every
+#               program (exit 1 on any mismatch)
+name: lean
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build · audit · conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan (toolchain pinned by lean-toolchain)
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/latest/download/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz -C /tmp
+          /tmp/elan-init -y --no-modify-path --default-toolchain "$(cat lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore .lake build cache
+        uses: actions/cache@v4
+        with:
+          path: .lake
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}-${{ github.sha }}
+          restore-keys: |
+            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}-
+
+      - name: Build
+        run: lake build Core Obseq3 Obseq3Proof Conformance sb_conformance
+
+      - name: Axiom audit of compile_correct
+        run: bash scripts/audit_axioms.sh
+
+      - name: Unit suites
+        run: lake exe sb_conformance --unit
+
+      - name: Conformance corpus (Charon vs Miri)
+        run: lake exe sb_conformance --manifest conformance/manifest.json --charon-dir conformance/charon
+
+      - name: Differential (mirlite vs oseair)
+        run: lake exe sb_conformance --manifest conformance/manifest.json --charon-dir conformance/charon --osea
