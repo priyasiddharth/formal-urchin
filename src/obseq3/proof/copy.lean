@@ -3668,6 +3668,59 @@ theorem copy_chaindst_projsrc_zero_simulation
         (compileStmt_copy_chaindst_projsrc_zero_run h_schain h_o h_root
           h_sval0 h_sclean0 h_dval h_dclean))
 
+/-- Fresh projected destination, chain source: `Alloc; <chain>; Load;` then the
+    destination tail at the projection's offset — one lemma for both offsets. -/
+theorem compileStmt_copy_projlocal_fresh_run
+    {Γ : Ctx} {τ σ : LayoutTy} {loc : Local Γ σ}
+    {path : PathTo σ τ} {src : Place Γ τ} {cs : CompilerState}
+    {sOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared src)}
+    (h_pi : getPlaceInfo cs loc.idx.1 = none)
+    (h_sval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (setPlaceInfo
+          (emit { cs with nextReg := cs.nextReg + 1 }
+            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R cs.nextReg, σ))
+      = Except.ok sOut)
+    (h_sclean : sOut.result.cleanup = [])
+    (h_dpi : getPlaceInfo (emit
+          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with
+            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 }
+          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)
+            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]) loc.idx.1 = some (Register.R cs.nextReg, σ)) :
+    CheckedCompilerM.run
+        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.copy src))) cs
+      = projDstTail (emit
+          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with
+            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 }
+          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)
+            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])
+          (pathOffset path) (blockSize τ) (layoutToTyVal τ)
+          (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (Register.R cs.nextReg) := by
+  obtain ⟨h_run, -⟩ := ensureLocalRegE_fresh (loc := loc) h_pi
+  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
+    (base := .local loc) path (fun _ _ _ h => by cases h)
+  have h_root : CompilerM.run
+      (ensurePlaceRoot (Place.proj (Place.local loc) path)) cs = (setPlaceInfo
+          (emit { cs with nextReg := cs.nextReg + 1 }
+            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R cs.nextReg, σ)) := by
+    show CompilerM.run (do let _ ← ensureLocalRegE loc; pure ()) cs = _
+    simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
+  obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
+    placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
+  by_cases h_off : pathOffset path = 0
+  · rw [h_off, projDstTail_zero]
+    simp only [csCompile, csMonad, h_proj_eq, h_root, h_sval]
+    simp only [csCleanup, csRun, h_sclean, List.append_nil, emit_nil]
+    rw [h_brun, h_bval]
+    simp [h_off, dif_pos, CompilerM.run, CompilerM.value, emitM, cleanupInstrs,
+      h_bres, emit_nil]
+  · rw [projDstTail_pos _ h_off]
+    simp only [csCompile, csMonad, h_proj_eq, h_root, h_sval]
+    simp only [csCleanup, csRun, h_sclean, List.append_nil, emit_nil]
+    rw [h_brun, h_bval]
+    simp [csRun, cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
+    try rfl
+
 /-- REGIME copy, chain destination with a PROJ-TOPPED source at NONZERO
     offset (`*p := copy s.f` with the field off zero). The source
     projection mints its own `Borrow(Shared)`, the copy `Load`s through
@@ -3818,110 +3871,6 @@ theorem copy_chaindst_projsrc_offset_simulation
     so the source lowering and the `Load` sit on top of the `Alloc`, and
     the destination lowering is the fresh root's own register. -/
 
-theorem compileStmt_copy_projlocal_fresh_zero_run
-    {Γ : Ctx} {τ σ : LayoutTy} {loc : Local Γ σ}
-    {path : PathTo σ τ} {src : Place Γ τ} {cs : CompilerState}
-    {sOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared src)}
-    (h_off : pathOffset path = 0)
-    (h_pi : getPlaceInfo cs loc.idx.1 = none)
-    (h_sval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ))
-      = Except.ok sOut)
-    (h_sclean : sOut.result.cleanup = [])
-    (h_dpi : getPlaceInfo (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]) loc.idx.1 = some (Register.R cs.nextReg, σ)) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.copy src))) cs
-      = emit (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)])
-          [Instr.RStore (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)
-            (Register.R cs.nextReg)] := by
-  obtain ⟨h_run, -⟩ := ensureLocalRegE_fresh (loc := loc) h_pi
-  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-    (base := .local loc) path (fun _ _ _ h => by cases h)
-  have h_root : CompilerM.run
-      (ensurePlaceRoot (Place.proj (Place.local loc) path)) cs = (setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ)) := by
-    show CompilerM.run (do let _ ← ensureLocalRegE loc; pure ()) cs = _
-    simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
-  obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
-    placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
-  simp only [csCompile, csMonad, h_proj_eq, h_root, h_sval]
-  simp only [csCleanup, csRun, h_sclean, List.append_nil, emit_nil]
-  rw [h_brun, h_bval]
-  simp [h_off, dif_pos, CompilerM.run, CompilerM.value, emitM, cleanupInstrs,
-    h_bres, emit_nil]
-
-theorem compileStmt_copy_projlocal_fresh_offset_run
-    {Γ : Ctx} {τ σ : LayoutTy} {loc : Local Γ σ}
-    {path : PathTo σ τ} {src : Place Γ τ} {cs : CompilerState}
-    {sOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared src)}
-    (h_off : pathOffset path ≠ 0)
-    (h_pi : getPlaceInfo cs loc.idx.1 = none)
-    (h_sval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ))
-      = Except.ok sOut)
-    (h_sclean : sOut.result.cleanup = [])
-    (h_dpi : getPlaceInfo (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]) loc.idx.1 = some (Register.R cs.nextReg, σ)) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj (.local loc) path) (.copy src))) cs
-      = emit (emit (emit
-          { nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 + 1,
-            nextLabel := (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).nextLabel,
-            code := (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).code,
-            placeRegMap := (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with
-            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 }
-          [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut.result.reg)]).placeRegMap }
-          [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1))
-            (borrowRhs RefKind.Mut (blockSize τ) (Register.R cs.nextReg)
-              (pathOffset path))])
-          [Instr.RStore (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)
-            (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1))])
-          [Instr.Die (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1)) (blockSize τ)] := by
-  obtain ⟨h_run, -⟩ := ensureLocalRegE_fresh (loc := loc) h_pi
-  have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-    (base := .local loc) path (fun _ _ _ h => by cases h)
-  have h_root : CompilerM.run
-      (ensurePlaceRoot (Place.proj (Place.local loc) path)) cs = (setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ)) := by
-    show CompilerM.run (do let _ ← ensureLocalRegE loc; pure ()) cs = _
-    simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
-  obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
-    placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
-  simp only [csCompile, csMonad, h_proj_eq, h_root, h_sval]
-  simp only [csCleanup, csRun, h_sclean, List.append_nil, emit_nil]
-  rw [h_brun, h_bval]
-  simp [csRun, cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs]
-  rfl
-
 theorem compileStmt_copy_projlocal_fresh_value
     {Γ : Ctx} {τ σ : LayoutTy} {loc : Local Γ σ}
     {path : PathTo σ τ} {src : Place Γ τ} {cs : CompilerState}
@@ -3965,6 +3914,66 @@ theorem compileStmt_copy_projlocal_fresh_value
       CheckedCompilerM.run_pure, CheckedCompilerM.value_pure,
       CompilerM.run, CompilerM.value, freshRegM, freshReg, emitM]
     exact ⟨_, rfl⟩
+
+/-- Fresh projected destination, projected-chain source at nonzero source offset:
+    one lemma for both DESTINATION offsets. -/
+theorem compileStmt_copy_projlocal_fresh_projsrc_offset_run
+    {Γ : Ctx} {τ σ σs : LayoutTy} {loc : Local Γ σ} {dpath : PathTo σ τ}
+    {B : Place Γ σs} {spath : PathTo σs τ} {cs : CompilerState}
+    {bOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared B)}
+    (h_npS : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs),
+      B = b.proj q → False)
+    (h_so : pathOffset spath ≠ 0)
+    (h_pi : getPlaceInfo cs loc.idx.1 = none)
+    (h_bval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared B) (setPlaceInfo
+          (emit { cs with nextReg := cs.nextReg + 1 }
+            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R cs.nextReg, σ))
+      = Except.ok bOut)
+    (h_bclean : bOut.result.cleanup = [])
+    (h_dpi : getPlaceInfo (emit
+          { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]) with
+            nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg + 1 }
+          [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)),
+           Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (blockSize τ)]) loc.idx.1 = some (Register.R cs.nextReg, σ)) :
+    CheckedCompilerM.run
+        (compileStmtChecked
+          (Stmt.assign (.proj (.local loc) dpath) (.copy (.proj B spath)))) cs
+      = projDstTail (emit
+          { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]) with
+            nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg + 1 }
+          [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)),
+           Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (blockSize τ)])
+          (pathOffset dpath) (blockSize τ) (layoutToTyVal τ)
+          (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Register.R cs.nextReg) := by
+  obtain ⟨h_run, -⟩ := ensureLocalRegE_fresh (loc := loc) h_pi
+  have h_proj_eqS := placeToRegChecked_proj_root_eq (Γ := Γ)
+    (kind := RefKind.Shared) (base := B) spath h_npS
+  have h_proj_eqD := placeToRegChecked_proj_root_eq (Γ := Γ)
+    (kind := RefKind.Mut) (base := Place.local loc) dpath (fun _ _ _ h => by cases h)
+  have h_root : CompilerM.run
+      (ensurePlaceRoot (Place.proj (Place.local loc) dpath)) cs = (setPlaceInfo
+          (emit { cs with nextReg := cs.nextReg + 1 }
+            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R cs.nextReg, σ)) := by
+    show CompilerM.run (do let _ ← ensureLocalRegE loc; pure ()) cs = _
+    simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
+  obtain ⟨h_brun, baseOut, h_bval2, h_bres⟩ :=
+    placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
+  by_cases h_do : pathOffset dpath = 0
+  · rw [h_do, projDstTail_zero]
+    simp only [csCompile, csMonad, h_proj_eqS, h_proj_eqD, h_root, h_bval, dif_neg h_so]
+    simp only [csCleanup, csRun, h_bclean, List.nil_append, List.cons_append, List.append_nil,
+      List.reverse_cons, List.map_cons]
+    simp only [csMonad, h_bval2, h_brun, h_do, dif_pos]
+    simp only [csCleanup, CompilerM.run, CompilerM.value, emitM, h_bres, emit_nil]
+  · rw [projDstTail_pos _ h_do]
+    simp only [csCompile, csMonad, h_proj_eqS, h_proj_eqD, h_root, h_bval, dif_neg h_so]
+    simp only [csCleanup, csRun, h_bclean, List.nil_append, List.cons_append, List.append_nil,
+      List.reverse_cons, List.map_cons]
+    simp only [csMonad, h_bval2, h_brun, dif_neg h_do]
+    simp [csRun, cleanupInstrs, h_bres, emit_nil, borrowRhs]
+    try rfl
 
 /-- Fresh projected root, ANY destination offset: the zero and nonzero
     leaves shared everything up to `h_incrS1V` verbatim (422 of 488
@@ -4109,456 +4118,152 @@ theorem copy_projlocal_fresh_simulation
             ++ cleanupInstrs sOut0.result.cleanup))
     obtain ⟨h_brun0, baseOut0, h_bval0, h_bres0⟩ :=
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi0
-    by_cases h_o : pathOffset path = 0
-    · have h_o' : PathTo.offset path = 0 := h_o
-      simp only [h_o', Nat.add_zero] at h_step
-      have h_incrS1V : StateIncr (emit
-            { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
-              nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 }
-            ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-              ++ cleanupInstrs sOut0.result.cleanup))
-          (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-        rw [h_run0]
-        have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-          (base := Place.local loc) path (fun _ _ _ h => by cases h)
-        simp only [csCompile, csMonad, h_proj_eq, h_erun, h_sval0]
-        simp only [csRun]
-        simp only [csMonad, h_bval0, h_brun0, h_o, dif_pos]
+    have h_incrS1V : StateIncr (emit
+          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
+            nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 }
+          ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg)
+            (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
+            ++ cleanupInstrs sOut0.result.cleanup))
+        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
+      rw [h_run0]
+      have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
+        (base := Place.local loc) path (fun _ _ _ h => by cases h)
+      simp only [csCompile, csMonad, h_proj_eq, h_erun, h_sval0]
+      simp only [csRun]
+      by_cases h_o : pathOffset path = 0
+      · simp only [csMonad, h_bval0, h_brun0, h_o, dif_pos]
         simp only [csCleanup, CompilerM.run, CompilerM.value, emitM, h_bres0, emit_nil]
-        exact emit_state_incr (emit
-            { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
-              nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 }
-            ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-              ++ cleanupInstrs sOut0.result.cleanup)) _
-      have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)))
-          (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
-        StateIncr.trans h_incrPre h_incrS1V
-      have h_instS :=
-        (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
-      -- §6 execute the `Alloc`
-      have h_code0 : compProg s_osea.pc
-          = some (Instr.Assgn (Register.R csPrefix.nextReg)
-              (Rhs.Alloc (layoutToTyVal σ))) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · refine Nat.lt_of_lt_of_le ?_ h_incrS.nextLabel_le
-          refine Nat.lt_of_lt_of_le ?_
-            (CheckedCompilerM.incr (placeToRegChecked RefKind.Shared src) _).nextLabel_le
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-          omega
-        · rw [h_incrS.code_eq _ (by
-            refine Nat.lt_of_lt_of_le ?_
-              (CheckedCompilerM.incr (placeToRegChecked RefKind.Shared src) _).nextLabel_le
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-            omega)]
-          rw [(CheckedCompilerM.incr (placeToRegChecked RefKind.Shared src)
-            (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ))).code_eq _ (by
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-            omega)]
-          show (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } _).code _ = _
-          have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
-            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))] (k := 0) (by simp)
-          simpa using h
-      have h_runAlloc := runN_Assgn_Alloc_step compProg s_osea
-        (Register.R csPrefix.nextReg) (layoutToTyVal σ) h_code0 h_own_tgt'
-      -- §7 the SOURCE package at the post-allocation states, under the
-      -- extended renames: mother, read transport, the `Load`
-      obtain ⟨h_sclean, n1, s_mid, p2w, h_runR, h_prmR, h_regmonoR, h_lbsR,
-        h_psimR, h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
-        copy_chainsrc_read compProg h_slower s1
-          { s_osea with
-              mem := (oseair.allocate s_osea.mem
-                (obseq.typeSize (layoutToTyVal σ))).2,
-              perms := tgtPerms,
-              reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
-                (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-                  (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
-              pc := s_osea.pc + 1 }
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ))
-          h_id_a' h_wf_t' (by rw [h_perms1]; exact h_tbd') h_lbs1 h_prb1
-          (by
-            intro a v h_find
-            rw [h_find1] at h_find
-            exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
-          (by rw [h_perms1]; exact h_psim')
-          (by
-            show s_osea.pc + 1 = _
-            rw [h_pc]
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil])
-          h_sres h_fitS h_read_src h_sval0 h_instS
-          ((CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS1V)
-      have h_dpi : getPlaceInfo (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
-            nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
-          [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]) loc.idx.1
-          = some (Register.R csPrefix.nextReg, σ) := by
-        show ((emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
-            nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
-          [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)])).placeRegMap.lookup _ = _
-        rw [h_prmR]
-        exact h_pi_new
-      have h_stmtRun := (h_run0 csPrefix).trans
-        (compileStmt_copy_projlocal_fresh_zero_run h_o h_pi_none h_sval0 h_sclean
-          h_dpi)
-      -- §8-§11 the fresh-root WRITE seam: a σ-sized root, a τ-sized value
-      exact copy_freshroot_write_after_read
-        (τ := τ)
-        (csR := emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
-            nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
-          [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)])
-        (vreg := Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-        (mvals := mirlite.readWordSeq s1.mem rs.addr (blockSize τ))
-        compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb
-        h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc
-        h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
-        h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
-        (RegMap.lookup_insert_self _ _ _) (by rw [oseair_readWordSeq_length])
-        h_stmtRun (by rw [mirlite_readWordSeq_length])
-        (by
-          have h := PathTo.offset_add_size_le path
-          simp only [blockSize] at h ⊢
-          omega)
-        rfl rfl h_rel h_step
-    · have h_incrS1V : StateIncr (emit
-            { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
-              nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 }
-            ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-              ++ cleanupInstrs sOut0.result.cleanup))
-          (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-        rw [h_run0]
-        have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-          (base := Place.local loc) path (fun _ _ _ h => by cases h)
-        simp only [csCompile, csMonad, h_proj_eq, h_erun, h_sval0]
-        simp only [csRun]
-        simp only [csMonad, h_bval0, h_brun0, h_o, dif_pos]
+        exact emit_state_incr _ _
+      · simp only [csMonad, h_bval0, h_brun0, h_o, dif_pos]
         simp only [csCleanup, csRun, h_bres0, List.nil_append, List.reverse_cons, List.map_cons]
-        exact StateIncr.trans (freshReg_state_incr (emit
-            { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
-              nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 }
-            ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]
-              ++ cleanupInstrs sOut0.result.cleanup)))
+        exact StateIncr.trans (freshReg_state_incr _)
           (StateIncr.trans (emit_state_incr _ _)
             (StateIncr.trans (emit_state_incr _ _)
               (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _))))
-      have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)))
-          (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
-        StateIncr.trans h_incrPre h_incrS1V
-      have h_instS :=
-        (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
-      -- §6 execute the `Alloc`
-      have h_code0 : compProg s_osea.pc
-          = some (Instr.Assgn (Register.R csPrefix.nextReg)
-              (Rhs.Alloc (layoutToTyVal σ))) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · refine Nat.lt_of_lt_of_le ?_ h_incrS.nextLabel_le
-          refine Nat.lt_of_lt_of_le ?_
-            (CheckedCompilerM.incr (placeToRegChecked RefKind.Shared src) _).nextLabel_le
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-          omega
-        · rw [h_incrS.code_eq _ (by
-            refine Nat.lt_of_lt_of_le ?_
-              (CheckedCompilerM.incr (placeToRegChecked RefKind.Shared src) _).nextLabel_le
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-            omega)]
-          rw [(CheckedCompilerM.incr (placeToRegChecked RefKind.Shared src)
-            (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ))).code_eq _ (by
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-            omega)]
-          show (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } _).code _ = _
-          have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
-            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))] (k := 0) (by simp)
-          simpa using h
-      have h_runAlloc := runN_Assgn_Alloc_step compProg s_osea
-        (Register.R csPrefix.nextReg) (layoutToTyVal σ) h_code0 h_own_tgt'
-      -- §7 the SOURCE package at the post-allocation states
-      obtain ⟨h_sclean, n1, s_mid, p2w, h_runR, h_prmR, h_regmonoR, h_lbsR,
-        h_psimR, h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
-        copy_chainsrc_read compProg h_slower s1
-          { s_osea with
-              mem := (oseair.allocate s_osea.mem
-                (obseq.typeSize (layoutToTyVal σ))).2,
-              perms := tgtPerms,
-              reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
-                (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-                  (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
-              pc := s_osea.pc + 1 }
-          (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))
-          h_id_a' h_wf_t' (by rw [h_perms1]; exact h_tbd') h_lbs1 h_prb1
-          (by
-            intro a v h_find
-            rw [h_find1] at h_find
-            exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
-          (by rw [h_perms1]; exact h_psim')
-          (by
-            show s_osea.pc + 1 = _
-            rw [h_pc]
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil])
-          h_sres h_fitS h_read_src h_sval0 h_instS
-          ((CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS1V)
-      have h_dpi : getPlaceInfo (emit
-            { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
-              nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
-            [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-              (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]) loc.idx.1
-          = some (Register.R csPrefix.nextReg, σ) := by
-        show getPlaceInfo (emit _ _) loc.idx.1 = _
-        rw [getPlaceInfo_emit]
-        show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-          (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))).placeRegMap.lookup _ = _
-        rw [show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))).placeRegMap
-            = ((setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))).placeRegMap from h_prmR]
-        exact h_pi_new
-      have h_stmtRun := (h_run0 csPrefix).trans
-        (compileStmt_copy_projlocal_fresh_offset_run h_o h_pi_none h_sval0 h_sclean
-          h_dpi)
-      -- §8 the three destination instructions, from the statement fragment
-      have hFrag8 :=
-        (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
-          h_stmtRun h_spc
-      have h_code2 : compProg (s_mid.pc + 1)
-          = some (Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1))
-              (borrowRhs RefKind.Mut (blockSize τ) (Register.R csPrefix.nextReg)
-                (pathOffset path))) :=
-        hFrag8.instrAt 1 rfl rfl
-      have h_code3 : compProg (s_mid.pc + 1 + 1)
-          = some (Instr.RStore (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg)
-              (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1))) :=
-        hFrag8.instrAt 2 rfl rfl
-      have h_code4 : compProg (s_mid.pc + 1 + 1 + 1)
-          = some (Instr.Die (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1)) (blockSize τ)) :=
-        hFrag8.instrAt 3 rfl rfl
-      -- §9-§12 the PROJECTED fresh-root write seam, shared with ref
-      exact copy_freshproj_write_after_read
-        (τ := τ)
-        (csR := emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
-            nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
-          [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-            (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)])
-        (vreg := Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-        (mvals := mirlite.readWordSeq s1.mem rs.addr (blockSize τ))
-        compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb
-        h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc
-        h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 (pathOffset path)
-        (PathTo.offset_add_size_le path)
-        h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
-        (RegMap.lookup_insert_self _ _ _) h_vbelow
-        (by rw [oseair_readWordSeq_length])
-        h_code2 h_code3 h_code4
-        (by rw [h_stmtRun]; simp only [emit, List.length_cons, List.length_nil]
-            rw [h_pcR]; simp only [emit, List.length_cons, List.length_nil])
-        (by rw [h_stmtRun]; simp only [emit, setPlaceInfo])
-        (by rw [h_stmtRun]; simp only [emit, setPlaceInfo]; omega)
-        (by rw [mirlite_readWordSeq_length]) rfl rfl rfl rfl h_rel h_step
+    have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)))
+        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
+      StateIncr.trans h_incrPre h_incrS1V
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
+    -- §6 execute the `Alloc`
+    have hFragA := ((CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono
+      (StateIncr.trans (CheckedCompilerM.incr _ _) h_incrS)).fragmentOf
+      (base := csPrefix.nextLabel) rfl rfl
+    have h_code0 : compProg s_osea.pc
+        = some (Instr.Assgn (Register.R csPrefix.nextReg)
+            (Rhs.Alloc (layoutToTyVal σ))) := by
+      rw [h_pc]; exact hFragA.instrAt 0 rfl rfl
+    have h_runAlloc := runN_Assgn_Alloc_step compProg s_osea
+      (Register.R csPrefix.nextReg) (layoutToTyVal σ) h_code0 h_own_tgt'
+    -- §7 the SOURCE package at the post-allocation states, under the
+    -- extended renames: mother, read transport, the `Load`
+    obtain ⟨h_sclean, n1, s_mid, p2w, h_runR, h_prmR, h_regmonoR, h_lbsR,
+      h_psimR, h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
+      copy_chainsrc_read compProg h_slower s1
+        { s_osea with
+            mem := (oseair.allocate s_osea.mem
+              (obseq.typeSize (layoutToTyVal σ))).2,
+            perms := tgtPerms,
+            reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
+              (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
+                (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+            pc := s_osea.pc + 1 }
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ))
+        h_id_a' h_wf_t' (by rw [h_perms1]; exact h_tbd') h_lbs1 h_prb1
+        (by
+          intro a v h_find
+          rw [h_find1] at h_find
+          exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
+        (by rw [h_perms1]; exact h_psim')
+        (by
+          show s_osea.pc + 1 = _
+          rw [h_pc]
+          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil])
+        h_sres h_fitS h_read_src h_sval0 h_instS
+        ((CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS1V)
+    have h_dpi : getPlaceInfo (emit
+        { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
+          nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
+        [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
+          (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)]) loc.idx.1
+        = some (Register.R csPrefix.nextReg, σ) := by
+      show ((emit
+        { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
+          nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
+        [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
+          (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)])).placeRegMap.lookup _ = _
+      rw [h_prmR]
+      exact h_pi_new
+    have h_stmtRun := (h_run0 csPrefix).trans
+      (compileStmt_copy_projlocal_fresh_run h_pi_none h_sval0 h_sclean h_dpi)
+    -- §8-§11 the fresh WRITE seam at the projection's offset: a σ-sized root,
+    -- a τ-sized value
+    exact copy_fresh_write_after_read
+      (τ := τ)
+      (csR := emit
+        { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ))) with
+          nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
+        [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
+          (Rhs.Load (layoutToTyVal τ) sOut0.result.reg)])
+      (vreg := Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
+      (mvals := mirlite.readWordSeq s1.mem rs.addr (blockSize τ))
+      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb
+      h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc
+      h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 (pathOffset path)
+      (PathTo.offset_add_size_le path)
+      h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
+      (RegMap.lookup_insert_self _ _ _) h_vbelow
+      (by rw [oseair_readWordSeq_length])
+      h_stmtRun
+      (by rw [mirlite_readWordSeq_length]) rfl rfl rfl rfl h_rel h_step
 /-! ## Fresh root under a PROJECTED LOCAL destination, with a
     PROJ-TOPPED source at NONZERO offset. The root `Alloc` comes first,
     then the source projection's `Borrow(Shared)`, the copy's `Load`,
     and the source projection's cleanup `Die`; only then does the
     destination lower. -/
-
-theorem compileStmt_copy_projlocal_fresh_projsrc_offset_zero_run
-    {Γ : Ctx} {τ σ σs : LayoutTy} {loc : Local Γ σ} {dpath : PathTo σ τ}
-    {B : Place Γ σs} {spath : PathTo σs τ} {cs : CompilerState}
-    {bOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared B)}
-    (h_npS : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs),
-      B = b.proj q → False)
-    (h_do : pathOffset dpath = 0)
-    (h_so : pathOffset spath ≠ 0)
-    (h_pi : getPlaceInfo cs loc.idx.1 = none)
-    (h_bval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared B) (setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ))
-      = Except.ok bOut)
-    (h_bclean : bOut.result.cleanup = [])
-    (h_dpi : getPlaceInfo (emit
-          { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]) with
-            nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg + 1 }
-          [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)),
-           Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (blockSize τ)]) loc.idx.1 = some (Register.R cs.nextReg, σ)) :
-    CheckedCompilerM.run
-        (compileStmtChecked
-          (Stmt.assign (.proj (.local loc) dpath) (.copy (.proj B spath)))) cs
-      = emit (emit
-          { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]) with
-            nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg + 1 }
-          [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)),
-           Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (blockSize τ)])
-          [Instr.RStore (layoutToTyVal τ) (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Register.R cs.nextReg)] := by
-  obtain ⟨h_run, -⟩ := ensureLocalRegE_fresh (loc := loc) h_pi
-  have h_proj_eqS := placeToRegChecked_proj_root_eq (Γ := Γ)
-    (kind := RefKind.Shared) (base := B) spath h_npS
-  have h_proj_eqD := placeToRegChecked_proj_root_eq (Γ := Γ)
-    (kind := RefKind.Mut) (base := Place.local loc) dpath (fun _ _ _ h => by cases h)
-  have h_root : CompilerM.run
-      (ensurePlaceRoot (Place.proj (Place.local loc) dpath)) cs = (setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ)) := by
-    show CompilerM.run (do let _ ← ensureLocalRegE loc; pure ()) cs = _
-    simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
-  obtain ⟨h_brun, baseOut, h_bval2, h_bres⟩ :=
-    placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
-  simp only [csCompile, csMonad, h_proj_eqS, h_proj_eqD, h_root, h_bval, dif_neg h_so]
-  simp only [csCleanup, csRun, h_bclean, List.nil_append, List.cons_append, List.append_nil,
-    List.reverse_cons, List.map_cons]
-  simp only [csMonad, h_bval2, h_brun, h_do, dif_pos]
-  simp only [csCleanup, CompilerM.run, CompilerM.value, emitM, h_bres, emit_nil]
-
-theorem compileStmt_copy_projlocal_fresh_projsrc_offset_offset_run
-    {Γ : Ctx} {τ σ σs : LayoutTy} {loc : Local Γ σ} {dpath : PathTo σ τ}
-    {B : Place Γ σs} {spath : PathTo σs τ} {cs : CompilerState}
-    {bOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared B)}
-    (h_npS : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs),
-      B = b.proj q → False)
-    (h_do : pathOffset dpath ≠ 0)
-    (h_so : pathOffset spath ≠ 0)
-    (h_pi : getPlaceInfo cs loc.idx.1 = none)
-    (h_bval : CheckedCompilerM.value (placeToRegChecked RefKind.Shared B) (setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ))
-      = Except.ok bOut)
-    (h_bclean : bOut.result.cleanup = [])
-    (h_dpi : getPlaceInfo (emit
-          { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]) with
-            nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg + 1 }
-          [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)),
-           Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (blockSize τ)]) loc.idx.1 = some (Register.R cs.nextReg, σ)) :
-    CheckedCompilerM.run
-        (compileStmtChecked
-          (Stmt.assign (.proj (.local loc) dpath) (.copy (.proj B spath)))) cs
-      = emit (emit (emit
-          { (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]) with
-                    nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg + 1 } [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (blockSize τ)]) with nextReg := (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]) with
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg + 1 } [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (blockSize τ)]).nextReg + 1 }
-          [Instr.Assgn (Register.R (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]) with
-                                           nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg + 1 } [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (blockSize τ)]).nextReg)
-            (borrowRhs RefKind.Mut (blockSize τ) (Register.R cs.nextReg)
-              (pathOffset dpath))])
-          [Instr.RStore (layoutToTyVal τ) (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Register.R (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]) with
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg + 1 } [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (blockSize τ)]).nextReg)])
-          [Instr.Die (Register.R (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]) with
-                                         nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg + 1 } [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) bOut.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { cs with nextReg := cs.nextReg + 1 } [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R cs.nextReg, σ))).nextReg) (blockSize τ)]).nextReg) (blockSize τ)] := by
-  obtain ⟨h_run, -⟩ := ensureLocalRegE_fresh (loc := loc) h_pi
-  have h_proj_eqS := placeToRegChecked_proj_root_eq (Γ := Γ)
-    (kind := RefKind.Shared) (base := B) spath h_npS
-  have h_proj_eqD := placeToRegChecked_proj_root_eq (Γ := Γ)
-    (kind := RefKind.Mut) (base := Place.local loc) dpath (fun _ _ _ h => by cases h)
-  have h_root : CompilerM.run
-      (ensurePlaceRoot (Place.proj (Place.local loc) dpath)) cs = (setPlaceInfo
-          (emit { cs with nextReg := cs.nextReg + 1 }
-            [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-          loc.idx.1 (Register.R cs.nextReg, σ)) := by
-    show CompilerM.run (do let _ ← ensureLocalRegE loc; pure ()) cs = _
-    simp [CompilerM.run_bind, CompilerM.run_pure, h_run]
-  obtain ⟨h_brun, baseOut, h_bval2, h_bres⟩ :=
-    placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
-  simp only [csCompile, csMonad, h_proj_eqS, h_proj_eqD, h_root, h_bval, dif_neg h_so]
-  simp only [csCleanup, csRun, h_bclean, List.nil_append, List.cons_append, List.append_nil,
-    List.reverse_cons, List.map_cons]
-  simp only [csMonad, h_bval2, h_brun, dif_neg h_do]
-  simp [csRun, cleanupInstrs, h_bres, emit_nil, borrowRhs]
 
 theorem compileStmt_copy_projlocal_fresh_projsrc_offset_value
     {Γ : Ctx} {τ σ σs : LayoutTy} {loc : Local Γ σ} {dpath : PathTo σ τ}
@@ -4751,397 +4456,161 @@ theorem copy_projlocal_fresh_projsrc_simulation
                 ++ cleanupInstrs (sOut0.result.cleanup ++ [(Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg, blockSize τ)])))))
     obtain ⟨h_brun0, baseOut0, h_bval0, h_bres0⟩ :=
       placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi0
-    by_cases h_o : pathOffset path = 0
-    · have h_o' : PathTo.offset path = 0 := h_o
-      simp only [h_o', Nat.add_zero] at h_step
-      have h_incrS1V : StateIncr (emit
-            { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
-              nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg + 1 } ([Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg))] ++ cleanupInstrs (sOut0.result.cleanup ++ [((Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg), blockSize τ)])))
-          (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-        rw [h_run0]
-        have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-          (base := Place.local loc) path (fun _ _ _ h => by cases h)
-        simp only [csCompile, csMonad, h_proj_eq,
-          placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_schain.not_proj,
-          h_erun, h_sval0, dif_neg h_so]
-        simp only [csRun]
-        simp only [csMonad, h_bval0, h_brun0, h_o, dif_pos]
+    have h_incrS1V : StateIncr (emit
+          { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
+            nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg + 1 } ([Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg))] ++ cleanupInstrs (sOut0.result.cleanup ++ [((Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg), blockSize τ)])))
+        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
+      rw [h_run0]
+      have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
+        (base := Place.local loc) path (fun _ _ _ h => by cases h)
+      simp only [csCompile, csMonad, h_proj_eq,
+        placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_schain.not_proj,
+        h_erun, h_sval0, dif_neg h_so]
+      simp only [csRun]
+      by_cases h_o : pathOffset path = 0
+      · simp only [csMonad, h_bval0, h_brun0, h_o, dif_pos]
         simp only [csCleanup, CompilerM.run, CompilerM.value, emitM, h_bres0, emit_nil]
-        exact emit_state_incr (emit
-            { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
-              nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg + 1 } ([Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg))] ++ cleanupInstrs (sOut0.result.cleanup ++ [((Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg), blockSize τ)]))) _
-      have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)))
-          (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
-        StateIncr.trans h_incrPre h_incrS1V
-      have h_instS :=
-        (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
-      -- §6 execute the `Alloc`
-      have h_code0 : compProg s_osea.pc
-          = some (Instr.Assgn (Register.R csPrefix.nextReg)
-              (Rhs.Alloc (layoutToTyVal σ))) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · refine Nat.lt_of_lt_of_le ?_ h_incrS.nextLabel_le
-          refine Nat.lt_of_lt_of_le ?_
-            (CheckedCompilerM.incr (placeToRegChecked RefKind.Shared B) _).nextLabel_le
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-          omega
-        · rw [h_incrS.code_eq _ (by
-            refine Nat.lt_of_lt_of_le ?_
-              (CheckedCompilerM.incr (placeToRegChecked RefKind.Shared B) _).nextLabel_le
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-            omega)]
-          rw [(CheckedCompilerM.incr (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ))).code_eq _ (by
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-            omega)]
-          show (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } _).code _ = _
-          have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
-            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))] (k := 0) (by simp)
-          simpa using h
-      have h_runAlloc := runN_Assgn_Alloc_step compProg s_osea
-        (Register.R csPrefix.nextReg) (layoutToTyVal σ) h_code0 h_own_tgt'
-      -- §7 the SOURCE package at the post-allocation states: mother,
-      -- BRIDGE 1S, and the Borrow/Load/Die triple
-      obtain ⟨sOutP, h_svalP, h_regP, h_clP⟩ :=
-        placeToRegChecked_proj_offset_value (kind := RefKind.Shared) spath
-          h_schain.not_proj h_so h_sval0
-      obtain ⟨h_sclean, n1, s_mid, q3, h_runR, h_prmR, h_regmonoR, h_lbsR,
-        h_psimR, h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
-        copy_projsrc_offset_read compProg h_schain.loweringSimAny
-          h_schain.not_proj h_so s1
-          { s_osea with
-              mem := (oseair.allocate s_osea.mem
-                (obseq.typeSize (layoutToTyVal σ))).2,
-              perms := tgtPerms,
-              reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
-                (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-                  (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
-              pc := s_osea.pc + 1 }
-          (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))
-          h_id_a' h_wf_t' (by rw [h_perms1]; exact h_tbd') h_lbs1 h_prb1
-          (by
-            intro a v h_find
-            rw [h_find1] at h_find
-            exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
-          (by rw [h_perms1]; exact h_psim')
-          (by
-            show s_osea.pc + 1 = _
-            rw [h_pc]
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil])
-          h_sres h_fitS h_read_src h_sval0 h_regP h_clP h_instS
-          (by
-            rw [h_regP, h_clP]
-            exact (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono
-              h_incrS1V)
-      have h_dpi : getPlaceInfo (emit
-            { (emit
-            { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
-            [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-              (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg
-                (pathOffset spath))]) with
-              nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 + 1 }
-            [Instr.Assgn (Register.R (((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1))
-                (Rhs.Load (layoutToTyVal τ) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)),
-              Instr.Die (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg) (blockSize τ)]) loc.idx.1
-          = some (Register.R csPrefix.nextReg, σ) := by
-        show getPlaceInfo (emit _ _) loc.idx.1 = _
-        rw [getPlaceInfo_emit]
-        show ((emit
-            { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
-            [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-              (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg
-                (pathOffset spath))])).placeRegMap.lookup _ = _
-        simp only [emit]
-        show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-          (setPlaceInfo
-            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-              [Instr.Assgn (Register.R csPrefix.nextReg)
-                (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ))).placeRegMap.lookup _ = _
-        rw [h_prmS]
-        exact h_pi_new
-      have h_stmtRun := (h_run0 csPrefix).trans
-        (compileStmt_copy_projlocal_fresh_projsrc_offset_zero_run h_schain.not_proj
-          h_o h_so h_pi_none h_sval0 h_sclean h_dpi)
-      -- §8-§11 the fresh-root WRITE seam
-      exact copy_freshroot_write_after_read
-        (τ := τ)
-        (mvals := mirlite.readWordSeq s1.mem (rs.addr + pathOffset spath)
-          (blockSize τ))
-        compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb
-        h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc
-        h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
-        h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
-        (RegMap.lookup_insert_self _ _ _) (by rw [oseair_readWordSeq_length])
-        h_stmtRun (by rw [mirlite_readWordSeq_length])
-        (by
-          have h := PathTo.offset_add_size_le path
-          simp only [blockSize] at h ⊢
-          omega)
-        rfl rfl h_rel h_step
-    · have h_incrS1V : StateIncr (emit
-            { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
-              nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg + 1 } ([Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg))] ++ cleanupInstrs (sOut0.result.cleanup ++ [((Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg), blockSize τ)])))
-          (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-        rw [h_run0]
-        have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
-          (base := Place.local loc) path (fun _ _ _ h => by cases h)
-        simp only [csCompile, csMonad, h_proj_eq,
-          placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Shared) (base := B) spath h_schain.not_proj,
-          h_erun, h_sval0, dif_neg h_so]
-        simp only [csRun]
-        simp only [csMonad, h_bval0, h_brun0, dif_neg h_o]
+        exact emit_state_incr _ _
+      · simp only [csMonad, h_bval0, h_brun0, dif_neg h_o]
         simp only [csCleanup, CompilerM.run, CompilerM.value, emitM, h_bres0, emit_nil]
         exact StateIncr.trans (freshReg_state_incr _)
           (StateIncr.trans (emit_state_incr _ _)
             (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
-      have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)))
-          (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
-        StateIncr.trans h_incrPre h_incrS1V
-      have h_instS :=
-        (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
-      -- §6 execute the `Alloc`
-      have h_code0 : compProg s_osea.pc
-          = some (Instr.Assgn (Register.R csPrefix.nextReg)
-              (Rhs.Alloc (layoutToTyVal σ))) := by
-        rw [h_pc]
-        refine compileStmt_emitted_in_compProg h_comp h_csAt h_stmt h_stmtOut ?_ ?_
-        · refine Nat.lt_of_lt_of_le ?_ h_incrS.nextLabel_le
-          refine Nat.lt_of_lt_of_le ?_
-            (CheckedCompilerM.incr (placeToRegChecked RefKind.Shared B) _).nextLabel_le
-          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-          omega
-        · rw [h_incrS.code_eq _ (by
-            refine Nat.lt_of_lt_of_le ?_
-              (CheckedCompilerM.incr (placeToRegChecked RefKind.Shared B) _).nextLabel_le
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-            omega)]
-          rw [(CheckedCompilerM.incr (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
+    have h_incrS : StateIncr (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)))
+        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) :=
+      StateIncr.trans h_incrPre h_incrS1V
+    have h_instS :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
+    -- §6 execute the `Alloc`
+    have hFragA := ((CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono
+      (StateIncr.trans (CheckedCompilerM.incr _ _) h_incrS)).fragmentOf
+      (base := csPrefix.nextLabel) rfl rfl
+    have h_code0 : compProg s_osea.pc
+        = some (Instr.Assgn (Register.R csPrefix.nextReg)
+            (Rhs.Alloc (layoutToTyVal σ))) := by
+      rw [h_pc]; exact hFragA.instrAt 0 rfl rfl
+    have h_runAlloc := runN_Assgn_Alloc_step compProg s_osea
+      (Register.R csPrefix.nextReg) (layoutToTyVal σ) h_code0 h_own_tgt'
+    -- §7 the SOURCE package at the post-allocation states: mother,
+    -- BRIDGE 1S, and the Borrow/Load/Die triple
+    obtain ⟨sOutP, h_svalP, h_regP, h_clP⟩ :=
+      placeToRegChecked_proj_offset_value (kind := RefKind.Shared) spath
+        h_schain.not_proj h_so h_sval0
+    obtain ⟨h_sclean, n1, s_mid, q3, h_runR, h_prmR, h_regmonoR, h_lbsR,
+      h_psimR, h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
+      copy_projsrc_offset_read compProg h_schain.loweringSimAny
+        h_schain.not_proj h_so s1
+        { s_osea with
+            mem := (oseair.allocate s_osea.mem
+              (obseq.typeSize (layoutToTyVal σ))).2,
+            perms := tgtPerms,
+            reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
+              (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
+                (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+            pc := s_osea.pc + 1 }
+        (setPlaceInfo
             (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
               [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-            loc.idx.1 (Register.R csPrefix.nextReg, σ))).code_eq _ (by
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil]
-            omega)]
-          show (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } _).code _ = _
-          have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
-            [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))] (k := 0) (by simp)
-          simpa using h
-      have h_runAlloc := runN_Assgn_Alloc_step compProg s_osea
-        (Register.R csPrefix.nextReg) (layoutToTyVal σ) h_code0 h_own_tgt'
-      -- §7 the SOURCE package at the post-allocation states
-      obtain ⟨sOutP, h_svalP, h_regP, h_clP⟩ :=
-        placeToRegChecked_proj_offset_value (kind := RefKind.Shared) spath
-          h_schain.not_proj h_so h_sval0
-      obtain ⟨h_sclean, n1, s_mid, q3, h_runR, h_prmR, h_regmonoR, h_lbsR,
-        h_psimR, h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
-        copy_projsrc_offset_read compProg h_schain.loweringSimAny
-          h_schain.not_proj h_so s1
-          { s_osea with
-              mem := (oseair.allocate s_osea.mem
-                (obseq.typeSize (layoutToTyVal σ))).2,
-              perms := tgtPerms,
-              reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
-                (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-                  (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
-              pc := s_osea.pc + 1 }
+            loc.idx.1 (Register.R csPrefix.nextReg, σ))
+        h_id_a' h_wf_t' (by rw [h_perms1]; exact h_tbd') h_lbs1 h_prb1
+        (by
+          intro a v h_find
+          rw [h_find1] at h_find
+          exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
+        (by rw [h_perms1]; exact h_psim')
+        (by
+          show s_osea.pc + 1 = _
+          rw [h_pc]
+          simp only [emit, setPlaceInfo, List.length_cons, List.length_nil])
+        h_sres h_fitS h_read_src h_sval0 h_regP h_clP h_instS
+        (by
+          rw [h_regP, h_clP]
+          exact (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono
+            h_incrS1V)
+    have h_dpi : getPlaceInfo (emit
+          { (emit
+          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
           (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))
-          h_id_a' h_wf_t' (by rw [h_perms1]; exact h_tbd') h_lbs1 h_prb1
-          (by
-            intro a v h_find
-            rw [h_find1] at h_find
-            exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
-          (by rw [h_perms1]; exact h_psim')
-          (by
-            show s_osea.pc + 1 = _
-            rw [h_pc]
-            simp only [emit, setPlaceInfo, List.length_cons, List.length_nil])
-          h_sres h_fitS h_read_src h_sval0 h_regP h_clP h_instS
-          (by
-            rw [h_regP, h_clP]
-            exact (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono
-              h_incrS1V)
-      have h_dpi : getPlaceInfo (emit
-            { (emit
-            { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
-            [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-              (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg
-                (pathOffset spath))]) with
-              nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 + 1 }
-            [Instr.Assgn (Register.R (((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1))
-                (Rhs.Load (layoutToTyVal τ) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)),
-              Instr.Die (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg) (blockSize τ)]) loc.idx.1
-          = some (Register.R csPrefix.nextReg, σ) := by
-        simp only [getPlaceInfo, emit]
-        show ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).placeRegMap.lookup _ = _
-        rw [h_prmS]
-        exact h_pi_new
-      have h_stmtRun := (h_run0 csPrefix).trans
-        (compileStmt_copy_projlocal_fresh_projsrc_offset_offset_run h_schain.not_proj h_o
-          h_so h_pi_none h_sval0 h_sclean h_dpi)
-      have h_gp : ∀ i, getPlaceInfo (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) i = getPlaceInfo (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ)) i :=
-        fun i => by simp only [getPlaceInfo, h_prmS]
-      -- §8 the three DESTINATION instructions, from the statement fragment
-      have hFrag10 :=
-        (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
-          h_stmtRun h_spc
-      have h_codeB : compProg (s_mid.pc + 1 + 1 + 1)
-          = some (Instr.Assgn (Register.R (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
-                                                  nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg + 1 } [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (blockSize τ)]).nextReg)
-              (borrowRhs RefKind.Mut (blockSize τ) (Register.R csPrefix.nextReg)
-                (pathOffset path))) :=
-        hFrag10.instrAt 3 rfl rfl
-      have h_codeS : compProg (s_mid.pc + 1 + 1 + 1 + 1)
-          = some (Instr.RStore (layoutToTyVal τ) (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg) (Register.R (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg + 1 } [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (blockSize τ)]).nextReg)) :=
-        hFrag10.instrAt 4 rfl rfl
-      have h_codeD : compProg (s_mid.pc + 1 + 1 + 1 + 1 + 1)
-          = some (Instr.Die (Register.R (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]) with
-                                                nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg + 1 } [Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg (pathOffset spath))]).nextReg) (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) loc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg) (blockSize τ)]).nextReg) (blockSize τ)) :=
-        hFrag10.instrAt 5 rfl rfl
-      -- §9-§12 the PROJECTED fresh-root write seam
-      exact copy_freshproj_write_after_read
-        (τ := τ)
-        (csR := (emit
-            { (emit
-            { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
-            [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
-              (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg
-                (pathOffset spath))]) with
-              nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 + 1 }
-            [Instr.Assgn (Register.R (((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1))
-                (Rhs.Load (layoutToTyVal τ) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)),
-              Instr.Die (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg) (blockSize τ)]))
-        (vreg := Register.R (((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
-            (setPlaceInfo
-              (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
-                [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
-              loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1))
-        (mvals := mirlite.readWordSeq s1.mem (rs.addr + pathOffset spath)
-          (blockSize τ))
-        compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb
-        h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc
-        h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 (pathOffset path)
-        (PathTo.offset_add_size_le path)
-        h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
-        (RegMap.lookup_insert_self _ _ _) h_vbelow
-        (by rw [oseair_readWordSeq_length])
-        h_codeB h_codeS h_codeD
-        (by rw [h_stmtRun]; simp only [emit, List.length_cons, List.length_nil]
-            rw [h_pcR]; simp only [emit, List.length_cons, List.length_nil])
-        (by rw [h_stmtRun]; simp only [emit, setPlaceInfo])
-        (by rw [h_stmtRun]; simp only [emit, setPlaceInfo]; omega)
-        (by rw [mirlite_readWordSeq_length]) rfl rfl rfl rfl h_rel h_step
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+            loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
+          (setPlaceInfo
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
+          [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
+          (setPlaceInfo
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
+            (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg
+              (pathOffset spath))]) with
+            nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
+          (setPlaceInfo
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 + 1 }
+          [Instr.Assgn (Register.R (((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
+          (setPlaceInfo
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1))
+              (Rhs.Load (layoutToTyVal τ) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
+          (setPlaceInfo
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)),
+            Instr.Die (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
+          (setPlaceInfo
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg) (blockSize τ)]) loc.idx.1
+        = some (Register.R csPrefix.nextReg, σ) := by
+      show getPlaceInfo (emit _ _) loc.idx.1 = _
+      rw [getPlaceInfo_emit]
+      show ((emit
+          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
+          (setPlaceInfo
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+            loc.idx.1 (Register.R csPrefix.nextReg, σ))) with nextReg := ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
+          (setPlaceInfo
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg + 1 }
+          [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
+          (setPlaceInfo
+            (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+              [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+            loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
+            (borrowRhs RefKind.Shared (blockSize τ) sOut0.result.reg
+              (pathOffset spath))])).placeRegMap.lookup _ = _
+      simp only [emit]
+      show (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B)
+        (setPlaceInfo
+          (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+            [Instr.Assgn (Register.R csPrefix.nextReg)
+              (Rhs.Alloc (layoutToTyVal σ))])
+          loc.idx.1 (Register.R csPrefix.nextReg, σ))).placeRegMap.lookup _ = _
+      rw [h_prmS]
+      exact h_pi_new
+    have h_stmtRun := (h_run0 csPrefix).trans
+      (compileStmt_copy_projlocal_fresh_projsrc_offset_run h_schain.not_proj
+        h_so h_pi_none h_sval0 h_sclean h_dpi)
+    -- §8-§11 the fresh-root WRITE seam
+    exact copy_fresh_write_after_read
+      (τ := τ)
+      (mvals := mirlite.readWordSeq s1.mem (rs.addr + pathOffset spath)
+        (blockSize τ))
+      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb
+      h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc
+      h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 (pathOffset path)
+      (PathTo.offset_add_size_le path)
+      h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
+      (RegMap.lookup_insert_self _ _ _) h_vbelow
+      (by rw [oseair_readWordSeq_length])
+      h_stmtRun
+      (by rw [mirlite_readWordSeq_length]) rfl rfl rfl rfl h_rel h_step
 /-! ## Flatten transfers under a PROJECTED deref destination: the same
     two single-place splits, with the projection riding along. -/
 
