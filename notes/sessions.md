@@ -3436,3 +3436,35 @@ zero twin writes through the chain-write seam at the projection's
 BASE; the offset twin runs a second mother lemma and the bound-proj
 seam at the chain-resolved root. Different seams, different rd — not a
 `projDstTail` pair.
+
+**Seventeenth stretch — the offset axis in copy.** One commit. copy
+7,966 → 7,435 (−531).
+
+copy's zero/offset twins (`copy_projchain_zero/offset`,
+`copy_fresh_projchain_zero/offset`, `copy_chaindst_projsrc_zero/
+offset`) are NOT `projDstTail` pairs: their axis is the SOURCE
+projection's offset, and at zero the read collapses onto the chain via
+`LoweringSimAny.projZero` — a different seam at a different place.
+Where copy does carry the destination-offset split is inside two
+single leaves, `copy_projlocal_fresh` (478) and `_projsrc` (529), each
+casing mid-proof and then duplicating everything after: the code
+inclusion, the by-hand `h_code0`, the source package, the seam.
+
+Same recipe as ref, one refinement: the leaf's `StateIncr` from the
+post-Load prefix to the statement's run is proven by unfolding the
+compile, and THAT unfolding produces the `dite` on the offset — so the
+case split lives inside that one `have` (`by_cases h_o` after the
+shared simp, each alternative its own emit chain) and nowhere else.
+`rw [h_off]` before the unfolding is essential in the lowers lemma:
+after it, the `dite`'s proof term depends on the offset and `rw` fails
+with "motive is not type correct"; `simp` would cope, `rw` does not.
+
+    copy_projlocal_fresh          478 -> 278
+    copy_projlocal_fresh_projsrc  529 -> 293
+
+Redesign total so far: ref 9,225 → 7,212, copy 7,966 → 7,435, spine
++255 — net −2,289. Every leaf that writes through a projected
+destination now goes through `copy_bound_write_after_read` or
+`copy_fresh_write_after_read`; the four originals remain as branch
+bodies and as the seams of the six leaves whose destination is not a
+projection.
