@@ -3214,6 +3214,51 @@ theorem ref_chainsrc_borrow
     rw [h_dpc]
     simp only [emit, List.length_cons, List.length_nil]
 
+/-! ## The projected-destination TAIL, parameterised by the offset
+
+    A write through a projection of a resolved root costs one instruction
+    at offset zero (the store goes through the root's own register) and
+    three otherwise (`Borrow(Mut)` a temporary at the offset, store
+    through it, `Die` it). That is `placeToRegChecked`'s own
+    `if h_offset : offset = 0` branch. Stating the tail ONCE, as a
+    function of the offset, lets a fragment lemma and a leaf be written
+    for both cases at the same time; the seams below case on the offset
+    and hand each branch to its own proof. -/
+def projDstTail (cs : CompilerState) (off : Nat) (sz : Nat) (ty : obseq.TyVal)
+    (vreg dstReg : Register) : CompilerState :=
+  if off = 0 then emit cs [Instr.RStore ty vreg dstReg]
+  else emit (emit (emit { cs with nextReg := cs.nextReg + 1 }
+      [Instr.Assgn (Register.R cs.nextReg)
+        (Rhs.Borrow RefKind.Mut false [] sz dstReg off)])
+      [Instr.RStore ty vreg (Register.R cs.nextReg)])
+      [Instr.Die (Register.R cs.nextReg) sz]
+
+theorem projDstTail_zero (cs : CompilerState) (sz : Nat) (ty : obseq.TyVal)
+    (vreg dstReg : Register) :
+    projDstTail cs 0 sz ty vreg dstReg = emit cs [Instr.RStore ty vreg dstReg] := by
+  simp [projDstTail]
+
+theorem projDstTail_pos (cs : CompilerState) {off : Nat} (h : off ≠ 0) (sz : Nat)
+    (ty : obseq.TyVal) (vreg dstReg : Register) :
+    projDstTail cs off sz ty vreg dstReg
+      = emit (emit (emit { cs with nextReg := cs.nextReg + 1 }
+          [Instr.Assgn (Register.R cs.nextReg)
+            (Rhs.Borrow RefKind.Mut false [] sz dstReg off)])
+          [Instr.RStore ty vreg (Register.R cs.nextReg)])
+          [Instr.Die (Register.R cs.nextReg) sz] := by
+  simp [projDstTail, h]
+
+/-- The tail only ever ADDS to the compiler state, whichever offset. -/
+theorem projDstTail_state_incr (cs : CompilerState) (off sz : Nat) (ty : obseq.TyVal)
+    (vreg dstReg : Register) :
+    StateIncr cs (projDstTail cs off sz ty vreg dstReg) := by
+  unfold projDstTail
+  split
+  · exact emit_state_incr _ _
+  · exact StateIncr.trans (freshReg_state_incr cs)
+      (StateIncr.trans (emit_state_incr _ _)
+        (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
+
 /-- **The bound-root projected write seam** — the destination half when
     the destination is a FIELD of a local that is already BOUND, at a
     nonzero offset. Same three instructions as
@@ -3557,6 +3602,216 @@ theorem copy_boundplain_write_after_read
     refine RegisterBelow.mono ?_ (h_prb _ _ _ h_cs)
     exact Nat.le_trans h_regmonoR h_nextRegLe
 
+
+
+/-! ## The two offset-parameterised write seams
+
+    Each cases on the offset and hands the branch to the seam that was
+    written for it: zero to the plain/root seam, nonzero to the projected
+    one. What a caller supplies is the statement's compiled run, stated
+    through `projDstTail` — the branch derives its own code facts and
+    rebuild facts from that, so a leaf never has to. -/
+
+theorem copy_bound_write_after_read
+    {τ : LayoutTy} {dbase : Word} {dtag : Tag} {dsize : Nat}
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    {csPrefix : CompilerState}
+    (h_csAt : csAt cs0 prog s_mir.pc csPrefix)
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt0)}
+    (h_stmtOut : CheckedCompilerM.value (compileStmtChecked stmt0) csPrefix
+      = Except.ok stmtOut)
+    (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
+    (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
+    (h_prb : PlaceRegMapBound csPrefix)
+    {dstReg : Register} {tagD : Tag} (boff : Nat)
+    (h_raD : ρa dbase = some dbase)
+    (h_rtD : ρt dtag = some tagD)
+    (h_nwD : (dtag == wildcardTag) = false)
+    (h_domD : ∀ k, k < dsize → ∃ a, ρa (dbase + k) = some a)
+    (off : Nat) (h_fit : boff + off + blockSize τ ≤ dsize)
+    -- the POST-SOURCE bundle
+    {csR : CompilerState} {sR : oseair.State MSB} {vreg : Register}
+    {vals : List Val} {nR : Nat} {perms₂ : MSB.State}
+    (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
+    (h_entryD : PtrRegisterEntry sR.reg dstReg dbase boff dsize tagD)
+    (h_sms : SourceMemSim ρa ρt s_mir.mem sR.mem)
+    (h_alloc : AllocLockstep s_mir.mem sR.mem)
+    (h_prmR : csR.placeRegMap = csPrefix.placeRegMap)
+    (h_regmonoR : csPrefix.nextReg ≤ csR.nextReg)
+    (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
+    (h_psimR : PermSim ρt perms₂ sR.perms)
+    (h_tbdR : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag)
+    (h_pcR : sR.pc = csR.nextLabel)
+    (h_vregR : oseair.RegMap.lookup sR.reg vreg = some (layoutToTyVal τ, vals))
+    (h_vbelow : RegisterBelow csR.nextReg vreg)
+    (h_vlen : vals.length = blockSize τ)
+    -- the statement's compiled run, ending in the destination tail
+    (h_stmtRun : CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix
+      = projDstTail csR off (blockSize τ) (layoutToTyVal τ) vreg dstReg)
+    -- the mirlite write
+    {rd : mirlite.PlaceRes} {mvals : List mirlite.MemValue}
+    (h_mlen : mvals.length = blockSize τ)
+    (h_rdaddr : rd.addr = dbase + (boff + off))
+    (h_rdtag : rd.tag = dtag)
+    (h_rdbase : rd.allocBase = dbase)
+    (h_rdsize : rd.allocSize = dsize)
+    (h_valsRel : ListRel (MemValSim ρa ρt) mvals vals)
+    (h_step : mirlite.writeResolvedPlace (τ := τ) MSB
+      { s_mir with perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
+    ∃ (s_osea' : oseair.State MSB) (n : Nat),
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
+  have hInc := CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut
+  by_cases h_off : off = 0
+  · subst h_off
+    rw [projDstTail_zero] at h_stmtRun
+    have hFrag := hInc.fragmentOf (base := csR.nextLabel) h_stmtRun rfl
+    exact copy_boundplain_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
+      h_id_a h_wf_t h_unmap h_prb boff h_raD h_rtD h_nwD h_domD h_runR h_entryD h_sms
+      h_alloc h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_pcR h_vregR h_vlen
+      (by simpa using h_fit)
+      (by rw [h_pcR]; exact hFrag.instrAt 0 rfl rfl)
+      (by rw [h_pcR, h_stmtRun]; simp [emit])
+      (by rw [h_stmtRun]; simp [emit])
+      (by rw [h_stmtRun]; simp [emit])
+      h_mlen (by rw [h_rdaddr, Nat.add_zero]) h_rdtag h_rdbase h_rdsize h_valsRel h_step
+  · rw [projDstTail_pos _ h_off] at h_stmtRun
+    have hFrag := hInc.fragmentOf (base := csR.nextLabel) h_stmtRun rfl
+    exact copy_boundproj_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
+      h_id_a h_wf_t h_unmap h_prb boff h_raD h_rtD h_nwD h_domD off h_fit h_runR
+      h_entryD h_sms h_alloc h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_pcR h_vregR
+      h_vbelow h_vlen
+      (by rw [h_pcR]; exact hFrag.instrAt 0 rfl rfl)
+      (by rw [h_pcR]; exact hFrag.instrAt 1 rfl rfl)
+      (by rw [h_pcR]; exact hFrag.instrAt 2 rfl rfl)
+      (by rw [h_pcR, h_stmtRun]; simp [emit])
+      (by rw [h_stmtRun]; simp [emit])
+      (by rw [h_stmtRun]; simp [emit])
+      h_mlen h_rdaddr h_rdtag h_rdbase h_rdsize h_valsRel h_step
+
+theorem copy_fresh_write_after_read
+    {σ τ : LayoutTy} {dstLoc : Local Γ σ}
+    {ρa' : AddrRenameMap} {ρt' : TagRenameMap}
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    {csPrefix : CompilerState}
+    (h_csAt : csAt cs0 prog s_mir.pc csPrefix)
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt0)}
+    (h_stmtOut : CheckedCompilerM.value (compileStmtChecked stmt0) csPrefix
+      = Except.ok stmtOut)
+    (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
+    (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
+    (h_prb : PlaceRegMapBound csPrefix)
+    {s1 : mirlite.State MSB Γ}
+    (h_lookup_set : mirlite.Env.lookup s1.env dstLoc
+      = some { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })
+    (h_env1 : s1.env = mirlite.Env.set s_mir.env dstLoc
+      { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })
+    (h_pc1 : s1.pc = s_mir.pc)
+    (h_memstart1 : s1.mem.addrStart = s_mir.mem.addrStart + blockSize σ)
+    (h_find1 : ∀ a, mirlite.Mem.find? s1.mem a = mirlite.Mem.find? s_mir.mem a)
+    (h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart)
+    (h_sz : obseq.typeSize (layoutToTyVal σ) = blockSize σ)
+    {tgtPerms : MSB.State} {n0 : Nat}
+    (h_run0' : oseair.runN MSB n0 s_osea compProg = oseair.Result.Ok
+      { s_osea with
+      mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2,
+      perms := tgtPerms,
+      reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
+        (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
+          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+      pc := s_osea.pc + 1 })
+    (h_incr_a : AddrRenameIncr ρa ρa') (h_incr_t : TagRenameIncr ρt ρt')
+    (h_id_a' : IdentityOnDomain ρa') (h_wf_t' : TagRenameWF ρt')
+    (h_ra_dom : ∀ k, k < blockSize σ →
+      ρa' (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k))
+    (h_prb1 : PlaceRegMapBound (setPlaceInfo
+      (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+        [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+      dstLoc.idx.1 (Register.R csPrefix.nextReg, σ)))
+    -- the destination FIELD: its offset inside the root, and that it fits
+    (off : Nat) (h_fit : off + blockSize τ ≤ blockSize σ)
+    -- the POST-SOURCE bundle
+    {csR : CompilerState} {sR : oseair.State MSB} {vreg : Register}
+    {vals : List Val} {nR : Nat} {perms₂ : MSB.State}
+    (h_runR : oseair.runN MSB nR
+      { s_osea with
+      mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2,
+      perms := tgtPerms,
+      reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
+        (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
+          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+      pc := s_osea.pc + 1 } compProg = oseair.Result.Ok sR)
+    (h_prmR : csR.placeRegMap = ((setPlaceInfo
+      (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+        [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+      dstLoc.idx.1 (Register.R csPrefix.nextReg, σ))).placeRegMap)
+    (h_regmonoR : ((setPlaceInfo
+      (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+        [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
+      dstLoc.idx.1 (Register.R csPrefix.nextReg, σ))).nextReg ≤ csR.nextReg)
+    (h_lbsR : LocalBindingSim ρa' ρt' s1.env sR csR)
+    (h_psimR : PermSim ρt' perms₂ sR.perms)
+    (h_tbdR : TagRenameBounded ρt' perms₂.NextTag sR.perms.NextTag)
+    (h_smem : sR.mem
+      = ({ s_osea with
+      mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2,
+      perms := tgtPerms,
+      reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
+        (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
+          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+      pc := s_osea.pc + 1 }).mem)
+    (h_pcR : sR.pc = csR.nextLabel)
+    (h_vregR : oseair.RegMap.lookup sR.reg vreg = some (layoutToTyVal τ, vals))
+    (h_vbelow : RegisterBelow csR.nextReg vreg)
+    (h_vlen : vals.length = blockSize τ)
+    -- the statement's compiled run, ending in the destination tail
+    (h_stmtRun : CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix
+      = projDstTail csR off (blockSize τ) (layoutToTyVal τ) vreg
+          (Register.R csPrefix.nextReg))
+    -- the mirlite write, into the FIELD of the fresh root
+    {rd : mirlite.PlaceRes} {mvals : List mirlite.MemValue}
+    (h_mlen : mvals.length = blockSize τ)
+    (h_rdaddr : rd.addr = s_mir.mem.addrStart + off)
+    (h_rdtag : rd.tag = s_mir.perms.NextTag)
+    (h_rdbase : rd.allocBase = s_mir.mem.addrStart)
+    (h_rdsize : rd.allocSize = blockSize σ)
+    (h_valsRel : ListRel (MemValSim ρa' ρt') mvals vals)
+    (h_step : mirlite.writeResolvedPlace (τ := τ) MSB
+      { s1 with perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
+    ∃ (ρa'' : AddrRenameMap) (ρt'' : TagRenameMap) (s_osea' : oseair.State MSB)
+      (n : Nat),
+      AddrRenameIncr ρa ρa'' ∧
+      TagRenameIncr ρt ρt'' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa'' ρt'' s_mir' s_osea' := by
+  by_cases h_off : off = 0
+  · subst h_off
+    rw [projDstTail_zero] at h_stmtRun
+    exact copy_freshroot_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
+      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz
+      h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 h_runR h_prmR
+      h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR h_vregR h_vlen h_stmtRun h_mlen
+      (by simpa using h_fit) (by rw [h_rdaddr, Nat.add_zero]) h_rdtag h_valsRel h_step
+  · rw [projDstTail_pos _ h_off] at h_stmtRun
+    have hFrag := (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
+      (base := csR.nextLabel) h_stmtRun rfl
+    exact copy_freshproj_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
+      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz
+      h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 off h_fit h_runR
+      h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR h_vregR h_vbelow h_vlen
+      (by rw [h_pcR]; exact hFrag.instrAt 0 rfl rfl)
+      (by rw [h_pcR]; exact hFrag.instrAt 1 rfl rfl)
+      (by rw [h_pcR]; exact hFrag.instrAt 2 rfl rfl)
+      (by rw [h_pcR, h_stmtRun]; simp [emit])
+      (by rw [h_stmtRun]; simp [emit])
+      (by rw [h_stmtRun]; simp [emit])
+      h_mlen h_rdaddr h_rdtag h_rdbase h_rdsize h_valsRel h_step
 
 end
 
