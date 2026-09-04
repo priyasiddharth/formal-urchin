@@ -3384,3 +3384,55 @@ Three details worth keeping:
 facts as inputs because two leaves (`ref_fresh_dst`, `ref_fresh_projsrc`)
 extend ρa at a single address, not a block. A block-specialised wrapper
 would save ~12 lines at fifteen sites for a ~20-line wrapper; deferred.
+
+**Sixteenth stretch — the offset axis, collapsed (the redesign).** One
+commit (`10180c2`). ref 9,225 → 7,212 (−2,013); spine 3,563 → 3,818
+(+255); net −1,758.
+
+The user approved the redesign. Executed in the safest order — seams,
+then fragment lemmas, then leaves, then dispatch — so the build was
+green at every intermediate step and each piece could have stopped.
+
+**The one object.** `projDstTail cs off sz ty vreg dstReg` is the
+compiled tail of a write through a projected destination:
+`emit cs [RStore]` at `off = 0`, `emit (emit (emit {cs with nextReg+1}
+[Borrow(Mut) tmp dstReg off]) [RStore vreg tmp]) [Die tmp]` otherwise.
+Two unfolding lemmas (`_zero`, `_pos`) and one `StateIncr` lemma.
+
+**Seams: 5 → 3 by DISPATCH, not by rewriting.** `copy_bound_write_
+after_read` and `copy_fresh_write_after_read` take the statement's run
+as `… = projDstTail csR off …`, `by_cases` on `off`, and hand each
+branch to the seam that was written for it — deriving that branch's
+code facts (`hFrag.instrAt k`) and rebuild facts (`rw [h_stmtRun];
+simp [emit]`) themselves. The four original seams are untouched and
+become branch bodies. Both compiled first try, ~90 lines each. This is
+the pattern from `PureCStore`: do not merge two proofs, merge their
+INTERFACE and let the branch pick.
+
+**Fragment lemmas: 7 pairs → 7.** Statement tower through
+`projDstTail`; shared prelude once; `by_cases h_off`; `rw [h_off,
+projDstTail_zero]` / `rw [projDstTail_pos _ h_off]`; the two original
+proof tails as the bullets. Two surprises: the bound families' offset
+bullets end in `simp …; rfl`, and with the tail's `X.nextReg` spelling
+simp now closes the goal itself — `try rfl`; and the bound families'
+`compileStmt_ref_proj_local_lowers` name was already taken by the
+local-DESTINATION shape, hence `projdst_` for the bound merges.
+
+**Leaves: 7 pairs → 7.** The leaf never cases. Its Alloc/Borrow code
+facts used to come from `fragmentOf h_stmtRun h_pc` over the whole
+tower; with `projDstTail` at the head there is no `EmitTower` instance
+to peel it, so they come through `CodeIncluded.mono` over
+`projDstTail_state_incr` applied to the PREFIX of the tower (the
+post-Alloc, post-chain or post-source-Borrow state), whose instances
+exist. In `ref_proj_fresh_derefsrc` that replaced a 35-line by-hand
+`h_code0` derivation with six lines. The merged bound leaves needed
+`(g := g)` pinned at the lowers call — `h_g0` used to determine `g`.
+
+**Dispatch: three `by_cases h_g0` splits gone.** Each had two
+subtrees identical but for the twin's name: 87 → 43, 67 → 33, 56 → 28.
+
+Left out on purpose: `ref_projzero/projoffset_derefdst_chainsrc`. The
+zero twin writes through the chain-write seam at the projection's
+BASE; the offset twin runs a second mother lemma and the bound-proj
+seam at the chain-resolved root. Different seams, different rd — not a
+`projDstTail` pair.
