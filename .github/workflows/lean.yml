@@ -6,6 +6,9 @@
 #
 # What each step guards:
 #   build       every proof in Obseq3Proof type-checks
+#   whitelist   scripts/axiom_whitelist.txt itself still says exactly
+#               propext / Classical.choice / Quot.sound and no sorries, so
+#               a red audit cannot be made green by editing the pin
 #   audit       obseq3.proof.compile_correct (the CompilerInv simulation,
 #               rooted at compile_correct / compile_correct_from_initial)
 #               rests on propext / Classical.choice / Quot.sound only, with
@@ -51,6 +54,9 @@ jobs:
 
       - name: Build
         run: lake build Core Obseq3 Obseq3Proof Conformance sb_conformance
+
+      - name: Whitelist pin (the audit's reference must not have moved)
+        run: bash scripts/check_whitelist.sh
 
       - name: Axiom audit of compile_correct
         run: bash scripts/audit_axioms.sh

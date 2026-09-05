@@ -12,12 +12,12 @@ f=scripts/axiom_whitelist.txt
 section() {  # entries of one section, comments and blanks stripped, sorted
   awk -v s="[$1]" '
     /^\[/ { on = ($0 == s); next }
-    on && !/^#/ && NF { print $1 }' "$f" | sort
+    on && !/^#/ && NF { print $1 }' "$f" | LC_ALL=C sort
 }
 
 axioms=$(section axioms)
 sorries=$(section sorries)
-expected=$(printf 'Classical.choice\nQuot.sound\npropext\n')
+expected=$(printf 'propext\nClassical.choice\nQuot.sound\n' | LC_ALL=C sort)
 
 if [ "$axioms" != "$expected" ]; then
   echo "axiom whitelist drift — [axioms] must be exactly propext, Classical.choice, Quot.sound; found:" >&2
