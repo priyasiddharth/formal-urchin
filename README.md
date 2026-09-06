@@ -1,3 +1,5 @@
+[![lean](https://github.com/priyasiddharth/formal-urchin/actions/workflows/lean.yml/badge.svg)](https://github.com/priyasiddharth/formal-urchin/actions/workflows/lean.yml)
+
 This project was edited by [Aristotle](https://aristotle.harmonic.fun).
 
 To cite Aristotle:
