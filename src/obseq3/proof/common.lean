@@ -1733,6 +1733,51 @@ theorem uninit_pureCStore {Γ : Ctx} (τ : LayoutTy) :
       (List.replicate (blockSize τ) Val.Undef) :=
   fun cs => ⟨rfl, _, rfl, fun _ => rfl, rfl⟩
 
+/-- The read-then-store rvalue shape: lower the source place shared, put
+    the rvalue's result into a fresh register with ONE instruction built
+    from the source register (`mk`), clean the source, and store that
+    register through the destination at the rvalue's layout. This is the
+    compiler's `copy` arm verbatim, with the emitted `Rhs` abstracted:
+    `copy` uses `Rhs.Load`, `exposeAddr` uses `Rhs.ExposeAddr`,
+    `fromExposed` uses `Rhs.FromExposed`. The source layout `σ` and the
+    rvalue layout `τ` differ for the casts, which is why both are bound. -/
+def readRhsPre {Γ : Ctx} {σ τ : LayoutTy} (rhs : RExpr Γ τ) (src : Place Γ σ)
+    (mk : Register → Rhs)
+    (ev : (srcRes : PtrResult) → PlaceToRegEvidence RefKind.Shared src srcRes →
+      (dstPtr : Register) → RExprToEvidence dstPtr rhs) :
+    CheckedCompilerM (RhsPre Γ τ rhs) := do
+  let srcOut ← placeToRegChecked RefKind.Shared src
+  let srcRes := srcOut.result
+  let tmpReg ← CheckedCompilerM.lift freshRegM
+  let _ ← CheckedCompilerM.lift
+    (emitM ([Instr.Assgn tmpReg (mk srcRes.reg)] ++ cleanupInstrs srcRes.cleanup))
+  pure {
+    store := fun dstPtr => [Instr.RStore (layoutToTyVal τ) tmpReg dstPtr],
+    postCleanup := [],
+    ev := fun dstPtr => ev srcRes srcOut.evidence dstPtr
+  }
+
+/-- An rvalue whose pre-phase IS `readRhsPre` for some evidence factory.
+    Every read-then-store fragment lemma depends on the rvalue only
+    through this. -/
+def ReadRhsShape {Γ : Ctx} {σ τ : LayoutTy} (rhs : RExpr Γ τ) (src : Place Γ σ)
+    (mk : Register → Rhs) : Prop :=
+  ∃ ev, compileRExprPreChecked rhs = readRhsPre rhs src mk ev
+
+theorem readRhsShape_copy {Γ : Ctx} {τ : LayoutTy} (src : Place Γ τ) :
+    ReadRhsShape (.copy src) src (Rhs.Load (layoutToTyVal τ)) :=
+  ⟨fun srcRes srcEv _ => RExprToEvidence.copy src srcRes srcEv, rfl⟩
+
+theorem readRhsShape_exposeAddr {Γ : Ctx} {σ : LayoutTy}
+    (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    ReadRhsShape (.exposeAddr src) src Rhs.ExposeAddr :=
+  ⟨fun srcRes srcEv _ => RExprToEvidence.exposeAddr src srcRes srcEv, rfl⟩
+
+theorem readRhsShape_fromExposed {Γ : Ctx} {τ : LayoutTy}
+    (src : Place Γ obseq.LayoutTy.NatL) :
+    ReadRhsShape (.fromExposed (τ := τ) src) src Rhs.FromExposed :=
+  ⟨fun srcRes srcEv _ => RExprToEvidence.fromExposed src srcRes srcEv, rfl⟩
+
 /-- The compiled fragment of a constant write to an UNMAPPED local is two
     instructions: the root `Alloc` that `ensurePlaceRoot` emits (mirroring
     mirlite's `preparePlaceAssign`) followed by the `CStore`. -/
