@@ -395,141 +395,6 @@ theorem compileStmt_readrhs_derefsrc_flatten_value
       simp only [hO]
       exact ⟨_, rfl⟩
 
-/-- REGIME D→L over full chains, COLLAPSED 2026-08-29 (originally
-    closed 2026-08-29 for load spines): `dst := copy *P` for every src
-    with `PtrChain src` — spines, proj-topped pointer places
-    (`x := copy *(s.f)`), interior projections at any depth. The mother
-    lemma at `Shared` on the WHOLE source place performs the lowering
-    including the final `Load`; the leaf adds one `Memcpy` whose source
-    bound is the copy-range dereferenceability check and whose
-    nonoverlapping check is the overlap guard via
-    `resolvePlace?_of_resolveAcc`. No tag survives: renames grow by
-    `refl`. -/
-theorem copy_chainsrc_local_simulation
-    {τ τs : LayoutTy}
-    {dstLoc : Local Γ τ}
-    {src : Place Γ τs}
-    {bD : mirlite.Binding}
-    {rhs : RExpr Γ τ} {mk : Register → Rhs}
-    (compProg : oseair.Prog)
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_pkg : ReadPkgLowered compProg rhs src mk)
-    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
-    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    {stmt0 : Stmt Γ}
-    (h_stmt : prog.get? s_mir.pc = some stmt0)
-    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
-      = CheckedCompilerM.run
-          (compileStmtChecked (Stmt.assign (.local dstLoc) rhs)) cs)
-    (h_val0 : ∀ cs so, CheckedCompilerM.value
-        (compileStmtChecked (Stmt.assign (.local dstLoc) rhs)) cs
-        = Except.ok so →
-      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
-        = Except.ok so')
-    (h_envD : mirlite.Env.lookup s_mir.env dstLoc = some bD)
-    (h_step : mirlite.stepStmt MSB s_mir
-      (.assign (.local dstLoc) rhs) = .ok s_mir') :
-    ∃ (s_osea' : oseair.State MSB) (n : Nat),
-      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
-  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
-    h_alloc, h_unmap, h_prb⟩ := h_inv
-  obtain ⟨dstReg, baseD, tagD, h_piD, h_entryD, h_raD, h_rtD, h_nwD, h_domD⟩ :=
-    h_lbs dstLoc bD h_envD
-  have h_baseD : baseD = bD.addr := (h_id_a _ _ h_raD).symm
-  subst h_baseD
-  -- §1 the destination is a BOUND local, so `preparePlaceAssign` is a no-op
-  simp only [mirlite.stepStmt, mirlite.doAssign] at h_step
-  cases h_prep : mirlite.preparePlaceAssign MSB s_mir (Place.local dstLoc) with
-  | err msg => rw [h_prep] at h_step; simp at h_step
-  | ok s1 =>
-  rw [h_prep] at h_step
-  have h_s1 : s1 = s_mir := by
-    simp only [mirPrep, h_envD] at h_prep
-    grind
-  rw [h_s1] at h_step
-  simp only at h_step
-  -- §2 the source read, behind the rvalue's package
-  cases h_eval : mirlite.evalRExpr MSB s_mir rhs with
-  | err e => rw [h_eval] at h_step; simp at h_step
-  | ok output =>
-    rw [h_eval] at h_step
-    simp only at h_step
-    obtain ⟨h_mapped, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
-        h_psim h_pc output h_eval
-    -- §3 compiler scaffolding: the statement value and the two
-    -- code-inclusion facts the package consumes
-    obtain ⟨sOut0, h_sval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
-      (cs := csPrefix) (kind := RefKind.Shared) h_mapped
-    obtain ⟨stmtOutC, h_stmtOutC⟩ :=
-      compileStmt_readrhs_chainsrc_value (h_shape := h_shape) h_piD h_sval0
-    obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
-    obtain ⟨h_erun, h_evalE⟩ := ensureLocalRegE_existing h_piD
-    obtain ⟨ev, h_rhs⟩ := id h_shape
-    have h_incrS : StateIncr
-        (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix)
-        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [compileStmtChecked, compileRExprToChecked, h_rhs, readRhsPre,
-        csMonad, h_erun, h_sval0]
-      simp only [csRun]
-      exact StateIncr.trans (freshReg_state_incr _)
-        (StateIncr.trans (emit_state_incr _ _)
-          (StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)))
-    have h_incrD : StateIncr
-        (emit
-          { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csPrefix) with
-            nextReg := (CheckedCompilerM.run
-              (placeToRegChecked RefKind.Shared src) csPrefix).nextReg + 1 }
-          ([Instr.Assgn (Register.R (CheckedCompilerM.run
-              (placeToRegChecked RefKind.Shared src) csPrefix).nextReg)
-              (mk sOut0.result.reg)]
-            ++ cleanupInstrs sOut0.result.cleanup))
-        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
-      rw [h_run0]
-      simp only [compileStmtChecked, compileRExprToChecked, h_rhs, readRhsPre,
-        csMonad, h_erun, h_sval0]
-      simp only [csRun]
-      exact StateIncr.trans (emit_state_incr _ _) (emit_state_incr _ _)
-    have h_instS :=
-      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrS
-    have h_instD :=
-      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrD
-    -- §4 the SOURCE package
-    obtain ⟨h_sclean, nR, sR, perms₂, vals, h_ost, h_vlen, h_runR, h_prmR,
-      h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR, h_vbelow,
-      h_valsRel⟩ :=
-      h_pkg' sOut0 h_sval0 h_instS h_instD
-    rw [h_ost] at h_step
-    simp only [mirlite.resolvePlaceAcc, h_envD] at h_step
-    -- the destination register still holds the root at the post-read state
-    obtain ⟨dstReg2, baseD2, tagD2, h_piD2, h_entryD2, h_raD2, h_rtD2,
-      h_nwD2, -⟩ := h_lbsR dstLoc bD h_envD
-    have h_piD2' : getPlaceInfo csPrefix dstLoc.idx.1 = some (dstReg2, τ) := by
-      show csPrefix.placeRegMap.lookup _ = _
-      rw [← h_prmR]
-      exact h_piD2
-    have h_dr2 : dstReg2 = dstReg := by grind
-    have h_baseD2 : baseD2 = bD.addr := (h_id_a _ _ h_raD2).symm
-    have h_tag2 : tagD2 = tagD := by
-      rw [h_rtD] at h_rtD2
-      exact (Option.some.inj h_rtD2).symm
-    rw [h_dr2, h_baseD2, h_tag2] at h_entryD2
-    -- §5 the BOUND-root write seam at offset zero
-    exact copy_bound_write_after_read (τ := τ) (dbase := bD.addr) (dtag := bD.tag)
-      (dsize := blockSize τ) compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t
-      h_unmap h_prb (dstReg := dstReg) 0 h_rtD  h_domD 0
-      (by simp) h_runR h_entryD2 (by rw [h_smem]; exact h_sms)
-      (by rw [h_smem]; exact h_alloc) h_prmR h_regmonoR h_lbsR h_psimR h_tbdR
-      h_pcR h_vregR h_vbelow h_vlen
-      (by
-        rw [projDstTail_zero]
-        exact (h_run0 csPrefix).trans
-          (compileStmt_readrhs_chainsrc_run (h_shape := h_shape) h_piD h_sval0
-            h_sclean))
-      output.values_len (by simp) rfl rfl rfl h_valsRel h_step
-
 /-! ## Proj-topped sources over CHAIN bases: fragments over the opaque
     base lowering. `placeToRegChecked Shared (.proj B path)` runs B's
     code (the mother lemma owns it), then passes the register through
@@ -1632,6 +1497,50 @@ theorem copy_projsrc_offset_read
   simp only [getPlaceInfo, emit]
   rw [h_sprm]
   exact h_pi'
+
+/-- Every chain-class read package is a value package: the rvalue's whole
+    compiled contribution is the source lowering plus its one
+    instruction, so the single code-inclusion obligation covers both of
+    the ones the read package asks for. -/
+theorem ValuePkg.of_readPkgLowered
+    {σ τ : LayoutTy} {rhs : RExpr Γ τ} {src : Place Γ σ} {mk : Register → Rhs}
+    (compProg : oseair.Prog)
+    (h_shape : ReadRhsShape rhs src mk)
+    (h_pkg : ReadPkgLowered compProg rhs src mk) :
+    ValuePkg compProg rhs := by
+  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
+    output h_eval
+  obtain ⟨ev, h_rhs⟩ := id h_shape
+  obtain ⟨h_mapped, h_pkg'⟩ :=
+    h_pkg ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
+      output h_eval
+  obtain ⟨sOut0, h_sval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
+    (cs := csA) (kind := RefKind.Shared) h_mapped
+  -- the rvalue's own code, named once
+  have h_prerun : CheckedCompilerM.run (compileRExprPreChecked rhs) csA
+      = emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with
+          nextReg := (CheckedCompilerM.run
+            (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 }
+        ([Instr.Assgn (Register.R (CheckedCompilerM.run
+            (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)]
+          ++ cleanupInstrs sOut0.result.cleanup) := by
+    simp only [h_rhs, readRhsPre, csMonad, csRun, h_sval0]
+  rw [h_rhs]
+  simp only [readRhsPre, csMonad, csRun, h_sval0]
+  refine ⟨Register.R (CheckedCompilerM.run
+      (placeToRegChecked RefKind.Shared src) csA).nextReg, _, rfl, fun _ => rfl, rfl, ?_⟩
+  intro h_code
+  obtain ⟨h_sclean, nR, sR, perms₂, vals, h_ost, h_vlen, h_runR, h_prmR,
+    h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR, h_vbelow,
+    h_valsRel⟩ :=
+    h_pkg' sOut0 h_sval0
+      (h_code.mono (StateIncr.trans (freshReg_state_incr _) (emit_state_incr _ _)))
+      h_code
+  -- with the source cleanup empty the two spellings of the tower agree
+  simp only [csCleanup, h_sclean, List.append_nil]
+  exact ⟨ρt, nR, sR, perms₂, vals, TagRenameIncr.refl ρt, h_wf_t, h_ost, h_vlen,
+    h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR,
+    h_vbelow, h_valsRel⟩
 
 /-- copy's chain-class read package, as an instance of the generic one. -/
 theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
@@ -5947,15 +5856,15 @@ theorem CompilerInv_step_readrhs
           | some bD =>
               -- CLOSED: a bound local source is the base case of the
               -- chain grammar, so the chain-src leaf owns L→L too
-              obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
-                copy_chainsrc_local_simulation (src := .local srcLoc) compProg
-                  (F.shape _)
-                  (F.pkgLowered _ (PtrChain.base srcLoc).loweringSimAny)
+              obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
+                storereg_local_simulation compProg
+                  (ValuePkg.of_readPkgLowered compProg (F.shape _)
+                    (F.pkgLowered _ (PtrChain.base srcLoc).loweringSimAny))
                   h_comp h_inv h_stmt
                   (fun _ => rfl) (fun _ so h => ⟨so, h⟩)
                   h_envD h_step
-              exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa,
-                TagRenameIncr.refl ρt, h_run, h_inv'⟩
+              exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa,
+                h_incr_t, h_run, h_inv'⟩
           | none =>
               -- CLOSED: fresh destination, chain source (regime B for copy)
               exact copy_fresh_chainsrc_simulation (src := .local srcLoc) compProg
@@ -6012,16 +5921,16 @@ theorem CompilerInv_step_readrhs
           | some bD =>
               -- CLOSED: `dst := copy *chain` — flatten-normalized, TOTAL
               rw [F.stepFlat] at h_step
-              obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
-                copy_chainsrc_local_simulation (src := .deref (flattenPlace pp))
-                  compProg (F.shape _)
-                  (F.pkgLowered _ (PtrChain_flatten_deref pp).loweringSimAny)
+              obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
+                storereg_local_simulation compProg
+                  (ValuePkg.of_readPkgLowered compProg (F.shape _)
+                    (F.pkgLowered _ (PtrChain_flatten_deref pp).loweringSimAny))
                   h_comp h_inv h_stmt
                   (fun cs => compileStmt_readrhs_derefsrc_flatten_run (h_shape := F.shape _) (h_shape2 := F.shape _) cs)
                   (fun cs so h => compileStmt_readrhs_derefsrc_flatten_value (h_shape := F.shape _) (h_shape2 := F.shape _) cs so h)
                   h_envD h_step
-              exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa,
-                TagRenameIncr.refl ρt, h_run, h_inv'⟩
+              exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa,
+                h_incr_t, h_run, h_inv'⟩
           | none =>
               -- CLOSED: fresh destination, deref-chain source
               rw [F.stepFlat] at h_step

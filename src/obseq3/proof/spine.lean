@@ -3936,6 +3936,202 @@ theorem copy_chain_write_after_read
       grind)
     rfl rfl rfl h_valsRel h_step
 
+/-! ## The value package: an rvalue's own half, with no shape at all
+
+`ValuePkg compProg rhs` says everything a destination leaf needs to know
+about an rvalue: given the invariant at `(sM, sA, csA)` and a SUCCESSFUL
+mirlite evaluation, the rvalue lowers to code that stores ONE register,
+and once that code is included in the program the target reaches a state
+where the register holds values related to the ones mirlite produced —
+with the tag renaming allowed to grow, since `ref` mints a tag.
+
+Nothing here mentions a source place, an emitted instruction, or even
+whether there IS a source place: the rvalue's whole compiled
+contribution is named `run (compileRExprPreChecked rhs) csA`. That is why
+one package serves copy, both casts and ref, and why a leaf consuming it
+is per DESTINATION shape only. -/
+def ValuePkg {Γ : Ctx} {τ : LayoutTy} (compProg : oseair.Prog)
+    (rhs : RExpr Γ τ) : Prop :=
+  ∀ (ρa : AddrRenameMap) (ρt : TagRenameMap)
+    (sM : mirlite.State MSB Γ) (sA : oseair.State MSB) (csA : CompilerState),
+    IdentityOnDomain ρa → TagRenameWF ρt →
+    TagRenameBounded ρt sM.perms.NextTag sA.perms.NextTag →
+    LocalBindingSim ρa ρt sM.env sA csA →
+    PlaceRegMapBound csA →
+    SourceMemSim ρa ρt sM.mem sA.mem →
+    AllocLockstep ρa sM.mem sA.mem →
+    PermSim ρt sM.perms sA.perms →
+    sA.pc = csA.nextLabel →
+    ∀ (output : mirlite.EvalOutput MSB Γ τ),
+      mirlite.evalRExpr MSB sM rhs = .ok output →
+      ∃ (vreg : Register) (pOut : RhsPre Γ τ rhs),
+      CheckedCompilerM.value (compileRExprPreChecked rhs) csA = Except.ok pOut ∧
+      (∀ d, pOut.store d = [Instr.RStore (layoutToTyVal τ) vreg d]) ∧
+      pOut.postCleanup = [] ∧
+      (CodeIncluded compProg (CheckedCompilerM.run (compileRExprPreChecked rhs) csA) →
+        ∃ (ρt' : TagRenameMap) (nR : Nat) (sR : oseair.State MSB)
+          (perms₂ : MSB.State) (vals : List Val),
+          TagRenameIncr ρt ρt' ∧
+          TagRenameWF ρt' ∧
+          output.state = { sM with perms := perms₂ } ∧
+          vals.length = blockSize τ ∧
+          oseair.runN MSB nR sA compProg = oseair.Result.Ok sR ∧
+          (CheckedCompilerM.run (compileRExprPreChecked rhs) csA).placeRegMap
+            = csA.placeRegMap ∧
+          csA.nextReg
+            ≤ (CheckedCompilerM.run (compileRExprPreChecked rhs) csA).nextReg ∧
+          LocalBindingSim ρa ρt' sM.env sR
+            (CheckedCompilerM.run (compileRExprPreChecked rhs) csA) ∧
+          PermSim ρt' perms₂ sR.perms ∧
+          TagRenameBounded ρt' perms₂.NextTag sR.perms.NextTag ∧
+          sR.mem = sA.mem ∧
+          sR.pc = (CheckedCompilerM.run (compileRExprPreChecked rhs) csA).nextLabel ∧
+          oseair.RegMap.lookup sR.reg vreg = some (layoutToTyVal τ, vals) ∧
+          RegisterBelow
+            (CheckedCompilerM.run (compileRExprPreChecked rhs) csA).nextReg vreg ∧
+          ListRel (MemValSim ρa ρt') output.values vals)
+
+/-- The compiled fragment of `loc := rhs` for ANY rvalue whose pre-phase
+    leaves its value in one register: the pre-phase's own code, then the
+    store. Nothing here mentions which rvalue it is. -/
+theorem compileStmt_storereg_local_run
+    {τ : LayoutTy} {loc : Local Γ τ} {rhs : RExpr Γ τ}
+    {cs : CompilerState} {dstReg vreg : Register} {preS : CompilerState}
+    {pOut : RhsPre Γ τ rhs}
+    (h_dst : getPlaceInfo cs loc.idx.1 = some (dstReg, τ))
+    (h_pval : CheckedCompilerM.value (compileRExprPreChecked rhs) cs = Except.ok pOut)
+    (h_pre : CheckedCompilerM.run (compileRExprPreChecked rhs) cs = preS)
+    (h_store : ∀ d, pOut.store d = [Instr.RStore (layoutToTyVal τ) vreg d])
+    (h_post : pOut.postCleanup = []) :
+    CheckedCompilerM.run (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs
+      = emit preS [Instr.RStore (layoutToTyVal τ) vreg dstReg] := by
+  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
+  simp only [compileStmtChecked, compileRExprToChecked, csMonad, h_run, h_val,
+    h_pval, h_store, h_post]
+  simp only [csRun, cleanupInstrs, List.reverse_nil, List.map_nil, emit_nil, h_pre]
+
+/-- The same statement lowers. -/
+theorem compileStmt_storereg_local_value
+    {τ : LayoutTy} {loc : Local Γ τ} {rhs : RExpr Γ τ}
+    {cs : CompilerState} {dstReg : Register}
+    {pOut : RhsPre Γ τ rhs}
+    (h_dst : getPlaceInfo cs loc.idx.1 = some (dstReg, τ))
+    (h_pval : CheckedCompilerM.value (compileRExprPreChecked rhs) cs = Except.ok pOut) :
+    ∃ so, CheckedCompilerM.value
+      (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs = Except.ok so := by
+  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
+  simp only [compileStmtChecked, compileRExprToChecked, csMonad, h_run, h_pval]
+  exact ⟨_, rfl⟩
+
+/-! ## The destination leaves, over an arbitrary rvalue
+
+A leaf depends on the rvalue ONLY through its value package: the mirlite
+inversion of the rvalue is inside the package, the compiled shape is
+`run (compileRExprPreChecked rhs) csPrefix` throughout, and the fragment
+lemmas that name it are rvalue-free. So there is one leaf per DESTINATION
+shape, shared by copy, both casts, and ref — whose retag grows the tag
+renaming, which is why the conclusion quantifies over an extended
+`ρt'`. -/
+
+/-- Bound local destination: the rvalue's code, then one store through
+    the root register. -/
+theorem storereg_local_simulation
+    {τ : LayoutTy} {dstLoc : Local Γ τ} {bD : mirlite.Binding}
+    {rhs : RExpr Γ τ}
+    (compProg : oseair.Prog)
+    (h_pkg : ValuePkg compProg rhs)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked (Stmt.assign (.local dstLoc) rhs)) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.local dstLoc) rhs)) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
+    (h_envD : mirlite.Env.lookup s_mir.env dstLoc = some bD)
+    (h_step : mirlite.stepStmt MSB s_mir
+      (.assign (.local dstLoc) rhs) = .ok s_mir') :
+    ∃ (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa ρt' s_mir' s_osea' := by
+  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
+    h_alloc, h_unmap, h_prb⟩ := h_inv
+  obtain ⟨dstReg, baseD, tagD, h_piD, h_entryD, h_raD, h_rtD, h_nwD, h_domD⟩ :=
+    h_lbs dstLoc bD h_envD
+  have h_baseD : baseD = bD.addr := (h_id_a _ _ h_raD).symm
+  subst h_baseD
+  -- §1 the destination is a BOUND local, so `preparePlaceAssign` is a no-op
+  simp only [mirlite.stepStmt, mirlite.doAssign] at h_step
+  cases h_prep : mirlite.preparePlaceAssign MSB s_mir (Place.local dstLoc) with
+  | err msg => rw [h_prep] at h_step; simp at h_step
+  | ok s1 =>
+  rw [h_prep] at h_step
+  have h_s1 : s1 = s_mir := by
+    simp only [mirPrep, h_envD] at h_prep
+    grind
+  rw [h_s1] at h_step
+  simp only at h_step
+  -- §2 the rvalue, entirely behind its package
+  cases h_eval : mirlite.evalRExpr MSB s_mir rhs with
+  | err e => rw [h_eval] at h_step; simp at h_step
+  | ok output =>
+    rw [h_eval] at h_step
+    simp only at h_step
+    obtain ⟨vreg, pOut, h_pval, h_storeR, h_postR, h_pkg'⟩ :=
+      h_pkg ρa ρt s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms
+        h_alloc h_psim h_pc output h_eval
+    -- §3 the statement's compiled shape: the rvalue's code, then the store
+    obtain ⟨stmtOutC, h_stmtOutC⟩ :=
+      compileStmt_storereg_local_value h_piD h_pval
+    obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
+    have h_incr : StateIncr (CheckedCompilerM.run (compileRExprPreChecked rhs) csPrefix)
+        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
+      rw [h_run0, compileStmt_storereg_local_run h_piD h_pval rfl
+        (h_store := h_storeR) (h_post := h_postR)]
+      exact emit_state_incr _ _
+    have h_instPre :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incr
+    -- §4 the rvalue's own run
+    obtain ⟨ρt', nR, sR, perms₂, vals, h_incr_t, h_wf_t', h_ost, h_vlen,
+      h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
+      h_vregR, h_vbelow, h_valsRel⟩ := h_pkg' h_instPre
+    rw [h_ost] at h_step
+    simp only [mirlite.resolvePlaceAcc, h_envD] at h_step
+    -- the destination register still holds the root at the post-rvalue state
+    obtain ⟨dstReg2, baseD2, tagD2, h_piD2, h_entryD2, h_raD2, h_rtD2,
+      h_nwD2, -⟩ := h_lbsR dstLoc bD h_envD
+    have h_piD2' : getPlaceInfo csPrefix dstLoc.idx.1 = some (dstReg2, τ) := by
+      show csPrefix.placeRegMap.lookup _ = _
+      rw [← h_prmR]
+      exact h_piD2
+    have h_dr2 : dstReg2 = dstReg := by grind
+    have h_baseD2 : baseD2 = bD.addr := (h_id_a _ _ h_raD2).symm
+    have h_tag2 : tagD2 = tagD :=
+      Option.some.inj (h_rtD2.symm.trans (h_incr_t _ _ h_rtD))
+    rw [h_dr2, h_baseD2, h_tag2] at h_entryD2
+    -- §5 the BOUND-root write seam at offset zero
+    obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
+      copy_bound_write_after_read (τ := τ) (dbase := bD.addr) (dtag := bD.tag)
+        (dsize := blockSize τ) compProg h_comp h_stmt h_csAt h_stmtOut h_id_a
+        h_wf_t' h_unmap h_prb (dstReg := dstReg) 0 (h_incr_t _ _ h_rtD)
+        (h_domD) 0 (by simp) h_runR h_entryD2
+        (by rw [h_smem]
+            exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
+        (by rw [h_smem]; exact h_alloc) h_prmR h_regmonoR h_lbsR h_psimR h_tbdR
+        h_pcR h_vregR h_vbelow h_vlen
+        (by
+          rw [projDstTail_zero]
+          exact (h_run0 csPrefix).trans
+            (compileStmt_storereg_local_run h_piD h_pval rfl
+              (h_store := h_storeR) (h_post := h_postR)))
+        output.values_len (by simp) rfl rfl rfl h_valsRel h_step
+    exact ⟨ρt', s_osea', n, h_incr_t, h_run, h_inv'⟩
+
 end
 
 
