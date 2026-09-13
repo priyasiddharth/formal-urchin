@@ -75,16 +75,18 @@ def compileProgFrom
 
 /-- Rvalues in the proof-core fragment. The v3 compiler is TOTAL, so this
     predicate scopes the correctness THEOREMS (obseq2's proof scope), not
-    the compiler. `exposeAddr` joined once the read-then-store family
-    (proof/copy.lean) made copy's leaves rvalue-generic; `fromExposed`
-    still waits on wildcard-tag transport, since the pointer it mints
-    carries `wildcardTag` and `MemValSim` forbids that. -/
+    the compiler. Both integer-pointer casts joined once the
+    read-then-store family (proof/copy.lean) made copy's leaves
+    rvalue-generic and wildcard accesses transported
+    (`resolveWildcardIn_transport`), which is what admits the
+    `wildcardTag` pointer `fromExposed` mints. -/
 def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .constInit _ => True
   | .copy _ => True
   | .ref _ _ _ _ => True
   | .uninit => True
   | .exposeAddr _ => True
+  | .fromExposed _ => True
   | _ => False
 
 /-- Statements in the proof-core fragment: `halt` and assignments with a

@@ -93,10 +93,9 @@ no invariant hypothesis to supply. BOTH are audited roots.
 
 What is NOT proven, and is not a gap in the proof but in its SCOPE:
 (a) the `CoreProg` gate — `assignIf`, `alloc`, `dealloc`, the protector
-frames, and the rvalues `ptrCast`, `ptrOffset`, `refSlice`,
-`fromExposed` are implemented and conformance-tested but excluded from
-the theorem (`uninit` and, since the read-then-store family landed,
-`exposeAddr` are IN); (b) the direction — this is a forward
+frames, and the rvalues `ptrCast`, `ptrOffset`, `refSlice` are
+implemented and conformance-tested but excluded from the theorem
+(`uninit`, and since 2026-09-13 both integer-pointer casts, are IN); (b) the direction — this is a forward
 simulation of SUCCESSFUL source runs, so it does not say the target
 goes wrong when the source has UB. That direction is probed only
 empirically, by the `expectDiff` corpus comparing VERDICTS, which is
@@ -420,7 +419,8 @@ theorem CompilerInv_step
         | refSlice k p src => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
         | exposeAddr src =>
             exact CompilerInv_step_exposeAddr compProg h_comp h_inv h_get h_step
-        | fromExposed src => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
+        | fromExposed src =>
+            exact CompilerInv_step_fromExposed compProg h_comp h_inv h_get h_step
         | uninit =>
             exact CompilerInv_step_uninit compProg h_comp h_inv h_get h_step
     | assignIf discr val dst rhs => exact absurd h_stmt_core (by simp [CoreStmt])

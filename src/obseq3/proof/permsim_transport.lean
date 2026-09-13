@@ -24,13 +24,15 @@ The family is COMPLETE — all five range ops:
   missing stack, so it reaches the fold characterizations through
   `foldCells_ok_iff_foldCellsIdx_ok`.
 
-Scope note: the acting tag is assumed non-wildcard
-(`(tagS == wildcardTag) = false`). Wildcard resolution transport
-(`resolveWildcardIn` over the renamed exposed set) is deliberately out of
-scope: proof-core programs cannot mint wildcard pointers (`fromExposed`
-is not a core rvalue), so no core acting tag is ever the wildcard. The non-core
-constructs that DO mint wildcards (`fromExposed`) are out of the proof
-core, so their `resolveWildcardIn` transport is deferred with them.
+Wildcard accesses transport too (2026-09-13). An access through
+`wildcardTag` resolves its granting tag out of the cell's own stack, and
+`PermSim` relates the stacks pointwise and the exposed lists positionally,
+so the two machines pick corresponding items: that is
+`resolveWildcardIn_transport`, and it is why none of the transports here
+needs a non-wildcard side condition any more. What the theorem then says
+about `fromExposed` is a statement about mirlite's DETERMINIZED wildcard
+rule (topmost exposed granting item), which is an approximation of
+Miri's angelic reading — see notes/loose-ends/parked.md B.1.
 -/
 
 namespace obseq3.proof
