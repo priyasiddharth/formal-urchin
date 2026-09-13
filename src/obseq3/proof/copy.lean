@@ -46,6 +46,7 @@ def ReadPkgLowered {Γ : Ctx} {τs τ : LayoutTy} (compProg : oseair.Prog)
     LocalBindingSim ρa ρt sM.env sA csA →
     PlaceRegMapBound csA →
     SourceMemSim ρa ρt sM.mem sA.mem →
+    AllocLockstep ρa sM.mem sA.mem →
     PermSim ρt sM.perms sA.perms →
     sA.pc = csA.nextLabel →
     ∀ (output : mirlite.EvalOutput MSB Γ τ),
@@ -87,6 +88,7 @@ def ReadPkgProjOffset {Γ : Ctx} {τs σs τ : LayoutTy} (compProg : oseair.Prog
     LocalBindingSim ρa ρt sM.env sA csA →
     PlaceRegMapBound csA →
     SourceMemSim ρa ρt sM.mem sA.mem →
+    AllocLockstep ρa sM.mem sA.mem →
     PermSim ρt sM.perms sA.perms →
     sA.pc = csA.nextLabel →
     ∀ (output : mirlite.EvalOutput MSB Γ τ),
@@ -454,8 +456,8 @@ theorem copy_chainsrc_local_simulation
     rw [h_eval] at h_step
     simp only at h_step
     obtain ⟨h_mapped, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim
-        h_pc output h_eval
+      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
+        h_psim h_pc output h_eval
     -- §3 compiler scaffolding: the statement value and the two
     -- code-inclusion facts the package consumes
     obtain ⟨sOut0, h_sval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
@@ -709,8 +711,8 @@ theorem copy_projchain_zero_simulation
     rw [h_eval] at h_step
     simp only at h_step
     obtain ⟨h_mappedP, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim
-        h_pc output h_eval
+      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
+        h_psim h_pc output h_eval
     have h_mappedB : PlaceInputsMapped csPrefix B := h_mappedP
     -- §3 compiler scaffolding: at zero offset the projection lowers as its base
     obtain ⟨sOut0, h_sval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
@@ -820,8 +822,8 @@ theorem copy_projchain_offset_simulation
     rw [h_eval] at h_step
     simp only at h_step
     obtain ⟨h_mappedP, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim
-        h_pc output h_eval
+      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
+        h_psim h_pc output h_eval
     have h_mappedB : PlaceInputsMapped csPrefix B := h_mappedP
     -- §3 compiler scaffolding: the projection's own `Borrow`/`Die` bracket
     obtain ⟨sOut0, h_sval0⟩ := placeToRegChecked_ok_of_placeInputsMapped
@@ -1638,7 +1640,7 @@ theorem copy_projsrc_offset_read
 theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
     ReadPkgLowered compProg (.copy src) src (Rhs.Load (layoutToTyVal τ)) := by
-  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc
+  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM src with
@@ -1674,7 +1676,7 @@ theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : 
     (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs), B = b.proj q → False)
     (h_o : pathOffset spath ≠ 0) :
     ReadPkgProjOffset compProg (.copy (.proj B spath)) B spath (Rhs.Load (layoutToTyVal τ)) := by
-  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc
+  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM B with
@@ -2013,6 +2015,7 @@ theorem copy_fresh_chainsrc_simulation
           intro a v h_find
           rw [h_find1] at h_find
           exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
+        (AllocLockstep.of_alloc h_alloc h_incr_a h_sz h_memstart1 h_allocs1)
         (by rw [h_perms1]; exact h_psim')
         (by
           show s_osea.pc + 1 = _
@@ -2348,6 +2351,7 @@ theorem copy_fresh_projchain_zero_simulation
           intro a v h_find
           rw [h_find1] at h_find
           exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
+        (AllocLockstep.of_alloc h_alloc h_incr_a h_sz h_memstart1 h_allocs1)
         (by rw [h_perms1]; exact h_psim')
         (by
           show s_osea.pc + 1 = _
@@ -2536,6 +2540,7 @@ theorem copy_fresh_projchain_offset_simulation
           intro a v h_find
           rw [h_find1] at h_find
           exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
+        (AllocLockstep.of_alloc h_alloc h_incr_a h_sz h_memstart1 h_allocs1)
         (by rw [h_perms1]; exact h_psim')
         (by
           show s_osea.pc + 1 = _
@@ -3236,8 +3241,8 @@ theorem copy_chaindst_chainsrc_simulation
     rw [h_eval] at h_step
     simp only at h_step
     obtain ⟨h_mappedS, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim
-        h_pc output h_eval
+      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
+        h_psim h_pc output h_eval
     -- §2 both places are mapped; the statement compiles
     have h_mappedD : PlaceInputsMapped csPrefix (Place.deref P) :=
       placeInputsMapped_of_localBindingSim_resolvePlace h_lbs h_resolved
@@ -3358,8 +3363,8 @@ theorem copy_chaindst_projsrc_zero_simulation
     rw [h_eval] at h_step
     simp only at h_step
     obtain ⟨h_mappedP, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim
-        h_pc output h_eval
+      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
+        h_psim h_pc output h_eval
     have h_mappedS : PlaceInputsMapped csPrefix B := h_mappedP
     -- §2 both places are mapped; the statement compiles
     have h_mappedD : PlaceInputsMapped csPrefix (Place.deref P) :=
@@ -3551,8 +3556,8 @@ theorem copy_chaindst_projsrc_offset_simulation
     rw [h_eval] at h_step
     simp only at h_step
     obtain ⟨h_mappedP, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim
-        h_pc output h_eval
+      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
+        h_psim h_pc output h_eval
     have h_mappedS : PlaceInputsMapped csPrefix B := h_mappedP
     -- §2 both places are mapped; the statement compiles
     have h_mappedD : PlaceInputsMapped csPrefix (Place.deref P) :=
@@ -3834,6 +3839,7 @@ theorem copy_projlocal_fresh_simulation
           intro a v h_find
           rw [h_find1] at h_find
           exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
+        (AllocLockstep.of_alloc h_alloc h_incr_a (obseq.typeSize_layoutToTyVal _) h_memstart1 h_allocs1)
         (by rw [h_perms1]; exact h_psim')
         (by
           show s_osea.pc + 1 = _
@@ -4171,6 +4177,7 @@ theorem copy_projlocal_fresh_projsrc_simulation
           intro a v h_find
           rw [h_find1] at h_find
           exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
+        (AllocLockstep.of_alloc h_alloc h_incr_a (obseq.typeSize_layoutToTyVal _) h_memstart1 h_allocs1)
         (by rw [h_perms1]; exact h_psim')
         (by
           show s_osea.pc + 1 = _
@@ -5048,8 +5055,8 @@ theorem copy_projdst_zero_projsrc_offset_simulation
     rw [h_eval] at h_step
     simp only at h_step
     obtain ⟨h_mappedP2, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim
-        h_pc output h_eval
+      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
+        h_psim h_pc output h_eval
     have h_mappedS : PlaceInputsMapped csPrefix B := h_mappedP2
     -- §2 both places are mapped; the statement compiles
     have h_mappedP : PlaceInputsMapped csPrefix (Place.proj dbase dpath) :=
@@ -5187,8 +5194,8 @@ theorem copy_projdst_offset_projsrc_offset_simulation
     rw [h_eval] at h_step
     simp only at h_step
     obtain ⟨h_mappedP2, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim
-        h_pc output h_eval
+      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
+        h_psim h_pc output h_eval
     have h_mappedS : PlaceInputsMapped csPrefix B := h_mappedP2
     -- §2 both places are mapped; the statement compiles
     have h_mappedP : PlaceInputsMapped csPrefix (Place.proj dbase dpath) :=
@@ -5326,8 +5333,8 @@ theorem copy_projdst_zero_chainsrc_simulation
     rw [h_eval] at h_step
     simp only at h_step
     obtain ⟨h_mappedS, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim
-        h_pc output h_eval
+      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
+        h_psim h_pc output h_eval
     -- §2 both places are mapped; the statement compiles
     have h_mapped : PlaceInputsMapped csPrefix (Place.proj (dbase) path) :=
       placeInputsMapped_of_localBindingSim_resolvePlace h_lbs h_resolved
@@ -5451,8 +5458,8 @@ theorem copy_projdst_offset_chainsrc_simulation
     rw [h_eval] at h_step
     simp only at h_step
     obtain ⟨h_mappedS, h_pkg'⟩ :=
-      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim
-        h_pc output h_eval
+      h_pkg _ _ s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc
+        h_psim h_pc output h_eval
     -- §2 both places are mapped; the statement compiles
     have h_mapped : PlaceInputsMapped csPrefix (Place.proj (dbase) path) :=
       placeInputsMapped_of_localBindingSim_resolvePlace h_lbs h_resolved

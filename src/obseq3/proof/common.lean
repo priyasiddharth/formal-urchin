@@ -1050,6 +1050,23 @@ theorem AllocLockstep.allocate_eq {ρa : AddrRenameMap}
   refine ⟨h1, ?_, ?_, h3⟩ <;>
     simp [mirlite.allocate, oseair.allocate, h1, h2]
 
+/-- `AllocLockstep` after a lockstep allocation, stated over the source
+    state's memory FACTS (watermark and table) rather than the allocation
+    itself — that is the form a fresh-root leaf has. -/
+theorem AllocLockstep.of_alloc {ρa ρa' : AddrRenameMap}
+    {m m1 : mirlite.Mem} {m' : oseair.Mem} {sz szT : Nat}
+    (h : AllocLockstep ρa m m') (h_incr : AddrRenameIncr ρa ρa')
+    (h_sz : szT = sz)
+    (h_start : m1.addrStart = m.addrStart + sz)
+    (h_allocs : m1.allocs = (m.addrStart, sz) :: m.allocs) :
+    AllocLockstep ρa' m1 (oseair.allocate m' szT).2 := by
+  subst h_sz
+  refine ⟨?_, ?_, fun a => h_incr a a (h.2.2 a)⟩
+  · show m'.addrStart + szT = _
+    rw [h_start, h.1]
+  · show (m'.addrStart, szT) :: m'.allocs = _
+    rw [h_allocs, h.1, h.2.1]
+
 /-- Forward memory simulation at renamed addresses. -/
 def SourceMemSim
   (ρa : AddrRenameMap)

@@ -52,7 +52,7 @@ theorem stepStmt_assign_exposesrc_anyflatten
 theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
     ReadPkgLowered compProg (.exposeAddr src) src Rhs.ExposeAddr := by
-  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc
+  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM src with
@@ -197,7 +197,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
     (h_o : pathOffset spath ≠ 0) :
     ReadPkgProjOffset compProg (.exposeAddr (.proj B spath)) B spath
       Rhs.ExposeAddr := by
-  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc
+  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM B with
