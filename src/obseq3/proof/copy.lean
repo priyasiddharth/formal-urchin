@@ -519,7 +519,7 @@ theorem copy_chainsrc_local_simulation
     -- §5 the BOUND-root write seam at offset zero
     exact copy_bound_write_after_read (τ := τ) (dbase := bD.addr) (dtag := bD.tag)
       (dsize := blockSize τ) compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t
-      h_unmap h_prb (dstReg := dstReg) 0 h_raD h_rtD  h_domD 0
+      h_unmap h_prb (dstReg := dstReg) 0 h_rtD  h_domD 0
       (by simp) h_runR h_entryD2 (by rw [h_smem]; exact h_sms)
       (by rw [h_smem]; exact h_alloc) h_prmR h_regmonoR h_lbsR h_psimR h_tbdR
       h_pcR h_vregR h_vbelow h_vlen
@@ -758,7 +758,7 @@ theorem copy_projchain_zero_simulation
     -- §5 the BOUND-root write seam at offset zero
     exact copy_bound_write_after_read (τ := τ) (dbase := bD.addr) (dtag := bD.tag)
       (dsize := blockSize τ) compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t
-      h_unmap h_prb (dstReg := dstReg) 0 h_raD h_rtD  h_domD 0
+      h_unmap h_prb (dstReg := dstReg) 0 h_rtD  h_domD 0
       (by simp) h_runR h_entryD2 (by rw [h_smem]; exact h_sms)
       (by rw [h_smem]; exact h_alloc) h_prmR h_regmonoR h_lbsR h_psimR h_tbdR
       h_pcR h_vregR h_vbelow h_vlen
@@ -872,7 +872,7 @@ theorem copy_projchain_offset_simulation
     -- §5 the BOUND-root write seam at offset zero
     exact copy_bound_write_after_read (τ := τ) (dbase := bD.addr) (dtag := bD.tag)
       (dsize := blockSize τ) compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t
-      h_unmap h_prb (dstReg := dstReg) 0 h_raD h_rtD  h_domD 0
+      h_unmap h_prb (dstReg := dstReg) 0 h_rtD  h_domD 0
       (by simp) h_runR h_entryD2 (by rw [h_smem]; exact h_sms)
       (by rw [h_smem]; exact h_alloc) h_prmR h_regmonoR h_lbsR h_psimR h_tbdR
       h_pcR h_vregR h_vbelow h_vlen
@@ -1324,9 +1324,6 @@ theorem copy_chainsrc_read
 theorem copy_projsrc_offset_read
     {τ σs : LayoutTy} {B : Place Γ σs} {spath : PathTo σs τ}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B)
-    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs),
-      B = b.proj q → False)
-    (h_o : pathOffset spath ≠ 0)
     (sM : mirlite.State MSB Γ) (sA : oseair.State MSB) (csA : CompilerState)
     (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
     (h_tbd : TagRenameBounded ρt sM.perms.NextTag sA.perms.NextTag)
@@ -1672,9 +1669,7 @@ theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
 
 /-- copy's projected-source read package, as an instance of the generic one. -/
 theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : PathTo σs τ}
-    (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B)
-    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs), B = b.proj q → False)
-    (h_o : pathOffset spath ≠ 0) :
+    (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.copy (.proj B spath)) B spath (Rhs.Load (layoutToTyVal τ)) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
@@ -1702,7 +1697,7 @@ theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : 
     intro sOut0 h_sval0 sOutP h_regP h_clP h_instS h_instCS
     obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
       h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
-      copy_projsrc_offset_read compProg h_slower h_np h_o sM sA csA h_id_a h_wf_t h_tbd
+      copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
         h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_regP h_clP
         h_instS h_instCS
     exact ⟨h_sclean, n1, _, perms₂, _, rfl, (by rw [oseair_readWordSeq_length]),
@@ -1982,8 +1977,8 @@ theorem copy_fresh_chainsrc_simulation
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
     h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erun, h_prb1, h_lbs1⟩ :=
-    copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
+    copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+      h_lbs h_prb h_pi_none h_incr_a (AddrRenameMap.extendBlock_base _ _ _)
       h_ra_dom
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
@@ -2081,7 +2076,7 @@ theorem copy_fresh_chainsrc_simulation
     -- §8-§11 the fresh-root WRITE seam: the `RStore` through the root,
     -- the memory extension, and the whole invariant rebuild
     exact copy_freshroot_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
+      h_sms h_unmap h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
       h_addr_eq h_sz h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
       h_vregR h_vlen h_stmtRun output.values_len (Nat.le_refl _) rfl rfl h_rel h_step
@@ -2316,8 +2311,8 @@ theorem copy_fresh_projchain_zero_simulation
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
     h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erun, h_prb1, h_lbs1⟩ :=
-    copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
+    copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+      h_lbs h_prb h_pi_none h_incr_a (AddrRenameMap.extendBlock_base _ _ _)
       h_ra_dom
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
@@ -2438,7 +2433,7 @@ theorem copy_fresh_projchain_zero_simulation
     -- §8-§11 the fresh-root WRITE seam: the `RStore` through the root,
     -- the memory extension, and the whole invariant rebuild
     exact copy_freshroot_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
+      h_sms h_unmap h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
       h_addr_eq h_sz h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
       h_vregR h_vlen h_stmtRun output.values_len (Nat.le_refl _) rfl rfl h_rel h_step
@@ -2506,8 +2501,8 @@ theorem copy_fresh_projchain_offset_simulation
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
     h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erun, h_prb1, h_lbs1⟩ :=
-    copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
+    copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+      h_lbs h_prb h_pi_none h_incr_a (AddrRenameMap.extendBlock_base _ _ _)
       h_ra_dom
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
@@ -2630,7 +2625,7 @@ theorem copy_fresh_projchain_offset_simulation
     -- §8-§11 the fresh-root WRITE seam: the `RStore` through the root,
     -- the memory extension, and the whole invariant rebuild
     exact copy_freshroot_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
+      h_sms h_unmap h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
       h_addr_eq h_sz h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
       h_vregR h_vlen h_stmtRun output.values_len (Nat.le_refl _) rfl rfl h_rel h_step
@@ -3809,8 +3804,8 @@ theorem copy_projlocal_fresh_simulation
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
     h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erunL, h_prb1, h_lbs1⟩ :=
-    copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
+    copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+      h_lbs h_prb h_pi_none h_incr_a (AddrRenameMap.extendBlock_base _ _ _)
       h_ra_dom
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   -- §3 the source read, kept OPAQUE behind the rvalue's package
@@ -4016,7 +4011,7 @@ theorem copy_projlocal_fresh_simulation
             [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))])
           loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
       (mvals := output.values)
-      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb
+      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap
       h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_sz h_runAlloc
       h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 (pathOffset path)
       (PathTo.offset_add_size_le path)
@@ -4146,8 +4141,8 @@ theorem copy_projlocal_fresh_projsrc_simulation
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
     h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erunL, h_prb1, h_lbs1⟩ :=
-    copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
+    copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+      h_lbs h_prb h_pi_none h_incr_a (AddrRenameMap.extendBlock_base _ _ _)
       h_ra_dom
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   -- §3 the source read, kept OPAQUE behind the rvalue's package
@@ -4370,7 +4365,7 @@ theorem copy_projlocal_fresh_projsrc_simulation
     exact copy_fresh_write_after_read
       (τ := τ)
       (mvals := output.values)
-      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb
+      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap
       h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_sz h_runAlloc
       h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 (pathOffset path)
       (PathTo.offset_add_size_le path)
@@ -6132,9 +6127,8 @@ theorem copy_readRhsFamily {Γ : Ctx} {τ : LayoutTy} (compProg : oseair.Prog) :
       (Rhs.Load (layoutToTyVal τ)) where
   shape := fun src => readRhsShape_copy src
   stepFlat := fun s dst src => stepStmt_assign_copysrc_anyflatten s dst src
-  pkgLowered := fun src h => copy_readpkg_lowered compProg h
-  pkgProjOffset := fun B spath h h_np h_o =>
-    copy_readpkg_projoffset compProg h h_np h_o
+  pkgLowered := fun _ h => copy_readpkg_lowered compProg h
+  pkgProjOffset := fun _ _ h _ _ => copy_readpkg_projoffset compProg h
 
 theorem CompilerInv_step_copy
     {τ : LayoutTy}

@@ -678,7 +678,7 @@ theorem ref_local_local_simulation
       obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB,
         h_pcB, h_relB⟩ :=
         ref_local_borrow τ τ kind prot mask 0 compProg s_mir s_osea csPrefix
-          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
+          h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
           h_domS (by simp) (by simpa using h_ref_src) h_code1
       have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
           s_mir.perms.NextTag = some s_osea.perms.NextTag :=
@@ -709,15 +709,15 @@ theorem ref_local_local_simulation
           (vals := [Val.Ptr bS.addr (0 + 0) (blockSize τ) s_osea.perms.NextTag])
           (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr) (blockSize τ)
             s_mir.perms.NextTag])
-          compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-          0 h_raD h_rtD'  h_domD h_run1
+          compProg h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
+          0 h_rtD'  h_domD h_run1
           (by
             show oseair.RegMap.lookup _ _ = _
             rw [RegMap.lookup_insert_ne _ h_regne]
             exact h_entryD)
           (SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
           h_alloc rfl (by simp only [emit]; exact Nat.le_succ _) h_lbsB h_psim'
-          h_tbd' h_pcB (RegMap.lookup_insert_self _ _ _)
+          h_tbd' (RegMap.lookup_insert_self _ _ _)
           (by simp [blockSize, obseq.layoutSize])
           (by simp [blockSize, obseq.layoutSize])
           h_code2
@@ -784,8 +784,8 @@ theorem ref_fresh_dst_simulation
       obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
         hD1, h_memstart1, h_allocs1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
         h_erun, h_prb1, h_lbs1⟩ :=
-        copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-          h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_new
+        copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+          h_lbs h_prb h_piD h_incr_a h_ra_new
           (fun k hk => by
             have hk0 : k = 0 := by
               simp only [blockSize, obseq.layoutSize] at hk
@@ -857,7 +857,7 @@ theorem ref_fresh_dst_simulation
               τ τ kind prot mask 0 compProg s1
               { s_osea with mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ)))).2, perms := tgtP1, reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg) (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0 (obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ))) s_osea.perms.NextTag]), pc := s_osea.pc + 1 }
               (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.PtrL τ))
-              h_id_a' h_wf1 (by rw [h_perms1]; exact h_tbd1) h_lbs1 h_prb1
+              h_wf1 (by rw [h_perms1]; exact h_tbd1) h_lbs1 h_prb1
               (by rw [h_perms1]; exact h_psim1)
               (by
                 show s_osea.pc + 1 = _
@@ -901,7 +901,7 @@ theorem ref_fresh_dst_simulation
             (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr)
               (blockSize τ) s1.perms.NextTag])
             compProg h_comp h_stmt h_csAt
-            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+            h_stmtOut h_sms h_unmap hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
             h_find1
             h_addr_eq h_szD h_run1 h_incr_a h_incr12 h_id_a' h_wf2
             (fun k hk => by
@@ -1008,7 +1008,7 @@ theorem ref_proj_local_simulation
       obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB, h_pcB,
         h_relB⟩ :=
         ref_local_borrow τ σb kind prot mask (pathOffset f) compProg s_mir s_osea csPrefix
-          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
+          h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
           h_domS (PathTo.offset_add_size_le f) h_ref_src h_code1
       -- §5-§6 the BOUND-root PLAIN write seam
       simp only [h_envD] at h_step
@@ -1033,8 +1033,8 @@ theorem ref_proj_local_simulation
           (vals := [Val.Ptr bS.addr (0 + pathOffset f) (blockSize σb) s_osea.perms.NextTag])
           (mvals := [mirlite.MemValue.ptrVal bS.addr
             (bS.addr + pathOffset f - bS.addr) (blockSize σb) s_mir.perms.NextTag])
-          compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-          0 h_raD (h_incr_t _ _ h_rtD) h_domD h_run1
+          compProg h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
+          0 (h_incr_t _ _ h_rtD) h_domD h_run1
           (by
             show oseair.RegMap.lookup _ _ = _
             rw [RegMap.lookup_insert_ne _ h_regne]
@@ -1043,7 +1043,6 @@ theorem ref_proj_local_simulation
           h_alloc rfl (by simp only [emit]; exact Nat.le_succ _)
           h_lbsB
           h_psim' h_tbd'
-          h_pcB
           (RegMap.lookup_insert_self _ _ _)
           (by simp [blockSize, obseq.layoutSize])
           (by simp [blockSize, obseq.layoutSize])
@@ -1428,14 +1427,14 @@ theorem ref_deref_local_simulation
         (mvals := [mirlite.MemValue.ptrVal resolved.allocBase
           (resolved.addr + pathOffset PathTo.nil - resolved.allocBase) resolved.allocSize
           permsR.NextTag])
-        compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-        0 h_raD2 h_rtD2  h_domD h_runB h_entryD2
+        compProg h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
+        0 h_rtD2  h_domD h_runB h_entryD2
         (by rw [h_memB]
             exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
         (by rw [h_memB]; exact h_alloc)
         (by simp only [emit]; exact h_dprm)
         (by simp only [emit]; exact Nat.le_trans h_dregmono (Nat.le_succ _))
-        h_lbsB (by rw [hsB]; exact h_psim') (by rw [hsB]; exact h_tbd') h_pcB
+        h_lbsB (by rw [hsB]; exact h_psim') (by rw [hsB]; exact h_tbd')
         (by subst hsB; exact RegMap.lookup_insert_self _ _ _)
         (by simp [blockSize, obseq.layoutSize])
         (by simp [blockSize, obseq.layoutSize])
@@ -1880,7 +1879,7 @@ theorem ref_projdst_local_simulation
       obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB,
         h_pcB, h_relB⟩ :=
         ref_local_borrow τ τ kind prot mask 0 compProg s_mir s_osea csPrefix
-          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
+          h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
           h_domS (by simp) (by simpa using h_ref_src) h_code1
       have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
           = some tagD := h_incr_t _ _ h_rtD
@@ -1909,7 +1908,7 @@ theorem ref_projdst_local_simulation
           (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr) (blockSize τ)
             s_mir.perms.NextTag])
           compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-          0 h_raD h_rtD'  h_domD (pathOffset g)
+          0 h_rtD'  h_domD (pathOffset g)
           (by simpa using PathTo.offset_add_size_le g) h_run1
           (by
             show oseair.RegMap.lookup _ _ = _
@@ -3313,7 +3312,7 @@ theorem ref_derefdst_local_simulation
   obtain ⟨tgtP1, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbs1,
     h_pc1, h_relB⟩ :=
     ref_local_borrow τ τ kind prot mask 0 compProg s_mir s_osea csPrefix
-      h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
+      h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
       h_domS (by simp) (by simpa using h_ref_src) h_code1
   -- §7 the WHOLE dst lowering via the mother lemma, from the
   -- post-Borrow state under the extended rename
@@ -3747,8 +3746,8 @@ theorem ref_fresh_projsrc_simulation
       obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
         hD1, h_memstart1, h_allocs1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
         h_erun, h_prb1, h_lbs1⟩ :=
-        copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-          h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_new
+        copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+          h_lbs h_prb h_piD h_incr_a h_ra_new
           (fun k hk => by
             have hk0 : k = 0 := by
               simp only [blockSize, obseq.layoutSize] at hk
@@ -3827,7 +3826,7 @@ theorem ref_fresh_projsrc_simulation
               τ σb kind prot mask (pathOffset f) compProg s1
               { s_osea with mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ)))).2, perms := tgtP1, reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg) (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0 (obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ))) s_osea.perms.NextTag]), pc := s_osea.pc + 1 }
               (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.PtrL τ))
-              h_id_a' h_wf1 (by rw [h_perms1]; exact h_tbd1) h_lbs1 h_prb1
+              h_wf1 (by rw [h_perms1]; exact h_tbd1) h_lbs1 h_prb1
               (by rw [h_perms1]; exact h_psim1)
               (by
                 show s_osea.pc + 1 = _
@@ -3870,7 +3869,7 @@ theorem ref_fresh_projsrc_simulation
             (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr + pathOffset f - bS.addr)
               (blockSize σb) s1.perms.NextTag])
             compProg h_comp h_stmt h_csAt
-            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+            h_stmtOut h_sms h_unmap hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
             h_find1
             h_addr_eq h_szD h_run1 h_incr_a h_incr12 h_id_a' h_wf2
             (fun k hk => by
@@ -3983,8 +3982,8 @@ theorem ref_proj_fresh_simulation
       obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
         hD1, h_memstart1, h_allocs1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
         h_erun, h_prb1, h_lbs1⟩ :=
-        copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-          h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
+        copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+          h_lbs h_prb h_piD h_incr_a h_ra_base h_ra_dom
       have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
       have h_szD : obseq.typeSize (layoutToTyVal σ) = blockSize σ :=
         obseq.typeSize_layoutToTyVal _
@@ -4049,7 +4048,7 @@ theorem ref_proj_fresh_simulation
               τ τ kind prot mask 0 compProg s1
               { s_osea with mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2, perms := tgtP1, reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg) (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0 (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]), pc := s_osea.pc + 1 }
               (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, σ))
-              h_id_a' h_wf1 (by rw [h_perms1]; exact h_tbd1) h_lbs1 h_prb1
+              h_wf1 (by rw [h_perms1]; exact h_tbd1) h_lbs1 h_prb1
               (by rw [h_perms1]; exact h_psim1)
               (by
                 show s_osea.pc + 1 = _
@@ -4091,7 +4090,7 @@ theorem ref_proj_fresh_simulation
             (vals := [Val.Ptr bS.addr (0 + 0) (blockSize τ) tgtP1.NextTag])
             (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr)
               (blockSize τ) s1.perms.NextTag])
-            compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb hD1
+            compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap hD1
             h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_szD h_run1 h_incr_a
             h_incr12 h_id_a' h_wf2 h_ra_dom h_prb1
             (pathOffset g) (PathTo.offset_add_size_le g) h_run2
@@ -4169,8 +4168,8 @@ theorem ref_fresh_derefsrc_simulation
   obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
     h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf1, h_tbd1, h_psim1,
     h_erun, h_prb1, h_lbs1⟩ :=
-    copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
+    copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+      h_lbs h_prb h_piD h_incr_a h_ra_base h_ra_dom
   -- §2 the facts the source mother will want, at the post-`Alloc` states
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ)) = blockSize (obseq.LayoutTy.PtrL τ) :=
@@ -4314,7 +4313,7 @@ theorem ref_fresh_derefsrc_simulation
       (mvals := [mirlite.MemValue.ptrVal resolved.allocBase
         (resolved.addr + pathOffset PathTo.nil - resolved.allocBase) resolved.allocSize
         permsR.NextTag])
-      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb h_lookup_set
+      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_lookup_set
       h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_sz h_runAlloc h_incr_a
       (TagRenameIncr.trans h_incr_t h_incr_t2) h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runB
@@ -4408,7 +4407,7 @@ theorem ref_projdst_projsrc_simulation
       obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB,
         h_pcB, h_relB⟩ :=
         ref_local_borrow τ σb kind prot mask (pathOffset f) compProg s_mir s_osea
-          csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS
+          csPrefix h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS
           h_rtS  h_domS (PathTo.offset_add_size_le f)
           (by simpa using h_ref_src) h_code1
       have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
@@ -4436,7 +4435,7 @@ theorem ref_projdst_projsrc_simulation
           (mvals := [mirlite.MemValue.ptrVal bS.addr
             (bS.addr + pathOffset f - bS.addr) (blockSize σb) s_mir.perms.NextTag])
           compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-          0 h_raD h_rtD'  h_domD (pathOffset g)
+          0 h_rtD'  h_domD (pathOffset g)
           (by simpa using PathTo.offset_add_size_le g) h_run1
           (by
             show oseair.RegMap.lookup _ _ = _
@@ -4526,8 +4525,8 @@ theorem ref_proj_fresh_projsrc_simulation
       obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
         hD1, h_memstart1, h_allocs1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
         h_erun, h_prb1, h_lbs1⟩ :=
-        copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-          h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
+        copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+          h_lbs h_prb h_piD h_incr_a h_ra_base h_ra_dom
       have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
       have h_szD : obseq.typeSize (layoutToTyVal σ) = blockSize σ :=
         obseq.typeSize_layoutToTyVal _
@@ -4596,7 +4595,7 @@ theorem ref_proj_fresh_projsrc_simulation
               τ σb kind prot mask (pathOffset f) compProg s1
               { s_osea with mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2, perms := tgtP1, reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg) (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0 (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]), pc := s_osea.pc + 1 }
               (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, σ))
-              h_id_a' h_wf1 (by rw [h_perms1]; exact h_tbd1) h_lbs1 h_prb1
+              h_wf1 (by rw [h_perms1]; exact h_tbd1) h_lbs1 h_prb1
               (by rw [h_perms1]; exact h_psim1)
               (by
                 show s_osea.pc + 1 = _
@@ -4637,7 +4636,7 @@ theorem ref_proj_fresh_projsrc_simulation
             (mvals := [mirlite.MemValue.ptrVal bS.addr
               (bS.addr + pathOffset f - bS.addr) (blockSize σb) s1.perms.NextTag])
             compProg h_comp h_stmt h_csAt
-            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+            h_stmtOut h_sms h_unmap hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
             h_find1
             h_addr_eq h_szD h_run1 h_incr_a h_incr12 h_id_a' h_wf2 h_ra_dom
             h_prb1 (pathOffset g) (PathTo.offset_add_size_le g) h_run2
@@ -4718,8 +4717,8 @@ theorem ref_proj_fresh_selfsrc_simulation
       obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
         hD1, h_memstart1, h_allocs1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
         h_erun, h_prb1, h_lbs1⟩ :=
-        copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-          h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
+        copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+          h_lbs h_prb h_piD h_incr_a h_ra_base h_ra_dom
       have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
       have h_szD : obseq.typeSize (layoutToTyVal σ) = blockSize σ :=
         obseq.typeSize_layoutToTyVal _
@@ -4787,7 +4786,7 @@ theorem ref_proj_fresh_selfsrc_simulation
               τ σ kind prot mask (pathOffset f) compProg s1
               { s_osea with mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2, perms := tgtP1, reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg) (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0 (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]), pc := s_osea.pc + 1 }
               (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal σ))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, σ))
-              h_id_a' h_wf1 (by rw [h_perms1]; exact h_tbd1) h_lbs1 h_prb1
+              h_wf1 (by rw [h_perms1]; exact h_tbd1) h_lbs1 h_prb1
               (by rw [h_perms1]; exact h_psim1)
               (by
                 show s_osea.pc + 1 = _
@@ -4829,7 +4828,7 @@ theorem ref_proj_fresh_selfsrc_simulation
               (s_mir.mem.addrStart + pathOffset f - s_mir.mem.addrStart)
               (blockSize σ) s1.perms.NextTag])
             compProg h_comp h_stmt h_csAt
-            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+            h_stmtOut h_sms h_unmap hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
             h_find1
             h_addr_eq h_szD h_run1 h_incr_a h_incr12 h_id_a' h_wf2 h_ra_dom
             h_prb1 (pathOffset g) (PathTo.offset_add_size_le g) h_run2
@@ -4983,14 +4982,14 @@ theorem ref_derefprojsrc_local_simulation
         (mvals := [mirlite.MemValue.ptrVal resolved.allocBase
           (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
           permsR.NextTag])
-        compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-        0 h_raD2 h_rtD2  h_domD h_runB h_entryD2
+        compProg h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
+        0 h_rtD2  h_domD h_runB h_entryD2
         (by rw [h_memB]
             exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
         (by rw [h_memB]; exact h_alloc)
         (by simp only [emit]; exact h_dprm)
         (by simp only [emit]; exact Nat.le_trans h_dregmono (Nat.le_succ _))
-        h_lbsB (by rw [hsB]; exact h_psim') (by rw [hsB]; exact h_tbd') h_pcB
+        h_lbsB (by rw [hsB]; exact h_psim') (by rw [hsB]; exact h_tbd')
         (by subst hsB; exact RegMap.lookup_insert_self _ _ _)
         (by simp [blockSize, obseq.layoutSize])
         (by simp [blockSize, obseq.layoutSize])
@@ -5061,8 +5060,8 @@ theorem ref_fresh_derefprojsrc_simulation
   obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
     h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf1, h_tbd1, h_psim1,
     h_erun, h_prb1, h_lbs1⟩ :=
-    copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
+    copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+      h_lbs h_prb h_piD h_incr_a h_ra_base h_ra_dom
   -- §2 the facts the source mother will want, at the post-`Alloc` states
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ)) = blockSize (obseq.LayoutTy.PtrL τ) :=
@@ -5206,7 +5205,7 @@ theorem ref_fresh_derefprojsrc_simulation
       (mvals := [mirlite.MemValue.ptrVal resolved.allocBase
         (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
         permsR.NextTag])
-      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb h_lookup_set
+      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_lookup_set
       h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_sz h_runAlloc h_incr_a
       (TagRenameIncr.trans h_incr_t h_incr_t2) h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runB
@@ -5349,7 +5348,7 @@ theorem ref_projdst_derefsrc_simulation
           (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
           permsR.NextTag])
         compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-        0 h_raD2 h_rtD2  h_domD (pathOffset g)
+        0 h_rtD2  h_domD (pathOffset g)
         (by simpa using PathTo.offset_add_size_le g)
         h_runB h_entryD2
         (by rw [h_memB]
@@ -5426,8 +5425,8 @@ theorem ref_proj_fresh_derefsrc_simulation
   obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
     h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf1, h_tbd1, h_psim1,
     h_erun, h_prb1, h_lbs1⟩ :=
-    copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
-      h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
+    copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+      h_lbs h_prb h_piD h_incr_a h_ra_base h_ra_dom
   -- §2 the facts the source mother will want, at the post-`Alloc` states
   have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal σ) = blockSize σ :=
@@ -5539,7 +5538,7 @@ theorem ref_proj_fresh_derefsrc_simulation
       (mvals := [mirlite.MemValue.ptrVal resolved.allocBase
         (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
         permsR.NextTag])
-      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb h_lookup_set
+      compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_lookup_set
       h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_sz h_runAlloc h_incr_a
       (TagRenameIncr.trans h_incr_t h_incr_t2) h_id_a' h_wf_t' h_ra_dom h_prb1
       (pathOffset g) (PathTo.offset_add_size_le g) h_runB
@@ -5687,7 +5686,7 @@ theorem ref_derefdst_projsrc_simulation
   obtain ⟨tgtP1, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbs1,
     h_pc1, h_relB⟩ :=
     ref_local_borrow τ σb kind prot mask (pathOffset f) compProg s_mir s_osea
-      csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS
+      csPrefix h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS
       h_domS (PathTo.offset_add_size_le f) (by simpa using h_ref_src)
       h_code1
   -- §7 the WHOLE dst lowering via the mother lemma, from the
@@ -6172,7 +6171,7 @@ theorem ref_projderefdst_chainsrc_simulation
       (mvals := [mirlite.MemValue.ptrVal rs.allocBase
         (rs.addr + pathOffset f - rs.allocBase) rs.allocSize permsR.NextTag])
       compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-      (rd.addr - rd.allocBase) h_bbase h_brt h_brange (pathOffset g)
+      (rd.addr - rd.allocBase) h_brt h_brange (pathOffset g)
       h_fitD
       (oseair_runN_trans h_runB h_brun)
       h_bentry

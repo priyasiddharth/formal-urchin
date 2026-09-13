@@ -1802,12 +1802,12 @@ def PureCStore {Γ : Ctx} {τ : LayoutTy} (rhs : RExpr Γ τ)
 
 theorem constInit_pureCStore {Γ : Ctx} (v : Word) :
     PureCStore (Γ := Γ) (.constInit v) obseq.TyVal.NatTy [Val.Dat v] :=
-  fun cs => ⟨rfl, _, rfl, fun _ => rfl, rfl⟩
+  fun _ => ⟨rfl, _, rfl, fun _ => rfl, rfl⟩
 
 theorem uninit_pureCStore {Γ : Ctx} (τ : LayoutTy) :
     PureCStore (Γ := Γ) (τ := τ) .uninit (layoutToTyVal τ)
       (List.replicate (blockSize τ) Val.Undef) :=
-  fun cs => ⟨rfl, _, rfl, fun _ => rfl, rfl⟩
+  fun _ => ⟨rfl, _, rfl, fun _ => rfl, rfl⟩
 
 /-- The read-then-store rvalue shape: lower the source place shared, put
     the rvalue's result into a fresh register with ONE instruction built

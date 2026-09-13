@@ -1524,7 +1524,6 @@ theorem const_store_proj_offset_simulation
       ∃ so, CheckedCompilerM.value
         (compileStmtChecked (Stmt.assign (.proj (.local loc) path) rhs)) cs
           = Except.ok so)
-    (h_off : pathOffset path ≠ 0)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     -- the PROGRAM's statement may be a reassociation-equivalent spelling
@@ -2766,7 +2765,7 @@ theorem const_store_proj_simulation
               const_store_proj_offset_simulation compProg rhs h_len (h_rel ρa ρt) h_size
                 (fun cs reg h => F.projOffsetRun loc path cs reg h_off h)
                 (fun cs reg h => F.projLocalVal loc path cs reg h)
-                h_off h_comp h_inv h_stmt h_run0 h_val0 h_env h_write
+                h_comp h_inv h_stmt h_run0 h_val0 h_env h_write
             exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
               h_run, h_inv'⟩
   | proj b q ih =>

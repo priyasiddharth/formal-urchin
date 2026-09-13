@@ -2259,7 +2259,6 @@ theorem copy_freshroot_write_after_read
       = Except.ok stmtOut)
     (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
-    (h_prb : PlaceRegMapBound csPrefix)
     -- the allocation, on the mirlite side: the post-`own` state `s1`
     {s1 : mirlite.State MSB Γ}
     (h_lookup_set : mirlite.Env.lookup s1.env dstLoc
@@ -2511,7 +2510,7 @@ theorem copy_freshroot_prologue
     {s1 : mirlite.State MSB Γ}
     (h_envD : mirlite.Env.lookup s_mir.env dstLoc = none)
     (h_prep : mirlite.allocateBase MSB s_mir dstLoc = mirlite.Result.ok s1)
-    (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
+    (h_wf_t : TagRenameWF ρt)
     (h_tbd : TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag)
     (h_psim : PermSim ρt s_mir.perms s_osea.perms)
     (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
@@ -2521,7 +2520,7 @@ theorem copy_freshroot_prologue
     -- the ADDRESS rename grows however the caller likes -- a whole block for
     -- a copy, a single address for a borrow -- so its four facts come in
     {ρa' : AddrRenameMap}
-    (h_incr_a : AddrRenameIncr ρa ρa') (h_id_a' : IdentityOnDomain ρa')
+    (h_incr_a : AddrRenameIncr ρa ρa')
     (h_ra_base : ρa' s_mir.mem.addrStart = some s_mir.mem.addrStart)
     (h_ra_dom : ∀ k, k < blockSize τ →
       ρa' (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k)) :
@@ -2674,7 +2673,6 @@ theorem copy_freshproj_write_after_read
     {σ τ : LayoutTy} {dstLoc : Local Γ σ}
     {ρa' : AddrRenameMap} {ρt' : TagRenameMap}
     (compProg : oseair.Prog)
-    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     {stmt0 : Stmt Γ}
     (h_stmt : prog.get? s_mir.pc = some stmt0)
     {csPrefix : CompilerState}
@@ -2684,7 +2682,6 @@ theorem copy_freshproj_write_after_read
       = Except.ok stmtOut)
     (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
-    (h_prb : PlaceRegMapBound csPrefix)
     {s1 : mirlite.State MSB Γ}
     (h_lookup_set : mirlite.Env.lookup s1.env dstLoc
       = some { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })
@@ -2746,7 +2743,6 @@ theorem copy_freshproj_write_after_read
         (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
           (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
       pc := s_osea.pc + 1 }).mem)
-    (h_pcR : sR.pc = csR.nextLabel)
     (h_vregR : oseair.RegMap.lookup sR.reg vreg = some (layoutToTyVal τ, vals))
     (h_vbelow : RegisterBelow csR.nextReg vreg)
     (h_vlen : vals.length = blockSize τ)
@@ -3019,7 +3015,7 @@ theorem ref_local_borrow
     (kind : RefKind) (prot : Bool) (mask : List Bool) (off : Nat)
     (compProg : oseair.Prog)
     (sM : mirlite.State MSB Γ) (sA : oseair.State MSB) (csA : CompilerState)
-    (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
+    (h_wf_t : TagRenameWF ρt)
     (h_tbd : TagRenameBounded ρt sM.perms.NextTag sA.perms.NextTag)
     (h_lbs : LocalBindingSim ρa ρt sM.env sA csA)
     (h_prb : PlaceRegMapBound csA)
@@ -3291,7 +3287,6 @@ theorem projDstTail_state_incr (cs : CompilerState) (off sz : Nat) (ty : obseq.T
 theorem copy_boundproj_write_after_read
     {τ : LayoutTy} {dbase : Word} {dtag : Tag} {dsize : Nat}
     (compProg : oseair.Prog)
-    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     {stmt0 : Stmt Γ}
     (h_stmt : prog.get? s_mir.pc = some stmt0)
     {csPrefix : CompilerState}
@@ -3306,7 +3301,6 @@ theorem copy_boundproj_write_after_read
     -- chain's resolution, the seam does not care which -- and the register
     -- holding it at the POST-SOURCE state
     {dstReg : Register} {tagD : Tag} (boff : Nat)
-    (h_raD : ρa dbase = some dbase)
     (h_rtD : ρt dtag = some tagD)
     (h_domD : ∀ k, k < dsize → ∃ a, ρa (dbase + k) = some a)
     (off : Nat) (h_fit : boff + off + blockSize τ ≤ dsize)
@@ -3322,7 +3316,6 @@ theorem copy_boundproj_write_after_read
     (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
     (h_psimR : PermSim ρt perms₂ sR.perms)
     (h_tbdR : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag)
-    (h_pcR : sR.pc = csR.nextLabel)
     (h_vregR : oseair.RegMap.lookup sR.reg vreg = some (layoutToTyVal τ, vals))
     (h_vbelow : RegisterBelow csR.nextReg vreg)
     (h_vlen : vals.length = blockSize τ)
@@ -3506,7 +3499,6 @@ theorem copy_boundproj_write_after_read
 theorem copy_boundplain_write_after_read
     {τ : LayoutTy} {dbase : Word} {dtag : Tag} {dsize : Nat}
     (compProg : oseair.Prog)
-    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     {stmt0 : Stmt Γ}
     (h_stmt : prog.get? s_mir.pc = some stmt0)
     {csPrefix : CompilerState}
@@ -3518,7 +3510,6 @@ theorem copy_boundplain_write_after_read
     (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
     (h_prb : PlaceRegMapBound csPrefix)
     {dstReg : Register} {tagD : Tag} (boff : Nat)
-    (h_raD : ρa dbase = some dbase)
     (h_rtD : ρt dtag = some tagD)
     (h_domD : ∀ k, k < dsize → ∃ a, ρa (dbase + k) = some a)
     -- the POST-SOURCE bundle
@@ -3533,7 +3524,6 @@ theorem copy_boundplain_write_after_read
     (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
     (h_psimR : PermSim ρt perms₂ sR.perms)
     (h_tbdR : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag)
-    (h_pcR : sR.pc = csR.nextLabel)
     (h_vregR : oseair.RegMap.lookup sR.reg vreg = some (layoutToTyVal τ, vals))
     (h_vlen : vals.length = blockSize τ)
     (h_fit : boff + blockSize τ ≤ dsize)
@@ -3641,7 +3631,6 @@ theorem copy_bound_write_after_read
     (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
     (h_prb : PlaceRegMapBound csPrefix)
     {dstReg : Register} {tagD : Tag} (boff : Nat)
-    (h_raD : ρa dbase = some dbase)
     (h_rtD : ρt dtag = some tagD)
     (h_domD : ∀ k, k < dsize → ∃ a, ρa (dbase + k) = some a)
     (off : Nat) (h_fit : boff + off + blockSize τ ≤ dsize)
@@ -3682,9 +3671,9 @@ theorem copy_bound_write_after_read
   · subst h_off
     rw [projDstTail_zero] at h_stmtRun
     have hFrag := hInc.fragmentOf (base := csR.nextLabel) h_stmtRun rfl
-    exact copy_boundplain_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_id_a h_wf_t h_unmap h_prb boff h_raD h_rtD h_domD h_runR h_entryD h_sms
-      h_alloc h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_pcR h_vregR h_vlen
+    exact copy_boundplain_write_after_read compProg h_stmt h_csAt h_stmtOut
+      h_id_a h_wf_t h_unmap h_prb boff h_rtD h_domD h_runR h_entryD h_sms
+      h_alloc h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_vregR h_vlen
       (by simpa using h_fit)
       (by rw [h_pcR]; exact hFrag.instrAt 0 rfl rfl)
       (by rw [h_pcR, h_stmtRun]; simp [emit])
@@ -3693,9 +3682,9 @@ theorem copy_bound_write_after_read
       h_mlen (by rw [h_rdaddr, Nat.add_zero]) h_rdtag h_rdbase h_rdsize h_valsRel h_step
   · rw [projDstTail_pos _ h_off] at h_stmtRun
     have hFrag := hInc.fragmentOf (base := csR.nextLabel) h_stmtRun rfl
-    exact copy_boundproj_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_id_a h_wf_t h_unmap h_prb boff h_raD h_rtD h_domD off h_fit h_runR
-      h_entryD h_sms h_alloc h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_pcR h_vregR
+    exact copy_boundproj_write_after_read compProg h_stmt h_csAt h_stmtOut
+      h_id_a h_wf_t h_unmap h_prb boff h_rtD h_domD off h_fit h_runR
+      h_entryD h_sms h_alloc h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_vregR
       h_vbelow h_vlen
       (by rw [h_pcR]; exact hFrag.instrAt 0 rfl rfl)
       (by rw [h_pcR]; exact hFrag.instrAt 1 rfl rfl)
@@ -3719,7 +3708,6 @@ theorem copy_fresh_write_after_read
       = Except.ok stmtOut)
     (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
-    (h_prb : PlaceRegMapBound csPrefix)
     {s1 : mirlite.State MSB Γ}
     (h_lookup_set : mirlite.Env.lookup s1.env dstLoc
       = some { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })
@@ -3809,7 +3797,7 @@ theorem copy_fresh_write_after_read
   · subst h_off
     rw [projDstTail_zero] at h_stmtRun
     exact copy_freshroot_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+      h_sms h_unmap h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
       h_find1 h_addr_eq h_sz
       h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 h_runR h_prmR
       h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR h_vregR h_vlen h_stmtRun h_mlen
@@ -3817,11 +3805,11 @@ theorem copy_fresh_write_after_read
   · rw [projDstTail_pos _ h_off] at h_stmtRun
     have hFrag := (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
       (base := csR.nextLabel) h_stmtRun rfl
-    exact copy_freshproj_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+    exact copy_freshproj_write_after_read compProg h_stmt h_csAt h_stmtOut
+      h_sms h_unmap h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
       h_find1 h_addr_eq h_sz
       h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 off h_fit h_runR
-      h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR h_vregR h_vbelow h_vlen
+      h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_vregR h_vbelow h_vlen
       (by rw [h_pcR]; exact hFrag.instrAt 0 rfl rfl)
       (by rw [h_pcR]; exact hFrag.instrAt 1 rfl rfl)
       (by rw [h_pcR]; exact hFrag.instrAt 2 rfl rfl)
@@ -3929,7 +3917,7 @@ theorem copy_chain_write_after_read
     (rd := { rd with addr := rd.addr + off })
     compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t h_unmap h_prb
     (dstReg := dOut.result.reg) (boff := rd.addr - rd.allocBase)
-    h_rabase h_drt h_drange off h_fit
+    h_drt h_drange off h_fit
     (oseair_runN_trans h_runR h_drun) h_dentry
     (by rw [h_dmem, h_memR]; exact h_sms)
     (by rw [h_dmem, h_memR]; exact h_alloc)

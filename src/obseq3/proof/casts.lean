@@ -191,10 +191,7 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
     die slides past the die by `sb_die_exposed_inert`. -/
 theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
     {spath : PathTo σs (obseq.LayoutTy.PtrL σ)}
-    (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B)
-    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs),
-      B = b.proj q → False)
-    (h_o : pathOffset spath ≠ 0) :
+    (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.exposeAddr (.proj B spath)) B spath
       Rhs.ExposeAddr := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
@@ -450,10 +447,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
 
 theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
     {spath : PathTo σs obseq.LayoutTy.NatL}
-    (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B)
-    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs),
-      B = b.proj q → False)
-    (h_o : pathOffset spath ≠ 0) :
+    (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.fromExposed (τ := τ) (.proj B spath)) B spath
       Rhs.FromExposed := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
@@ -853,7 +847,7 @@ theorem exposeAddr_readRhsFamily {Γ : Ctx} {σ : LayoutTy} (compProg : oseair.P
   shape := fun src => readRhsShape_exposeAddr src
   stepFlat := fun s dst src => stepStmt_assign_exposesrc_anyflatten s dst src
   pkgLowered := fun _ h => expose_readpkg_lowered compProg h
-  pkgProjOffset := fun _ _ h h_np h_o => expose_readpkg_projoffset compProg h h_np h_o
+  pkgProjOffset := fun _ _ h _ _ => expose_readpkg_projoffset compProg h
 
 /-- One `exposeAddr` statement, simulated. -/
 theorem CompilerInv_step_exposeAddr
@@ -884,8 +878,7 @@ theorem fromExposed_readRhsFamily {Γ : Ctx} {τ : LayoutTy} (compProg : oseair.
   shape := fun src => readRhsShape_fromExposed src
   stepFlat := fun s dst src => stepStmt_assign_fromexposedsrc_anyflatten s dst src
   pkgLowered := fun _ h => fromexposed_readpkg_lowered compProg h
-  pkgProjOffset := fun _ _ h h_np h_o =>
-    fromexposed_readpkg_projoffset compProg h h_np h_o
+  pkgProjOffset := fun _ _ h _ _ => fromexposed_readpkg_projoffset compProg h
 
 /-- One `fromExposed` statement, simulated. -/
 theorem CompilerInv_step_fromExposed
