@@ -316,6 +316,11 @@ def evalRExpr
       match resolvePlaceAcc M state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
+          -- the cast reads the pointer cell, so the place must be in bounds
+          -- (the compiled `Rhs.ExposeAddr` performs the identical check)
+          if resolved.addr + 1 > resolved.allocBase + resolved.allocSize then
+            .err "ptr-to-int cast of an out-of-bounds place"
+          else
           match M.read permsR resolved.addr 1 resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
@@ -330,6 +335,11 @@ def evalRExpr
       match resolvePlaceAcc M state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
+          -- the cast reads the integer cell, so the place must be in bounds
+          -- (the compiled `Rhs.FromExposed` performs the identical check)
+          if resolved.addr + 1 > resolved.allocBase + resolved.allocSize then
+            .err "int-to-ptr cast of an out-of-bounds place"
+          else
           match M.read permsR resolved.addr 1 resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>

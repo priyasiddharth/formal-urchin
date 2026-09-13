@@ -2119,6 +2119,73 @@ theorem runN_Assgn_Load_ptr_step
 
 
 
+/-- A ptr-to-int cast executes in one `runN` step: the pointer register is
+    read, the SB read of the pointer cell through the place's tag succeeds,
+    the cell holds a pointer, and its concrete address lands in the
+    destination register while its tag is exposed. -/
+theorem runN_Assgn_ExposeAddr_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst preg : Register)
+    {b o sz : Word} {t : Tag} {p2 : AccessPerms} {pb po ps : Word} {pt : Tag}
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.ExposeAddr preg)))
+    (h_entry : PtrRegisterEntry s.reg preg b o sz t)
+    (h_lt : o < sz)
+    (h_read : MSB.read s.perms (b + o) 1 t = .ok p2)
+    (h_cell : oseair.Mem.find? s.mem (b + o) = some (Val.Ptr pb po ps pt)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := MSB.expose p2 pt,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.NatTy, [Val.Dat (pb + po)]),
+               pc := s.pc + 1 } := by
+  have h_lookup : oseair.RegMap.lookup s.reg preg
+      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  have h_bounds : ((b + o < b) || (b + o ≥ b + sz)) = false := by
+    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
+    exact ⟨Nat.not_lt.mpr (Nat.le_add_right b o),
+      Nat.not_le.mpr (Nat.add_lt_add_left h_lt b)⟩
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := MSB.expose p2 pt,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.NatTy, [Val.Dat (pb + po)]),
+               pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
+      h_bounds, Bool.false_eq_true, if_false, h_read, h_cell]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- An int-to-ptr cast executes in one `runN` step: the pointer register is
+    read, the SB read of the integer cell succeeds, the cell holds a word,
+    and the wildcard pointer into the allocation `resolveAddr` finds lands
+    in the destination register. Permissions are unchanged beyond the read. -/
+theorem runN_Assgn_FromExposed_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst preg : Register)
+    {b o sz : Word} {t : Tag} {p2 : AccessPerms} {n rb ro : Word} {rs : Nat}
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.FromExposed preg)))
+    (h_entry : PtrRegisterEntry s.reg preg b o sz t)
+    (h_lt : o < sz)
+    (h_read : MSB.read s.perms (b + o) 1 t = .ok p2)
+    (h_cell : oseair.Mem.find? s.mem (b + o) = some (Val.Dat n))
+    (h_res : s.mem.resolveAddr n = (rb, ro, rs)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p2,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr rb ro rs wildcardTag]),
+               pc := s.pc + 1 } := by
+  have h_lookup : oseair.RegMap.lookup s.reg preg
+      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  have h_bounds : ((b + o < b) || (b + o ≥ b + sz)) = false := by
+    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
+    exact ⟨Nat.not_lt.mpr (Nat.le_add_right b o),
+      Nat.not_le.mpr (Nat.add_lt_add_left h_lt b)⟩
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p2,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr rb ro rs wildcardTag]),
+               pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
+      h_bounds, Bool.false_eq_true, if_false, h_read, h_cell, h_res]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
 /-- Fragment locator: an instruction populated in the per-statement code map
     appears verbatim at the same slot in the whole compiled program. -/
 theorem compileStmt_emitted_in_compProg

@@ -1593,4 +1593,85 @@ theorem bridge1S_of_read {ρt : TagRenameMap} {src tgt src' tgtAcc : AccessPerms
   exact ⟨by rw [h_sm]; exact hs, by rw [h_pfq]; exact hp,
          by rw [h_exq]; exact he, Nat.le_trans hn h_ntle⟩
 
+/-! ## Exposure and the `exposed` list
+
+`exposeAddr` exposes the STORED pointer's tag: `sb_expose` conses it onto
+`exposed` (a no-op for the wildcard). `PermSim` already relates `exposed`
+positionally, so the transport is a single `ListRel` cons; the verdict of
+the wildcard test agrees on both sides because `TagRenameWF` fixes the
+wildcard and is injective. -/
+
+theorem sb_expose_NextTag (ap : AccessPerms) (t : Tag) :
+    (sb_expose ap t).NextTag = ap.NextTag := by
+  unfold sb_expose
+  split <;> rfl
+
+theorem sb_expose_StackMap (ap : AccessPerms) (t : Tag) :
+    (sb_expose ap t).StackMap = ap.StackMap := by
+  unfold sb_expose
+  split <;> rfl
+
+theorem sb_expose_protFrames (ap : AccessPerms) (t : Tag) :
+    (sb_expose ap t).protFrames = ap.protFrames := by
+  unfold sb_expose
+  split <;> rfl
+
+theorem sb_expose_respects_PermSim
+    {ρt : TagRenameMap} {src tgt : AccessPerms} {t t' : Tag}
+    (h_sim : PermSim ρt src tgt) (h_wf : TagRenameWF ρt)
+    (h_t : ρt t = some t') :
+    PermSim ρt (sb_expose src t) (sb_expose tgt t') := by
+  have h_beq : (t' == wildcardTag) = (t == wildcardTag) := h_wf.beq_eq h_t h_wf.2
+  obtain ⟨h_sm, h_pf, h_ex, h_nt⟩ := h_sim
+  unfold sb_expose
+  rw [h_beq]
+  cases h : t == wildcardTag
+  · simp only [Bool.false_eq_true, if_false]
+    exact ⟨h_sm, h_pf, ⟨h_t, h_ex⟩, h_nt⟩
+  · simp only [if_true]
+    exact ⟨h_sm, h_pf, h_ex, h_nt⟩
+
+/-- A cell fold that never reads `exposed` commutes with overwriting it.
+    `die` is such a fold (it only inspects `StackMap` and `protFrames`), and
+    the projected-source cast shape `Borrow; ExposeAddr; Die` needs to move
+    the exposure past the `Die`. -/
+theorem foldCells_exposed_inert
+    {op : AccessPerms → Word → Except String AccessPerms} (e : List Tag)
+    (h_op : ∀ ap a ap', op ap a = .ok ap' →
+      op { ap with exposed := e } a = .ok { ap' with exposed := e }) :
+    ∀ (len : Nat) (ap q : AccessPerms) (addr : Word),
+      foldCells op ap addr len = .ok q →
+      foldCells op { ap with exposed := e } addr len = .ok { q with exposed := e }
+  | 0, ap, q, addr, h => by
+      simp only [foldCells, Except.ok.injEq] at h ⊢
+      subst h
+      rfl
+  | len + 1, ap, q, addr, h => by
+      simp only [foldCells] at h ⊢
+      cases h1 : op ap addr with
+      | error err => simp only [h1] at h; cases h
+      | ok ap' =>
+        simp only [h1] at h
+        rw [h_op ap addr ap' h1]
+        exact foldCells_exposed_inert e h_op len ap' q (addr + 1) h
+
+theorem sb_die_exposed_inert {ap q : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (e : List Tag)
+    (h : sb_die ap addr len tag = .ok q) :
+    sb_die { ap with exposed := e } addr len tag = .ok { q with exposed := e } := by
+  unfold sb_die at h ⊢
+  refine foldCells_exposed_inert e ?_ len ap q addr h
+  intro ap a ap' h_op
+  simp only at h_op ⊢
+  cases h_find : ap.StackMap.find? a with
+  | none => simp only [h_find] at h_op; cases h_op
+  | some stack =>
+    simp only [h_find] at h_op ⊢
+    cases h_die : dieCellContent ap.protFrames tag stack with
+    | error err => simp only [h_die] at h_op; cases h_op
+    | ok below =>
+      simp only [h_die, Except.ok.injEq] at h_op ⊢
+      subst h_op
+      rfl
+
 end obseq3.proof

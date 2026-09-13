@@ -109,6 +109,8 @@ load); reified fn pointers are tracked statically and indirect calls
 resolve to their targets (the `aliasing_mut*` family). Int-to-ptr uses
 exposed provenance: ptr-to-int exposes the tag and yields the concrete
 address, int-to-ptr resolves the address through the allocation table
+(both casts read their source place, which must be in bounds — the
+same check every access performs)
 into a wildcard pointer whose accesses re-derive authority from the
 topmost exposed granting item (a determinization of miri's angelic
 wildcard; matches `-Zmiri-permissive-provenance`). Remaining
