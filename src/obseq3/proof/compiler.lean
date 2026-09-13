@@ -101,6 +101,15 @@ goes wrong when the source has UB. That direction is probed only
 empirically, by the `expectDiff` corpus comparing VERDICTS, which is
 why every witness needs teeth.
 
+A NOTE ON NAMES. The narrative below records how each regime was
+closed, and names the leaf that closed it. Many of those leaves no
+longer exist: since 2026-09-13 a leaf depends on its rvalue only
+through a VALUE PACKAGE (`ValuePkg`), so there is one leaf per
+DESTINATION shape shared by copy, both casts and ref, and the
+per-regime leaves collapsed onto it. The regimes are still closed and
+still proven; a name here that `grep` cannot find was retired by that
+collapse, not by a change of scope.
+
 The four named residuals, in the order they died:
 1. ✔ `const_write_deref_deep_residual` — RETIRED 2026-08-29, the first
    residual to die. The pending-cleanup generalization landed as
