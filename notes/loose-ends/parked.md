@@ -263,7 +263,11 @@ feature-level view.
 ### B. SB-model approximations (implemented, but simplified — all noted where they apply)
 1. **Wildcard determinization**: accesses resolve to the topmost
    exposed granting item vs miri's angelic/"unknown bottom" reading.
-   Verdicts coincide on all covered tests.
+   Verdicts coincide on all covered tests. NOW LOAD-BEARING FOR THE
+   THEOREM (2026-09-13): with `fromExposed` inside `CoreProg`,
+   `compile_correct` says the compiled program preserves THIS rule's
+   verdicts. Both machines run the same rule, so the simulation is
+   honest; the gap to Miri is the determinization, not the compiler.
 2. **Box protector strength**: modeled with strong-style pop-blocking;
    miri's WEAK protector differs only in allowing dealloc during the
    call (unexercised). Plain Box-typed assignments (`let b2 = b`) are

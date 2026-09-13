@@ -3505,3 +3505,69 @@ more accepted-but-doubled lines; normalised in `e1c6161`.
 **No `projzero_`/`projoffset_` twin remains in ref.lean.** Every write
 through a projected destination, in ref and copy, goes through
 `copy_bound_write_after_read` or `copy_fresh_write_after_read`.
+
+## stretch nineteen — the integer-pointer casts join the proved fragment (2026-09-13)
+
+`exposeAddr` and `fromExposed` are inside `CoreProg`. The theorem now
+covers every rvalue except `ptrCast`, `ptrOffset` and `refSlice`.
+
+**The shape of the work was not what the plan predicted.** Both casts
+compile EXACTLY as `copy` does — lower the source place shared, put one
+instruction's result in a fresh register, store that register — so the
+question was never "write two cast leaves", it was "stop copy's leaves
+from naming `copy`". Four abstractions did it:
+
+    ReadRhsShape rhs src mk    the compiled pre-phase IS the copy arm
+                               with the emitted Rhs abstracted (rfl for
+                               all three rvalues)
+    ReadPkgLowered / ProjOffset the source half, taking the mirlite
+                               EVALUATION rather than copy's
+                               resolvePlaceAcc/bounds/read residue
+    ReadRhsFamily              shape + step-flattening + the two packages
+    CompilerInv_step_readrhs   the whole per-statement dispatch over it
+
+`CompilerInv_step_copy` is now one term. Each cast is a `where` block of
+four fields plus its two packages.
+
+**What the collapse cost, and paid.** 17 leaves, 48 fragment lemmas, 10
+flatten-transfer lemmas and 2 dispatchers were rewritten to take the
+rvalue abstractly. Two hand-written leaves died on the way: the 810-line
+`copy_projdst_offset_chainsrc_simulation` became a clone of its
+zero-offset twin once `copy_chain_write_after_read` (destination mother
++ the offset-parameterised bound seam) existed, and the three bound-local
+leaves (260 + 260 + 355 lines) became package + seam. copy.lean went
+7,435 -> 6,071 even while gaining the framework.
+
+**The wildcard was the real content.** `fromExposed` mints a
+`wildcardTag` pointer, which `MemValSim` forbade, because every transport
+lemma assumed a non-wildcard acting tag. The missing argument turned out
+to be small: `ItemSim.wildOK_eq` (the scan predicate agrees on related
+items) plus a new `ListRel.find?_some` gives
+`resolveWildcardIn_transport`, and the three per-cell transports split
+into a post-resolution half (the old proof, unchanged) and a front-end
+that resolves on both sides in lockstep. Then the non-wildcard conjunct
+came out of `MemValSim`, the mother lemma, `LoweringSim` and four seams,
+and ~240 forwarding sites lost an argument.
+
+**Two invariant strengthenings, both cheap.** `AllocLockstep` grew the
+allocation TABLE (so both machines resolve an integer to the same block)
+and totality of ρa (so the degenerate pointer for an unallocated address
+has a renamed base). Stores do not touch `allocs` and both allocators
+cons the same pair, so preservation is two lemmas; the fresh-root seams
+take the source's new table from the prologue, which proves it by `rfl`.
+
+**One semantics change.** mirlite's cast arms read the source place
+without the bounds check every other access performs, while the compiled
+`Rhs.ExposeAddr`/`FromExposed` reject an out-of-bounds place — so the
+forward simulation could not exclude the target's error. Both arms now
+carry copy's guard. No witness casts an OOB place; all four suites
+unchanged.
+
+**What the theorem now says about wildcards.** Accesses through a
+wildcard resolve to the topmost exposed granting item on BOTH machines,
+so the simulation is honest, but that rule is our determinization of
+Miri's angelic reading. With `fromExposed` in the core, parked.md B.1
+stopped being a conformance footnote and became a caveat on the theorem.
+
+Zero sorries and exactly propext / Classical.choice / Quot.sound at every
+commit; all four suites green at every commit.

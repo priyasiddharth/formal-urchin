@@ -40,12 +40,25 @@ wildcard resolution would agree on both machines) and why
 wildcard is a reserved constant BELOW every mintable tag, never
 something the allocator hands out.
 
-[OPEN] The wildcard-producing statements (`exposeAddr`, `fromExposed`,
-`ptrCast`, `ptrOffset`, `refSlice`) are modeled and conformance-tested
-but sit OUTSIDE `CoreProg`: the closed correctness theorem covers
-assign/const/copy/ref. Their simulation leaves are frontier-B work, and
-a wildcard leaf will need a genuinely different argument from the
-tag-transport one (resolution against `exposed`, not renaming).
+[CLOSED 2026-09-13] The prediction in the last line was right, and the
+argument now exists. `resolveWildcardIn_transport` says related stacks
+with related exposed lists resolve to related tags: the scan predicate
+agrees on related items (`ItemSim` keeps the constructor, so `Disabled`
+is skipped on both sides; `TagListSim.contains_eq` moves exposed-ness;
+`ItemSim.grantsWrite_eq` moves the permission), and `ListRel.find?_some`
+turns that into agreement of `List.find?`. With it, the three per-cell
+transports split into a post-resolution half and a front-end that
+resolves on both sides in lockstep, and no transport needs a
+non-wildcard acting tag any more — so `MemValSim` admits a stored
+wildcard pointer.
+
+Both integer-pointer casts are now IN `CoreProg`: `exposeAddr` needed
+`sb_expose_respects_PermSim` (the exposed list is a `ListRel`, so
+exposure is a cons) and, in the projected-source shape,
+`sb_die_expose_comm`; `fromExposed` needed the allocation TABLE in
+`AllocLockstep` so both machines resolve an integer to the same block,
+and a total ρa for the degenerate pointer an unallocated address yields.
+`ptrCast`, `ptrOffset` and `refSlice` remain outside.
 
 ## See also
 
