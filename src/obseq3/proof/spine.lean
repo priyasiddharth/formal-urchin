@@ -3813,6 +3813,125 @@ theorem copy_fresh_write_after_read
       (by rw [h_stmtRun]; simp [emit])
       h_mlen h_rdaddr h_rdtag h_rdbase h_rdsize h_valsRel h_step
 
+/-- **The chain write seam, at ANY destination offset** — the
+    destination half of a write into `dbase.f` where `dbase` is a chain
+    place and `f` sits at `off`. It is `copy_chainwrite_after_read`'s
+    generalisation: run the destination mother at the post-source state,
+    then hand the register entry it produces to the offset-parameterised
+    bound seam, whose `projDstTail` tail is a bare `RStore` at offset
+    zero and `Borrow(Mut); RStore; Die` otherwise.
+
+    Like every seam here it mentions no rvalue: the post-source bundle
+    and the fragment equation are hypotheses, so copy and the casts
+    instantiate it alike. -/
+theorem copy_chain_write_after_read
+    {τ σb : LayoutTy} {dbase : Place Γ σb}
+    (compProg : oseair.Prog)
+    (h_dchain : PtrChain dbase)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    {csPrefix : CompilerState}
+    (h_csAt : csAt cs0 prog s_mir.pc csPrefix)
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt0)}
+    (h_stmtOut : CheckedCompilerM.value (compileStmtChecked stmt0) csPrefix
+      = Except.ok stmtOut)
+    (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
+    (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
+    (h_alloc : AllocLockstep s_mir.mem s_osea.mem)
+    (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
+    (h_prb : PlaceRegMapBound csPrefix)
+    {rd : mirlite.PlaceRes} {permsD perms₂ : MSB.State}
+    (h_dres : mirlite.resolvePlaceAcc MSB { s_mir with perms := perms₂ } dbase
+      = .ok (rd, permsD))
+    (off : Nat)
+    {mvals : List mirlite.MemValue} (h_mlen : mvals.length = blockSize τ)
+    (h_step : mirlite.writeResolvedPlace (τ := τ) MSB { s_mir with perms := permsD }
+      { rd with addr := rd.addr + off } mvals h_mlen = mirlite.Result.ok s_mir')
+    {csR : CompilerState} {sR : oseair.State MSB} {vreg : Register}
+    {vals : List Val} {nR : Nat}
+    (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
+    (h_prmR : csR.placeRegMap = csPrefix.placeRegMap)
+    (h_regmonoR : csPrefix.nextReg ≤ csR.nextReg)
+    (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
+    (h_psimR : PermSim ρt perms₂ sR.perms)
+    (h_tbdR : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag)
+    (h_memR : sR.mem = s_osea.mem)
+    (h_pcR : sR.pc = csR.nextLabel)
+    (h_vregR : oseair.RegMap.lookup sR.reg vreg = some (layoutToTyVal τ, vals))
+    (h_vbelow : RegisterBelow csR.nextReg vreg)
+    (h_vlen : vals.length = blockSize τ)
+    (h_valsRel : ListRel (MemValSim ρa ρt) mvals vals)
+    (h_instR : ∀ q instr,
+      q < (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase) csR).nextLabel →
+      (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase) csR).code q
+        = some instr →
+      compProg q = some instr)
+    (h_frag : ∀ (dOut : ResultWithEvidence PtrResult
+        (PlaceToRegEvidence RefKind.Mut dbase)),
+      CheckedCompilerM.value (placeToRegChecked RefKind.Mut dbase) csR
+        = Except.ok dOut →
+      dOut.result.cleanup = [] →
+      CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix
+        = projDstTail (CheckedCompilerM.run (placeToRegChecked RefKind.Mut dbase) csR)
+            off (blockSize τ) (layoutToTyVal τ) vreg dOut.result.reg) :
+    ∃ (s_osea' : oseair.State MSB) (n : Nat),
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa ρt s_mir' s_osea' := by
+  -- the DESTINATION mother lemma, at the post-source states
+  have h_prb1 : PlaceRegMapBound csR := by
+    intro idx reg τ'' h_look
+    have h_cs : getPlaceInfo csPrefix idx = some (reg, τ'') := by
+      show csPrefix.placeRegMap.lookup idx = _
+      rw [← h_prmR]
+      exact h_look
+    exact RegisterBelow.mono h_regmonoR (h_prb _ _ _ h_cs)
+  obtain ⟨dOut, n2, s_mid2, tresD, h_dval, h_dclean, h_drun, h_dpc, h_dmem,
+    h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dnw, h_dle, h_drange,
+    h_dbelow, h_dprm, h_dregmono, h_dlabmono, h_dframe, h_rabase⟩ :=
+    ptrChain_lowering_sim (s_mir := { s_mir with perms := perms₂ })
+      (compProg := compProg) h_id_a h_wf_t h_dchain RefKind.Mut csR
+      sR rd permsD h_dres h_tbdR h_lbsR h_prb1
+      (by rw [show sR.mem = s_osea.mem from h_memR]; exact h_sms)
+      h_psimR h_pcR h_instR
+  -- the destination place is in bounds for a τ-sized write
+  obtain ⟨h_nb, -, -, -⟩ := writeResolvedPlace_ok_inv h_step
+  have h_fit : (rd.addr - rd.allocBase) + off + blockSize τ ≤ rd.allocSize := by
+    simp only [h_mlen] at h_nb
+    have h1 := Nat.not_lt.mp h_nb
+    have h2 := h_dle
+    grind
+  -- the temporary register survives the destination lowering
+  have h_vreg2 : oseair.RegMap.lookup s_mid2.reg vreg
+      = some (layoutToTyVal τ, vals) := by
+    rw [h_dframe vreg h_vbelow]
+    exact h_vregR
+  exact copy_bound_write_after_read (τ := τ) (dbase := rd.allocBase)
+    (dtag := rd.tag) (dsize := rd.allocSize) (csR := CheckedCompilerM.run
+      (placeToRegChecked RefKind.Mut dbase) csR)
+    (rd := { rd with addr := rd.addr + off })
+    compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t h_unmap h_prb
+    (dstReg := dOut.result.reg) (boff := rd.addr - rd.allocBase)
+    h_rabase h_drt h_dnw h_drange off h_fit
+    (oseair_runN_trans h_runR h_drun) h_dentry
+    (by rw [h_dmem, h_memR]; exact h_sms)
+    (by rw [h_dmem, h_memR]; exact h_alloc)
+    (h_dprm.trans h_prmR) (Nat.le_trans h_regmonoR h_dregmono)
+    (LocalBindingSim.placeRegMap_congr (cs := csR) h_dprm
+      (fun loc binding h => h_dlbs loc binding h)) h_dpsim
+    (by
+      refine TagRenameBounded.mono ?_ (Nat.le_refl _) h_dnt2
+      rw [h_dnt1]
+      exact h_tbdR)
+    h_dpc h_vreg2 (RegisterBelow.mono h_dregmono h_vbelow) h_vlen
+    (h_frag dOut h_dval h_dclean) h_mlen
+    (by
+      show rd.addr + off = rd.allocBase + (rd.addr - rd.allocBase + off)
+      have h2 := h_dle
+      grind)
+    rfl rfl rfl h_valsRel h_step
+
 end
+
 
 end obseq3.proof
