@@ -4132,6 +4132,195 @@ theorem storereg_local_simulation
         output.values_len (by simp) rfl rfl rfl h_valsRel h_step
     exact ⟨ρt', s_osea', n, h_incr_t, h_run, h_inv'⟩
 
+
+/-- The compiler state after the root `Alloc` that an UNMAPPED local
+    destination costs: the register is fresh, the instruction emitted,
+    the place map extended. -/
+def freshRootCS {Γ : Ctx} {τ : LayoutTy} (cs : CompilerState) (loc : Local Γ τ) :
+    CompilerState :=
+  setPlaceInfo
+    (emit { cs with nextReg := cs.nextReg + 1 }
+      [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
+    loc.idx.1 (Register.R cs.nextReg, τ)
+
+/-- The compiled fragment of `loc := rhs` for an UNMAPPED local and ANY
+    rvalue that stores one register: the root `Alloc`, the rvalue's own
+    code, the store. -/
+theorem compileStmt_storereg_localfresh_run
+    {τ : LayoutTy} {loc : Local Γ τ} {rhs : RExpr Γ τ}
+    {cs : CompilerState} {vreg : Register} {preS : CompilerState}
+    {pOut : RhsPre Γ τ rhs}
+    (h_dst : getPlaceInfo cs loc.idx.1 = none)
+    (h_pval : CheckedCompilerM.value (compileRExprPreChecked rhs) (freshRootCS cs loc)
+      = Except.ok pOut)
+    (h_pre : CheckedCompilerM.run (compileRExprPreChecked rhs) (freshRootCS cs loc)
+      = preS)
+    (h_store : ∀ d, pOut.store d = [Instr.RStore (layoutToTyVal τ) vreg d])
+    (h_post : pOut.postCleanup = []) :
+    CheckedCompilerM.run (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs
+      = emit preS [Instr.RStore (layoutToTyVal τ) vreg (Register.R cs.nextReg)] := by
+  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h_dst
+  simp only [freshRootCS] at h_pval h_pre
+  simp only [compileStmtChecked, compileRExprToChecked, csMonad, h_run, h_val,
+    h_pval, h_store, h_post]
+  simp only [csRun, cleanupInstrs, List.reverse_nil, List.map_nil, emit_nil, h_pre]
+
+/-- The same statement lowers. -/
+theorem compileStmt_storereg_localfresh_value
+    {τ : LayoutTy} {loc : Local Γ τ} {rhs : RExpr Γ τ}
+    {cs : CompilerState} {pOut : RhsPre Γ τ rhs}
+    (h_dst : getPlaceInfo cs loc.idx.1 = none)
+    (h_pval : CheckedCompilerM.value (compileRExprPreChecked rhs) (freshRootCS cs loc)
+      = Except.ok pOut) :
+    ∃ so, CheckedCompilerM.value
+      (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs = Except.ok so := by
+  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h_dst
+  simp only [freshRootCS] at h_pval
+  simp only [compileStmtChecked, compileRExprToChecked, csMonad, h_run, h_pval]
+  exact ⟨_, rfl⟩
+
+/-- FRESH local destination: the statement allocates the root, then the
+    rvalue runs, then one store through the root register. -/
+theorem storereg_localfresh_simulation
+    {τ : LayoutTy} {dstLoc : Local Γ τ} {rhs : RExpr Γ τ}
+    (compProg : oseair.Prog)
+    (h_pkg : ValuePkg compProg rhs)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    {stmt0 : Stmt Γ}
+    (h_stmt : prog.get? s_mir.pc = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run
+          (compileStmtChecked (Stmt.assign (.local dstLoc) rhs)) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign (.local dstLoc) rhs)) cs
+        = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs
+        = Except.ok so')
+    (h_envD : mirlite.Env.lookup s_mir.env dstLoc = none)
+    (h_step : mirlite.stepStmt MSB s_mir
+      (.assign (.local dstLoc) rhs) = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
+  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
+    h_alloc, h_unmap, h_prb⟩ := h_inv
+  have h_pi_none : getPlaceInfo csPrefix dstLoc.idx.1 = none := h_unmap dstLoc h_envD
+  -- §1 the destination local is unbound, so the statement allocates its root
+  simp only [mirlite.stepStmt, mirlite.doAssign] at h_step
+  cases h_prep : mirlite.preparePlaceAssign MSB s_mir (Place.local dstLoc) with
+  | err msg => rw [h_prep] at h_step; simp at h_step
+  | ok s1 =>
+  rw [h_prep] at h_step
+  rw [show mirlite.preparePlaceAssign MSB s_mir (Place.local dstLoc)
+      = mirlite.allocateBase MSB s_mir dstLoc from by
+    simp only [mirPrep, mirAlloc, h_envD]] at h_prep
+  -- §2 the allocation prologue
+  have h_incr_a :=
+    AddrRenameIncr.extendBlock h_id_a s_mir.mem.addrStart (blockSize τ)
+  have h_id_a' :=
+    IdentityOnDomain.extendBlock h_id_a s_mir.mem.addrStart (blockSize τ)
+  have h_ra_dom : ∀ k, k < blockSize τ →
+      (ρa.extendBlock s_mir.mem.addrStart (blockSize τ))
+        (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
+    fun _ hk => AddrRenameMap.extendBlock_mem hk
+  obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
+    h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_erun, h_prb1, h_lbs1⟩ :=
+    copy_freshroot_prologue h_envD h_prep h_wf_t h_tbd h_psim h_alloc
+      h_lbs h_prb h_pi_none h_incr_a (AddrRenameMap.extendBlock_base _ _ _)
+      h_ra_dom
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
+  have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
+    obseq.typeSize_layoutToTyVal _
+  -- §3 the rvalue, behind its package, at the POST-ALLOCATION states
+  simp only at h_step
+  cases h_eval : mirlite.evalRExpr MSB s1 rhs with
+  | err e => rw [h_eval] at h_step; simp at h_step
+  | ok output =>
+    rw [h_eval] at h_step
+    simp only at h_step
+    obtain ⟨vreg, pOut, h_pval, h_storeR, h_postR, h_pkg'⟩ :=
+      h_pkg _ _ s1
+        { s_osea with
+            mem := (oseair.allocate s_osea.mem
+              (obseq.typeSize (layoutToTyVal τ))).2,
+            perms := tgtPerms,
+            reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
+              (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
+                (obseq.typeSize (layoutToTyVal τ)) s_osea.perms.NextTag]),
+            pc := s_osea.pc + 1 }
+        (freshRootCS csPrefix dstLoc)
+        h_id_a' h_wf_t' (by rw [h_perms1]; exact h_tbd') h_lbs1 h_prb1
+        (by
+          intro a v h_find
+          rw [h_find1] at h_find
+          exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find)
+        (AllocLockstep.of_alloc h_alloc h_incr_a h_sz h_memstart1 h_allocs1)
+        (by rw [h_perms1]; exact h_psim')
+        (by
+          show s_osea.pc + 1 = _
+          rw [h_pc]
+          simp only [freshRootCS, emit, setPlaceInfo, List.length_cons,
+            List.length_nil])
+        output h_eval
+    -- §4 the statement's compiled shape
+    obtain ⟨stmtOutC, h_stmtOutC⟩ :=
+      compileStmt_storereg_localfresh_value h_pi_none h_pval
+    obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix stmtOutC h_stmtOutC
+    have h_frag := compileStmt_storereg_localfresh_run h_pi_none h_pval rfl
+      (h_store := h_storeR) (h_post := h_postR)
+    have h_incrPre : StateIncr
+        (CheckedCompilerM.run (compileRExprPreChecked rhs) (freshRootCS csPrefix dstLoc))
+        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
+      rw [h_run0, h_frag]
+      exact emit_state_incr _ _
+    have h_instPre :=
+      (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono h_incrPre
+    -- §5 execute the root `Alloc`
+    have h_incrAlloc : StateIncr
+        (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
+          [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
+        (CheckedCompilerM.run (compileStmtChecked stmt0) csPrefix) := by
+      refine StateIncr.trans ?_ h_incrPre
+      refine StateIncr.trans ?_ (CheckedCompilerM.incr (compileRExprPreChecked rhs) _)
+      show StateIncr _ (freshRootCS csPrefix dstLoc)
+      simp only [freshRootCS, setPlaceInfo]
+      exact ⟨Nat.le_refl _, Nat.le_refl _, fun _ _ => rfl,
+        fun _ _ h => by simp only [List.mem_cons]; exact Or.inr h⟩
+    have h_code0 : compProg s_osea.pc
+        = some (Instr.Assgn (Register.R csPrefix.nextReg)
+            (Rhs.Alloc (layoutToTyVal τ))) := by
+      rw [h_pc]
+      refine ((CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono
+        h_incrAlloc) _ _ ?_ ?_
+      · simp only [emit, List.length_cons, List.length_nil]
+        omega
+      · have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
+          [Instr.Assgn (Register.R csPrefix.nextReg)
+            (Rhs.Alloc (layoutToTyVal τ))] (k := 0) (by simp)
+        simpa using h
+    have h_run0' := runN_Assgn_Alloc_step compProg s_osea
+      (Register.R csPrefix.nextReg) (layoutToTyVal τ) h_code0 h_own_tgt'
+    -- §6 the rvalue's own run
+    obtain ⟨ρt'', nR, s_mid, perms₂, vals, h_incr_t2, h_wf_t2, h_ost, h_vlen,
+      h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
+      h_vregR, h_vbelow, h_rel⟩ := h_pkg' h_instPre
+    rw [h_ost] at h_step
+    simp only [mirlite.resolvePlaceAcc, h_lookup_set] at h_step
+    -- §7 the fresh-root WRITE seam
+    exact copy_freshroot_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
+      h_sms h_unmap h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
+      h_addr_eq h_sz h_run0' h_incr_a (TagRenameIncr.trans h_incr_t h_incr_t2)
+      h_id_a' h_wf_t2 h_ra_dom h_prb1
+      h_runR (by simpa only [freshRootCS] using h_prmR)
+      (by simpa only [freshRootCS] using h_regmonoR) h_lbsR h_psimR h_tbdR h_smem
+      (by simpa only [freshRootCS] using h_pcR) h_vregR h_vlen
+      (by rw [h_run0]; exact h_frag)
+      output.values_len (Nat.le_refl _) rfl rfl h_rel h_step
+
 end
 
 
