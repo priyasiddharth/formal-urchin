@@ -866,7 +866,6 @@ theorem ptrChain_lowering_sim
         PtrRegisterEntry s_osea'.reg placeOut.result.reg resolved.allocBase
           (resolved.addr - resolved.allocBase) resolved.allocSize tres ∧
         ρt resolved.tag = some tres ∧
-        (resolved.tag == wildcardTag) = false ∧
         resolved.allocBase ≤ resolved.addr ∧
         (∀ k, k < resolved.allocSize → ∃ a', ρa (resolved.allocBase + k) = some a') ∧
         RegisterBelow (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextReg
@@ -893,7 +892,7 @@ theorem ptrChain_lowering_sim
       obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
         placeToRegChecked_local_existing (kind := kind) h_pi
       refine ⟨placeOut, 0, s_osea, tag, h_pval, by rw [h_pres],
-        by simp [oseair.runN], ?_, rfl, h_psim, rfl, Nat.le_refl _, h_lbs, ?_, h_rt, h_nw,
+        by simp [oseair.runN], ?_, rfl, h_psim, rfl, Nat.le_refl _, h_lbs, ?_, h_rt,
         Nat.le_refl _, ?_, ?_, ?_, ?_, ?_, fun _ _ => rfl, h_ra⟩
       · rw [h_prun]; exact h_pc
       · rw [h_pres, Nat.sub_self]
@@ -971,7 +970,7 @@ theorem ptrChain_lowering_sim
                 rw [h_incrQ.code_eq q' h_lt]
                 exact h_code
               obtain ⟨qOut, n1, s_mid, qtag, h_qval, h_qclean, h_qrun, h_qpc, h_qmem,
-                h_qpsim, h_qnt1, h_qnt2, h_qlbs, h_qentry, h_qrt, h_qnw, h_qle,
+                h_qpsim, h_qnt1, h_qnt2, h_qlbs, h_qentry, h_qrt, h_qle,
                 h_qrange, h_qbelow, h_qprm, h_qregmono, h_qlabmono, h_qframe, -⟩ :=
                 ih RefKind.Shared cs s_osea qRes permsQ h_qres h_tbd h_lbs h_prb h_sms
                   h_psim h_pc h_instQ
@@ -1013,7 +1012,7 @@ theorem ptrChain_lowering_sim
               | Undef => exact h_mvs.elim
               | Dat _ => exact h_mvs.elim
               | Ptr b2 o2 s2 t2 =>
-              obtain ⟨h_b, h_o, h_s, h_t, h_tnw, h_range⟩ := h_mvs
+              obtain ⟨h_b, h_o, h_s, h_t, h_range⟩ := h_mvs
               have h_b2 : b2 = b := (h_id_a _ _ h_b).symm
               subst h_b2
               subst h_o
@@ -1049,7 +1048,7 @@ theorem ptrChain_lowering_sim
                 simp [oseair.readWordSeq, h_find_tgt]
               refine ⟨_, n1 + 1, _,  t2, h_valD, rfl,
                 (oseair_runN_add n1 1 s_osea compProg s_mid h_qrun).trans h_run1,
-                ?_, ?_, h_psim2, ?_, ?_, ?_, ?_, h_t, h_tnw, Nat.le_add_right b2 o2, ?_,
+                ?_, ?_, h_psim2, ?_, ?_, ?_, ?_, h_t, Nat.le_add_right b2 o2, ?_,
                 ?_, ?_, ?_, ?_, ?_, h_b⟩
               · -- pc
                 show s_mid.pc + 1 = _
@@ -1171,7 +1170,7 @@ theorem ptrChain_lowering_sim
                 rw [h_i.code_eq q' h_lt]
                 exact h_code
               obtain ⟨bOut, n1, s_mid, btag, h_bval, h_bclean, h_brun, h_bpc, h_bmem,
-                h_bpsim, h_bnt1, h_bnt2, h_blbs, h_bentry, h_brt, h_bnw, h_ble,
+                h_bpsim, h_bnt1, h_bnt2, h_blbs, h_bentry, h_brt, h_ble,
                 h_brange, h_bbelow, h_bprm, h_bregmono, h_blabmono, h_bframe, -⟩ :=
                 ih RefKind.Shared cs s_osea bRes permsB h_bres h_tbd h_lbs h_prb h_sms
                   h_psim h_pc h_instB
@@ -1218,7 +1217,7 @@ theorem ptrChain_lowering_sim
                 | Undef => exact h_mvs.elim
                 | Dat _ => exact h_mvs.elim
                 | Ptr vb2 vo2 vs2 vt2 =>
-                obtain ⟨h_b, h_o, h_s, h_t, h_tnw, h_range⟩ := h_mvs
+                obtain ⟨h_b, h_o, h_s, h_t, h_range⟩ := h_mvs
                 have h_vb2 : vb2 = vb := (h_id_a _ _ h_b).symm
                 subst h_vb2
                 subst h_o
@@ -1251,7 +1250,7 @@ theorem ptrChain_lowering_sim
                   simp [oseair.readWordSeq, h_find_tgt]
                 refine ⟨_, n1 + 1, _, vt2, h_valD, rfl,
                   (oseair_runN_add n1 1 s_osea compProg s_mid h_brun).trans h_run1,
-                  ?_, ?_, h_psim2, ?_, ?_, ?_, ?_, h_t, h_tnw, Nat.le_add_right vb2 vo2, ?_,
+                  ?_, ?_, h_psim2, ?_, ?_, ?_, ?_, h_t, Nat.le_add_right vb2 vo2, ?_,
                   ?_, ?_, ?_, ?_, ?_, h_b⟩
                 · show s_mid.pc + 1 = _
                   rw [h_bpc, h_runD]
@@ -1440,7 +1439,7 @@ theorem ptrChain_lowering_sim
                 | Undef => exact h_mvs.elim
                 | Dat _ => exact h_mvs.elim
                 | Ptr vb2 vo2 vs2 vt2 =>
-                obtain ⟨h_b, h_o, h_s, h_t, h_tnw, h_range⟩ := h_mvs
+                obtain ⟨h_b, h_o, h_s, h_t, h_range⟩ := h_mvs
                 have h_vb2 : vb2 = vb := (h_id_a _ _ h_b).symm
                 subst h_vb2
                 subst h_o
@@ -1523,7 +1522,7 @@ theorem ptrChain_lowering_sim
                 have h_runC := (oseair_runN_add (n1 + 1 + 1) 1 s_osea compProg _ h_runB).trans h_run3
                 -- §conclusion: the minted tag DIED — `PermSim` at the same ρt
                 refine ⟨_, n1 + 1 + 1 + 1, _, vt2, h_valD, rfl, h_runC,
-                  ?_, ?_, ?_, ?_, ?_, ?_, ?_, h_t, h_tnw, Nat.le_add_right vb2 vo2, ?_,
+                  ?_, ?_, ?_, ?_, ?_, ?_, ?_, h_t, Nat.le_add_right vb2 vo2, ?_,
                   ?_, ?_, ?_, ?_, ?_, h_b⟩
                 · show s_mid.pc + 1 + 1 + 1 = _
                   rw [h_bpc, h_runD]
@@ -1906,7 +1905,6 @@ def LoweringSim {Γ : Ctx}
       PtrRegisterEntry s_osea'.reg placeOut.result.reg resolved.allocBase
         (resolved.addr - resolved.allocBase) resolved.allocSize tres ∧
       ρt resolved.tag = some tres ∧
-      (resolved.tag == wildcardTag) = false ∧
       resolved.allocBase ≤ resolved.addr ∧
       (∀ k, k < resolved.allocSize → ∃ a', ρa (resolved.allocBase + k) = some a') ∧
       RegisterBelow (CheckedCompilerM.run (placeToRegChecked kind p) cs).nextReg
@@ -1954,13 +1952,13 @@ theorem LoweringSim.projZero {Γ : Ctx}
   subst h_r1
   subst h_r2
   obtain ⟨placeOut, n, s', tres, h_val, h_clean, h_run, h_pc', h_mem, h_ps,
-    h_nt1, h_nt2, h_lbs', h_entry, h_rt, h_nw, h_le, h_dom, h_below, h_prm,
+    h_nt1, h_nt2, h_lbs', h_entry, h_rt, h_le, h_dom, h_below, h_prm,
     h_regmono, h_labmono, h_frame, h_rabase⟩ :=
     h h_id_a h_wf_t kind cs s_osea rb permsB h_bres h_tbd h_lbs h_prb h_sms
       h_psim h_pc (by rw [h_pr] at h_inst; exact h_inst)
   refine ⟨_, n, s', tres,
     placeToRegChecked_proj_zero_value spath h_np h_o h_val, h_clean, h_run,
-    ?_, h_mem, h_ps, h_nt1, h_nt2, h_lbs', h_entry, h_rt, h_nw, h_le, h_dom,
+    ?_, h_mem, h_ps, h_nt1, h_nt2, h_lbs', h_entry, h_rt, h_le, h_dom,
     ?_, ?_, ?_, ?_, h_frame, h_rabase⟩
   · rw [h_pr]; exact h_pc'
   · rw [h_pr]; exact h_below
@@ -2098,7 +2096,7 @@ theorem copy_chainwrite_after_read
       exact RegisterBelow.mono h_regmonoR (h_prb _ _ _ h_cs)
     have h_tbd1 : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag := h_tbdR
     obtain ⟨dOut, n2, s_mid2, tresD, h_dval, h_dclean, h_drun, h_dpc, h_dmem,
-      h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dnw, h_dle, h_drange,
+      h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dle, h_drange,
       h_dbelow, h_dprm, h_dregmono, h_dlabmono, h_dframe, -⟩ :=
       ptrChain_lowering_sim (s_mir := { s_mir with perms := perms₂ })
         (compProg := compProg) h_id_a h_wf_t h_dchain RefKind.Mut csR
@@ -3011,7 +3009,6 @@ theorem ref_local_borrow
     (h_entryS : PtrRegisterEntry sA.reg srcReg bS.addr 0 (blockSize σs) tagS)
     (h_raS : ρa bS.addr = some bS.addr)
     (h_rtS : ρt bS.tag = some tagS)
-    (h_nwS : (bS.tag == wildcardTag) = false)
     (h_domS : ∀ k, k < blockSize σs → ∃ a, ρa (bS.addr + k) = some a)
     (h_fit : off + blockSize τ ≤ blockSize σs)
     {perms' : MSB.State} {freshTag : Tag}
@@ -3075,7 +3072,7 @@ theorem ref_local_borrow
     (by show sA.pc + 1 = _
         rw [h_pc]
         simp only [emit, List.length_cons, List.length_nil]),
-    ⟨⟨h_raS, by simp [Nat.add_sub_cancel_left], rfl, h_rt_new, h_nw_new,
+    ⟨⟨h_raS, by simp [Nat.add_sub_cancel_left], rfl, h_rt_new,
       h_domS⟩, trivial⟩⟩
   exact LocalBindingSim.placeRegMap_congr rfl
     (LocalBindingSim.insert_fresh_reg
@@ -3156,7 +3153,6 @@ theorem ref_chainsrc_borrow
       dOut.result.cleanup = [] ∧
       (ρt.extend permsR.NextTag s_mid.perms.NextTag) permsR.NextTag
         = some s_mid.perms.NextTag ∧
-      (permsR.NextTag == wildcardTag) = false ∧
       ListRel (MemValSim ρa (ρt.extend permsR.NextTag s_mid.perms.NextTag))
         [mirlite.MemValue.ptrVal resolved.allocBase
           (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
@@ -3165,7 +3161,7 @@ theorem ref_chainsrc_borrow
           resolved.allocSize s_mid.perms.NextTag] := by
   subst h_csD
   obtain ⟨dOut', n1, s_mid, tres, h_dval', h_dclean, h_drun, h_dpc, h_dmem,
-    h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dnw, h_dle, h_drange,
+    h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dle, h_drange,
     -, h_dprm, h_dregmono, -, -, h_dbase⟩ :=
     ptrChain_lowering_sim h_id_a h_wf_t h_spine kindL csA sA resolved permsR h_dres
       h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
@@ -3204,8 +3200,8 @@ theorem ref_chainsrc_borrow
     h_code1' h_dentry h_le1 h_ref_tgt'
   refine ⟨_, s_mid, _, tgtPerms, rfl, rfl, h_incr_t, h_wf_t', h_tbd', h_psim',
     oseair_runN_trans h_drun h_run1, ?_, ?_, h_dprm, h_dregmono, h_dmem, h_dclean,
-    h_rt_new, h_nw_new,
-    ⟨⟨h_dbase, h_off_eq, rfl, h_rt_new, h_nw_new, fun k hk => h_drange k hk⟩, trivial⟩⟩
+    h_rt_new,
+    ⟨⟨h_dbase, h_off_eq, rfl, h_rt_new, fun k hk => h_drange k hk⟩, trivial⟩⟩
   · exact LocalBindingSim.placeRegMap_congr (by simp only [emit]; exact h_dprm)
       (LocalBindingSim.insert_fresh_reg
         (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_dlbs)
@@ -3292,7 +3288,6 @@ theorem copy_boundproj_write_after_read
     {dstReg : Register} {tagD : Tag} (boff : Nat)
     (h_raD : ρa dbase = some dbase)
     (h_rtD : ρt dtag = some tagD)
-    (h_nwD : (dtag == wildcardTag) = false)
     (h_domD : ∀ k, k < dsize → ∃ a, ρa (dbase + k) = some a)
     (off : Nat) (h_fit : boff + off + blockSize τ ≤ dsize)
     -- the POST-SOURCE bundle
@@ -3505,7 +3500,6 @@ theorem copy_boundplain_write_after_read
     {dstReg : Register} {tagD : Tag} (boff : Nat)
     (h_raD : ρa dbase = some dbase)
     (h_rtD : ρt dtag = some tagD)
-    (h_nwD : (dtag == wildcardTag) = false)
     (h_domD : ∀ k, k < dsize → ∃ a, ρa (dbase + k) = some a)
     -- the POST-SOURCE bundle
     {csR : CompilerState} {sR : oseair.State MSB} {vreg : Register}
@@ -3629,7 +3623,6 @@ theorem copy_bound_write_after_read
     {dstReg : Register} {tagD : Tag} (boff : Nat)
     (h_raD : ρa dbase = some dbase)
     (h_rtD : ρt dtag = some tagD)
-    (h_nwD : (dtag == wildcardTag) = false)
     (h_domD : ∀ k, k < dsize → ∃ a, ρa (dbase + k) = some a)
     (off : Nat) (h_fit : boff + off + blockSize τ ≤ dsize)
     -- the POST-SOURCE bundle
@@ -3670,7 +3663,7 @@ theorem copy_bound_write_after_read
     rw [projDstTail_zero] at h_stmtRun
     have hFrag := hInc.fragmentOf (base := csR.nextLabel) h_stmtRun rfl
     exact copy_boundplain_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_id_a h_wf_t h_unmap h_prb boff h_raD h_rtD h_nwD h_domD h_runR h_entryD h_sms
+      h_id_a h_wf_t h_unmap h_prb boff h_raD h_rtD h_domD h_runR h_entryD h_sms
       h_alloc h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_pcR h_vregR h_vlen
       (by simpa using h_fit)
       (by rw [h_pcR]; exact hFrag.instrAt 0 rfl rfl)
@@ -3681,7 +3674,7 @@ theorem copy_bound_write_after_read
   · rw [projDstTail_pos _ h_off] at h_stmtRun
     have hFrag := hInc.fragmentOf (base := csR.nextLabel) h_stmtRun rfl
     exact copy_boundproj_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_id_a h_wf_t h_unmap h_prb boff h_raD h_rtD h_nwD h_domD off h_fit h_runR
+      h_id_a h_wf_t h_unmap h_prb boff h_raD h_rtD h_domD off h_fit h_runR
       h_entryD h_sms h_alloc h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_pcR h_vregR
       h_vbelow h_vlen
       (by rw [h_pcR]; exact hFrag.instrAt 0 rfl rfl)
@@ -3887,7 +3880,7 @@ theorem copy_chain_write_after_read
       exact h_look
     exact RegisterBelow.mono h_regmonoR (h_prb _ _ _ h_cs)
   obtain ⟨dOut, n2, s_mid2, tresD, h_dval, h_dclean, h_drun, h_dpc, h_dmem,
-    h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dnw, h_dle, h_drange,
+    h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dle, h_drange,
     h_dbelow, h_dprm, h_dregmono, h_dlabmono, h_dframe, h_rabase⟩ :=
     ptrChain_lowering_sim (s_mir := { s_mir with perms := perms₂ })
       (compProg := compProg) h_id_a h_wf_t h_dchain RefKind.Mut csR
@@ -3912,7 +3905,7 @@ theorem copy_chain_write_after_read
     (rd := { rd with addr := rd.addr + off })
     compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t h_unmap h_prb
     (dstReg := dOut.result.reg) (boff := rd.addr - rd.allocBase)
-    h_rabase h_drt h_dnw h_drange off h_fit
+    h_rabase h_drt h_drange off h_fit
     (oseair_runN_trans h_runR h_drun) h_dentry
     (by rw [h_dmem, h_memR]; exact h_sms)
     (by rw [h_dmem, h_memR]; exact h_alloc)

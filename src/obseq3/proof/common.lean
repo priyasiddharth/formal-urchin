@@ -784,10 +784,10 @@ def MemValSim
   | .word v,          .Dat v'            => v' = v
   | .ptrVal b o s t,  .Ptr b' o' s' t'  =>
       ρa b = some b' ∧ o' = o ∧ s' = s ∧ ρt t = some t' ∧
-      -- core programs cannot mint wildcard pointers (`fromExposed` is not
-      -- a core rvalue), so stored pointer tags are non-wildcard — this is
-      -- what lets BRIDGE 3 fire on writes THROUGH loaded pointers
-      (t == wildcardTag) = false ∧
+      -- NO non-wildcard side condition: `fromExposed` stores pointers
+      -- carrying `wildcardTag`, and since 2026-09-13 an access through
+      -- one transports too (`resolveWildcardIn_transport`), so BRIDGE 3
+      -- fires on writes through loaded pointers whatever their tag.
       -- the referent block is in ρa's domain (allocations are lockstep),
       -- which is what supplies `writeThroughPtr_sim`'s `h_dom` for deref
       -- destinations
@@ -803,8 +803,8 @@ theorem MemValSim.rename_mono
     MemValSim ρa' ρt' mv v := by
   cases mv <;> cases v <;> simp [MemValSim] at h_sim ⊢
   · exact h_sim
-  · rcases h_sim with ⟨h_base, h_off, h_size, h_tag_old, h_nw, h_dom⟩
-    exact ⟨h_addr _ _ h_base, h_off, h_size, h_tag _ _ h_tag_old, h_nw,
+  · rcases h_sim with ⟨h_base, h_off, h_size, h_tag_old, h_dom⟩
+    exact ⟨h_addr _ _ h_base, h_off, h_size, h_tag _ _ h_tag_old,
       fun k hk => ⟨(h_dom k hk).choose, h_addr _ _ (h_dom k hk).choose_spec⟩⟩
 
 /-- Extend an address rename at one fresh address. Unlike ρt, ρa is

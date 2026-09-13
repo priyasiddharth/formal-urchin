@@ -517,7 +517,7 @@ theorem copy_chainsrc_local_simulation
     -- §5 the BOUND-root write seam at offset zero
     exact copy_bound_write_after_read (τ := τ) (dbase := bD.addr) (dtag := bD.tag)
       (dsize := blockSize τ) compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t
-      h_unmap h_prb (dstReg := dstReg) 0 h_raD h_rtD h_nwD h_domD 0
+      h_unmap h_prb (dstReg := dstReg) 0 h_raD h_rtD  h_domD 0
       (by simp) h_runR h_entryD2 (by rw [h_smem]; exact h_sms)
       (by rw [h_smem]; exact h_alloc) h_prmR h_regmonoR h_lbsR h_psimR h_tbdR
       h_pcR h_vregR h_vbelow h_vlen
@@ -756,7 +756,7 @@ theorem copy_projchain_zero_simulation
     -- §5 the BOUND-root write seam at offset zero
     exact copy_bound_write_after_read (τ := τ) (dbase := bD.addr) (dtag := bD.tag)
       (dsize := blockSize τ) compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t
-      h_unmap h_prb (dstReg := dstReg) 0 h_raD h_rtD h_nwD h_domD 0
+      h_unmap h_prb (dstReg := dstReg) 0 h_raD h_rtD  h_domD 0
       (by simp) h_runR h_entryD2 (by rw [h_smem]; exact h_sms)
       (by rw [h_smem]; exact h_alloc) h_prmR h_regmonoR h_lbsR h_psimR h_tbdR
       h_pcR h_vregR h_vbelow h_vlen
@@ -870,7 +870,7 @@ theorem copy_projchain_offset_simulation
     -- §5 the BOUND-root write seam at offset zero
     exact copy_bound_write_after_read (τ := τ) (dbase := bD.addr) (dtag := bD.tag)
       (dsize := blockSize τ) compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t
-      h_unmap h_prb (dstReg := dstReg) 0 h_raD h_rtD h_nwD h_domD 0
+      h_unmap h_prb (dstReg := dstReg) 0 h_raD h_rtD  h_domD 0
       (by simp) h_runR h_entryD2 (by rw [h_smem]; exact h_sms)
       (by rw [h_smem]; exact h_alloc) h_prmR h_regmonoR h_lbsR h_psimR h_tbdR
       h_pcR h_vregR h_vbelow h_vlen
@@ -1224,7 +1224,7 @@ theorem copy_chainsrc_read
         (oseair.readWordSeq s_mid1.mem rs.addr (blockSize τ)) := by
   -- the source mother
   obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
-    h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
+    h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
     h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
     h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
       rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
@@ -1436,7 +1436,7 @@ theorem copy_projsrc_offset_read
           (blockSize τ)) := by
   -- the source mother, on the chain BASE
   obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
-    h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_snw, h_sle, h_srange,
+    h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
     h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
     h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
       rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS

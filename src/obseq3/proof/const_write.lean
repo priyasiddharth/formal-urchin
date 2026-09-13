@@ -933,7 +933,7 @@ theorem const_store_proj_deref_zero_simulation
     · rw [h_run0, h_incrS.code_eq q' h_lt]
       exact h_code
   obtain ⟨dOut, n1, s_mid, tres, h_dval, h_dclean, h_drun, h_dpc, h_dmem, h_dpsim,
-    h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dnw, h_dle, h_drange, h_dbelow,
+    h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dle, h_drange, h_dbelow,
     h_dprm, h_dregmono, h_dlabmono, -, -⟩ :=
     ptrChain_lowering_sim h_id_a h_wf_t h_chain RefKind.Mut csPrefix s_osea
       rd permsP h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instD
@@ -1169,7 +1169,7 @@ theorem const_store_proj_deref_simulation
     · rw [h_run0, h_incrS.code_eq q' h_lt]
       exact h_code
   obtain ⟨dOut, n1, s_mid, tres, h_dval, h_dclean, h_drun, h_dpc, h_dmem, h_dpsim,
-    h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dnw, h_dle, h_drange, h_dbelow,
+    h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dle, h_drange, h_dbelow,
     h_dprm, h_dregmono, h_dlabmono, -, -⟩ :=
     ptrChain_lowering_sim h_id_a h_wf_t h_chain RefKind.Mut csPrefix s_osea
       rd permsP h_dres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instD
@@ -2481,7 +2481,7 @@ theorem const_store_deref_chain_simulation
     · rw [h_run0, h_incrS.code_eq q' h_lt]
       exact h_code
   obtain ⟨dOut, n1, s_mid, tres, h_dval, h_dclean, h_drun, h_dpc, h_dmem, h_dpsim,
-    h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dnw, h_dle, h_drange, h_dbelow,
+    h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dle, h_drange, h_dbelow,
     h_dprm, h_dregmono, h_dlabmono, -, -⟩ :=
     ptrChain_lowering_sim h_id_a h_wf_t h_chain RefKind.Mut csPrefix s_osea
       resolved permsD h_res h_tbd h_lbs h_prb h_sms h_psim h_pc h_instD

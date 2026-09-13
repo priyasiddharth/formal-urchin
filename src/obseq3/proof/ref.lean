@@ -678,7 +678,7 @@ theorem ref_local_local_simulation
       obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB,
         h_pcB, h_relB⟩ :=
         ref_local_borrow τ τ kind prot mask 0 compProg s_mir s_osea csPrefix
-          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS h_nwS
+          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
           h_domS (by simp) (by simpa using h_ref_src) h_code1
       have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
           s_mir.perms.NextTag = some s_osea.perms.NextTag :=
@@ -710,7 +710,7 @@ theorem ref_local_local_simulation
           (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr) (blockSize τ)
             s_mir.perms.NextTag])
           compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-          0 h_raD h_rtD' h_nwD h_domD h_run1
+          0 h_raD h_rtD'  h_domD h_run1
           (by
             show oseair.RegMap.lookup _ _ = _
             rw [RegMap.lookup_insert_ne _ h_regne]
@@ -864,7 +864,7 @@ theorem ref_fresh_dst_simulation
                 rw [h_pc]
                 simp only [emit_nextLabel, setPlaceInfo_nextLabel, List.length_cons,
                   List.length_nil])
-              h_entryS1 h_raS' h_rtS1 h_nwS
+              h_entryS1 h_raS' h_rtS1 
               (fun k hk => ⟨(h_domS k hk).choose,
                 h_incr_a _ _ (h_domS k hk).choose_spec⟩)
               (by simp) (by simpa using h_ref_src) h_code2
@@ -1007,7 +1007,7 @@ theorem ref_proj_local_simulation
       obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB, h_pcB,
         h_relB⟩ :=
         ref_local_borrow τ σb kind prot mask (pathOffset f) compProg s_mir s_osea csPrefix
-          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS h_nwS
+          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
           h_domS (PathTo.offset_add_size_le f) h_ref_src h_code1
       -- §5-§6 the BOUND-root PLAIN write seam
       simp only [h_envD] at h_step
@@ -1033,7 +1033,7 @@ theorem ref_proj_local_simulation
           (mvals := [mirlite.MemValue.ptrVal bS.addr
             (bS.addr + pathOffset f - bS.addr) (blockSize σb) s_mir.perms.NextTag])
           compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-          0 h_raD (h_incr_t _ _ h_rtD) h_nwD h_domD h_run1
+          0 h_raD (h_incr_t _ _ h_rtD) h_domD h_run1
           (by
             show oseair.RegMap.lookup _ _ = _
             rw [RegMap.lookup_insert_ne _ h_regne]
@@ -1394,7 +1394,7 @@ theorem ref_deref_local_simulation
       (base := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (Place.deref P)) csPrefix).nextLabel)
       h_stmtRun rfl
     obtain ⟨nB, s_mid, sB, tgtPerms, hsB, rfl, h_incr_t, h_wf_t', h_tbd', h_psim',
-      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new, h_nw_new,
+      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new,
       h_relB⟩ :=
       ref_chainsrc_borrow h_spine PathTo.nil RefKind.Shared kind prot mask compProg
         s_mir s_osea csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc h_dres
@@ -1428,7 +1428,7 @@ theorem ref_deref_local_simulation
           (resolved.addr + pathOffset PathTo.nil - resolved.allocBase) resolved.allocSize
           permsR.NextTag])
         compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-        0 h_raD2 h_rtD2 h_nwD2 h_domD h_runB h_entryD2
+        0 h_raD2 h_rtD2  h_domD h_runB h_entryD2
         (by rw [h_memB]
             exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
         (by rw [h_memB]; exact h_alloc)
@@ -1879,7 +1879,7 @@ theorem ref_projdst_local_simulation
       obtain ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbsB,
         h_pcB, h_relB⟩ :=
         ref_local_borrow τ τ kind prot mask 0 compProg s_mir s_osea csPrefix
-          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS h_nwS
+          h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
           h_domS (by simp) (by simpa using h_ref_src) h_code1
       have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
           = some tagD := h_incr_t _ _ h_rtD
@@ -1908,7 +1908,7 @@ theorem ref_projdst_local_simulation
           (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr) (blockSize τ)
             s_mir.perms.NextTag])
           compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-          0 h_raD h_rtD' h_nwD h_domD (pathOffset g)
+          0 h_raD h_rtD'  h_domD (pathOffset g)
           (by simpa using PathTo.offset_add_size_le g) h_run1
           (by
             show oseair.RegMap.lookup _ _ = _
@@ -3312,7 +3312,7 @@ theorem ref_derefdst_local_simulation
   obtain ⟨tgtP1, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', h_run1, h_lbs1,
     h_pc1, h_relB⟩ :=
     ref_local_borrow τ τ kind prot mask 0 compProg s_mir s_osea csPrefix
-      h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS h_nwS
+      h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS 
       h_domS (by simp) (by simpa using h_ref_src) h_code1
   -- §7 the WHOLE dst lowering via the mother lemma, from the
   -- post-Borrow state under the extended rename
@@ -3833,7 +3833,7 @@ theorem ref_fresh_projsrc_simulation
                 rw [h_pc]
                 simp only [emit_nextLabel, setPlaceInfo_nextLabel, List.length_cons,
                   List.length_nil])
-              h_entryS1 h_raS' h_rtS1 h_nwS
+              h_entryS1 h_raS' h_rtS1 
               (fun k hk => ⟨(h_domS k hk).choose,
                 h_incr_a _ _ (h_domS k hk).choose_spec⟩)
               (PathTo.offset_add_size_le f) h_ref_src h_code2
@@ -4054,7 +4054,7 @@ theorem ref_proj_fresh_simulation
                 rw [h_pc]
                 simp only [emit_nextLabel, setPlaceInfo_nextLabel, List.length_cons,
                   List.length_nil])
-              h_entryS1 h_raS' h_rtS1 h_nwS
+              h_entryS1 h_raS' h_rtS1 
               (fun k hk => ⟨(h_domS k hk).choose,
                 h_incr_a _ _ (h_domS k hk).choose_spec⟩)
               (by simp) (by simpa using h_ref_src) h_code2
@@ -4280,7 +4280,7 @@ theorem ref_fresh_derefsrc_simulation
       (base := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (Place.deref P)) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.PtrL τ))).nextLabel)
       h_stmtRun rfl
     obtain ⟨nB, s_mid, sB, tgtPerms, hsB, rfl, h_incr_t2, h_wf_t', h_tbd', h_psim',
-      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new2, h_nw_new,
+      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new2,
       h_relB⟩ :=
       ref_chainsrc_borrow
         (ρa := ρa.extendBlock s_mir.mem.addrStart (blockSize (obseq.LayoutTy.PtrL τ)))
@@ -4407,7 +4407,7 @@ theorem ref_projdst_projsrc_simulation
         h_pcB, h_relB⟩ :=
         ref_local_borrow τ σb kind prot mask (pathOffset f) compProg s_mir s_osea
           csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS
-          h_rtS h_nwS h_domS (PathTo.offset_add_size_le f)
+          h_rtS  h_domS (PathTo.offset_add_size_le f)
           (by simpa using h_ref_src) h_code1
       have h_rtD' : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) bD.tag
           = some tagD := h_incr_t _ _ h_rtD
@@ -4434,7 +4434,7 @@ theorem ref_projdst_projsrc_simulation
           (mvals := [mirlite.MemValue.ptrVal bS.addr
             (bS.addr + pathOffset f - bS.addr) (blockSize σb) s_mir.perms.NextTag])
           compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-          0 h_raD h_rtD' h_nwD h_domD (pathOffset g)
+          0 h_raD h_rtD'  h_domD (pathOffset g)
           (by simpa using PathTo.offset_add_size_le g) h_run1
           (by
             show oseair.RegMap.lookup _ _ = _
@@ -4601,7 +4601,7 @@ theorem ref_proj_fresh_projsrc_simulation
                 rw [h_pc]
                 simp only [emit_nextLabel, setPlaceInfo_nextLabel, List.length_cons,
                   List.length_nil])
-              h_entryS1 h_raS' h_rtS1 h_nwS
+              h_entryS1 h_raS' h_rtS1 
               (fun k hk => ⟨(h_domS k hk).choose,
                 h_incr_a _ _ (h_domS k hk).choose_spec⟩)
               (PathTo.offset_add_size_le f) h_ref_src h_code2
@@ -4791,7 +4791,7 @@ theorem ref_proj_fresh_selfsrc_simulation
                 rw [h_pc]
                 simp only [emit_nextLabel, setPlaceInfo_nextLabel, List.length_cons,
                   List.length_nil])
-              h_entryS1 h_ra_base h_rtS1 h_nwD
+              h_entryS1 h_ra_base h_rtS1
               (fun k hk => ⟨s_mir.mem.addrStart + k, h_ra_dom k hk⟩)
               (PathTo.offset_add_size_le f) h_ref_src h_code2
           have h_incr12 := TagRenameIncr.trans h_incr1 h_incr2
@@ -4947,7 +4947,7 @@ theorem ref_derefprojsrc_local_simulation
       (base := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextLabel)
       h_stmtRun rfl
     obtain ⟨nB, s_mid, sB, tgtPerms, hsB, rfl, h_incr_t, h_wf_t', h_tbd', h_psim',
-      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new, h_nw_new,
+      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new,
       h_relB⟩ :=
       ref_chainsrc_borrow h_spine f kind kind prot mask compProg s_mir s_osea csPrefix
         h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc h_dres h_fit h_ref_src
@@ -4980,7 +4980,7 @@ theorem ref_derefprojsrc_local_simulation
           (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
           permsR.NextTag])
         compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-        0 h_raD2 h_rtD2 h_nwD2 h_domD h_runB h_entryD2
+        0 h_raD2 h_rtD2  h_domD h_runB h_entryD2
         (by rw [h_memB]
             exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
         (by rw [h_memB]; exact h_alloc)
@@ -5171,7 +5171,7 @@ theorem ref_fresh_derefprojsrc_simulation
       (base := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, obseq.LayoutTy.PtrL τ))).nextLabel)
       h_stmtRun rfl
     obtain ⟨nB, s_mid, sB, tgtPerms, hsB, rfl, h_incr_t2, h_wf_t', h_tbd', h_psim',
-      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new2, h_nw_new,
+      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new2,
       h_relB⟩ :=
       ref_chainsrc_borrow
         (ρa := ρa.extendBlock s_mir.mem.addrStart (blockSize (obseq.LayoutTy.PtrL τ)))
@@ -5318,7 +5318,7 @@ theorem ref_projdst_derefsrc_simulation
     -- label, so the package never has to expose the mother's state
     have hFrag := (hInc.mono h_incrB).fragmentOf (base := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) csPrefix).nextLabel) rfl rfl
     obtain ⟨nB, s_mid, sB, tgtPerms, hsB, rfl, h_incr_t, h_wf_t', h_tbd', h_psim',
-      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new, h_nw_new,
+      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new,
       h_relB⟩ :=
       ref_chainsrc_borrow h_spine f kind kind prot mask compProg s_mir s_osea csPrefix
         h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc h_dres h_fit h_ref_src
@@ -5345,7 +5345,7 @@ theorem ref_projdst_derefsrc_simulation
           (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
           permsR.NextTag])
         compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-        0 h_raD2 h_rtD2 h_nwD2 h_domD (pathOffset g)
+        0 h_raD2 h_rtD2  h_domD (pathOffset g)
         (by simpa using PathTo.offset_add_size_le g)
         h_runB h_entryD2
         (by rw [h_memB]
@@ -5511,7 +5511,7 @@ theorem ref_proj_fresh_derefsrc_simulation
     -- chain lowering, the retag transport and the source Borrow
     have hFrag := (hInc.mono h_incrB).fragmentOf (base := (CheckedCompilerM.run (placeToRegChecked kind (Place.deref P)) (setPlaceInfo (emit { csPrefix with nextReg := csPrefix.nextReg + 1 } [Instr.Assgn (Register.R csPrefix.nextReg) (Rhs.Alloc (layoutToTyVal (σ)))]) dstLoc.idx.1 (Register.R csPrefix.nextReg, σ))).nextLabel) rfl rfl
     obtain ⟨nB, s_mid, sB, tgtPerms, hsB, rfl, h_incr_t2, h_wf_t', h_tbd', h_psim',
-      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new2, h_nw_new,
+      h_runB, h_lbsB, h_pcB, h_dprm, h_dregmono, h_memB, -, h_rt_new2,
       h_relB⟩ :=
       ref_chainsrc_borrow (ρa := ρa.extendBlock s_mir.mem.addrStart (blockSize σ))
         (ρt := ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
@@ -5684,7 +5684,7 @@ theorem ref_derefdst_projsrc_simulation
     h_pc1, h_relB⟩ :=
     ref_local_borrow τ σb kind prot mask (pathOffset f) compProg s_mir s_osea
       csPrefix h_id_a h_wf_t h_tbd h_lbs h_prb h_psim h_pc h_entryS h_raS h_rtS
-      h_nwS h_domS (PathTo.offset_add_size_le f) (by simpa using h_ref_src)
+      h_domS (PathTo.offset_add_size_le f) (by simpa using h_ref_src)
       h_code1
   -- §7 the WHOLE dst lowering via the mother lemma, from the
   -- post-Borrow state under the extended rename
@@ -5904,7 +5904,7 @@ theorem ref_derefdst_derefprojsrc_simulation
         (k := 0) (by simp)
       simpa using h
   obtain ⟨nB, s_mid, sB, tgtPerms, hsB, rfl, h_incr_t, h_wf_t', h_tbd', h_psim',
-    h_runB, h_lbsB, h_pcB, h_sprm, h_sregmono, h_memB, -, h_rt_new, h_nw_new,
+    h_runB, h_lbsB, h_pcB, h_sprm, h_sregmono, h_memB, -, h_rt_new,
     h_relB⟩ :=
     ref_chainsrc_borrow h_schain f kind kind prot mask compProg s_mir s_osea csPrefix
       h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_ref_src
@@ -6099,7 +6099,7 @@ theorem ref_projderefdst_chainsrc_simulation
         (k := 0) (by simp)
       simpa using h
   obtain ⟨nB, s_mid, sB, tgtPerms, hsB, rfl, h_incr_t, h_wf_t', h_tbd', h_psim',
-    h_runB, h_lbsB, h_pcB, h_sprm, h_sregmono, h_memB, -, h_rt_new, h_nw_new,
+    h_runB, h_lbsB, h_pcB, h_sprm, h_sregmono, h_memB, -, h_rt_new,
     h_relB⟩ :=
     ref_chainsrc_borrow h_schain f kind kind prot mask compProg s_mir s_osea csPrefix
       h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_ref_src
@@ -6118,7 +6118,7 @@ theorem ref_projderefdst_chainsrc_simulation
     simp only [emit]
     exact Nat.le_trans h_sregmono (Nat.le_succ _)
   obtain ⟨bOut, n2, s_mid2, tresD, h_bval, h_bclean, h_brun, h_bpc, h_bmem,
-    h_bpsim, h_bnt1, h_bnt2, h_blbs, h_bentry, h_brt, h_bnw, h_ble, h_brange,
+    h_bpsim, h_bnt1, h_bnt2, h_blbs, h_bentry, h_brt, h_ble, h_brange,
     h_bbelow, h_bprm, h_bregmono, h_blabmono, h_bframe, h_bbase⟩ :=
     ptrChain_lowering_sim (s_mir := { s_mir with perms := perms1 })
       h_id_a h_wf_t' h_dchain RefKind.Mut (emit { (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix) with nextReg := (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kind sbase) csPrefix).nextReg) (Rhs.Borrow kind prot mask (blockSize τ) sOut0.result.reg (pathOffset f))]) sB
@@ -6168,7 +6168,7 @@ theorem ref_projderefdst_chainsrc_simulation
       (mvals := [mirlite.MemValue.ptrVal rs.allocBase
         (rs.addr + pathOffset f - rs.allocBase) rs.allocSize permsR.NextTag])
       compProg h_comp h_stmt h_csAt h_stmtOut h_id_a h_wf_t' h_unmap h_prb
-      (rd.addr - rd.allocBase) h_bbase h_brt h_bnw h_brange (pathOffset g)
+      (rd.addr - rd.allocBase) h_bbase h_brt h_brange (pathOffset g)
       h_fitD
       (oseair_runN_trans h_runB h_brun)
       h_bentry

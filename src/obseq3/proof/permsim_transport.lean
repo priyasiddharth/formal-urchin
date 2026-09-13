@@ -1985,4 +1985,33 @@ theorem sb_die_exposed_inert {ap q : AccessPerms} {addr : Word} {len : Nat}
       subst h_op
       rfl
 
+/-- `die` leaves the exposed set alone. -/
+theorem sb_die_exposed_eq {ap q : AccessPerms} {addr : Word} {len : Nat}
+    {tag : Tag} (h : sb_die ap addr len tag = .ok q) :
+    q.exposed = ap.exposed := by
+  have h2 : sb_die { ap with exposed := ap.exposed } addr len tag
+      = .ok { q with exposed := ap.exposed } := sb_die_exposed_inert _ h
+  rw [h] at h2
+  have h3 := congrArg AccessPerms.exposed (Except.ok.inj h2)
+  simpa using h3
+
+/-- Exposing a tag commutes with a `die`: the die does not read `exposed`,
+    and exposing does not touch the stacks. This is what lets the
+    projected-source `exposeAddr` shape run its cast BETWEEN the
+    projection's borrow and its `Die`. -/
+theorem sb_die_expose_comm {ap q : AccessPerms} {addr : Word} {len : Nat}
+    {tag t : Tag} (h : sb_die ap addr len tag = .ok q) :
+    sb_die (sb_expose ap t) addr len tag = .ok (sb_expose q t) := by
+  by_cases h_w : (t == wildcardTag) = true
+  · unfold sb_expose
+    rw [h_w]
+    simpa using h
+  · have h_w' : (t == wildcardTag) = false := by grind
+    have h_ex := sb_die_exposed_eq h
+    unfold sb_expose
+    rw [h_w']
+    simp only [Bool.false_eq_true, if_false]
+    rw [h_ex]
+    exact sb_die_exposed_inert _ h
+
 end obseq3.proof
