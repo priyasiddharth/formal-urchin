@@ -5898,18 +5898,40 @@ theorem copy_derefdst_flat_bridge {Γ : Ctx} {τ τs : LayoutTy}
       (compileStmt_readrhs_derefdst_dstflatten_value (h_shape := h_shape2) pp
         (flattenPlace src) cs ⟨so, h⟩)
 
+/-- Everything a read-then-store rvalue must supply for the generic
+    per-statement dispatcher: the compiled shape at every source place,
+    that flattening the source does not change the mirlite step, and the
+    two read packages (chain-class sources and projected sources at a
+    nonzero offset). `copy`, `exposeAddr` and `fromExposed` differ only
+    in these four fields. -/
+structure ReadRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (compProg : oseair.Prog)
+    (rhsOf : Place Γ σ → RExpr Γ τ) (mk : Register → Rhs) : Prop where
+  shape : ∀ src, ReadRhsShape (rhsOf src) src mk
+  stepFlat : ∀ (s : mirlite.State MSB Γ) (dst : Place Γ τ) (src : Place Γ σ),
+    mirlite.stepStmt MSB s (.assign dst (rhsOf src))
+      = mirlite.stepStmt MSB s (.assign dst (rhsOf (flattenPlace src)))
+  pkgLowered : ∀ (src : Place Γ σ), LoweringSimAny compProg src →
+    ReadPkgLowered compProg (rhsOf src) src mk
+  pkgProjOffset : ∀ {σs : LayoutTy} (B : Place Γ σs) (spath : PathTo σs σ),
+    LoweringSimAny compProg B →
+    (∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs), B = b.proj q → False) →
+    pathOffset spath ≠ 0 →
+    ReadPkgProjOffset compProg (rhsOf (.proj B spath)) B spath mk
+
 /-- LEAF SORRY 2 → DISPATCHER 2026-08-28: per-statement simulation for
     `.assign dst (.copy src)`, decomposed by the shapes of the two
     places. Regime L→L (both bound locals, any layout) is CLOSED by
     `copy_local_local_simulation`; the residual shapes are named. -/
-theorem CompilerInv_step_copy
-    {τ : LayoutTy}
-    {dst src : Place Γ τ}
+theorem CompilerInv_step_readrhs
+    {σ τ : LayoutTy}
+    {dst : Place Γ τ} {src : Place Γ σ}
+    {rhsOf : Place Γ σ → RExpr Γ τ} {mk : Register → Rhs}
     (compProg : oseair.Prog)
+    (F : ReadRhsFamily compProg rhsOf mk)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
-    (h_stmt : prog.get? s_mir.pc = some (.assign dst (.copy src)))
-    (h_step : mirlite.stepStmt MSB s_mir (.assign dst (.copy src)) = .ok s_mir') :
+    (h_stmt : prog.get? s_mir.pc = some (.assign dst (rhsOf src)))
+    (h_step : mirlite.stepStmt MSB s_mir (.assign dst (rhsOf src)) = .ok s_mir') :
     ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
       AddrRenameIncr ρa ρa' ∧
       TagRenameIncr ρt ρt' ∧
@@ -5925,8 +5947,8 @@ theorem CompilerInv_step_copy
               -- chain grammar, so the chain-src leaf owns L→L too
               obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
                 copy_chainsrc_local_simulation (src := .local srcLoc) compProg
-                  (readRhsShape_copy _)
-                  (copy_readpkg_lowered compProg (PtrChain.base srcLoc).loweringSimAny)
+                  (F.shape _)
+                  (F.pkgLowered _ (PtrChain.base srcLoc).loweringSimAny)
                   h_comp h_inv h_stmt
                   (fun _ => rfl) (fun _ so h => ⟨so, h⟩)
                   h_envD h_step
@@ -5935,8 +5957,8 @@ theorem CompilerInv_step_copy
           | none =>
               -- CLOSED: fresh destination, chain source (regime B for copy)
               exact copy_fresh_chainsrc_simulation (src := .local srcLoc) compProg
-                (readRhsShape_copy _)
-                (copy_readpkg_lowered compProg (PtrChain.base srcLoc).loweringSimAny)
+                (F.shape _)
+                (F.pkgLowered _ (PtrChain.base srcLoc).loweringSimAny)
                 h_comp h_inv h_stmt
                 (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_envD h_step
       | proj sbase ff =>
@@ -5944,15 +5966,15 @@ theorem CompilerInv_step_copy
           -- form is ONE projection over a canonical chain, and both env
           -- cases hand that same normal form to their collapsed leaves
           obtain ⟨σ', Bc, path', h_flat, h_chain⟩ := flatten_proj_chainish sbase ff
-          rw [stepStmt_assign_copysrc_anyflatten, h_flat] at h_step
-          obtain ⟨h_run0, h_val0⟩ := copy_local_srcflat_bridge (dstLoc := dstLoc) _ (readRhsShape_copy _)
-            (readRhsShape_copy _) h_flat
+          rw [F.stepFlat, h_flat] at h_step
+          obtain ⟨h_run0, h_val0⟩ := copy_local_srcflat_bridge (dstLoc := dstLoc) _ (F.shape _)
+            (F.shape _) h_flat
           cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
           | some bD =>
               by_cases h_off : pathOffset path' = 0
               · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
-                  copy_projchain_zero_simulation compProg (readRhsShape_copy _)
-                    (copy_readpkg_lowered compProg
+                  copy_projchain_zero_simulation compProg (F.shape _)
+                    (F.pkgLowered _
                       (LoweringSimAny.projZero h_chain.not_proj h_off
                         h_chain.loweringSimAny))
                     h_chain h_off h_comp h_inv
@@ -5960,8 +5982,8 @@ theorem CompilerInv_step_copy
                 exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa,
                   TagRenameIncr.refl ρt, h_run, h_inv'⟩
               · obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
-                  copy_projchain_offset_simulation compProg (readRhsShape_copy _)
-                    (copy_readpkg_projoffset compProg h_chain.loweringSimAny
+                  copy_projchain_offset_simulation compProg (F.shape _)
+                    (F.pkgProjOffset _ _ h_chain.loweringSimAny
                       h_chain.not_proj h_off)
                     h_chain h_off h_comp h_inv
                     h_stmt h_run0 h_val0 h_envD h_step
@@ -5971,15 +5993,15 @@ theorem CompilerInv_step_copy
               -- CLOSED: fresh destination, proj-topped source (regime B)
               by_cases h_off : pathOffset path' = 0
               · exact copy_fresh_projchain_zero_simulation compProg
-                  (readRhsShape_copy _)
-                  (copy_readpkg_lowered compProg
+                  (F.shape _)
+                  (F.pkgLowered _
                     (LoweringSimAny.projZero h_chain.not_proj h_off
                       h_chain.loweringSimAny))
                   h_chain h_off
                   h_comp h_inv h_stmt h_run0 h_val0 h_envD h_step
               · exact copy_fresh_projchain_offset_simulation compProg
-                  (readRhsShape_copy _)
-                  (copy_readpkg_projoffset compProg h_chain.loweringSimAny
+                  (F.shape _)
+                  (F.pkgProjOffset _ _ h_chain.loweringSimAny
                     h_chain.not_proj h_off)
                   h_chain h_off
                   h_comp h_inv h_stmt h_run0 h_val0 h_envD h_step
@@ -5987,26 +6009,26 @@ theorem CompilerInv_step_copy
           cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
           | some bD =>
               -- CLOSED: `dst := copy *chain` — flatten-normalized, TOTAL
-              rw [stepStmt_assign_copysrc_flatten] at h_step
+              rw [F.stepFlat] at h_step
               obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
                 copy_chainsrc_local_simulation (src := .deref (flattenPlace pp))
-                  compProg (readRhsShape_copy _)
-                  (copy_readpkg_lowered compProg (PtrChain_flatten_deref pp).loweringSimAny)
+                  compProg (F.shape _)
+                  (F.pkgLowered _ (PtrChain_flatten_deref pp).loweringSimAny)
                   h_comp h_inv h_stmt
-                  (fun cs => compileStmt_readrhs_derefsrc_flatten_run (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) cs)
-                  (fun cs so h => compileStmt_readrhs_derefsrc_flatten_value (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) cs so h)
+                  (fun cs => compileStmt_readrhs_derefsrc_flatten_run (h_shape := F.shape _) (h_shape2 := F.shape _) cs)
+                  (fun cs so h => compileStmt_readrhs_derefsrc_flatten_value (h_shape := F.shape _) (h_shape2 := F.shape _) cs so h)
                   h_envD h_step
               exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa,
                 TagRenameIncr.refl ρt, h_run, h_inv'⟩
           | none =>
               -- CLOSED: fresh destination, deref-chain source
-              rw [stepStmt_assign_copysrc_flatten] at h_step
+              rw [F.stepFlat] at h_step
               exact copy_fresh_chainsrc_simulation (src := .deref (flattenPlace pp))
-                compProg (readRhsShape_copy _)
-                (copy_readpkg_lowered compProg (PtrChain_flatten_deref pp).loweringSimAny)
+                compProg (F.shape _)
+                (F.pkgLowered _ (PtrChain_flatten_deref pp).loweringSimAny)
                 h_comp h_inv h_stmt
-                (fun cs => compileStmt_readrhs_derefsrc_flatten_run (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) cs)
-                (fun cs so h => compileStmt_readrhs_derefsrc_flatten_value (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) cs so h)
+                (fun cs => compileStmt_readrhs_derefsrc_flatten_run (h_shape := F.shape _) (h_shape2 := F.shape _) cs)
+                (fun cs so h => compileStmt_readrhs_derefsrc_flatten_value (h_shape := F.shape _) (h_shape2 := F.shape _) cs so h)
                 h_envD h_step
   | proj dbase dpath =>
       -- the recursion peels any nesting first; the source only has to
@@ -6014,34 +6036,34 @@ theorem CompilerInv_step_copy
       -- zero-offset projection over a chain does too
       rcases flatten_chainish src with h_sch | ⟨σs, B, spath, h_seq, h_B⟩
       · exact copy_projdst_simulation (base := dbase) (path := dpath)
-          (src := src) compProg (readRhsShape_copy _) (readRhsShape_copy _)
-          (fun s dst => stepStmt_assign_copysrc_anyflatten s dst src)
-          (copy_readpkg_lowered compProg h_sch.loweringSimAny)
+          (src := src) compProg (F.shape _) (F.shape _)
+          (fun s dst => F.stepFlat s dst src)
+          (F.pkgLowered _ h_sch.loweringSimAny)
           (fun cs => h_sch.placeToRegChecked_placeRegMap RefKind.Shared cs)
           h_comp h_inv h_stmt (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
       · by_cases h_o : pathOffset spath = 0
         · refine copy_projdst_simulation (base := dbase) (path := dpath)
-            (src := src) compProg (readRhsShape_copy _) (readRhsShape_copy _)
-            (fun s dst => stepStmt_assign_copysrc_anyflatten s dst src) ?_ ?_
+            (src := src) compProg (F.shape _) (F.shape _)
+            (fun s dst => F.stepFlat s dst src) ?_ ?_
             h_comp h_inv h_stmt (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
-          · refine copy_readpkg_lowered compProg ?_
+          · refine F.pkgLowered _ ?_
             rw [h_seq]
             exact LoweringSimAny.projZero h_B.not_proj h_o h_B.loweringSimAny
           · rw [h_seq]
             exact projZero_placeRegMap h_B.not_proj h_o
               (fun cs => h_B.placeToRegChecked_placeRegMap RefKind.Shared cs)
-        · rw [stepStmt_assign_copysrc_anyflatten, h_seq] at h_step
+        · rw [F.stepFlat, h_seq] at h_step
           exact copy_projdst_projsrc_offset_simulation (base := dbase)
             (path := dpath) (B := B) (spath := spath) compProg
-            (readRhsShape_copy _)
-            (copy_readpkg_projoffset compProg h_B.loweringSimAny h_B.not_proj h_o)
+            (F.shape _)
+            (F.pkgProjOffset _ _ h_B.loweringSimAny h_B.not_proj h_o)
             h_B h_o
             h_comp h_inv h_stmt
             (fun cs =>
-              (compileStmt_readrhs_projdst_srcflatten_run (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) dbase dpath src cs).trans
+              (compileStmt_readrhs_projdst_srcflatten_run (h_shape := F.shape _) (h_shape2 := F.shape _) dbase dpath src cs).trans
                 (by rw [h_seq]))
             (fun cs so h => by
-              refine compileStmt_readrhs_projdst_srcflatten_value (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) dbase dpath src cs ?_
+              refine compileStmt_readrhs_projdst_srcflatten_value (h_shape := F.shape _) (h_shape2 := F.shape _) dbase dpath src cs ?_
               rw [h_seq]
               exact ⟨so, h⟩)
             h_step
@@ -6049,51 +6071,78 @@ theorem CompilerInv_step_copy
       -- FLATTEN both places, then the two-mother leaf owns every
       -- spelling whose flattened source is a chain
       rcases flatten_chainish src with h_sch | ⟨σs, B, spath, h_seq, h_B⟩
-      · rw [stepStmt_assign_dstflatten, stepStmt_assign_copysrc_anyflatten] at h_step
+      · rw [stepStmt_assign_dstflatten, F.stepFlat] at h_step
         rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl]
           at h_step
         obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
           copy_chaindst_chainsrc_simulation (P := flattenPlace pp)
             (src := flattenPlace src) compProg
-            (readRhsShape_copy _)
-            (copy_readpkg_lowered compProg h_sch.loweringSimAny)
+            (F.shape _)
+            (F.pkgLowered _ h_sch.loweringSimAny)
             (fun cs => h_sch.placeToRegChecked_placeRegMap RefKind.Shared cs)
             (PtrChain_flatten_deref pp) h_comp h_inv h_stmt
-            (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) rfl).1
-            (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) rfl).2
+            (copy_derefdst_flat_bridge pp src (F.shape _) (F.shape _) rfl).1
+            (copy_derefdst_flat_bridge pp src (F.shape _) (F.shape _) rfl).2
             h_step
         exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
           h_run, h_inv'⟩
       · -- the flattened source is PROJ-topped over a chain
         by_cases h_o : pathOffset spath = 0
-        · rw [stepStmt_assign_dstflatten, stepStmt_assign_copysrc_anyflatten] at h_step
+        · rw [stepStmt_assign_dstflatten, F.stepFlat] at h_step
           rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl,
             h_seq] at h_step
           obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
             copy_chaindst_projsrc_zero_simulation (P := flattenPlace pp) (B := B)
-              (spath := spath) compProg (readRhsShape_copy _)
-              (copy_readpkg_lowered compProg
+              (spath := spath) compProg (F.shape _)
+              (F.pkgLowered _
                 (LoweringSimAny.projZero h_B.not_proj h_o h_B.loweringSimAny))
               (PtrChain_flatten_deref pp) h_B h_o
               h_comp h_inv h_stmt
-              (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) h_seq).1
-              (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) h_seq).2
+              (copy_derefdst_flat_bridge pp src (F.shape _) (F.shape _) h_seq).1
+              (copy_derefdst_flat_bridge pp src (F.shape _) (F.shape _) h_seq).2
               h_step
           exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
             h_run, h_inv'⟩
-        · rw [stepStmt_assign_dstflatten, stepStmt_assign_copysrc_anyflatten] at h_step
+        · rw [stepStmt_assign_dstflatten, F.stepFlat] at h_step
           rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl,
             h_seq] at h_step
           obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
             copy_chaindst_projsrc_offset_simulation (P := flattenPlace pp) (B := B)
-              (spath := spath) compProg (readRhsShape_copy _)
-              (copy_readpkg_projoffset compProg h_B.loweringSimAny h_B.not_proj h_o)
+              (spath := spath) compProg (F.shape _)
+              (F.pkgProjOffset _ _ h_B.loweringSimAny h_B.not_proj h_o)
               (PtrChain_flatten_deref pp) h_B h_o
               h_comp h_inv h_stmt
-              (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) h_seq).1
-              (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) h_seq).2
+              (copy_derefdst_flat_bridge pp src (F.shape _) (F.shape _) h_seq).1
+              (copy_derefdst_flat_bridge pp src (F.shape _) (F.shape _) h_seq).2
               h_step
           exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
             h_run, h_inv'⟩
+
+/-- `copy` is a read-then-store family: its source place carries its own
+    layout, and the instruction it emits is the `Load`. -/
+theorem copy_readRhsFamily {Γ : Ctx} {τ : LayoutTy} (compProg : oseair.Prog) :
+    ReadRhsFamily (Γ := Γ) compProg (fun src => RExpr.copy (τ := τ) src)
+      (Rhs.Load (layoutToTyVal τ)) where
+  shape := fun src => readRhsShape_copy src
+  stepFlat := fun s dst src => stepStmt_assign_copysrc_anyflatten s dst src
+  pkgLowered := fun src h => copy_readpkg_lowered compProg h
+  pkgProjOffset := fun B spath h h_np h_o =>
+    copy_readpkg_projoffset compProg h h_np h_o
+
+theorem CompilerInv_step_copy
+    {τ : LayoutTy}
+    {dst src : Place Γ τ}
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    (h_stmt : prog.get? s_mir.pc = some (.assign dst (.copy src)))
+    (h_step : mirlite.stepStmt MSB s_mir (.assign dst (.copy src)) = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' :=
+  CompilerInv_step_readrhs compProg (copy_readRhsFamily compProg) h_comp h_inv
+    h_stmt h_step
 
 end obseq3.proof
