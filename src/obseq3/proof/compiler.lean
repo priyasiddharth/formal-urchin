@@ -513,8 +513,11 @@ theorem compile_correct
     machines start at `NextTag = 1`, so the singleton map also satisfies
     `TagRenameBounded`. -/
 
-/-- The initial address rename: empty, since nothing is allocated. -/
-def initialAddrRename : AddrRenameMap := fun _ => none
+/-- The initial address rename: the identity. ρa is IDENTITY on its
+    domain (lockstep bump allocation shares the address namespace), and
+    `AllocLockstep` asks it to be total so that the degenerate pointer
+    `fromExposed` mints for an unallocated address has a renamed base. -/
+def initialAddrRename : AddrRenameMap := fun a => some a
 
 /-- The initial tag rename: the wildcard fixed, nothing else. -/
 def initialTagRename : TagRenameMap :=
@@ -523,7 +526,7 @@ def initialTagRename : TagRenameMap :=
 theorem CompilerInv_initial {Γ : Ctx} (prog : obseq3.Prog Γ) :
     CompilerInv (initialState Γ) prog initialAddrRename initialTagRename
       (mirlite.State.initial MSB Γ) (oseair.State.initial MSB) := by
-  refine ⟨initialState Γ, ⟨?_, rfl⟩, ?_, ?_, ?_, ?_, ?_, ?_, rfl, ?_, ?_⟩
+  refine ⟨initialState Γ, ⟨?_, rfl⟩, ?_, ?_, ?_, ?_, ?_, ?_, ⟨rfl, rfl, fun _ => rfl⟩, ?_, ?_⟩
   · -- `csAt` at statement 0: the empty prefix compiles to `cs0` itself
     simp [csAt, prefixCompileState, mirlite.State.initial, List.take_zero,
       compileStmtsChecked, CheckedCompilerM.value_pure, CheckedCompilerM.run_pure]
@@ -538,9 +541,9 @@ theorem CompilerInv_initial {Γ : Ctx} (prog : obseq3.Prog Γ) :
     intro a
     simp [SB.find?, mirlite.State.initial, oseair.State.initial, MSB,
       PermissionModel.stackedBorrows, AccessPerms.init]
-  · -- IdentityOnDomain: ρa is empty
+  · -- IdentityOnDomain: ρa is the identity
     intro a a' h
-    simp [initialAddrRename] at h
+    simpa [initialAddrRename] using h
   · -- TagRenameWF: injective (one point) and fixes the wildcard
     refine ⟨?_, by simp [initialTagRename]⟩
     intro t1 t2 t' h1 h2

@@ -956,9 +956,22 @@ SAME base address. That is what lets ρa be extended by `.refl` at a fresh
 local — `IdentityOnDomain ρa` would be false the moment the two machines
 handed out different addresses for corresponding allocations. -/
 
-/-- The two allocators are at the same watermark. -/
-def AllocLockstep (mem_mir : mirlite.Mem) (mem_osea : oseair.Mem) : Prop :=
-  mem_osea.addrStart = mem_mir.addrStart
+/-- The two allocators are at the same watermark AND have handed out the
+    same blocks, and every address is in ρa's domain (as itself).
+
+    The watermark is what makes corresponding fresh allocations agree.
+    The allocation TABLE is what `fromExposed` resolves an integer
+    against, so an int-to-ptr cast mints the same `(base, offset, size)`
+    on both machines. Totality of ρa is what relates the pointer it mints
+    when the address is inside NO allocation: the degenerate
+    `(n, 0, 0)` names an address the renaming has never seen, and
+    `MemValSim` still has to map its base. ρa stays IDENTITY on its
+    domain, so totality costs nothing anywhere else. -/
+def AllocLockstep (ρa : AddrRenameMap)
+    (mem_mir : mirlite.Mem) (mem_osea : oseair.Mem) : Prop :=
+  mem_osea.addrStart = mem_mir.addrStart ∧
+  mem_osea.allocs = mem_mir.allocs ∧
+  ∀ a, ρa a = some a
 
 /-- Stores do not move the watermark (source side). -/
 theorem mirlite_writeWordSeq_addrStart :
@@ -978,24 +991,64 @@ theorem oseair_writeWordSeq_addrStart :
       rw [oseair.writeWordSeq, oseair_writeWordSeq_addrStart vs]
       rfl
 
+/-- Stores do not touch the allocation table (source side). -/
+theorem mirlite_writeWordSeq_allocs :
+    ∀ (values : List mirlite.MemValue) (m : mirlite.Mem) (addr : Word),
+      (mirlite.writeWordSeq m addr values).allocs = m.allocs
+  | [], _, _ => rfl
+  | v :: vs, m, addr => by
+      rw [mirlite.writeWordSeq, mirlite_writeWordSeq_allocs vs]
+      rfl
+
+/-- Stores do not touch the allocation table (target side). -/
+theorem oseair_writeWordSeq_allocs :
+    ∀ (vals : List Val) (m : oseair.Mem) (addr : Word),
+      (oseair.writeWordSeq m addr vals).allocs = m.allocs
+  | [], _, _ => rfl
+  | v :: vs, m, addr => by
+      rw [oseair.writeWordSeq, oseair_writeWordSeq_allocs vs]
+      rfl
+
 /-- `AllocLockstep` survives a store on both machines. -/
-theorem AllocLockstep.writeWordSeq {m : mirlite.Mem} {m' : oseair.Mem}
-    (h : AllocLockstep m m') (addr addr' : Word)
+theorem AllocLockstep.writeWordSeq {ρa : AddrRenameMap}
+    {m : mirlite.Mem} {m' : oseair.Mem}
+    (h : AllocLockstep ρa m m') (addr addr' : Word)
     (values : List mirlite.MemValue) (vals : List Val) :
-    AllocLockstep (mirlite.writeWordSeq m addr values)
+    AllocLockstep ρa (mirlite.writeWordSeq m addr values)
       (oseair.writeWordSeq m' addr' vals) := by
-  unfold AllocLockstep at h ⊢
-  rw [oseair_writeWordSeq_addrStart, mirlite_writeWordSeq_addrStart]
-  exact h
+  obtain ⟨h1, h2, h3⟩ := h
+  refine ⟨?_, ?_, h3⟩
+  · rw [oseair_writeWordSeq_addrStart, mirlite_writeWordSeq_addrStart]
+    exact h1
+  · rw [oseair_writeWordSeq_allocs, mirlite_writeWordSeq_allocs]
+    exact h2
+
+/-- `AllocLockstep` transports along rename growth. -/
+theorem AllocLockstep.rename_mono {ρa ρa' : AddrRenameMap}
+    {m : mirlite.Mem} {m' : oseair.Mem}
+    (h_incr : AddrRenameIncr ρa ρa') (h : AllocLockstep ρa m m') :
+    AllocLockstep ρa' m m' :=
+  ⟨h.1, h.2.1, fun a => h_incr a a (h.2.2 a)⟩
+
+/-- Both machines resolve an integer address through the same table. -/
+theorem AllocLockstep.resolveAddr_eq {ρa : AddrRenameMap}
+    {m : mirlite.Mem} {m' : oseair.Mem}
+    (h : AllocLockstep ρa m m') (n : Word) :
+    m'.resolveAddr n = m.resolveAddr n := by
+  unfold oseair.Mem.resolveAddr mirlite.Mem.resolveAddr
+  rw [h.2.1]
+  rfl
 
 /-- Lockstep allocation is exactly the statement that corresponding fresh
     allocations agree — the fact ρa's extension needs. -/
-theorem AllocLockstep.allocate_eq {m : mirlite.Mem} {m' : oseair.Mem}
-    (h : AllocLockstep m m') (sz : Nat) :
+theorem AllocLockstep.allocate_eq {ρa : AddrRenameMap}
+    {m : mirlite.Mem} {m' : oseair.Mem}
+    (h : AllocLockstep ρa m m') (sz : Nat) :
     (oseair.allocate m' sz).1 = (mirlite.allocate m sz).1 ∧
-      AllocLockstep (mirlite.allocate m sz).2 (oseair.allocate m' sz).2 := by
-  unfold AllocLockstep at h ⊢
-  exact ⟨h, by simp [mirlite.allocate, oseair.allocate, h]⟩
+      AllocLockstep ρa (mirlite.allocate m sz).2 (oseair.allocate m' sz).2 := by
+  obtain ⟨h1, h2, h3⟩ := h
+  refine ⟨h1, ?_, ?_, h3⟩ <;>
+    simp [mirlite.allocate, oseair.allocate, h1, h2]
 
 /-- Forward memory simulation at renamed addresses. -/
 def SourceMemSim
@@ -1100,7 +1153,7 @@ def CompilerInv
     IdentityOnDomain ρa ∧
     TagRenameWF ρt ∧
     TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag ∧
-    AllocLockstep s_mir.mem s_osea.mem ∧
+    AllocLockstep ρa s_mir.mem s_osea.mem ∧
     UnboundLocalsUnmapped s_mir.env csPrefix ∧
     PlaceRegMapBound csPrefix
 

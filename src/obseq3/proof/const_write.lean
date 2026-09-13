@@ -438,7 +438,7 @@ theorem const_store_fresh_local_simulation
       obtain ⟨tgtPerms, h_own_tgt, h_tagS_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
         sb_own_respects_PermSim h_psim h_wf_t h_tbd h_own_src
       subst h_tagS_eq
-      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
       have h_incr_a : AddrRenameIncr ρa
           (ρa.extendBlock s_mir.mem.addrStart (blockSize τ)) :=
         AddrRenameIncr.extendBlock h_id_a _ _
@@ -576,9 +576,12 @@ theorem const_store_fresh_local_simulation
         rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
         exact h_tbd'
       · -- AllocLockstep: both machines bumped by the same size, then stored
-        simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-          oseair_writeWordSeq_addrStart, mirlite.allocate, oseair.allocate]
-        rw [h_addr_eq, h_sz]
+        refine ⟨?_, ?_, fun a => h_incr_a a a (h_alloc.2.2 a)⟩ <;>
+          simp only [mirlite_writeWordSeq_addrStart, oseair_writeWordSeq_addrStart,
+            mirlite_writeWordSeq_allocs, oseair_writeWordSeq_allocs,
+            mirlite.allocate, oseair.allocate]
+        · rw [h_addr_eq, h_sz]
+        · rw [h_addr_eq, h_sz, h_alloc.2.1]
       · -- UnboundLocalsUnmapped: only `loc` became mapped, and it is now bound
         intro τ' loc' h_none
         by_cases h_idx : loc'.idx = loc.idx
@@ -1928,7 +1931,7 @@ theorem const_store_proj_fresh_simulation
   obtain ⟨tgtPerms, h_own_tgt, h_tagS_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
     sb_own_respects_PermSim h_psim h_wf_t h_tbd h_own_src
   subst h_tagS_eq
-  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_incr_a :=
     AddrRenameIncr.extendBlock h_id_a s_mir.mem.addrStart (blockSize σ)
   have h_id_a' :=
@@ -2079,9 +2082,12 @@ theorem const_store_proj_fresh_simulation
     · show TagRenameBounded _ perms'.NextTag p2.NextTag
       rw [sb_write_NextTag h_useMut_src, sb_write_NextTag h_useMut_tgt]
       exact h_tbd'
-    · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-        oseair_writeWordSeq_addrStart, mirlite.allocate, oseair.allocate]
-      rw [h_addr_eq, h_sz]
+    · refine ⟨?_, ?_, fun a => h_incr_a a a (h_alloc.2.2 a)⟩ <;>
+        simp only [mirlite_writeWordSeq_addrStart, oseair_writeWordSeq_addrStart,
+          mirlite_writeWordSeq_allocs, oseair_writeWordSeq_allocs,
+          mirlite.allocate, oseair.allocate]
+      · rw [h_addr_eq, h_sz]
+      · rw [h_addr_eq, h_sz, h_alloc.2.1]
     · intro τ' loc' h_none
       by_cases h_idx : loc'.idx = loc.idx
       · exfalso
@@ -2324,9 +2330,12 @@ theorem const_store_proj_fresh_simulation
       refine TagRenameBounded.mono h_tbd' (Nat.le_refl _) ?_
       rw [← sb_write_NextTag h_useMut_tgt]
       exact h_ntle
-    · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-        oseair_writeWordSeq_addrStart, mirlite.allocate, oseair.allocate]
-      rw [h_addr_eq, h_sz]
+    · refine ⟨?_, ?_, fun a => h_incr_a a a (h_alloc.2.2 a)⟩ <;>
+        simp only [mirlite_writeWordSeq_addrStart, oseair_writeWordSeq_addrStart,
+          mirlite_writeWordSeq_allocs, oseair_writeWordSeq_allocs,
+          mirlite.allocate, oseair.allocate]
+      · rw [h_addr_eq, h_sz]
+      · rw [h_addr_eq, h_sz, h_alloc.2.1]
     · intro τ' loc' h_none
       by_cases h_idx : loc'.idx = loc.idx
       · exfalso

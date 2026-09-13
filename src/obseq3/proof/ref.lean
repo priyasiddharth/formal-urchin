@@ -782,7 +782,7 @@ theorem ref_fresh_dst_simulation
           s_mir.mem.addrStart = some s_mir.mem.addrStart :=
         AddrRenameMap.extend_self _ _ _
       obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
-        hD1, h_memstart1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
+        hD1, h_memstart1, h_allocs1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
         h_erun, h_prb1, h_lbs1⟩ :=
         copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
           h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_new
@@ -792,7 +792,7 @@ theorem ref_fresh_dst_simulation
               omega
             subst hk0
             simpa using h_ra_new)
-      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
       have h_szD : obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ))
           = blockSize (obseq.LayoutTy.PtrL τ) := obseq.typeSize_layoutToTyVal _
       -- §3 resolve the source (untouched by the allocation) and retag it
@@ -901,7 +901,8 @@ theorem ref_fresh_dst_simulation
             (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr)
               (blockSize τ) s1.perms.NextTag])
             compProg h_comp h_stmt h_csAt
-            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_find1
+            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+            h_find1
             h_addr_eq h_szD h_run1 h_incr_a h_incr12 h_id_a' h_wf2
             (fun k hk => by
               have hk0 : k = 0 := by
@@ -3744,7 +3745,7 @@ theorem ref_fresh_projsrc_simulation
           s_mir.mem.addrStart = some s_mir.mem.addrStart :=
         AddrRenameMap.extend_self _ _ _
       obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
-        hD1, h_memstart1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
+        hD1, h_memstart1, h_allocs1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
         h_erun, h_prb1, h_lbs1⟩ :=
         copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
           h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_new
@@ -3754,7 +3755,7 @@ theorem ref_fresh_projsrc_simulation
               omega
             subst hk0
             simpa using h_ra_new)
-      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
       have h_szD : obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ))
           = blockSize (obseq.LayoutTy.PtrL τ) := obseq.typeSize_layoutToTyVal _
       -- §2 the source is untouched by the allocation; resolve and retag it
@@ -3869,7 +3870,8 @@ theorem ref_fresh_projsrc_simulation
             (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr + pathOffset f - bS.addr)
               (blockSize σb) s1.perms.NextTag])
             compProg h_comp h_stmt h_csAt
-            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_find1
+            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+            h_find1
             h_addr_eq h_szD h_run1 h_incr_a h_incr12 h_id_a' h_wf2
             (fun k hk => by
               have hk0 : k = 0 := by
@@ -3979,11 +3981,11 @@ theorem ref_proj_fresh_simulation
             (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
         fun _ hk => AddrRenameMap.extendBlock_mem hk
       obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
-        hD1, h_memstart1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
+        hD1, h_memstart1, h_allocs1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
         h_erun, h_prb1, h_lbs1⟩ :=
         copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
           h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
-      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
       have h_szD : obseq.typeSize (layoutToTyVal σ) = blockSize σ :=
         obseq.typeSize_layoutToTyVal _
       -- §2 the source is untouched by the allocation; resolve and retag it
@@ -4090,7 +4092,7 @@ theorem ref_proj_fresh_simulation
             (mvals := [mirlite.MemValue.ptrVal bS.addr (bS.addr - bS.addr)
               (blockSize τ) s1.perms.NextTag])
             compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb hD1
-            h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_szD h_run1 h_incr_a
+            h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_szD h_run1 h_incr_a
             h_incr12 h_id_a' h_wf2 h_ra_dom h_prb1
             (pathOffset g) (PathTo.offset_add_size_le g) h_run2
             (by simp only [emit, setPlaceInfo])
@@ -4165,12 +4167,12 @@ theorem ref_fresh_derefsrc_simulation
         (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
     fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf1, h_tbd1, h_psim1,
+    h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf1, h_tbd1, h_psim1,
     h_erun, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
       h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
   -- §2 the facts the source mother will want, at the post-`Alloc` states
-  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ)) = blockSize (obseq.LayoutTy.PtrL τ) :=
     obseq.typeSize_layoutToTyVal _
   have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
@@ -4313,7 +4315,7 @@ theorem ref_fresh_derefsrc_simulation
         (resolved.addr + pathOffset PathTo.nil - resolved.allocBase) resolved.allocSize
         permsR.NextTag])
       compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb h_lookup_set
-      h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc h_incr_a
+      h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_sz h_runAlloc h_incr_a
       (TagRenameIncr.trans h_incr_t h_incr_t2) h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runB
       (by simp only [emit]; exact h_dprm)
@@ -4522,11 +4524,11 @@ theorem ref_proj_fresh_projsrc_simulation
             (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
         fun _ hk => AddrRenameMap.extendBlock_mem hk
       obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
-        hD1, h_memstart1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
+        hD1, h_memstart1, h_allocs1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
         h_erun, h_prb1, h_lbs1⟩ :=
         copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
           h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
-      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
       have h_szD : obseq.typeSize (layoutToTyVal σ) = blockSize σ :=
         obseq.typeSize_layoutToTyVal _
       -- §2 the source is untouched by the allocation; resolve and retag it
@@ -4635,7 +4637,8 @@ theorem ref_proj_fresh_projsrc_simulation
             (mvals := [mirlite.MemValue.ptrVal bS.addr
               (bS.addr + pathOffset f - bS.addr) (blockSize σb) s1.perms.NextTag])
             compProg h_comp h_stmt h_csAt
-            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_find1
+            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+            h_find1
             h_addr_eq h_szD h_run1 h_incr_a h_incr12 h_id_a' h_wf2 h_ra_dom
             h_prb1 (pathOffset g) (PathTo.offset_add_size_le g) h_run2
             (by simp only [emit, setPlaceInfo])
@@ -4713,11 +4716,11 @@ theorem ref_proj_fresh_selfsrc_simulation
             (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
         fun _ hk => AddrRenameMap.extendBlock_mem hk
       obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
-        hD1, h_memstart1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
+        hD1, h_memstart1, h_allocs1, h_find1, h_incr1, h_wf1, h_tbd1, h_psim1,
         h_erun, h_prb1, h_lbs1⟩ :=
         copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
           h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
-      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+      have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
       have h_szD : obseq.typeSize (layoutToTyVal σ) = blockSize σ :=
         obseq.typeSize_layoutToTyVal _
       -- §2 the source place is the root itself, at its own path offset
@@ -4826,7 +4829,8 @@ theorem ref_proj_fresh_selfsrc_simulation
               (s_mir.mem.addrStart + pathOffset f - s_mir.mem.addrStart)
               (blockSize σ) s1.perms.NextTag])
             compProg h_comp h_stmt h_csAt
-            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_find1
+            h_stmtOut h_sms h_unmap h_prb hD1 h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+            h_find1
             h_addr_eq h_szD h_run1 h_incr_a h_incr12 h_id_a' h_wf2 h_ra_dom
             h_prb1 (pathOffset g) (PathTo.offset_add_size_le g) h_run2
             (by simp only [emit, setPlaceInfo])
@@ -5055,12 +5059,12 @@ theorem ref_fresh_derefprojsrc_simulation
         (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
     fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf1, h_tbd1, h_psim1,
+    h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf1, h_tbd1, h_psim1,
     h_erun, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
       h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
   -- §2 the facts the source mother will want, at the post-`Alloc` states
-  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL τ)) = blockSize (obseq.LayoutTy.PtrL τ) :=
     obseq.typeSize_layoutToTyVal _
   have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
@@ -5203,7 +5207,7 @@ theorem ref_fresh_derefprojsrc_simulation
         (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
         permsR.NextTag])
       compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb h_lookup_set
-      h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc h_incr_a
+      h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_sz h_runAlloc h_incr_a
       (TagRenameIncr.trans h_incr_t h_incr_t2) h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runB
       (by simp only [emit]; exact h_dprm)
@@ -5420,12 +5424,12 @@ theorem ref_proj_fresh_derefsrc_simulation
         (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
     fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtP1, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf1, h_tbd1, h_psim1,
+    h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf1, h_tbd1, h_psim1,
     h_erun, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
       h_lbs h_prb h_piD h_incr_a h_id_a' h_ra_base h_ra_dom
   -- §2 the facts the source mother will want, at the post-`Alloc` states
-  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal σ) = blockSize σ :=
     obseq.typeSize_layoutToTyVal _
   have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag)
@@ -5536,7 +5540,7 @@ theorem ref_proj_fresh_derefsrc_simulation
         (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
         permsR.NextTag])
       compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb h_lookup_set
-      h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc h_incr_a
+      h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_sz h_runAlloc h_incr_a
       (TagRenameIncr.trans h_incr_t h_incr_t2) h_id_a' h_wf_t' h_ra_dom h_prb1
       (pathOffset g) (PathTo.offset_add_size_le g) h_runB
       (by simp only [emit]; exact h_dprm)

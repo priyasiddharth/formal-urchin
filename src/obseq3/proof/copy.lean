@@ -1978,12 +1978,12 @@ theorem copy_fresh_chainsrc_simulation
         (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
     fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erun, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
       h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
       h_ra_dom
-  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
     obseq.typeSize_layoutToTyVal _
   -- §3 the source read, kept OPAQUE behind the rvalue's package
@@ -2078,7 +2078,7 @@ theorem copy_fresh_chainsrc_simulation
     -- §8-§11 the fresh-root WRITE seam: the `RStore` through the root,
     -- the memory extension, and the whole invariant rebuild
     exact copy_freshroot_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_find1
+      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
       h_addr_eq h_sz h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
       h_vregR h_vlen h_stmtRun output.values_len (Nat.le_refl _) rfl rfl h_rel h_step
@@ -2311,12 +2311,12 @@ theorem copy_fresh_projchain_zero_simulation
         (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
     fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erun, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
       h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
       h_ra_dom
-  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
     obseq.typeSize_layoutToTyVal _
   -- §3 the source read, kept OPAQUE behind the rvalue's package
@@ -2434,7 +2434,7 @@ theorem copy_fresh_projchain_zero_simulation
     -- §8-§11 the fresh-root WRITE seam: the `RStore` through the root,
     -- the memory extension, and the whole invariant rebuild
     exact copy_freshroot_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_find1
+      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
       h_addr_eq h_sz h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
       h_vregR h_vlen h_stmtRun output.values_len (Nat.le_refl _) rfl rfl h_rel h_step
@@ -2500,12 +2500,12 @@ theorem copy_fresh_projchain_offset_simulation
         (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
     fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erun, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
       h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
       h_ra_dom
-  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
     obseq.typeSize_layoutToTyVal _
   -- §3 the source read, kept OPAQUE behind the rvalue's package
@@ -2625,7 +2625,7 @@ theorem copy_fresh_projchain_offset_simulation
     -- §8-§11 the fresh-root WRITE seam: the `RStore` through the root,
     -- the memory extension, and the whole invariant rebuild
     exact copy_freshroot_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_find1
+      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
       h_addr_eq h_sz h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
       h_vregR h_vlen h_stmtRun output.values_len (Nat.le_refl _) rfl rfl h_rel h_step
@@ -3802,12 +3802,12 @@ theorem copy_projlocal_fresh_simulation
         (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
     fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erunL, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
       h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
       h_ra_dom
-  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   -- §3 the source read, kept OPAQUE behind the rvalue's package
   simp only at h_step
   cases h_eval : mirlite.evalRExpr MSB s1 rhs with
@@ -4011,7 +4011,7 @@ theorem copy_projlocal_fresh_simulation
           loc.idx.1 (Register.R csPrefix.nextReg, σ)))).nextReg)
       (mvals := output.values)
       compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb
-      h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc
+      h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_sz h_runAlloc
       h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 (pathOffset path)
       (PathTo.offset_add_size_le path)
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
@@ -4138,12 +4138,12 @@ theorem copy_projlocal_fresh_projsrc_simulation
         (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) :=
     fun _ hk => AddrRenameMap.extendBlock_mem hk
   obtain ⟨permsOwned, tgtPerms, h_own_tgt', h_perms1, h_pc1, h_env1,
-    h_lookup_set, h_memstart1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
+    h_lookup_set, h_memstart1, h_allocs1, h_find1, h_incr_t, h_wf_t', h_tbd', h_psim',
     h_erunL, h_prb1, h_lbs1⟩ :=
     copy_freshroot_prologue h_envD h_prep h_id_a h_wf_t h_tbd h_psim h_alloc
       h_lbs h_prb h_pi_none h_incr_a h_id_a' (AddrRenameMap.extendBlock_base _ _ _)
       h_ra_dom
-  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   -- §3 the source read, kept OPAQUE behind the rvalue's package
   simp only at h_step
   have h_np := h_schain.not_proj
@@ -4364,7 +4364,7 @@ theorem copy_projlocal_fresh_projsrc_simulation
       (τ := τ)
       (mvals := output.values)
       compProg h_comp h_stmt h_csAt h_stmtOut h_sms h_unmap h_prb
-      h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz h_runAlloc
+      h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1 h_addr_eq h_sz h_runAlloc
       h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 (pathOffset path)
       (PathTo.offset_add_size_le path)
       h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR

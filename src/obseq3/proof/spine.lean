@@ -2045,7 +2045,7 @@ theorem copy_chainwrite_after_read
       = Except.ok stmtOut)
     (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
     (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
-    (h_alloc : AllocLockstep s_mir.mem s_osea.mem)
+    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
     (h_prb : PlaceRegMapBound csPrefix)
     {rd : mirlite.PlaceRes} {permsD : MSB.State} {perms₂ : MSB.State}
@@ -2268,6 +2268,8 @@ theorem copy_freshroot_write_after_read
       { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })
     (h_pc1 : s1.pc = s_mir.pc)
     (h_memstart1 : s1.mem.addrStart = s_mir.mem.addrStart + blockSize σ)
+    (h_allocs1 : s1.mem.allocs = (s_mir.mem.addrStart, blockSize σ) :: s_mir.mem.allocs)
+    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
     (h_find1 : ∀ a, mirlite.Mem.find? s1.mem a = mirlite.Mem.find? s_mir.mem a)
     -- ... and on the oseair side: the `Alloc` runs, and the two memories
     -- start together
@@ -2440,12 +2442,19 @@ theorem copy_freshroot_write_after_read
   · show TagRenameBounded _ perms₃.NextTag p3w.NextTag
     rw [sb_write_NextTag h_useMut_src', sb_write_NextTag h_useMut_tgt]
     exact h_tbdR
-  · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-      oseair_writeWordSeq_addrStart, h_smem, h_memstart1]
-    show (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2.addrStart
-      = _
-    simp only [oseair.allocate]
-    rw [h_addr_eq, h_sz]
+  · refine ⟨?_, ?_, fun a => h_incr_a a a (h_alloc.2.2 a)⟩
+    · simp only [mirlite_writeWordSeq_addrStart, oseair_writeWordSeq_addrStart,
+        h_smem, h_memstart1]
+      show (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2.addrStart
+        = _
+      simp only [oseair.allocate]
+      rw [h_addr_eq, h_sz]
+    · simp only [mirlite_writeWordSeq_allocs, oseair_writeWordSeq_allocs,
+        h_smem, h_allocs1]
+      show (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2.allocs
+        = _
+      simp only [oseair.allocate]
+      rw [h_addr_eq, h_sz, h_alloc.2.1]
   · intro σ' loc' h_none
     have h_none1 : mirlite.Env.lookup s1.env loc' = none := h_none
     rw [h_env1] at h_none1
@@ -2505,7 +2514,7 @@ theorem copy_freshroot_prologue
     (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
     (h_tbd : TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag)
     (h_psim : PermSim ρt s_mir.perms s_osea.perms)
-    (h_alloc : AllocLockstep s_mir.mem s_osea.mem)
+    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
     (h_lbs : LocalBindingSim ρa ρt s_mir.env s_osea csPrefix)
     (h_prb : PlaceRegMapBound csPrefix)
     (h_pi_none : getPlaceInfo csPrefix dstLoc.idx.1 = none)
@@ -2528,6 +2537,7 @@ theorem copy_freshroot_prologue
       mirlite.Env.lookup s1.env dstLoc
         = some { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag } ∧
       s1.mem.addrStart = s_mir.mem.addrStart + blockSize τ ∧
+      s1.mem.allocs = (s_mir.mem.addrStart, blockSize τ) :: s_mir.mem.allocs ∧
       (∀ a, mirlite.Mem.find? s1.mem a = mirlite.Mem.find? s_mir.mem a) ∧
       -- the two renames grow
       TagRenameIncr ρt (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) ∧
@@ -2565,7 +2575,7 @@ theorem copy_freshroot_prologue
   obtain ⟨tgtPerms, h_own_tgt, h_tagS_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
     sb_own_respects_PermSim h_psim h_wf_t h_tbd h_own_src
   subst h_tagS_eq
-  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc
+  have h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart := h_alloc.1
   have h_rt_new : (ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag) s_mir.perms.NextTag = some s_osea.perms.NextTag :=
     TagRenameMap.extend_self _ _ _
   have h0 : wildcardTag < s_mir.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
@@ -2587,6 +2597,7 @@ theorem copy_freshroot_prologue
     (by rw [h_sz, h_addr_eq]; exact h_own_tgt),
     (by rw [← h_s1]), (by rw [← h_s1]), (by rw [← h_s1]),
     (by rw [← h_s1]; simp [mirlite.Env.lookup, mirlite.Env.set]),
+    (by rw [← h_s1]),
     (by rw [← h_s1]),
     (fun a => by rw [← h_s1]; rfl),
     h_incr_t, h_wf_t', h_tbd', h_psim',
@@ -2681,6 +2692,8 @@ theorem copy_freshproj_write_after_read
       { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })
     (h_pc1 : s1.pc = s_mir.pc)
     (h_memstart1 : s1.mem.addrStart = s_mir.mem.addrStart + blockSize σ)
+    (h_allocs1 : s1.mem.allocs = (s_mir.mem.addrStart, blockSize σ) :: s_mir.mem.allocs)
+    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
     (h_find1 : ∀ a, mirlite.Mem.find? s1.mem a = mirlite.Mem.find? s_mir.mem a)
     (h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart)
     (h_sz : obseq.typeSize (layoutToTyVal σ) = blockSize σ)
@@ -2932,12 +2945,19 @@ theorem copy_freshproj_write_after_read
     rw [sb_write_NextTag h_useMut_src']
     exact TagRenameBounded.mono h_tbdR (Nat.le_refl _)
       (by rw [← sb_write_NextTag h_useMut_tgt]; exact h_ntle)
-  · simp only [AllocLockstep, mirlite_writeWordSeq_addrStart,
-      oseair_writeWordSeq_addrStart, h_sBmem, h_smem, h_memstart1]
-    show (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2.addrStart
-      = _
-    simp only [oseair.allocate]
-    rw [h_addr_eq, h_sz]
+  · refine ⟨?_, ?_, fun a => h_incr_a a a (h_alloc.2.2 a)⟩
+    · simp only [mirlite_writeWordSeq_addrStart, oseair_writeWordSeq_addrStart,
+        h_sBmem, h_smem, h_memstart1]
+      show (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2.addrStart
+        = _
+      simp only [oseair.allocate]
+      rw [h_addr_eq, h_sz]
+    · simp only [mirlite_writeWordSeq_allocs, oseair_writeWordSeq_allocs,
+        h_sBmem, h_smem, h_allocs1]
+      show (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2.allocs
+        = _
+      simp only [oseair.allocate]
+      rw [h_addr_eq, h_sz, h_alloc.2.1]
   · intro τ' loc' h_none
     have h_none1 : mirlite.Env.lookup s1.env loc' = none := h_none
     rw [h_env1] at h_none1
@@ -3296,7 +3316,7 @@ theorem copy_boundproj_write_after_read
     (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
     (h_entryD : PtrRegisterEntry sR.reg dstReg dbase boff dsize tagD)
     (h_sms : SourceMemSim ρa ρt s_mir.mem sR.mem)
-    (h_alloc : AllocLockstep s_mir.mem sR.mem)
+    (h_alloc : AllocLockstep ρa s_mir.mem sR.mem)
     (h_prmR : csR.placeRegMap = csPrefix.placeRegMap)
     (h_regmonoR : csPrefix.nextReg ≤ csR.nextReg)
     (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
@@ -3452,7 +3472,7 @@ theorem copy_boundproj_write_after_read
     rw [sb_write_NextTag h_useMut_src']
     exact TagRenameBounded.mono h_tbdR (Nat.le_refl _)
       (by rw [← sb_write_NextTag h_useMut_tgt]; exact h_ntle)
-  · show AllocLockstep (mirlite.writeWordSeq s_mir.mem rd.addr mvals) _
+  · show AllocLockstep ρa (mirlite.writeWordSeq s_mir.mem rd.addr mvals) _
     rw [h_sBmem]
     exact h_alloc.writeWordSeq _ _ _ _
   · intro τ' loc' h_none
@@ -3507,7 +3527,7 @@ theorem copy_boundplain_write_after_read
     (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
     (h_entryD : PtrRegisterEntry sR.reg dstReg dbase boff dsize tagD)
     (h_sms : SourceMemSim ρa ρt s_mir.mem sR.mem)
-    (h_alloc : AllocLockstep s_mir.mem sR.mem)
+    (h_alloc : AllocLockstep ρa s_mir.mem sR.mem)
     (h_prmR : csR.placeRegMap = csPrefix.placeRegMap)
     (h_regmonoR : csPrefix.nextReg ≤ csR.nextReg)
     (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
@@ -3631,7 +3651,7 @@ theorem copy_bound_write_after_read
     (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
     (h_entryD : PtrRegisterEntry sR.reg dstReg dbase boff dsize tagD)
     (h_sms : SourceMemSim ρa ρt s_mir.mem sR.mem)
-    (h_alloc : AllocLockstep s_mir.mem sR.mem)
+    (h_alloc : AllocLockstep ρa s_mir.mem sR.mem)
     (h_prmR : csR.placeRegMap = csPrefix.placeRegMap)
     (h_regmonoR : csPrefix.nextReg ≤ csR.nextReg)
     (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
@@ -3707,6 +3727,8 @@ theorem copy_fresh_write_after_read
       { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })
     (h_pc1 : s1.pc = s_mir.pc)
     (h_memstart1 : s1.mem.addrStart = s_mir.mem.addrStart + blockSize σ)
+    (h_allocs1 : s1.mem.allocs = (s_mir.mem.addrStart, blockSize σ) :: s_mir.mem.allocs)
+    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
     (h_find1 : ∀ a, mirlite.Mem.find? s1.mem a = mirlite.Mem.find? s_mir.mem a)
     (h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart)
     (h_sz : obseq.typeSize (layoutToTyVal σ) = blockSize σ)
@@ -3787,7 +3809,8 @@ theorem copy_fresh_write_after_read
   · subst h_off
     rw [projDstTail_zero] at h_stmtRun
     exact copy_freshroot_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz
+      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+      h_find1 h_addr_eq h_sz
       h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 h_runR h_prmR
       h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR h_vregR h_vlen h_stmtRun h_mlen
       (by simpa using h_fit) (by rw [h_rdaddr, Nat.add_zero]) h_rdtag h_valsRel h_step
@@ -3795,7 +3818,8 @@ theorem copy_fresh_write_after_read
     have hFrag := (CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).fragmentOf
       (base := csR.nextLabel) h_stmtRun rfl
     exact copy_freshproj_write_after_read compProg h_comp h_stmt h_csAt h_stmtOut
-      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_find1 h_addr_eq h_sz
+      h_sms h_unmap h_prb h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
+      h_find1 h_addr_eq h_sz
       h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 off h_fit h_runR
       h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR h_vregR h_vbelow h_vlen
       (by rw [h_pcR]; exact hFrag.instrAt 0 rfl rfl)
@@ -3831,7 +3855,7 @@ theorem copy_chain_write_after_read
       = Except.ok stmtOut)
     (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
     (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
-    (h_alloc : AllocLockstep s_mir.mem s_osea.mem)
+    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csPrefix)
     (h_prb : PlaceRegMapBound csPrefix)
     {rd : mirlite.PlaceRes} {permsD perms₂ : MSB.State}
