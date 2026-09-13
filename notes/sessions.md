@@ -3571,3 +3571,63 @@ stopped being a conformance footnote and became a caveat on the theorem.
 
 Zero sorries and exactly propext / Classical.choice / Quot.sound at every
 commit; all four suites green at every commit.
+
+## stretch twenty — asking what a leaf actually uses (2026-09-13)
+
+Two passes, prompted by the observation that the previous stretch's
+abstraction should have been found during the shortening work and was
+not.
+
+**Pass one, mechanical.** Lean's unused-binder linter IS the question
+"which hypotheses does this leaf actually use", and it found 30. A dozen
+sat on seam and package SIGNATURES, so every call site carried them too:
+the compilation equation and the pc equation on three write seams, the
+destination's address-rename fact on three more (dead since
+`AllocLockstep` gained ρa totality), the identity and register-bound
+facts on the prologue and the borrow package, the non-projection and
+nonzero-offset witnesses on all three projected-source packages.
+Deleting them cascaded twice.
+
+**Pass two, structural — and it found ref.lean is copy.lean.** Evidence
+first: 19 of ref's 23 leaves already called copy's write seams;
+`ref_local_borrow`'s conclusion is the same bundle the read packages
+produce; ref's fragment lemmas build the same tower. The differences were
+that ref's package extends the tag renaming and that its instruction
+comes from inside the place lowering rather than from the rvalue arm.
+Neither is deep.
+
+    ValuePkg compProg rhs           the rvalue's whole contribution, named
+                                    only as `run (compileRExprPreChecked
+                                    rhs) csA`, with the destination
+                                    register EXISTENTIAL and the tag
+                                    renaming allowed to grow
+    storereg_local_simulation       bound-local destination, any rvalue
+    storereg_localfresh_simulation  fresh-local destination, any rvalue
+    ValuePkg.of_readPkgLowered      copy and the two casts, chain source
+    ValuePkg.of_readPkgProjOffset   … and projected source
+    ref_valuePkg_local              ref, local source
+
+The key move was naming the pre-phase abstractly. Once the leaf refers to
+the rvalue's code only as `run (compileRExprPreChecked rhs) csA`, the
+SOURCE shape disappears from the leaf as well: one code-inclusion
+obligation covers a chain source, a projection's `Borrow`/`Die` bracket
+and a retag alike. So the leaves are per DESTINATION shape only — six of
+them, not copy's seventeen plus ref's twenty-three.
+
+Eight leaves and two compile facts deleted against ~600 lines of
+framework. copy 6,155 -> 5,337; ref 6,836 -> 6,600; spine 3,954 -> 4,327;
+the proof directory 27,604 -> 26,915.
+
+**What remains, in order of size.** ref still has 21 leaves and copy 11,
+all on destination shapes whose shared leaf is not written yet: the
+deref-chain destination, and the projected destinations (bound at either
+offset, and fresh). ref also needs value packages for its other source
+shapes (proj, deref, deref-proj); each one it gains retires four leaves,
+one per destination. The two shared leaves already written are the
+template — the remaining work is mechanical, but it is not small.
+
+**Process note.** One deletion swallowed the neighbouring theorem because
+the span I cut ran to the next section marker rather than to the next
+declaration; the build caught it at once and git restored it. Cutting by
+"docstring through next marker" is only safe when the marker is checked
+against the theorem name.
