@@ -1324,109 +1324,7 @@ theorem compileStmt_assign_derefdst_flatten_value
 /-! ## The DESTINATION-flattening transfer for a projection over a
     deref base, the shape the last residual leaf consumes. -/
 
-theorem compileStmt_assign_projderefdst_flatten_run
-    {Γ : Ctx} {τ σ : LayoutTy}
-    {pp : Place Γ (obseq.LayoutTy.PtrL σ)}
-    {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
-    (rhs : RExpr Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState) :
-    CheckedCompilerM.run
-        (compileStmtChecked
-          (Stmt.assign (.proj (Place.deref pp) g) rhs)) cs
-      = CheckedCompilerM.run
-          (compileStmtChecked
-            (Stmt.assign (.proj (Place.deref (flattenPlace pp)) g)
-              rhs)) cs := by
-  have h_er : ensurePlaceRoot (Place.proj (Place.deref (flattenPlace pp)) g)
-      = ensurePlaceRoot (Place.proj (Place.deref pp) g) :=
-    ensurePlaceRoot_flatten (Place.proj (Place.deref pp) g)
-  simp only [csMonad, compileStmtChecked, h_er]
-  cases hP : CheckedCompilerM.value
-      (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) g)) cs) with
-  | error eP => simp only [hP]
-  | ok oP =>
-      simp only [hP]
-      obtain ⟨h_agr, h_agv⟩ := placeToRegChecked_flatten_agree (Place.proj (Place.deref pp) g)
-        RefKind.Mut (CheckedCompilerM.run (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) g)) cs))
-      rw [show flattenPlace (Place.proj (Place.deref pp) g)
-        = Place.proj (Place.deref (flattenPlace pp)) g from rfl] at h_agr h_agv
-      cases hF : CheckedCompilerM.value
-          (placeToRegChecked RefKind.Mut (Place.proj (Place.deref (flattenPlace pp)) g))
-          (CheckedCompilerM.run (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) g)) cs)) with
-      | error eF =>
-          cases hO : CheckedCompilerM.value
-              (placeToRegChecked RefKind.Mut (Place.proj (Place.deref pp) g))
-              (CheckedCompilerM.run (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) g)) cs)) with
-          | error eO =>
-              simp only [hF, hO]
-              exact h_agr.symm
-          | ok oO =>
-              exfalso
-              rw [hF, hO] at h_agv
-              simp [Except.map] at h_agv
-      | ok oF =>
-          cases hO : CheckedCompilerM.value
-              (placeToRegChecked RefKind.Mut (Place.proj (Place.deref pp) g))
-              (CheckedCompilerM.run (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) g)) cs)) with
-          | error eO =>
-              exfalso
-              rw [hF, hO] at h_agv
-              simp [Except.map] at h_agv
-          | ok oO =>
-              have h_res : oF.result = oO.result := by
-                rw [hF, hO] at h_agv
-                simpa [Except.map] using h_agv
-              simp only [hF, hO, h_res]
-              rw [h_agr]
 
-theorem compileStmt_assign_projderefdst_flatten_value
-    {Γ : Ctx} {τ σ : LayoutTy}
-    {pp : Place Γ (obseq.LayoutTy.PtrL σ)}
-    {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
-    (rhs : RExpr Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState) :
-    ∀ so, CheckedCompilerM.value
-        (compileStmtChecked
-          (Stmt.assign (.proj (Place.deref (flattenPlace pp)) g)
-            rhs)) cs
-      = Except.ok so →
-    ∃ so', CheckedCompilerM.value
-        (compileStmtChecked
-          (Stmt.assign (.proj (Place.deref pp) g) rhs)) cs
-      = Except.ok so' := by
-  intro so h_so
-  have h_er : ensurePlaceRoot (Place.proj (Place.deref (flattenPlace pp)) g)
-      = ensurePlaceRoot (Place.proj (Place.deref pp) g) :=
-    ensurePlaceRoot_flatten (Place.proj (Place.deref pp) g)
-  simp only [csMonad, compileStmtChecked, h_er] at h_so ⊢
-  cases hP : CheckedCompilerM.value
-      (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) g)) cs) with
-  | error eP =>
-      exfalso
-      rw [hP] at h_so
-      simp at h_so
-  | ok oP =>
-      rw [hP] at h_so
-      simp only [hP]
-      obtain ⟨h_agr, h_agv⟩ := placeToRegChecked_flatten_agree (Place.proj (Place.deref pp) g)
-        RefKind.Mut (CheckedCompilerM.run (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) g)) cs))
-      rw [show flattenPlace (Place.proj (Place.deref pp) g)
-        = Place.proj (Place.deref (flattenPlace pp)) g from rfl] at h_agr h_agv
-      cases hO : CheckedCompilerM.value
-          (placeToRegChecked RefKind.Mut (Place.proj (Place.deref pp) g))
-          (CheckedCompilerM.run (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) g)) cs)) with
-      | error eO =>
-          exfalso
-          cases hF : CheckedCompilerM.value
-              (placeToRegChecked RefKind.Mut (Place.proj (Place.deref (flattenPlace pp)) g))
-              (CheckedCompilerM.run (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) g)) cs)) with
-          | error eF =>
-              rw [hF] at h_so
-              simp at h_so
-          | ok oF =>
-              rw [hF, hO] at h_agv
-              simp [Except.map] at h_agv
-      | ok oO =>
-          simp only [hO]
-          exact ⟨_, rfl⟩
 
 
 /-! ## A PROJ-TOPPED source over a DEREF base, into a bound local:
@@ -3992,7 +3890,7 @@ theorem ref_proj_dst_simulation
         intro cs
         refine ((h_run0 cs).trans
           (compileStmt_assign_projderefdst_flatten_run
-            (pp := pp) (g := g) (.ref kind prot mask src) cs)).trans ?_
+            pp g (.ref kind prot mask src) cs)).trans ?_
         exact compileStmt_ref_srcflatten_proj_run
           (dbase := Place.deref (flattenPlace pp)) (g := g) kind prot mask src cs
       have h_valD : ∀ cs so, CheckedCompilerM.value (compileStmtChecked
@@ -4004,7 +3902,7 @@ theorem ref_proj_dst_simulation
         obtain ⟨so1, h1⟩ := compileStmt_ref_srcflatten_proj_value
           (dbase := Place.deref (flattenPlace pp)) (g := g) kind prot mask src cs so h
         obtain ⟨so2, h2⟩ := compileStmt_assign_projderefdst_flatten_value
-          (pp := pp) (g := g) (.ref kind prot mask src) cs so1 h1
+          pp g (.ref kind prot mask src) cs so1 h1
         exact h_val0 cs so2 h2
       rcases flatten_chainish src with h_ch | ⟨σ', sb, path, h_eq, h_sb⟩
       · rw [stepStmt_assign_refsrc_nil] at h_step
