@@ -109,7 +109,7 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
       subst h_ps
       -- the READ: transport, then execute the cast
       obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
-        sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
+        sb_read_respects_PermSim h_spsim h_wf_t h_srt h_read_src
       have h_code1 : compProg s_mid1.pc
           = some (Instr.Assgn (Register.R (CheckedCompilerM.run
               (placeToRegChecked RefKind.Shared src) csA).nextReg)
@@ -274,7 +274,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
       subst h_ps
       -- BRIDGE 1S: the borrow is taken, read through, and retired
       obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
-        sb_read_respects_PermSim h_spsim h_wf_t h_srt h_snw h_read_src
+        sb_read_respects_PermSim h_spsim h_wf_t h_srt h_read_src
       have h_tbd2 : TagRenameBounded ρt permsS.NextTag s_mid1.perms.NextTag := by
         rw [h_snt1]
         exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2

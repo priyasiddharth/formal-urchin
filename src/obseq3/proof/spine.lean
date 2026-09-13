@@ -1000,7 +1000,7 @@ theorem ptrChain_lowering_sim
                 simp [csRun, cleanupInstrs, h_qclean, emit_nil]
               -- the Load's target read succeeds, PermSim-transported
               obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
-                sb_read_respects_PermSim h_qpsim h_wf_t h_qrt h_qnw h_qread
+                sb_read_respects_PermSim h_qpsim h_wf_t h_qrt h_qread
               have h_read_tgt' : MSB.read s_mid.perms
                   (qRes.allocBase + (qRes.addr - qRes.allocBase)) 1 qtag = .ok p2 := by
                 rw [h_cancel]
@@ -1205,7 +1205,7 @@ theorem ptrChain_lowering_sim
                   simp only [csMonad, h_bval, h_off, dif_pos]
                   simp [csRun, cleanupInstrs, h_bclean, emit_nil]
                 obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
-                  sb_read_respects_PermSim h_bpsim h_wf_t h_brt h_bnw h_qread
+                  sb_read_respects_PermSim h_bpsim h_wf_t h_brt h_qread
                 have h_read_tgt' : MSB.read s_mid.perms
                     (bRes.allocBase + (bRes.addr - bRes.allocBase)) 1 btag = .ok p2 := by
                   rw [h_cancel]
@@ -1329,7 +1329,7 @@ theorem ptrChain_lowering_sim
                   rfl
                 -- §the parent read transports; the target's Shared retag succeeds
                 obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
-                  sb_read_respects_PermSim h_bpsim h_wf_t h_brt h_bnw h_qread
+                  sb_read_respects_PermSim h_bpsim h_wf_t h_brt h_qread
                 obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Shared_ok_of_sb_read_ok h_read_tgt
                 have h_tbd_mid : TagRenameBounded ρt permsB.NextTag s_mid.perms.NextTag := by
                   rw [h_bnt1]
@@ -2110,7 +2110,7 @@ theorem copy_chainwrite_after_read
     have h_cancelD := resolvedAddr_cancel h_dle
     obtain ⟨h_nb, perms₃, h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_step
     obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
-      sb_write_respects_PermSim h_dpsim h_wf_t h_drt h_dnw h_useMut_src
+      sb_write_respects_PermSim h_dpsim h_wf_t h_drt h_useMut_src
     -- the temporary register survives the destination lowering
     have h_regbelow : RegisterBelow csR.nextReg vreg := h_vbelow
     have h_vreg : oseair.RegMap.lookup s_mid2.reg vreg
@@ -2372,7 +2372,7 @@ theorem copy_freshroot_write_after_read
   have h_baseD2 : baseD2 = s_mir.mem.addrStart := (h_id_a' _ _ h_raD2).symm
   rw [h_dr2, h_baseD2] at h_entryD2
   obtain ⟨p3w, h_useMut_tgt, h_psim3w⟩ :=
-    sb_write_respects_PermSim h_psimR h_wf_t' h_rtD2 h_nwD2 h_useMut_src'
+    sb_write_respects_PermSim h_psimR h_wf_t' h_rtD2 h_useMut_src'
   -- the resolved destination IS the fresh root
   rw [h_rdaddr]
   have h_dentry2 : oseair.RegMap.lookup sR.reg (Register.R csPrefix.nextReg)
@@ -2802,7 +2802,7 @@ theorem copy_freshproj_write_after_read
   rw [h_dr2, h_baseD2] at h_entryD2
   -- BRIDGE 3 on the parent write, then BRIDGE 1 on the interior borrow
   obtain ⟨qW, h_useMut_tgt, h_psim3⟩ :=
-    sb_write_respects_PermSim h_psimR h_wf_t' h_rtD2 h_nwD2 h_useMut_src'
+    sb_write_respects_PermSim h_psimR h_wf_t' h_rtD2 h_useMut_src'
   obtain ⟨q1, h_ref_dst⟩ := sb_ref_Mut_ok_of_sb_write_ok h_useMut_tgt
   have h_unprot := freshTag_not_protected h_psimR h_tbdR
   have h2 : wildcardTag < sR.perms.NextTag := (h_tbdR _ _ h_wf_t'.2).2
@@ -3056,7 +3056,7 @@ theorem ref_local_borrow
           sM.perms.NextTag]
         [Val.Ptr bS.addr (0 + off) (blockSize σs) sA.perms.NextTag] := by
   obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
-    sb_ref_respects_PermSim h_psim h_wf_t h_tbd h_rtS h_nwS h_ref_src
+    sb_ref_respects_PermSim h_psim h_wf_t h_tbd h_rtS h_ref_src
   subst h_fresh_eq
   have h_rt_new : (ρt.extend sM.perms.NextTag sA.perms.NextTag) sM.perms.NextTag = some sA.perms.NextTag :=
     TagRenameMap.extend_self _ _ _
@@ -3177,7 +3177,7 @@ theorem ref_chainsrc_borrow
     rw [h_dnt1]
     exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_dnt2
   obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
-    sb_ref_respects_PermSim h_dpsim h_wf_t h_tbd_mid h_drt h_dnw h_ref_src
+    sb_ref_respects_PermSim h_dpsim h_wf_t h_tbd_mid h_drt h_ref_src
   subst h_fresh_eq
   have h_rt_new : (ρt.extend permsR.NextTag s_mid.perms.NextTag) permsR.NextTag
       = some s_mid.perms.NextTag := TagRenameMap.extend_self _ _ _
@@ -3345,7 +3345,7 @@ theorem copy_boundproj_write_after_read
     exact h_useMut_src
   -- BRIDGE 3 on the parent write, then BRIDGE 1 on the interior borrow
   obtain ⟨qW, h_useMut_tgt, h_psim2⟩ :=
-    sb_write_respects_PermSim h_psimR h_wf_t h_rtD h_nwD h_useMut_src'
+    sb_write_respects_PermSim h_psimR h_wf_t h_rtD h_useMut_src'
   obtain ⟨q1, h_ref_dst⟩ := sb_ref_Mut_ok_of_sb_write_ok h_useMut_tgt
   have h_unprot := freshTag_not_protected h_psimR h_tbdR
   have h2 : wildcardTag < sR.perms.NextTag := (h_tbdR _ _ h_wf_t.2).2
@@ -3551,7 +3551,7 @@ theorem copy_boundplain_write_after_read
     rw [← h_rdaddr, ← h_rdtag, ← h_mlen]
     exact h_useMut_src
   obtain ⟨p2, h_useMut_tgt, h_psim2⟩ :=
-    sb_write_respects_PermSim h_psimR h_wf_t h_rtD h_nwD h_useMut_src'
+    sb_write_respects_PermSim h_psimR h_wf_t h_rtD h_useMut_src'
   -- the destination register, at the resolution's own spelling
   have h_entry' : PtrRegisterEntry sR.reg dstReg rd.allocBase
       (rd.addr - rd.allocBase) rd.allocSize tagD := by

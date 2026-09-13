@@ -299,7 +299,7 @@ theorem const_store_local_existing_simulation
   subst h_base
   obtain ⟨h_nb, perms', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_write
   obtain ⟨p2, h_useMut_tgt, h_psim'⟩ :=
-    sb_write_respects_PermSim h_psim h_wf_t h_rt h_nw h_useMut_src
+    sb_write_respects_PermSim h_psim h_wf_t h_rt h_useMut_src
   have h_stmtRun := h_run0 csPrefix reg h_pi
   obtain ⟨stmtOut, h_stmtOut⟩ := h_val0 csPrefix
   have hFrag :=
@@ -482,7 +482,7 @@ theorem const_store_fresh_local_simulation
       -- §7 the source write, and its target mirror
       obtain ⟨h_nb, perms', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_write
       obtain ⟨p2, h_useMut_tgt, h_psim2⟩ :=
-        sb_write_respects_PermSim h_psim' h_wf_t' h_rt_new h_nw h_useMut_src
+        sb_write_respects_PermSim h_psim' h_wf_t' h_rt_new h_useMut_src
       have h_entry1 : PtrRegisterEntry
           (oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
             (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
@@ -947,7 +947,7 @@ theorem const_store_proj_deref_zero_simulation
     hFrag3.instrAt 0 rfl rfl
   obtain ⟨h_nb, perms2, h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_write
   obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
-    sb_write_respects_PermSim h_dpsim h_wf_t h_drt h_dnw h_useMut_src
+    sb_write_respects_PermSim h_dpsim h_wf_t h_drt h_useMut_src
   obtain ⟨h_wtp, h_sms'⟩ :=
     writeThroughPtr_sim (τ := τ)
       (s_osea := s_mid) (resolved := rd)
@@ -1194,7 +1194,7 @@ theorem const_store_proj_deref_simulation
   -- source write facts
   obtain ⟨h_nb, perms'', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_write
   obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
-    sb_write_respects_PermSim h_dpsim h_wf_t h_drt h_dnw h_useMut_src
+    sb_write_respects_PermSim h_dpsim h_wf_t h_drt h_useMut_src
   obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Mut_ok_of_sb_write_ok h_useMut_tgt
   have h_tbd2 : TagRenameBounded ρt permsP.NextTag s_mid.perms.NextTag := by
     rw [h_dnt1]
@@ -1422,7 +1422,7 @@ theorem const_store_proj_zero_simulation
   -- source permission step
   obtain ⟨h_nb, perms', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_write
   obtain ⟨p2, h_useMut_tgt, h_psim'⟩ :=
-    sb_write_respects_PermSim h_psim h_wf_t h_rt h_nw h_useMut_src
+    sb_write_respects_PermSim h_psim h_wf_t h_rt h_useMut_src
   -- the fragment: one CStore through the base's register
   have h_stmtRun := (h_run0 csPrefix).trans (h_frag csPrefix reg h_pi)
   obtain ⟨stmtOutC, h_stmtOutC⟩ := h_fragval csPrefix reg h_pi
@@ -1557,7 +1557,7 @@ theorem const_store_proj_offset_simulation
   simp only at h_nb
   -- the target's DIRECT write (what BRIDGE 1 says the triple equals)
   obtain ⟨qAcc, h_useMut_tgt, h_psim'⟩ :=
-    sb_write_respects_PermSim h_psim h_wf_t h_rt h_nw h_useMut_src
+    sb_write_respects_PermSim h_psim h_wf_t h_rt h_useMut_src
   -- the target's retag succeeds, and its fresh tag is usable
   obtain ⟨q1, h_ref_tgt⟩ :=
     sb_ref_Mut_ok_of_sb_write_ok h_useMut_tgt
@@ -1992,7 +1992,7 @@ theorem const_store_proj_fresh_simulation
     -- §7 the source write, and its target mirror
     obtain ⟨h_nb, perms', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_write
     obtain ⟨p2, h_useMut_tgt, h_psim2⟩ :=
-      sb_write_respects_PermSim h_psim' h_wf_t' h_rt_new h_nw h_useMut_src
+      sb_write_respects_PermSim h_psim' h_wf_t' h_rt_new h_useMut_src
     have h_entry1 : PtrRegisterEntry
         (oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
           (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
@@ -2135,7 +2135,7 @@ theorem const_store_proj_fresh_simulation
     -- §7' the source write, transported, then BRIDGE 1
     obtain ⟨h_nb, perms', h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_write
     obtain ⟨p3, h_useMut_tgt, h_psim2⟩ :=
-      sb_write_respects_PermSim h_psim' h_wf_t' h_rt_new h_nw h_useMut_src
+      sb_write_respects_PermSim h_psim' h_wf_t' h_rt_new h_useMut_src
     obtain ⟨q1, h_ref_tgt⟩ := sb_ref_Mut_ok_of_sb_write_ok h_useMut_tgt
     have h_unprot := freshTag_not_protected h_psim' h_tbd'
     have h0' : wildcardTag < tgtPerms.NextTag := (h_tbd' _ _ h_wf_t'.2).2
@@ -2495,7 +2495,7 @@ theorem const_store_deref_chain_simulation
     hFrag9.instrAt 0 rfl rfl
   obtain ⟨h_nb, perms2, h_useMut_src, rfl⟩ := writeResolvedPlace_ok_inv h_write
   obtain ⟨p3, h_useMut_tgt, h_psim3⟩ :=
-    sb_write_respects_PermSim h_dpsim h_wf_t h_drt h_dnw h_useMut_src
+    sb_write_respects_PermSim h_dpsim h_wf_t h_drt h_useMut_src
   obtain ⟨h_wtp, h_sms'⟩ :=
     writeThroughPtr_sim (τ := τ)
       (s_osea := s_mid) (resolved := resolved)

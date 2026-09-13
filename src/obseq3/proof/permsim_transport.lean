@@ -338,25 +338,237 @@ theorem splitStack_some_transport {ρt : TagRenameMap} (h_wf : TagRenameWF ρt)
                   refine ⟨k' :: a2', f2', b2', ?_, ⟨hv.1, h_a⟩, h_f, h_b⟩
                   simp [splitStack, h_beq, hkt, h_rec']
 
+/-! ## Wildcard resolution
+
+An access through `wildcardTag` picks its granting tag out of the stack:
+the topmost non-`Disabled` item whose tag is exposed and grants the
+access. Both machines run the SAME rule, on stacks and exposed lists that
+`PermSim` relates pointwise, so they pick corresponding items — that is
+`resolveWildcardIn_transport`, and it is what lets the three per-cell
+transports drop their non-wildcard hypothesis.
+
+The three `*ContentR` definitions below are the post-resolution bodies of
+`sb.lean`'s cell functions, peeled off so a transport can run at the
+RESOLVED tag (which, for a wildcard access, is a tag the stack itself
+supplied and need not be non-wildcard). They are kept in sync with
+`sb.lean` by the `*_nonwild` lemmas, each of which is a `simp`-normalised
+`rfl`: if a body here drifts from the semantics, they stop compiling. -/
+
+theorem ListRel.find?_some {α β} {R : α → β → Prop} {p : α → Bool} {q : β → Bool}
+    (h_pred : ∀ x y, R x y → q y = p x) :
+    ∀ {as : List α} {bs : List β}, ListRel R as bs →
+      ∀ {a : α}, as.find? p = some a → ∃ b, bs.find? q = some b ∧ R a b := by
+  intro as
+  induction as with
+  | nil =>
+      intro bs h a h_some
+      simp at h_some
+  | cons a as ih =>
+      intro bs h x h_some
+      cases bs with
+      | nil => simp [ListRel] at h
+      | cons b bs =>
+          simp only [ListRel] at h
+          simp only [List.find?_cons] at h_some ⊢
+          cases hp : p a with
+          | true =>
+              simp only [hp, if_true] at h_some
+              simp only [h_pred a b h.1, hp, if_true]
+              exact ⟨b, rfl, by rw [← Option.some.inj h_some]; exact h.1⟩
+          | false =>
+              simp only [hp, Bool.false_eq_true, if_false] at h_some
+              simp only [h_pred a b h.1, hp, Bool.false_eq_true, if_false]
+              exact ih h.2 h_some
+
+/-- The predicate `resolveWildcardIn` scans with, named. -/
+def wildOK (ex : List Tag) (nw : Bool) (k : Item) : Bool :=
+  match k with
+  | .Disabled _ => false
+  | _ => ex.contains k.tag && (!nw || k.grantsWrite)
+
+theorem resolveWildcardIn_eq (ex : List Tag) (v : BorrowStack) (nw : Bool) :
+    resolveWildcardIn ex v nw = (v.find? (wildOK ex nw)).map (·.tag) := rfl
+
+/-- The scan predicate agrees on related items: a `Disabled` item is
+    skipped on both sides, and otherwise the two conjuncts (the tag being
+    exposed, and the item granting the access) transport by
+    `TagListSim.contains_eq` and `ItemSim.grantsWrite_eq`. -/
+theorem ItemSim.wildOK_eq {ρt : TagRenameMap} (h_wf : TagRenameWF ρt)
+    {exS exT : List Tag} (h_ex : TagListSim ρt exS exT) (nw : Bool)
+    {i i' : Item} (h : ItemSim ρt i i') :
+    wildOK exT nw i' = wildOK exS nw i := by
+  have h_tag := ItemSim.tag_rel h
+  have h_gw := ItemSim.grantsWrite_eq h
+  cases i <;> cases i' <;> simp only [ItemSim] at h <;>
+    first
+      | exact h.elim
+      | rfl
+      | (simp only [Item.tag] at h_tag
+         simp only [wildOK, Item.tag, h_gw, TagListSim.contains_eq h_wf h_tag h_ex])
+
+/-- The wildcard's granting tag transports: related stacks and related
+    exposed lists resolve to related tags. -/
+theorem resolveWildcardIn_transport {ρt : TagRenameMap}
+    (h_wf : TagRenameWF ρt) {exS exT : List Tag} (h_ex : TagListSim ρt exS exT)
+    {v v' : BorrowStack} (h_v : StackSim ρt v v') (nw : Bool) {t : Tag}
+    (h : resolveWildcardIn exS v nw = some t) :
+    ∃ t', resolveWildcardIn exT v' nw = some t' ∧ ρt t = some t' := by
+  rw [resolveWildcardIn_eq] at h
+  rw [Option.map_eq_some_iff] at h
+  obtain ⟨it, h_find, h_tag⟩ := h
+  obtain ⟨it', h_find', h_it⟩ :=
+    ListRel.find?_some (R := ItemSim ρt)
+      (fun _ _ h_xy => ItemSim.wildOK_eq h_wf h_ex nw h_xy)
+      h_v h_find
+  refine ⟨it'.tag, ?_, ?_⟩
+  · rw [resolveWildcardIn_eq, Option.map_eq_some_iff]
+    exact ⟨it', h_find', rfl⟩
+  · rw [← h_tag]
+    exact ItemSim.tag_rel h_it
+
+/-! ### The post-resolution bodies -/
+
+/-- `readCellContent` after the acting tag has been resolved. -/
+def readCellContentR (pf : List (List Tag)) (addr : Word) (tag : Tag)
+    (stack : BorrowStack) : Except String BorrowStack :=
+  match splitStack stack tag with
+  | none => .error s!"sb-read: tag {tag} does not exist in the borrow stack at {addr}"
+  | some (above, item, below) =>
+    match item with
+    | .Disabled _ =>
+        .error s!"sb-read: tag {tag} does not exist in the borrow stack at {addr} (disabled)"
+    | _ =>
+    let hit := above.filter (·.poppedByRead)
+    match firstProtectedIn pf hit with
+    | some p =>
+        .error s!"sb-read: not granting read access to tag {tag} at {addr} because that would remove item for tag {p.tag} which is strongly protected"
+    | none =>
+      let above' := above.map (fun k => if k.poppedByRead then .Disabled k.tag else k)
+      .ok (above' ++ item :: below)
+
+/-- `writeCellContent` after the acting tag has been resolved. -/
+def writeCellContentR (pf : List (List Tag)) (addr : Word) (tag : Tag)
+    (stack : BorrowStack) : Except String BorrowStack :=
+  match splitStack stack tag with
+  | none => .error s!"sb-write: tag {tag} does not exist in the borrow stack at {addr}"
+  | some (above, item, below) =>
+    match item with
+    | .Disabled _ =>
+        .error s!"sb-write: tag {tag} does not exist in the borrow stack at {addr} (disabled)"
+    | _ =>
+    if item.grantsWrite then
+      let (srwRun, rest) :=
+        if item.isSrw then
+          let grp := above.reverse.takeWhile Item.isSrw
+          (grp.reverse, above.take (above.length - grp.length))
+        else ([], above)
+      match firstProtectedIn pf rest with
+      | some p =>
+          .error s!"sb-write: not granting write access to tag {tag} at {addr} because that would remove item for tag {p.tag} which is strongly protected"
+      | none =>
+          .ok (srwRun ++ item :: below)
+    else
+      .error s!"sb-write: tag {tag} (a read-only item) does not grant write access at {addr}"
+
+/-- `insertAboveContent` after the acting tag has been resolved. -/
+def insertAboveContentR (addr : Word) (tag : Tag) (item : Item)
+    (stack : BorrowStack) : Except String BorrowStack :=
+  match splitStack stack tag with
+  | none => .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {addr}"
+  | some (_, .Disabled _, _) =>
+      .error s!"sb-insert: tag {tag} does not exist in the borrow stack at {addr} (disabled)"
+  | some (above, granting, below) =>
+      .ok (above ++ item :: granting :: below)
+
+theorem readCellContent_nonwild {pf : List (List Tag)} {ex : List Tag}
+    {addr : Word} {tag : Tag} {stack : BorrowStack}
+    (h : (tag == wildcardTag) = false) :
+    readCellContent pf ex addr tag stack = readCellContentR pf addr tag stack := by
+  unfold readCellContent readCellContentR
+  rw [h]
+  simp only [Bool.false_eq_true, if_false]
+  rfl
+
+theorem writeCellContent_nonwild {pf : List (List Tag)} {ex : List Tag}
+    {addr : Word} {tag : Tag} {stack : BorrowStack}
+    (h : (tag == wildcardTag) = false) :
+    writeCellContent pf ex addr tag stack = writeCellContentR pf addr tag stack := by
+  unfold writeCellContent writeCellContentR
+  rw [h]
+  simp only [Bool.false_eq_true, if_false]
+  rfl
+
+theorem insertAboveContent_nonwild {ex : List Tag} {addr : Word} {tag : Tag}
+    {item : Item} {stack : BorrowStack}
+    (h : (tag == wildcardTag) = false) :
+    insertAboveContent ex addr tag item stack
+      = insertAboveContentR addr tag item stack := by
+  unfold insertAboveContent insertAboveContentR
+  rw [h]
+  simp only [Bool.false_eq_true, if_false]
+  rfl
+
+theorem readCellContent_wild {pf : List (List Tag)} {ex : List Tag}
+    {addr : Word} {t : Tag} {stack : BorrowStack}
+    (h : resolveWildcardIn ex stack false = some t) :
+    readCellContent pf ex addr wildcardTag stack = readCellContentR pf addr t stack := by
+  unfold readCellContent readCellContentR
+  simp only [beq_self_eq_true, if_true, h, Option.elim]
+  rfl
+
+theorem writeCellContent_wild {pf : List (List Tag)} {ex : List Tag}
+    {addr : Word} {t : Tag} {stack : BorrowStack}
+    (h : resolveWildcardIn ex stack true = some t) :
+    writeCellContent pf ex addr wildcardTag stack = writeCellContentR pf addr t stack := by
+  unfold writeCellContent writeCellContentR
+  simp only [beq_self_eq_true, if_true, h, Option.elim]
+  rfl
+
+theorem insertAboveContent_wild {ex : List Tag} {addr : Word} {t : Tag}
+    {item : Item} {stack : BorrowStack}
+    (h : resolveWildcardIn ex stack false = some t) :
+    insertAboveContent ex addr wildcardTag item stack
+      = insertAboveContentR addr t item stack := by
+  unfold insertAboveContent insertAboveContentR
+  simp only [beq_self_eq_true, if_true, h, Option.elim]
+  rfl
+
+theorem readCellContent_wild_none {pf : List (List Tag)} {ex : List Tag}
+    {addr : Word} {stack : BorrowStack} {w : BorrowStack}
+    (h : resolveWildcardIn ex stack false = none) :
+    readCellContent pf ex addr wildcardTag stack ≠ .ok w := by
+  unfold readCellContent
+  simp only [beq_self_eq_true, if_true, h, Option.elim]
+  simp
+
+theorem writeCellContent_wild_none {pf : List (List Tag)} {ex : List Tag}
+    {addr : Word} {stack : BorrowStack} {w : BorrowStack}
+    (h : resolveWildcardIn ex stack true = none) :
+    writeCellContent pf ex addr wildcardTag stack ≠ .ok w := by
+  unfold writeCellContent
+  simp only [beq_self_eq_true, if_true, h, Option.elim]
+  simp
+
+theorem insertAboveContent_wild_none {ex : List Tag} {addr : Word}
+    {item : Item} {stack : BorrowStack} {w : BorrowStack}
+    (h : resolveWildcardIn ex stack false = none) :
+    insertAboveContent ex addr wildcardTag item stack ≠ .ok w := by
+  unfold insertAboveContent
+  simp only [beq_self_eq_true, if_true, h, Option.elim]
+  simp
+
 /-! ## `writeCellContent` transport -/
 
-theorem writeCellContent_transport
-    {ρt : TagRenameMap} {pfS pfT : List (List Tag)} {exS exT : List Tag}
+theorem writeCellContentR_transport
+    {ρt : TagRenameMap} {pfS pfT : List (List Tag)}
     {a a' : Word} {tagS tagT : Tag} {v v' : BorrowStack} {w : BorrowStack}
     (h_wf : TagRenameWF ρt)
     (h_pf : ListRel (TagListSim ρt) pfS pfT)
     (h_t : ρt tagS = some tagT)
-    (h_ts : (tagS == wildcardTag) = false)
     (h_v : StackSim ρt v v')
-    (h_ok : writeCellContent pfS exS a tagS v = .ok w) :
-    ∃ w', writeCellContent pfT exT a' tagT v' = .ok w' ∧ StackSim ρt w w' := by
-  have h_tt : (tagT == wildcardTag) = false := by
-    rw [h_wf.beq_eq h_t h_wf.2]
-    exact h_ts
-  unfold writeCellContent at h_ok ⊢
-  rw [h_ts] at h_ok
-  rw [h_tt]
-  simp only [Bool.false_eq_true, if_false] at h_ok ⊢
+    (h_ok : writeCellContentR pfS a tagS v = .ok w) :
+    ∃ w', writeCellContentR pfT a' tagT v' = .ok w' ∧ StackSim ρt w w' := by
+  unfold writeCellContentR at h_ok ⊢
   cases h_split : splitStack v tagS with
   | none => simp [h_split] at h_ok
   | some triple =>
@@ -431,6 +643,45 @@ theorem writeCellContent_transport
               rw [← h_ok]
               exact ⟨by simp [ItemSim]; exact h_it, h_bl⟩
 
+/-- `writeCellContent` transports WITHOUT a non-wildcard hypothesis: a
+    wildcard access resolves its granting tag out of the stack, and
+    related stacks with related exposed lists resolve to related tags. -/
+theorem writeCellContent_transport
+    {ρt : TagRenameMap} {exS exT : List Tag} {pfS pfT : List (List Tag)}
+    {a a' : Word} {tagS tagT : Tag} {v v' : BorrowStack} {w : BorrowStack}
+    (h_wf : TagRenameWF ρt)
+    (h_ex : TagListSim ρt exS exT)
+    (h_pf : ListRel (TagListSim ρt) pfS pfT)
+    (h_t : ρt tagS = some tagT)
+    (h_v : StackSim ρt v v')
+    (h_ok : writeCellContent pfS exS a tagS v = .ok w) :
+    ∃ w', writeCellContent pfT exT a' tagT v' = .ok w' ∧ StackSim ρt w w' := by
+  by_cases h_ts : (tagS == wildcardTag) = true
+  · -- the wildcard: both machines resolve, and to related tags
+    have h_sw : tagS = wildcardTag := by grind
+    subst h_sw
+    have h_tw : tagT = wildcardTag := by
+      have h2 := h_wf.2
+      rw [h_t] at h2
+      exact Option.some.inj h2
+    subst h_tw
+    cases h_res : resolveWildcardIn exS v true with
+    | none => exact absurd h_ok (writeCellContent_wild_none h_res)
+    | some t =>
+      obtain ⟨t', h_res', h_tt'⟩ :=
+        resolveWildcardIn_transport h_wf h_ex h_v true h_res
+      rw [writeCellContent_wild h_res] at h_ok
+      rw [writeCellContent_wild h_res']
+      exact writeCellContentR_transport h_wf h_pf h_tt' h_v h_ok
+  · -- an ordinary tag: neither machine resolves
+    have h_ts' : (tagS == wildcardTag) = false := by grind
+    have h_tt' : (tagT == wildcardTag) = false := by
+      rw [h_wf.beq_eq h_t h_wf.2]
+      exact h_ts'
+    rw [writeCellContent_nonwild h_ts'] at h_ok
+    rw [writeCellContent_nonwild h_tt']
+    exact writeCellContentR_transport h_wf h_pf h_t h_v h_ok
+
 /-! ## `insertAboveContent` transport -/
 
 /-- Transport for the access-free retag placement. Unlike the access
@@ -438,24 +689,17 @@ theorem writeCellContent_transport
     different fresh tags), so the inserted items are related by `ItemSim`
     rather than equal. No protector hypothesis: `insertAbove` pops nothing,
     so nothing can be protected against. -/
-theorem insertAboveContent_transport
-    {ρt : TagRenameMap} {exS exT : List Tag}
+theorem insertAboveContentR_transport
+    {ρt : TagRenameMap}
     {a a' : Word} {tagS tagT : Tag} {itS itT : Item}
     {v v' : BorrowStack} {w : BorrowStack}
     (h_wf : TagRenameWF ρt)
     (h_t : ρt tagS = some tagT)
-    (h_ts : (tagS == wildcardTag) = false)
     (h_it : ItemSim ρt itS itT)
     (h_v : StackSim ρt v v')
-    (h_ok : insertAboveContent exS a tagS itS v = .ok w) :
-    ∃ w', insertAboveContent exT a' tagT itT v' = .ok w' ∧ StackSim ρt w w' := by
-  have h_tt : (tagT == wildcardTag) = false := by
-    rw [h_wf.beq_eq h_t h_wf.2]
-    exact h_ts
-  unfold insertAboveContent at h_ok ⊢
-  rw [h_ts] at h_ok
-  rw [h_tt]
-  simp only [Bool.false_eq_true, if_false] at h_ok ⊢
+    (h_ok : insertAboveContentR a tagS itS v = .ok w) :
+    ∃ w', insertAboveContentR a' tagT itT v' = .ok w' ∧ StackSim ρt w w' := by
+  unfold insertAboveContentR at h_ok ⊢
   cases h_split : splitStack v tagS with
   | none => simp [h_split] at h_ok
   | some triple =>
@@ -478,8 +722,46 @@ theorem insertAboveContent_transport
              rw [← h_ok]
              exact ListRel.append h_ab ⟨h_it, ⟨h_gr.1, h_gr.2⟩, h_bl⟩)
 
-/-- `insertAboveCell` in content-driven form (the shape `foldCellsIdx_ok_inv`
-    and `foldCellsIdx_ok_of_cells` consume). -/
+/-- `insertAboveContent` transports WITHOUT a non-wildcard hypothesis: a
+    wildcard access resolves its granting tag out of the stack, and
+    related stacks with related exposed lists resolve to related tags. -/
+theorem insertAboveContent_transport
+    {ρt : TagRenameMap} {exS exT : List Tag}
+    {a a' : Word} {tagS tagT : Tag} {itS itT : Item}
+    {v v' : BorrowStack} {w : BorrowStack}
+    (h_wf : TagRenameWF ρt)
+    (h_ex : TagListSim ρt exS exT)
+    (h_t : ρt tagS = some tagT)
+    (h_it : ItemSim ρt itS itT)
+    (h_v : StackSim ρt v v')
+    (h_ok : insertAboveContent exS a tagS itS v = .ok w) :
+    ∃ w', insertAboveContent exT a' tagT itT v' = .ok w' ∧ StackSim ρt w w' := by
+  by_cases h_ts : (tagS == wildcardTag) = true
+  · -- the wildcard: both machines resolve, and to related tags
+    have h_sw : tagS = wildcardTag := by grind
+    subst h_sw
+    have h_tw : tagT = wildcardTag := by
+      have h2 := h_wf.2
+      rw [h_t] at h2
+      exact Option.some.inj h2
+    subst h_tw
+    cases h_res : resolveWildcardIn exS v false with
+    | none => exact absurd h_ok (insertAboveContent_wild_none h_res)
+    | some t =>
+      obtain ⟨t', h_res', h_tt'⟩ :=
+        resolveWildcardIn_transport h_wf h_ex h_v false h_res
+      rw [insertAboveContent_wild h_res] at h_ok
+      rw [insertAboveContent_wild h_res']
+      exact insertAboveContentR_transport h_wf h_tt' h_it h_v h_ok
+  · -- an ordinary tag: neither machine resolves
+    have h_ts' : (tagS == wildcardTag) = false := by grind
+    have h_tt' : (tagT == wildcardTag) = false := by
+      rw [h_wf.beq_eq h_t h_wf.2]
+      exact h_ts'
+    rw [insertAboveContent_nonwild h_ts'] at h_ok
+    rw [insertAboveContent_nonwild h_tt']
+    exact insertAboveContentR_transport h_wf h_t h_it h_v h_ok
+
 theorem insertAboveCell_content_form
     {E : List Tag} (t : Tag) (it : Item) (ap : AccessPerms) (a : Word)
     (h_ex : ap.exposed = E) :
@@ -571,23 +853,16 @@ theorem readCell_content_form
       | ok v =>
           simp only [readCell, h_pf, h_ex, h_find, h_content]
 
-theorem readCellContent_transport
-    {ρt : TagRenameMap} {pfS pfT : List (List Tag)} {exS exT : List Tag}
+theorem readCellContentR_transport
+    {ρt : TagRenameMap} {pfS pfT : List (List Tag)}
     {a a' : Word} {tagS tagT : Tag} {v v' : BorrowStack} {w : BorrowStack}
     (h_wf : TagRenameWF ρt)
     (h_pf : ListRel (TagListSim ρt) pfS pfT)
     (h_t : ρt tagS = some tagT)
-    (h_ts : (tagS == wildcardTag) = false)
     (h_v : StackSim ρt v v')
-    (h_ok : readCellContent pfS exS a tagS v = .ok w) :
-    ∃ w', readCellContent pfT exT a' tagT v' = .ok w' ∧ StackSim ρt w w' := by
-  have h_tt : (tagT == wildcardTag) = false := by
-    rw [h_wf.beq_eq h_t h_wf.2]
-    exact h_ts
-  unfold readCellContent at h_ok ⊢
-  rw [h_ts] at h_ok
-  rw [h_tt]
-  simp only [Bool.false_eq_true, if_false] at h_ok ⊢
+    (h_ok : readCellContentR pfS a tagS v = .ok w) :
+    ∃ w', readCellContentR pfT a' tagT v' = .ok w' ∧ StackSim ρt w w' := by
+  unfold readCellContentR at h_ok ⊢
   cases h_split : splitStack v tagS with
   | none => simp [h_split] at h_ok
   | some triple =>
@@ -651,6 +926,45 @@ theorem readCellContent_transport
               refine ⟨_, rfl, ?_⟩
               rw [← h_ok]
               exact ListRel.append h_map ⟨by simp [ItemSim]; exact h_it.2, h_bl⟩
+
+/-- `readCellContent` transports WITHOUT a non-wildcard hypothesis: a
+    wildcard access resolves its granting tag out of the stack, and
+    related stacks with related exposed lists resolve to related tags. -/
+theorem readCellContent_transport
+    {ρt : TagRenameMap} {exS exT : List Tag} {pfS pfT : List (List Tag)}
+    {a a' : Word} {tagS tagT : Tag} {v v' : BorrowStack} {w : BorrowStack}
+    (h_wf : TagRenameWF ρt)
+    (h_ex : TagListSim ρt exS exT)
+    (h_pf : ListRel (TagListSim ρt) pfS pfT)
+    (h_t : ρt tagS = some tagT)
+    (h_v : StackSim ρt v v')
+    (h_ok : readCellContent pfS exS a tagS v = .ok w) :
+    ∃ w', readCellContent pfT exT a' tagT v' = .ok w' ∧ StackSim ρt w w' := by
+  by_cases h_ts : (tagS == wildcardTag) = true
+  · -- the wildcard: both machines resolve, and to related tags
+    have h_sw : tagS = wildcardTag := by grind
+    subst h_sw
+    have h_tw : tagT = wildcardTag := by
+      have h2 := h_wf.2
+      rw [h_t] at h2
+      exact Option.some.inj h2
+    subst h_tw
+    cases h_res : resolveWildcardIn exS v false with
+    | none => exact absurd h_ok (readCellContent_wild_none h_res)
+    | some t =>
+      obtain ⟨t', h_res', h_tt'⟩ :=
+        resolveWildcardIn_transport h_wf h_ex h_v false h_res
+      rw [readCellContent_wild h_res] at h_ok
+      rw [readCellContent_wild h_res']
+      exact readCellContentR_transport h_wf h_pf h_tt' h_v h_ok
+  · -- an ordinary tag: neither machine resolves
+    have h_ts' : (tagS == wildcardTag) = false := by grind
+    have h_tt' : (tagT == wildcardTag) = false := by
+      rw [h_wf.beq_eq h_t h_wf.2]
+      exact h_ts'
+    rw [readCellContent_nonwild h_ts'] at h_ok
+    rw [readCellContent_nonwild h_tt']
+    exact readCellContentR_transport h_wf h_pf h_t h_v h_ok
 
 /-! ## `sb_ref`'s per-cell op in content form
 
@@ -833,9 +1147,9 @@ theorem refCellContent_transport
     {a a' : Word} {tagS tagT newS newT : Tag} {kind : RefKind}
     {mask : List Bool} {i : Nat} {v v' w : BorrowStack}
     (h_wf : TagRenameWF ρt)
+    (h_ex : TagListSim ρt exS exT)
     (h_pf : ListRel (TagListSim ρt) pfS pfT)
     (h_t : ρt tagS = some tagT)
-    (h_ts : (tagS == wildcardTag) = false)
     (h_new : ρt newS = some newT)
     (h_v : StackSim ρt v v')
     (h_ok : refCellContent pfS exS a tagS kind newS mask i v = .ok w) :
@@ -848,7 +1162,7 @@ theorem refCellContent_transport
         StackSim ρt x x' := by
     intro u u' x h_u h
     exact insertAboveContent_transport (itS := Item.RawPtr true newS)
-      (itT := Item.RawPtr true newT) h_wf h_t h_ts ⟨rfl, h_new⟩ h_u h
+      (itT := Item.RawPtr true newT) h_wf h_ex h_t ⟨rfl, h_new⟩ h_u h
   cases kind with
   | Mut =>
       simp only [refCellContent] at h_ok ⊢
@@ -859,7 +1173,7 @@ theorem refCellContent_transport
           simp only [Except.ok.injEq] at h_ok
           subst h_ok
           obtain ⟨u', h_u', h_us⟩ :=
-            writeCellContent_transport h_wf h_pf h_t h_ts h_v h_c
+            writeCellContent_transport h_wf h_ex h_pf h_t h_v h_c
           rw [h_u']
           exact ⟨_, rfl, ⟨h_new, h_us⟩⟩
   | Shared =>
@@ -875,7 +1189,7 @@ theorem refCellContent_transport
             simp only [Except.ok.injEq] at h_ok
             subst h_ok
             obtain ⟨u', h_u', h_us⟩ :=
-              readCellContent_transport h_wf h_pf h_t h_ts h_v h_c
+              readCellContent_transport h_wf h_ex h_pf h_t h_v h_c
             rw [h_u']
             exact ⟨_, rfl, ⟨h_new, h_us⟩⟩
   | Raw m =>
@@ -896,7 +1210,7 @@ theorem refCellContent_transport
                 simp only [Except.ok.injEq] at h_ok
                 subst h_ok
                 obtain ⟨u', h_u', h_us⟩ :=
-                  readCellContent_transport h_wf h_pf h_t h_ts h_v h_c
+                  readCellContent_transport h_wf h_ex h_pf h_t h_v h_c
                 rw [h_u']
                 exact ⟨_, rfl, ⟨⟨rfl, h_new⟩, h_us⟩⟩
   | TwoPhase =>
@@ -906,7 +1220,7 @@ theorem refCellContent_transport
       | ok u =>
           rw [h_c] at h_ok
           obtain ⟨u', h_u', h_us⟩ :=
-            readCellContent_transport h_wf h_pf h_t h_ts h_v h_c
+            readCellContent_transport h_wf h_ex h_pf h_t h_v h_c
           rw [h_u']
           exact h_ins h_us h_ok
 
@@ -1186,7 +1500,6 @@ theorem sb_write_respects_PermSim
     (h_sim : PermSim ρt src tgt)
     (h_wf : TagRenameWF ρt)
     (h_tag : ρt tagS = some tagT)
-    (h_ts : (tagS == wildcardTag) = false)
     (h_src : sb_write src addr len tagS = .ok src') :
     ∃ tgt', sb_write tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' := by
   obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
@@ -1208,7 +1521,7 @@ theorem sb_write_respects_PermSim
     · have hc := h_cells j (Nat.zero_le j) (by omega)
       obtain ⟨s', h_find', h_ss⟩ := SB.find?_transport h_stacks hc.1
       obtain ⟨w', h_w', h_ws⟩ :=
-        writeCellContent_transport h_wf h_prot h_tag h_ts h_ss hc.2
+        writeCellContent_transport h_wf h_exp h_prot h_tag h_ss hc.2
       exact ⟨s', w', fun _ => ⟨h_find', h_w', h_ws⟩⟩
     · exact ⟨[], [], fun h => absurd h hj⟩
   have h_pkg' : ∀ j, j < len →
@@ -1247,7 +1560,6 @@ theorem sb_read_respects_PermSim
     (h_sim : PermSim ρt src tgt)
     (h_wf : TagRenameWF ρt)
     (h_tag : ρt tagS = some tagT)
-    (h_ts : (tagS == wildcardTag) = false)
     (h_src : sb_read src addr len tagS = .ok src') :
     ∃ tgt', sb_read tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' := by
   obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
@@ -1269,7 +1581,7 @@ theorem sb_read_respects_PermSim
     · have hc := h_cells j (Nat.zero_le j) (by omega)
       obtain ⟨s', h_find', h_ss⟩ := SB.find?_transport h_stacks hc.1
       obtain ⟨w', h_w', h_ws⟩ :=
-        readCellContent_transport h_wf h_prot h_tag h_ts h_ss hc.2
+        readCellContent_transport h_wf h_exp h_prot h_tag h_ss hc.2
       exact ⟨s', w', fun _ => ⟨h_find', h_w', h_ws⟩⟩
     · exact ⟨[], [], fun h => absurd h hj⟩
   have h_pkg' : ∀ j, j < len →
@@ -1306,7 +1618,6 @@ theorem sb_ref_respects_PermSim
     (h_wf : TagRenameWF ρt)
     (h_bd : TagRenameBounded ρt src.NextTag tgt.NextTag)
     (h_tag : ρt tagS = some tagT)
-    (h_ts : (tagS == wildcardTag) = false)
     (h_src : sb_ref src addr len tagS kind prot mask = .ok (src', newTagS)) :
     ∃ tgt',
       sb_ref tgt addr len tagT kind prot mask = .ok (tgt', tgt.NextTag) ∧
@@ -1359,7 +1670,7 @@ theorem sb_ref_respects_PermSim
             refCellStep_ok_inv (h_cells j (Nat.zero_le j) hj)
           obtain ⟨vj', h_find', h_vs⟩ := SB.find?_transport h_stacks h_find
           obtain ⟨wj', h_wj', h_ws⟩ :=
-            refCellContent_transport h_wf' h_prot h_tag' h_ts h_newpair h_vs h_content
+            refCellContent_transport h_wf' h_exp h_prot h_tag' h_newpair h_vs h_content
           exact ⟨wj', fun _ => ⟨by rw [h_find']; exact h_wj', h_ws⟩⟩
         · exact ⟨[], fun h => absurd h hj⟩
       -- Name the target cell results as an opaque family: keeping `h_pkg`
