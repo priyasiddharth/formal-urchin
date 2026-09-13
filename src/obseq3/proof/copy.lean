@@ -217,18 +217,23 @@ theorem compileStmt_readrhs_chainsrc_value
 
 /-! ## Flatten transfer for the copy-src shape -/
 
-theorem compileRExprToChecked_copysrc_flatten_run
-    {Γ : Ctx} {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+theorem compileRExprToChecked_readrhs_flatten_run
+    {Γ : Ctx} {τ τs : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τs)}
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
+    (h_shape : ReadRhsShape rhs (.deref P) mk)
+    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk)
     (r : Register) (cs : CompilerState) :
     CheckedCompilerM.run
-        (compileRExprToChecked r (RExpr.copy (Γ := Γ) (.deref P))) cs
+        (compileRExprToChecked r rhs) cs
       = CheckedCompilerM.run
-          (compileRExprToChecked r (RExpr.copy (.deref (flattenPlace P)))) cs := by
+          (compileRExprToChecked r rhs2) cs := by
+  obtain ⟨ev, h_rhs⟩ := id h_shape
+  obtain ⟨ev2, h_rhs2⟩ := id h_shape2
   obtain ⟨h_agr, h_agv⟩ :=
     placeToRegChecked_flatten_agree (Place.deref P) RefKind.Shared cs
   rw [show flattenPlace (Place.deref P) = Place.deref (flattenPlace P) from rfl]
     at h_agr h_agv
-  simp only [csMonad, compileRExprToChecked, compileRExprPreChecked]
+  simp only [csMonad, compileRExprToChecked, h_rhs, h_rhs2, readRhsPre]
   cases hF : CheckedCompilerM.value
       (placeToRegChecked RefKind.Shared (Place.deref (flattenPlace P))) cs with
   | error eF =>
@@ -255,20 +260,25 @@ theorem compileRExprToChecked_copysrc_flatten_run
           simp only [hF, hO, h_res]
           rw [h_agr]
 
-theorem compileRExprToChecked_copysrc_flatten_valunit
-    {Γ : Ctx} {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+theorem compileRExprToChecked_readrhs_flatten_valunit
+    {Γ : Ctx} {τ τs : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τs)}
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
+    (h_shape : ReadRhsShape rhs (.deref P) mk)
+    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk)
     (r : Register) (cs : CompilerState) :
     (CheckedCompilerM.value
-        (compileRExprToChecked r (RExpr.copy (Γ := Γ) (.deref P))) cs).map
+        (compileRExprToChecked r rhs) cs).map
       (fun _ => ())
       = (CheckedCompilerM.value
-          (compileRExprToChecked r (RExpr.copy (.deref (flattenPlace P)))) cs).map
+          (compileRExprToChecked r rhs2) cs).map
         (fun _ => ()) := by
+  obtain ⟨ev, h_rhs⟩ := id h_shape
+  obtain ⟨ev2, h_rhs2⟩ := id h_shape2
   obtain ⟨h_agr, h_agv⟩ :=
     placeToRegChecked_flatten_agree (Place.deref P) RefKind.Shared cs
   rw [show flattenPlace (Place.deref P) = Place.deref (flattenPlace P) from rfl]
     at h_agr h_agv
-  simp only [csMonad, compileRExprToChecked, compileRExprPreChecked]
+  simp only [csMonad, compileRExprToChecked, h_rhs, h_rhs2, readRhsPre]
   cases hF : CheckedCompilerM.value
       (placeToRegChecked RefKind.Shared (Place.deref (flattenPlace P))) cs with
   | error eF =>
@@ -294,31 +304,34 @@ theorem compileRExprToChecked_copysrc_flatten_valunit
       | ok oO =>
           simp [hF, hO, Except.map]
 
-theorem compileStmt_copy_derefsrc_flatten_run
-    {Γ : Ctx} {τ : LayoutTy}
-    {dstLoc : Local Γ τ} {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+theorem compileStmt_readrhs_derefsrc_flatten_run
+    {Γ : Ctx} {τ τs : LayoutTy}
+    {dstLoc : Local Γ τ} {P : Place Γ (obseq.LayoutTy.PtrL τs)}
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
+    (h_shape : ReadRhsShape rhs (.deref P) mk)
+    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk)
     (cs : CompilerState) :
     CheckedCompilerM.run
         (compileStmtChecked
-          (Stmt.assign (.local dstLoc) (.copy (.deref P)))) cs
+          (Stmt.assign (.local dstLoc) rhs)) cs
       = CheckedCompilerM.run
           (compileStmtChecked
-            (Stmt.assign (.local dstLoc) (.copy (.deref (flattenPlace P))))) cs := by
+            (Stmt.assign (.local dstLoc) rhs2)) cs := by
   simp only [csMonad, compileStmtChecked]
-  have h_run := compileRExprToChecked_copysrc_flatten_run (Γ := Γ) (P := P)
+  have h_run := compileRExprToChecked_readrhs_flatten_run (h_shape := h_shape) (h_shape2 := h_shape2)
     ((ensureLocalRegE dstLoc).value cs).result.reg
     (CompilerM.run (ensureLocalRegE dstLoc) cs)
-  have h_val := compileRExprToChecked_copysrc_flatten_valunit (Γ := Γ) (P := P)
+  have h_val := compileRExprToChecked_readrhs_flatten_valunit (h_shape := h_shape) (h_shape2 := h_shape2)
     ((ensureLocalRegE dstLoc).value cs).result.reg
     (CompilerM.run (ensureLocalRegE dstLoc) cs)
   cases hO : CheckedCompilerM.value
       (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-        (RExpr.copy (Γ := Γ) (.deref P)))
+        rhs)
       (CompilerM.run (ensureLocalRegE dstLoc) cs) with
   | error eO =>
       cases hF : CheckedCompilerM.value
           (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-            (RExpr.copy (.deref (flattenPlace P))))
+            rhs2)
           (CompilerM.run (ensureLocalRegE dstLoc) cs) with
       | error eF =>
           simp only [hO, hF]
@@ -330,7 +343,7 @@ theorem compileStmt_copy_derefsrc_flatten_run
   | ok oO =>
       cases hF : CheckedCompilerM.value
           (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-            (RExpr.copy (.deref (flattenPlace P))))
+            rhs2)
           (CompilerM.run (ensureLocalRegE dstLoc) cs) with
       | error eF =>
           exfalso
@@ -340,32 +353,35 @@ theorem compileStmt_copy_derefsrc_flatten_run
           simp only [hO, hF]
           exact h_run
 
-theorem compileStmt_copy_derefsrc_flatten_value
-    {Γ : Ctx} {τ : LayoutTy}
-    {dstLoc : Local Γ τ} {P : Place Γ (obseq.LayoutTy.PtrL τ)}
+theorem compileStmt_readrhs_derefsrc_flatten_value
+    {Γ : Ctx} {τ τs : LayoutTy}
+    {dstLoc : Local Γ τ} {P : Place Γ (obseq.LayoutTy.PtrL τs)}
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
+    (h_shape : ReadRhsShape rhs (.deref P) mk)
+    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk)
     (cs : CompilerState) :
     ∀ so, CheckedCompilerM.value
         (compileStmtChecked
-          (Stmt.assign (.local dstLoc) (.copy (.deref (flattenPlace P))))) cs
+          (Stmt.assign (.local dstLoc) rhs2)) cs
       = Except.ok so →
     ∃ so', CheckedCompilerM.value
         (compileStmtChecked
-          (Stmt.assign (.local dstLoc) (.copy (.deref P)))) cs
+          (Stmt.assign (.local dstLoc) rhs)) cs
       = Except.ok so' := by
   intro so h_so
-  have h_val := compileRExprToChecked_copysrc_flatten_valunit (Γ := Γ) (P := P)
+  have h_val := compileRExprToChecked_readrhs_flatten_valunit (h_shape := h_shape) (h_shape2 := h_shape2)
     ((ensureLocalRegE dstLoc).value cs).result.reg
     (CompilerM.run (ensureLocalRegE dstLoc) cs)
   simp only [csMonad, compileStmtChecked] at h_so ⊢
   cases hO : CheckedCompilerM.value
       (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-        (RExpr.copy (Γ := Γ) (.deref P)))
+        rhs)
       (CompilerM.run (ensureLocalRegE dstLoc) cs) with
   | error eO =>
       exfalso
       cases hF : CheckedCompilerM.value
           (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-            (RExpr.copy (.deref (flattenPlace P))))
+            rhs2)
           (CompilerM.run (ensureLocalRegE dstLoc) cs) with
       | error eF =>
           rw [hF] at h_so
@@ -5833,43 +5849,54 @@ theorem copy_projdst_projsrc_offset_simulation
     same pair — the compiled run agrees at the two spellings, and a
     compiled value at the normal form yields one at the original — so
     state it once, parameterised by the normal form. -/
-theorem copy_local_srcflat_bridge {Γ : Ctx} {τ σ' : LayoutTy}
-    {dstLoc : Local Γ τ} (src : Place Γ τ) {B : Place Γ σ'} {path' : PathTo σ' τ}
+theorem copy_local_srcflat_bridge {Γ : Ctx} {τ τs σ' : LayoutTy}
+    {dstLoc : Local Γ τ} (src : Place Γ τs) {B : Place Γ σ'} {path' : PathTo σ' τs}
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
+    (h_shape : ReadRhsShape rhs src mk)
+    (h_shape2 : ReadRhsShape rhs2 (Place.proj B path') mk)
     (h_flat : flattenPlace src = Place.proj B path') :
     (∀ cs, CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.local dstLoc) (.copy src))) cs
+        (compileStmtChecked (Stmt.assign (.local dstLoc) rhs)) cs
       = CheckedCompilerM.run (compileStmtChecked
-          (Stmt.assign (.local dstLoc) (.copy (.proj B path')))) cs)
+          (Stmt.assign (.local dstLoc) rhs2)) cs)
     ∧ (∀ cs so, CheckedCompilerM.value (compileStmtChecked
-        (Stmt.assign (.local dstLoc) (.copy (.proj B path')))) cs = Except.ok so →
+        (Stmt.assign (.local dstLoc) rhs2)) cs = Except.ok so →
         ∃ so', CheckedCompilerM.value (compileStmtChecked
-          (Stmt.assign (.local dstLoc) (.copy src))) cs = Except.ok so') := by
-  refine ⟨fun cs => ?_, fun cs so h => ?_⟩
-  · rw [compileStmt_readrhs_srcflatten_run (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) src cs, h_flat]
-  · refine compileStmt_readrhs_srcflatten_value (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) src cs ?_
-    rw [h_flat]
-    exact ⟨so, h⟩
+          (Stmt.assign (.local dstLoc) rhs)) cs = Except.ok so') := by
+  have h_shape2' : ReadRhsShape rhs2 (flattenPlace src) mk := by
+    rw [h_flat]; exact h_shape2
+  exact ⟨fun cs => compileStmt_readrhs_srcflatten_run
+      (h_shape := h_shape) (h_shape2 := h_shape2') src cs,
+    fun cs so h => compileStmt_readrhs_srcflatten_value
+      (h_shape := h_shape) (h_shape2 := h_shape2') src cs ⟨so, h⟩⟩
 
 /-- The same bridge at a DEREF destination, where BOTH places flatten.
     `X` is the source's normal form; pass `rfl` when it is literally
     `flattenPlace src`. -/
-theorem copy_derefdst_flat_bridge {Γ : Ctx} {τ : LayoutTy}
-    (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τ)
-    {X : Place Γ τ} (h_seq : flattenPlace src = X) :
+theorem copy_derefdst_flat_bridge {Γ : Ctx} {τ τs : LayoutTy}
+    (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τs)
+    {X : Place Γ τs} {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
+    (h_shape : ReadRhsShape rhs src mk)
+    (h_shape2 : ReadRhsShape rhs2 X mk)
+    (h_seq : flattenPlace src = X) :
     (∀ cs, CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.deref pp) (.copy src))) cs
+        (compileStmtChecked (Stmt.assign (.deref pp) rhs)) cs
       = CheckedCompilerM.run (compileStmtChecked
-          (Stmt.assign (.deref (flattenPlace pp)) (.copy X))) cs)
+          (Stmt.assign (.deref (flattenPlace pp)) rhs2)) cs)
     ∧ (∀ cs so, CheckedCompilerM.value (compileStmtChecked
-        (Stmt.assign (.deref (flattenPlace pp)) (.copy X))) cs = Except.ok so →
+        (Stmt.assign (.deref (flattenPlace pp)) rhs2)) cs = Except.ok so →
         ∃ so', CheckedCompilerM.value (compileStmtChecked
-          (Stmt.assign (.deref pp) (.copy src))) cs = Except.ok so') := by
+          (Stmt.assign (.deref pp) rhs)) cs = Except.ok so') := by
   subst h_seq
   refine ⟨fun cs => ?_, fun cs so h => ?_⟩
-  · exact (compileStmt_readrhs_derefdst_srcflatten_run (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) pp src cs).trans
-      (compileStmt_readrhs_derefdst_dstflatten_run (h_shape := readRhsShape_copy _) pp (flattenPlace src) cs)
-  · exact compileStmt_readrhs_derefdst_srcflatten_value (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) pp src cs
-      (compileStmt_readrhs_derefdst_dstflatten_value (h_shape := readRhsShape_copy _) pp (flattenPlace src) cs ⟨so, h⟩)
+  · exact (compileStmt_readrhs_derefdst_srcflatten_run (h_shape := h_shape)
+      (h_shape2 := h_shape2) pp src cs).trans
+      (compileStmt_readrhs_derefdst_dstflatten_run (h_shape := h_shape2) pp
+        (flattenPlace src) cs)
+  · exact compileStmt_readrhs_derefdst_srcflatten_value (h_shape := h_shape)
+      (h_shape2 := h_shape2) pp src cs
+      (compileStmt_readrhs_derefdst_dstflatten_value (h_shape := h_shape2) pp
+        (flattenPlace src) cs ⟨so, h⟩)
 
 /-- LEAF SORRY 2 → DISPATCHER 2026-08-28: per-statement simulation for
     `.assign dst (.copy src)`, decomposed by the shapes of the two
@@ -5918,7 +5945,8 @@ theorem CompilerInv_step_copy
           -- cases hand that same normal form to their collapsed leaves
           obtain ⟨σ', Bc, path', h_flat, h_chain⟩ := flatten_proj_chainish sbase ff
           rw [stepStmt_assign_copysrc_anyflatten, h_flat] at h_step
-          obtain ⟨h_run0, h_val0⟩ := copy_local_srcflat_bridge (dstLoc := dstLoc) _ h_flat
+          obtain ⟨h_run0, h_val0⟩ := copy_local_srcflat_bridge (dstLoc := dstLoc) _ (readRhsShape_copy _)
+            (readRhsShape_copy _) h_flat
           cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
           | some bD =>
               by_cases h_off : pathOffset path' = 0
@@ -5965,8 +5993,8 @@ theorem CompilerInv_step_copy
                   compProg (readRhsShape_copy _)
                   (copy_readpkg_lowered compProg (PtrChain_flatten_deref pp).loweringSimAny)
                   h_comp h_inv h_stmt
-                  (fun cs => compileStmt_copy_derefsrc_flatten_run cs)
-                  (fun cs so h => compileStmt_copy_derefsrc_flatten_value cs so h)
+                  (fun cs => compileStmt_readrhs_derefsrc_flatten_run (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) cs)
+                  (fun cs so h => compileStmt_readrhs_derefsrc_flatten_value (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) cs so h)
                   h_envD h_step
               exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa,
                 TagRenameIncr.refl ρt, h_run, h_inv'⟩
@@ -5977,8 +6005,8 @@ theorem CompilerInv_step_copy
                 compProg (readRhsShape_copy _)
                 (copy_readpkg_lowered compProg (PtrChain_flatten_deref pp).loweringSimAny)
                 h_comp h_inv h_stmt
-                (fun cs => compileStmt_copy_derefsrc_flatten_run cs)
-                (fun cs so h => compileStmt_copy_derefsrc_flatten_value cs so h)
+                (fun cs => compileStmt_readrhs_derefsrc_flatten_run (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) cs)
+                (fun cs so h => compileStmt_readrhs_derefsrc_flatten_value (h_shape := readRhsShape_copy _) (h_shape2 := readRhsShape_copy _) cs so h)
                 h_envD h_step
   | proj dbase dpath =>
       -- the recursion peels any nesting first; the source only has to
@@ -6031,8 +6059,8 @@ theorem CompilerInv_step_copy
             (copy_readpkg_lowered compProg h_sch.loweringSimAny)
             (fun cs => h_sch.placeToRegChecked_placeRegMap RefKind.Shared cs)
             (PtrChain_flatten_deref pp) h_comp h_inv h_stmt
-            (copy_derefdst_flat_bridge pp src rfl).1
-            (copy_derefdst_flat_bridge pp src rfl).2
+            (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) rfl).1
+            (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) rfl).2
             h_step
         exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
           h_run, h_inv'⟩
@@ -6048,8 +6076,8 @@ theorem CompilerInv_step_copy
                 (LoweringSimAny.projZero h_B.not_proj h_o h_B.loweringSimAny))
               (PtrChain_flatten_deref pp) h_B h_o
               h_comp h_inv h_stmt
-              (copy_derefdst_flat_bridge pp src h_seq).1
-              (copy_derefdst_flat_bridge pp src h_seq).2
+              (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) h_seq).1
+              (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) h_seq).2
               h_step
           exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
             h_run, h_inv'⟩
@@ -6062,8 +6090,8 @@ theorem CompilerInv_step_copy
               (copy_readpkg_projoffset compProg h_B.loweringSimAny h_B.not_proj h_o)
               (PtrChain_flatten_deref pp) h_B h_o
               h_comp h_inv h_stmt
-              (copy_derefdst_flat_bridge pp src h_seq).1
-              (copy_derefdst_flat_bridge pp src h_seq).2
+              (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) h_seq).1
+              (copy_derefdst_flat_bridge pp src (readRhsShape_copy _) (readRhsShape_copy _) h_seq).2
               h_step
           exact ⟨ρa, ρt, s_osea', n, AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
             h_run, h_inv'⟩
