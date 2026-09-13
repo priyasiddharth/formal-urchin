@@ -3614,20 +3614,61 @@ obligation covers a chain source, a projection's `Borrow`/`Die` bracket
 and a retag alike. So the leaves are per DESTINATION shape only — six of
 them, not copy's seventeen plus ref's twenty-three.
 
-Eight leaves and two compile facts deleted against ~600 lines of
-framework. copy 6,155 -> 5,337; ref 6,836 -> 6,600; spine 3,954 -> 4,327;
-the proof directory 27,604 -> 26,915.
+The collapse then ran to completion, destination shape by destination
+shape:
 
-**What remains, in order of size.** ref still has 21 leaves and copy 11,
-all on destination shapes whose shared leaf is not written yet: the
-deref-chain destination, and the projected destinations (bound at either
-offset, and fresh). ref also needs value packages for its other source
-shapes (proj, deref, deref-proj); each one it gains retires four leaves,
-one per destination. The two shared leaves already written are the
-template — the remaining work is mechanical, but it is not small.
+    storereg_local_simulation        bound local destination
+    storereg_localfresh_simulation   unbound local destination
+    storereg_chaindst_simulation     `*chain :=`
+    storereg_projdst_simulation      `chain.f :=`, either offset
+    storereg_projlocalfresh_…        `loc.f :=` with `loc` unbound
+    storereg_projdst_recursion       peels nesting, flattens a deref
+                                     root, picks one of the last two
+
+Three things made the last two shapes work. First, the compiler's
+non-local assign arm is generic in its destination, so
+`compileStmt_storereg_place_run/_value` and `storereg_place_incrs` state
+its compiled shape once for every non-local place. Second,
+`projDstTail` already holds both a bare store and the
+`Borrow(Mut); RStore; Die` triple, so the projected leaf never splits on
+the offset — the offset twins that cost two leaves everywhere else are
+one leaf here. Third, `ValuePkg` needed one more conjunct, UNGATED: the
+place map of the post-rvalue state. A non-local destination is lowered
+AFTER the rvalue's code, so its `PlaceInputsMapped` must transfer before
+any code-inclusion fact exists, and the gated copy inside the package
+could not do it.
+
+ref's dispatcher is now a case split on the DESTINATION alone. Its four
+mutually recursive source dispatchers went with the leaves, because
+`ref_valuePkg_of_chain` and `ref_valuePkg_of_projchain` between them
+cover every flattened source, and `flatten_chainish` says which applies.
+Nothing in ref mentions both places any more.
+
+**What it cost and what it removed.** Zero leaves remain in copy.lean and
+zero in ref.lean; five shared leaves and one recursion serve copy, both
+casts and ref. Retiring them stranded a great deal that only they used —
+a sweep to a fixpoint removed 46 further declarations across five files,
+including the pending-cleanup and memory-preservation families and both
+per-destination `incrs` towers.
+
+    copy   6,155 -> 1,885
+    ref    6,836 ->   986
+    spine  3,954 -> 4,813
+    total 27,604 -> 18,116
+
+**What is left.** `const_write.lean` (3,291 lines, 8 leaves and 3
+recursions) is untouched, because `constInit` and `uninit` emit a
+`CStore` — the values ride in the instruction, not in a register — so
+`ValuePkg`'s `store d = [RStore ty vreg d]` does not fit and neither do
+the `RStore`-executing write seams. Collapsing it means abstracting the
+seams over the store STEP rather than over the store instruction, which
+is a deeper change than anything in this stretch.
 
 **Process note.** One deletion swallowed the neighbouring theorem because
 the span I cut ran to the next section marker rather than to the next
-declaration; the build caught it at once and git restored it. Cutting by
-"docstring through next marker" is only safe when the marker is checked
-against the theorem name.
+declaration; a second one, cutting by "walk back to the docstring", split
+a docstring that had a blank line in it. Both were caught by the build
+and restored from git. The fix was to stop cutting by line patterns and
+write a comment-aware chunker that splits the file into top-level
+declarations first — after which deleting 46 declarations across five
+files in four rounds was uneventful.

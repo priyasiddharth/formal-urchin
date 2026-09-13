@@ -4,6 +4,64 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-13 — One Leaf Per Destination
+
+The question that found this was "which hypotheses does this leaf
+actually use," and it should have been asked during the shortening work
+months ago. Lean's unused-binder linter answers it, and it found thirty
+dead binders — a dozen of them on seam and package SIGNATURES, so every
+call site was carrying them too.
+
+The structural version of the same question found something larger:
+ref.lean was copy.lean. Nineteen of ref's twenty-three leaves already
+called copy's write seams. `ref_local_borrow`'s conclusion was the same
+bundle copy's read packages produce. The two differences were that ref's
+package extends the tag renaming, and that its instruction comes from
+inside the place lowering rather than from the rvalue arm. Neither is
+deep.
+
+What was missing was a name for the rvalue's whole contribution. Call it
+`ValuePkg`: the rvalue's code is `run (compileRExprPreChecked rhs) cs`
+and nothing else, the destination register is existential, and the tag
+renaming is allowed to grow. Once a leaf refers to the pre-phase only by
+that name, the SOURCE shape disappears from the leaf as well — one
+code-inclusion obligation covers a chain source, a projection's
+`Borrow`/`Die` bracket, and a retag alike. So the leaves are per
+DESTINATION shape only: five of them, plus one recursion, against copy's
+seventeen and ref's twenty-three.
+
+Three things made the harder destination shapes fall. The compiler's
+non-local assign arm is generic in its destination, so one pair of
+fragment lemmas states the compiled shape of `dst := rhs` for every
+non-local place. `projDstTail` already holds both a bare store and the
+`Borrow(Mut); RStore; Die` triple, so the projected leaf never splits on
+the field offset — the offset twins that cost two leaves everywhere else
+cost one here. And `ValuePkg` needed one conjunct outside the
+code-inclusion gate: the place map of the post-rvalue state. A non-local
+destination is lowered after the rvalue's code, so its inputs have to be
+shown mapped before any code fact exists.
+
+ref's dispatcher is now a case split on the destination alone. Retiring
+the leaves stranded everything only they used; a sweep to a fixpoint
+removed forty-six further declarations across five files.
+
+    copy   6,155 -> 1,885
+    ref    6,836 ->   986
+    spine  3,954 -> 4,813
+    total 27,604 -> 18,116
+
+Zero sorries and exactly propext / Classical.choice / Quot.sound at every
+commit, all four suites green at every commit.
+
+What this does not touch is `const_write.lean`. `constInit` and `uninit`
+emit a `CStore`, whose values ride in the instruction rather than in a
+register, so neither `ValuePkg` nor the `RStore`-executing write seams
+fit. Collapsing it means abstracting the seams over the store step
+instead of the store instruction — a deeper change, and the obvious next
+one.
+
+---
+
 ## 2026-08-31 (second) — The Offset Goes in the Operand
 
 Seventy-fourth increment: `*p := &mut s.f` — a reference to a field,
