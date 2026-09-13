@@ -352,17 +352,6 @@ def InstrPreservesMem : Instr → Prop
   | .PopProt => True
   | .Halt => False
 
-theorem evalRhsWith_preserves_mem
-    {A : oseair.AllocatorSpec} {s s1 : oseair.State MSB}
-    {rhs : Rhs} {vals : List Val} {ty : obseq.TyVal}
-    (h_rhs : RhsPreservesMem rhs)
-    (h_eval : oseair.evalRhsWith MSB A s rhs = oseair.RhsResult.Ok vals ty s1) :
-    s1.mem = s.mem := by
-  cases rhs <;> simp [RhsPreservesMem, oseair.evalRhsWith] at h_rhs h_eval
-  all_goals
-    repeat (split at h_eval <;> try contradiction)
-    cases h_eval
-    rfl
 
 
 def CompilerStateWF (_Γ : Ctx) (cs : CompilerState) : Prop :=
@@ -1899,179 +1888,17 @@ def EmitsPreservesMem {α} (m : CompilerM α) : Prop :=
     label < (CompilerM.run m cs).nextLabel →
     ∀ instr, (CompilerM.run m cs).code label = some instr → InstrPreservesMem instr
 
-theorem emitsPreservesMem_pure {α} (a : α) :
-    EmitsPreservesMem (pure a : CompilerM α) := by
-  intro cs label h_lo h_hi instr h_code
-  simp [CompilerM.run] at h_hi
-  exact False.elim ((Nat.not_lt_of_ge h_lo) h_hi)
 
-theorem emitsPreservesMem_bind {α β}
-    {m : CompilerM α} {f : α → CompilerM β}
-    (hm : EmitsPreservesMem m)
-    (hf : ∀ a, EmitsPreservesMem (f a)) :
-    EmitsPreservesMem (m >>= f) := by
-  intro cs label h_lo h_hi instr h_code
-  let a := CompilerM.value m cs
-  let cs1 := CompilerM.run m cs
-  by_cases h_in_m : label < cs1.nextLabel
-  · have h_code_m : cs1.code label = some instr := by
-      have h_eq :=
-        (CompilerM.incr (f a) cs1).code_eq label h_in_m
-      have h_code_final :
-          (CompilerM.run (f a) cs1).code label = some instr := by
-        simpa [a, cs1, CompilerM.run_bind] using h_code
-      rw [h_eq] at h_code_final
-      exact h_code_final
-    exact hm cs label h_lo h_in_m instr h_code_m
-  · have h_lo_f : cs1.nextLabel ≤ label := Nat.le_of_not_gt h_in_m
-    exact hf a cs1 label h_lo_f (by simpa [a, cs1, CompilerM.run_bind] using h_hi)
-      instr (by simpa [a, cs1, CompilerM.run_bind] using h_code)
 
-theorem checkedEmitsPreservesMem_pure {α} (a : α) :
-    EmitsPreservesMem ((pure a : CheckedCompilerM α).toCompilerM) := by
-  simpa using (emitsPreservesMem_pure (a := (Except.ok a : Except CompilerError α)))
 
-theorem checkedEmitsPreservesMem_bind {α β}
-    {m : CheckedCompilerM α} {f : α → CheckedCompilerM β}
-    (hm : EmitsPreservesMem m.toCompilerM)
-    (hf : ∀ a, EmitsPreservesMem (f a).toCompilerM) :
-    EmitsPreservesMem ((m >>= f).toCompilerM) := by
-  change EmitsPreservesMem
-    (do
-      match ← m.toCompilerM with
-      | Except.error err => pure (Except.error err)
-      | Except.ok a => (f a).toCompilerM)
-  apply emitsPreservesMem_bind hm
-  intro res
-  cases res with
-  | error err =>
-      exact emitsPreservesMem_pure (Except.error err)
-  | ok a =>
-      simpa using hf a
 
-theorem checkedEmitsPreservesMem_lift {α} {m : CompilerM α}
-    (hm : EmitsPreservesMem m) :
-    EmitsPreservesMem (CheckedCompilerM.lift m).toCompilerM := by
-  unfold CheckedCompilerM.lift
-  apply emitsPreservesMem_bind hm
-  intro a
-  exact emitsPreservesMem_pure (Except.ok a)
 
-theorem freshRegM_emits_preserves_mem :
-    EmitsPreservesMem freshRegM := by
-  intro cs label h_lo h_hi instr h_code
-  simp [freshRegM, freshReg, CompilerM.run] at h_hi
-  exact False.elim ((Nat.not_lt_of_ge h_lo) h_hi)
 
-theorem cleanupInstrs_mem_preserves
-    {regs : List (Register × Nat)} {instr : Instr}
-    (h_mem : instr ∈ cleanupInstrs regs) :
-    InstrPreservesMem instr := by
-  simp [cleanupInstrs] at h_mem
-  rcases h_mem with ⟨reg, len, _h_reg, h_eq⟩
-  cases h_eq
-  simp [InstrPreservesMem]
 
-theorem emitM_emits_preserves_mem
-    (instrs : List Instr)
-    (h_all : ∀ instr, instr ∈ instrs → InstrPreservesMem instr) :
-    EmitsPreservesMem (emitM instrs) := by
-  intro cs label h_lo h_hi instr h_code
-  have h_hi' : label < cs.nextLabel + instrs.length := by
-    simpa [CompilerM.run, emitM, emit] using h_hi
-  have h_range : cs.nextLabel ≤ label ∧ label < cs.nextLabel + instrs.length :=
-    ⟨h_lo, h_hi'⟩
-  have h_get : instrs.get? (label - cs.nextLabel) = some instr := by
-    simpa [CompilerM.run, emitM, emit, h_range] using h_code
-  rcases List.get?_eq_some_iff.mp h_get with ⟨h_idx, h_get_fin⟩
-  exact h_all instr (by
-    rw [← h_get_fin]
-    exact List.get_mem instrs ⟨label - cs.nextLabel, h_idx⟩)
 
-theorem emitM_single_borrow_preserves_mem
-    (kind : RefKind) (dst base : Register) (len : Nat) (offset : Word) :
-    EmitsPreservesMem
-      (emitM [Instr.Assgn dst (borrowRhs kind len base offset)]) := by
-  apply emitM_emits_preserves_mem
-  intro instr h_mem
-  simp [borrowRhs] at h_mem
-  subst instr
-  simp [InstrPreservesMem, RhsPreservesMem]
 
-theorem emitM_single_load_preserves_mem
-    (dst src : Register) :
-    EmitsPreservesMem
-      (emitM [Instr.Assgn dst (Rhs.Load obseq.TyVal.PTy src)]) := by
-  apply emitM_emits_preserves_mem
-  intro instr h_mem
-  simp at h_mem
-  subst instr
-  simp [InstrPreservesMem, RhsPreservesMem]
 
-theorem emitM_cleanup_preserves_mem
-    (regs : List (Register × Nat)) :
-    EmitsPreservesMem (emitM (cleanupInstrs regs)) := by
-  apply emitM_emits_preserves_mem
-  intro instr h_mem
-  exact cleanupInstrs_mem_preserves h_mem
 
-/-- Everything `placeToRegChecked` emits preserves target memory —
-    borrows, loads, and cleanup `Die`s only. Structural induction over the
-    place, gluing the `checkedEmitsPreservesMem_*` combinators. -/
-theorem placeToRegChecked_emits_preserves_mem
-    {Γ : Ctx} {τ : LayoutTy}
-    (kind : RefKind) (p : Place Γ τ) :
-    EmitsPreservesMem (placeToRegChecked kind p).toCompilerM := by
-  induction τ, kind, p using placeToRegChecked.induct with
-  | case1 kind τ loc =>
-      intro cs label h_lo h_hi instr h_code
-      have h_next :
-          (CompilerM.run (placeToRegChecked kind (.local loc)).toCompilerM cs).nextLabel
-            = cs.nextLabel := by
-        show ((placeToRegChecked kind (.local loc)).toCompilerM cs).2.1.nextLabel
-          = cs.nextLabel
-        simp only [placeToRegChecked]
-        split <;> rfl
-      rw [h_next] at h_hi
-      exact False.elim ((Nat.not_lt_of_ge h_lo) h_hi)
-  | case2 kind τ σ ρ b q path ih =>
-      -- reassociated nested projection: bind of the recursion + pure
-      simp only [placeToRegChecked]
-      exact checkedEmitsPreservesMem_bind
-        (m := placeToRegChecked kind (.proj b (q.append path))) ih
-        (fun _ => checkedEmitsPreservesMem_pure _)
-  | case3 kind τ σ base path h_np ih =>
-      simp only [placeToRegChecked]
-      refine checkedEmitsPreservesMem_bind (m := placeToRegChecked kind base)
-        ih (fun baseOut => ?_)
-      by_cases hoff : pathOffset path = 0
-      · simp only [hoff, dite_true]
-        exact checkedEmitsPreservesMem_pure _
-      · simp only [hoff, dite_false]
-        refine checkedEmitsPreservesMem_bind
-          (checkedEmitsPreservesMem_lift freshRegM_emits_preserves_mem)
-          (fun tmpReg => ?_)
-        refine checkedEmitsPreservesMem_bind
-          (checkedEmitsPreservesMem_lift
-            (emitM_single_borrow_preserves_mem kind tmpReg baseOut.result.reg
-              _ (pathOffset path)))
-          (fun _ => ?_)
-        exact checkedEmitsPreservesMem_pure _
-  | case4 kind τ ptrPlace ih =>
-      simp only [placeToRegChecked]
-      refine checkedEmitsPreservesMem_bind (m := placeToRegChecked RefKind.Shared ptrPlace)
-        ih (fun ptrOut => ?_)
-      refine checkedEmitsPreservesMem_bind
-        (checkedEmitsPreservesMem_lift freshRegM_emits_preserves_mem)
-        (fun loadedReg => ?_)
-      refine checkedEmitsPreservesMem_bind
-        (checkedEmitsPreservesMem_lift
-          (emitM_single_load_preserves_mem loadedReg ptrOut.result.reg))
-        (fun _ => ?_)
-      refine checkedEmitsPreservesMem_bind
-        (checkedEmitsPreservesMem_lift (emitM_cleanup_preserves_mem ptrOut.result.cleanup))
-        (fun _ => ?_)
-      exact checkedEmitsPreservesMem_pure _
 
 /-! ## §F Execution helpers -/
 
@@ -2174,36 +2001,6 @@ theorem LocalBindingSim.placeRegMap_congr
   rw [h_prm]
   exact h_pi
 
-/-- Invert a successful mirlite access-resolution of `*ploc` for a bound
-    pointer local: the pointer cell was SB-read through the binding tag and
-    holds a `ptrVal`, whose fields are the resolved place. Reused by the
-    deref regimes of const-write, copy, and ref. -/
-theorem resolvePlaceAcc_deref_local_inversion
-    {Γ : Ctx} {τ : LayoutTy}
-    {s : mirlite.State MSB Γ}
-    {ploc : Local Γ (obseq.LayoutTy.PtrL τ)}
-    {pbind : mirlite.Binding}
-    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
-    (h_env : mirlite.Env.lookup s.env ploc = some pbind)
-    (h_res : mirlite.resolvePlaceAcc MSB s (.deref (.local ploc)) = .ok (resolved, permsD)) :
-    ∃ (b o sz : Word) (t : Tag),
-      MSB.read s.perms pbind.addr 1 pbind.tag = .ok permsD ∧
-      mirlite.Mem.find? s.mem pbind.addr = some (.ptrVal b o sz t) ∧
-      resolved = { addr := b + o, tag := t, allocBase := b, allocSize := sz } := by
-  simp only [mirlite.resolvePlaceAcc, h_env] at h_res
-  rw [if_neg (by
-    rintro (h | h)
-    · exact absurd h (Nat.lt_irrefl _)
-    · exact absurd h (Nat.not_succ_le_self _))] at h_res
-  split at h_res
-  · exact absurd h_res (by simp)
-  · rename_i perms'' h_read
-    split at h_res
-    · rename_i b o sz t h_find
-      simp only [Except.ok.injEq, Prod.mk.injEq] at h_res
-      obtain ⟨h_r, h_p⟩ := h_res
-      exact ⟨b, o, sz, t, h_p ▸ h_read, h_find, h_r.symm⟩
-    · exact absurd h_res (by simp)
 
 /-- A pointer-typed `Load` executes in one `runN` step: the pointer register
     is read, the SB read through the stored tag succeeds, and the loaded

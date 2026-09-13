@@ -166,52 +166,7 @@ theorem resolvePlaceAcc_proj_base_err
     mirlite.resolvePlaceAcc M s (.proj b path) = .error e := by
   simp [mirlite.resolvePlaceAcc, h]
 
-/-- A deref lowering leaves no cleanup: the `Load` consumes the pointer
-    place's own cleanup and the result is a plain register. Like
-    `PtrChain.placeToRegChecked_placeRegMap`, the standalone form is
-    needed BEFORE the mother lemma can be invoked — the compiled
-    fragment mentions the source's cleanup. -/
-theorem placeToRegChecked_local_cleanup {Γ : Ctx} {τ : LayoutTy}
-    {kind : RefKind} {loc : Local Γ τ} {cs : CompilerState}
-    {out : ResultWithEvidence PtrResult (PlaceToRegEvidence kind (.local loc))}
-    (h : CheckedCompilerM.value (placeToRegChecked kind (.local loc)) cs
-      = Except.ok out) :
-    out.result.cleanup = [] := by
-  simp only [CheckedCompilerM.value, CompilerM.value, placeToRegChecked] at h
-  split at h
-  · cases h; rfl
-  · simp at h
 
-theorem placeToRegChecked_deref_cleanup {Γ : Ctx} {τ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL τ)} {kind : RefKind} {cs : CompilerState}
-    {out : ResultWithEvidence PtrResult (PlaceToRegEvidence kind (.deref P))}
-    (h : CheckedCompilerM.value (placeToRegChecked kind (.deref P)) cs
-      = Except.ok out) :
-    out.result.cleanup = [] := by
-  have h_bindD : placeToRegChecked (Γ := Γ) kind (.deref P)
-      = (do
-          let ptrOut ← placeToRegChecked RefKind.Shared P
-          let ptrRes := ptrOut.result
-          let loadedReg ← CheckedCompilerM.lift freshRegM
-          let _ ← CheckedCompilerM.lift
-            (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
-          let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
-          pure {
-            result := { reg := loadedReg, cleanup := [] },
-            evidence := PlaceToRegEvidence.deref P ptrRes loadedReg ptrOut.evidence
-          }) := by simp only [placeToRegChecked]
-  rw [h_bindD] at h
-  cases hx : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P) cs with
-  | error e =>
-      exfalso
-      simp only [CheckedCompilerM.value_bind, hx] at h
-      simp at h
-  | ok o =>
-      simp only [CheckedCompilerM.value_bind, CheckedCompilerM.value_lift,
-        CheckedCompilerM.value_pure, hx] at h
-      simp only [CompilerM.value, freshRegM, freshReg, emitM] at h
-      cases h
-      rfl
 
 /-- A CHAIN's lowering never touches `placeRegMap`: it only LOOKS UP
     locals. The mother lemma carries this as an output conjunct, but the
@@ -762,55 +717,7 @@ theorem placeToBorrowRegChecked_flatten_agree {Γ : Ctx}
   termination_by τ p cs => p.depth
   decreasing_by all_goals (simp [Place.depth]; try omega)
 
-/-- The SOURCE cannot tell the two spellings of a nested-projection
-    assignment apart either: `doAssign` consults the destination only
-    through `preparePlaceAssign` and `resolvePlaceAcc`, both of which
-    compose offsets. The step-level mirror of
-    `compileStmt_assign_proj_assoc_run`. -/
-theorem stepStmt_assign_proj_assoc
-    {Γ : Ctx} {σ1 σ2 τ : LayoutTy} {M : PermissionModel}
-    {s : mirlite.State M Γ}
-    (b : Place Γ σ1) (q : PathTo σ1 σ2) (p : PathTo σ2 τ)
-    (rhs : RExpr Γ τ) :
-    mirlite.stepStmt M s (.assign (.proj (.proj b q) p) rhs)
-      = mirlite.stepStmt M s (.assign (.proj b (q.append p)) rhs) := by
-  show mirlite.doAssign M s (.proj (.proj b q) p) rhs
-    = mirlite.doAssign M s (.proj b (q.append p)) rhs
-  simp only [mirlite.doAssign, preparePlaceAssign_proj_assoc b q p,
-    resolvePlaceAcc_proj_assoc b q p]
 
-/-- A successful access-resolution implies the place's root local is bound,
-    hence (under `LocalBindingSim`) compiler-mapped. -/
-theorem placeInputsMapped_of_resolveAcc
-    {Γ : Ctx} {τ : LayoutTy}
-    {ρa : AddrRenameMap} {ρt : TagRenameMap}
-    {s_mir : mirlite.State MSB Γ}
-    {s_osea : oseair.State MSB}
-    {cs : CompilerState}
-    {p : Place Γ τ}
-    {resolved : mirlite.PlaceRes} {permsD : MSB.State}
-    (h_lbs : LocalBindingSim ρa ρt s_mir.env s_osea cs)
-    (h_res : mirlite.resolvePlaceAcc MSB s_mir p = .ok (resolved, permsD)) :
-    PlaceInputsMapped cs p := by
-  induction p generalizing resolved permsD with
-  | «local» loc =>
-      cases h_env : mirlite.Env.lookup s_mir.env loc with
-      | none => simp [mirlite.resolvePlaceAcc, h_env] at h_res
-      | some binding =>
-          rcases h_lbs loc binding h_env with ⟨reg, _, _, h_pi, _, _, _, _⟩
-          exact ⟨reg, _, h_pi⟩
-  | proj base path ih =>
-      simp only [mirlite.resolvePlaceAcc] at h_res
-      split at h_res
-      · exact absurd h_res (by simp)
-      · rename_i res perms' h_base
-        exact ih h_base
-  | deref ptrPlace ih =>
-      simp only [mirlite.resolvePlaceAcc] at h_res
-      split at h_res
-      · exact absurd h_res (by simp)
-      · rename_i ptrRes perms' h_ptr
-        exact ih h_ptr
 
 /-- Pointer-CHAIN lowering simulation — the pending-cleanup
     generalization of the retired `loadSpine_lowering_sim` (subsumed
@@ -1655,22 +1562,6 @@ theorem stepStmt_assign_dstderef_flatten
       = mirlite.stepStmt M s (.assign (.deref (flattenPlace P)) rhs) :=
   stepStmt_assign_dstflatten s (.deref P) rhs
 
-theorem stepStmt_assign_copysrc_flatten
-    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
-    (s : mirlite.State M Γ) (dst : Place Γ τ)
-    (P : Place Γ (obseq.LayoutTy.PtrL τ)) :
-    mirlite.stepStmt M s (.assign dst (.copy (.deref P)))
-      = mirlite.stepStmt M s (.assign dst (.copy (.deref (flattenPlace P)))) := by
-  have h1 : ∀ st : mirlite.State M Γ,
-      mirlite.resolvePlaceAcc M st (Place.deref (flattenPlace P))
-        = mirlite.resolvePlaceAcc M st (Place.deref P) :=
-    fun st => resolvePlaceAcc_flatten (Place.deref P)
-  have h2 : ∀ st : mirlite.State M Γ,
-      mirlite.resolvePlace? st (Place.deref (flattenPlace P))
-        = mirlite.resolvePlace? (M := M) st (Place.deref P) :=
-    fun st => resolvePlace?_flatten (Place.deref P)
-  show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
-  simp only [mirlite.doAssign, mirlite.evalRExpr, h1, h2]
 
 /-- Source-side flatten congruence for a copy SOURCE of any shape (the
     deref case above is the instance the D→L arm uses). -/
@@ -1690,20 +1581,6 @@ theorem stepStmt_assign_copysrc_anyflatten
   show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
   simp only [mirlite.doAssign, mirlite.evalRExpr, h1, h2]
 
-theorem stepStmt_assign_refsrc_flatten
-    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
-    (s : mirlite.State M Γ) (dst : Place Γ (obseq.LayoutTy.PtrL τ))
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (P : Place Γ (obseq.LayoutTy.PtrL τ)) :
-    mirlite.stepStmt M s (.assign dst (.ref kind prot mask (.deref P)))
-      = mirlite.stepStmt M s
-          (.assign dst (.ref kind prot mask (.deref (flattenPlace P)))) := by
-  have h1 : ∀ st : mirlite.State M Γ,
-      mirlite.resolvePlaceAcc M st (Place.deref (flattenPlace P))
-        = mirlite.resolvePlaceAcc M st (Place.deref P) :=
-    fun st => resolvePlaceAcc_flatten (Place.deref P)
-  show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
-  simp only [mirlite.doAssign, mirlite.evalRExpr, h1]
 
 /-- The ref rhs, like the copy rhs, sees a place only through
     `resolvePlaceAcc`, so it cannot tell a source from its flattening
@@ -1733,136 +1610,11 @@ theorem stepStmt_assign_refsrc_anyflatten
     is therefore expressible in the `.proj (.deref _) _` grammar the
     projected-destination leaves already cover. -/
 
-theorem resolvePlaceAcc_nil
-    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
-    (s : mirlite.State M Γ) (p : Place Γ τ) :
-    mirlite.resolvePlaceAcc M s (Place.proj p PathTo.nil)
-      = mirlite.resolvePlaceAcc M s p := by
-  cases h : mirlite.resolvePlaceAcc M s p with
-  | error e => simp only [mirlite.resolvePlaceAcc, h]
-  | ok r => simp only [mirlite.resolvePlaceAcc, h, PathTo.offset, Nat.add_zero]
 
-theorem stepStmt_assign_refsrc_nil
-    {Γ : Ctx} {τ : LayoutTy} {M : PermissionModel}
-    (s : mirlite.State M Γ) (dst : Place Γ (obseq.LayoutTy.PtrL τ))
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src : Place Γ τ) :
-    mirlite.stepStmt M s (.assign dst (.ref kind prot mask src))
-      = mirlite.stepStmt M s
-          (.assign dst (.ref kind prot mask (Place.proj src PathTo.nil))) := by
-  have h1 : ∀ st : mirlite.State M Γ,
-      mirlite.resolvePlaceAcc M st (Place.proj src PathTo.nil)
-        = mirlite.resolvePlaceAcc M st src :=
-    fun st => resolvePlaceAcc_nil st src
-  show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
-  simp only [mirlite.doAssign, mirlite.evalRExpr, h1]
 
-/-- The compiled side of the nil-projection eta, for a DEREF base: both
-    spellings emit the pointer lowering, the `Load`, its cleanup, and one
-    `Borrow` at offset zero, in that order, from the same register
-    counter. -/
-theorem placeToBorrowRegChecked_nil_agree {Γ : Ctx} {τ : LayoutTy}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (P : Place Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState) :
-    CheckedCompilerM.run
-        (placeToBorrowRegChecked kind prot mask
-          (Place.proj (Place.deref P) PathTo.nil)) cs
-      = CheckedCompilerM.run
-          (placeToBorrowRegChecked kind prot mask (Place.deref P)) cs ∧
-    (CheckedCompilerM.value
-        (placeToBorrowRegChecked kind prot mask
-          (Place.proj (Place.deref P) PathTo.nil)) cs).map (fun o => o.result)
-      = (CheckedCompilerM.value
-          (placeToBorrowRegChecked kind prot mask (Place.deref P)) cs).map
-        (fun o => o.result) := by
-  refine ⟨?_, ?_⟩ <;>
-    cases h : CheckedCompilerM.value (placeToRegChecked RefKind.Shared P) cs <;>
-    simp [placeToBorrowRegChecked, placeToRegChecked, PathTo.offset, h, Except.map,
-      CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-      CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-      CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
 
-/-- The `placeToBorrowRegChecked` projection equation for a base that
-    is not itself a projection — the borrow mirror of
-    `placeToRegChecked_proj_root_eq`. `PtrChain.not_proj` supplies the
-    side condition, so a leaf generic in a chain base can unfold. -/
-theorem placeToBorrowRegChecked_proj_root_eq {Γ : Ctx} {σ τ : LayoutTy}
-    {kind : RefKind} {prot : Bool} {mask : List Bool}
-    {base : Place Γ σ} (path : PathTo σ τ)
-    (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σ),
-      base = b.proj q → False) :
-    placeToBorrowRegChecked kind prot mask (Place.proj base path)
-      = (do
-          let baseOut ← placeToRegChecked kind base
-          let baseRes := baseOut.result
-          let offset := pathOffset path
-          let tmpReg ← CheckedCompilerM.lift freshRegM
-          let _ ← CheckedCompilerM.lift
-            (emitM [Instr.Assgn tmpReg
-              (Rhs.Borrow kind prot mask (blockSize τ) baseRes.reg offset)])
-          pure {
-            result := { reg := tmpReg,
-                        cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)] },
-            evidence := PlaceToBorrowRegEvidence.proj base path baseRes tmpReg
-              baseOut.evidence
-          }) := by
-  cases base with
-  | «local» l => simp only [placeToBorrowRegChecked]
-  | deref pp => simp only [placeToBorrowRegChecked]
-  | proj b q => exact absurd rfl (h_np _ b q)
 
-/-- The nil-projection eta for a LOCAL base: the local arm and the
-    zero-offset projection arm emit the same `Borrow`, and the local
-    lowering's cleanup is literally `[]`. -/
-theorem placeToBorrowRegChecked_nil_agree_local {Γ : Ctx} {τ : LayoutTy}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (loc : Local Γ τ) (cs : CompilerState) :
-    CheckedCompilerM.run
-        (placeToBorrowRegChecked kind prot mask
-          (Place.proj (Place.local loc) PathTo.nil)) cs
-      = CheckedCompilerM.run
-          (placeToBorrowRegChecked kind prot mask (Place.local loc)) cs ∧
-    (CheckedCompilerM.value
-        (placeToBorrowRegChecked kind prot mask
-          (Place.proj (Place.local loc) PathTo.nil)) cs).map (fun o => o.result)
-      = (CheckedCompilerM.value
-          (placeToBorrowRegChecked kind prot mask (Place.local loc)) cs).map
-        (fun o => o.result) := by
-  constructor
-  · cases hv : CheckedCompilerM.value (placeToRegChecked kind (Place.local loc)) cs <;>
-      simp [placeToBorrowRegChecked, PathTo.offset, hv,
-        CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-        CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-        CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
-  · cases hv : CheckedCompilerM.value (placeToRegChecked kind (Place.local loc)) cs with
-    | error e =>
-        simp [placeToBorrowRegChecked, PathTo.offset, hv, Except.map,
-          CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-          CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-          CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
-    | ok a =>
-        have hc := placeToRegChecked_local_cleanup hv
-        simp [placeToBorrowRegChecked, PathTo.offset, hv, hc, Except.map,
-          CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
-          CheckedCompilerM.run_lift, CheckedCompilerM.value_lift,
-          CheckedCompilerM.run_pure, CheckedCompilerM.value_pure]
 
-/-- The nil-projection eta for ANY canonical chain base. -/
-theorem placeToBorrowRegChecked_nil_agree_chain {Γ : Ctx} {τ : LayoutTy}
-    {b : Place Γ τ} (h : PtrChain b)
-    (kind : RefKind) (prot : Bool) (mask : List Bool) (cs : CompilerState) :
-    CheckedCompilerM.run
-        (placeToBorrowRegChecked kind prot mask (Place.proj b PathTo.nil)) cs
-      = CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask b) cs ∧
-    (CheckedCompilerM.value
-        (placeToBorrowRegChecked kind prot mask (Place.proj b PathTo.nil)) cs).map
-          (fun o => o.result)
-      = (CheckedCompilerM.value
-          (placeToBorrowRegChecked kind prot mask b) cs).map (fun o => o.result) := by
-  cases h with
-  | base loc => exact placeToBorrowRegChecked_nil_agree_local kind prot mask loc cs
-  | deref _ => exact placeToBorrowRegChecked_nil_agree kind prot mask _ cs
-  | derefProj _ _ => exact placeToBorrowRegChecked_nil_agree kind prot mask _ cs
 
 /-! ## Source lowerings as a PACKAGE
 
@@ -2995,105 +2747,6 @@ theorem copy_freshproj_write_after_read
 
 
 
-/-- **The local-root borrow** — ref's source package, the borrow twin of
-    copy's `copy_chainsrc_read`. The rvalue `&kind x` or `&kind x.f`
-    lowers to ONE instruction, a `Borrow` off the source local's own
-    register at the path offset, so the package is short; what it is
-    for is the BUNDLE it hands back, which is exactly what both write
-    seams take.
-
-    The offset makes it serve both source shapes: `off = 0` is the plain
-    local, `off = pathOffset f` a projection of one, and the borrowed
-    pointer keeps the ROOT's size field (`blockSize σs`) either way —
-    the borrow narrows the permission, not the provenance.
-
-    Stated at an abstract start `(sM, sA, csA)` like copy's packages, so
-    a FRESH leaf can call it at its post-`Alloc` states, with `ρa`/`ρt`
-    already extended by the allocation. -/
-theorem ref_local_borrow
-    (τ σs : LayoutTy) {bS : mirlite.Binding}
-    (kind : RefKind) (prot : Bool) (mask : List Bool) (off : Nat)
-    (compProg : oseair.Prog)
-    (sM : mirlite.State MSB Γ) (sA : oseair.State MSB) (csA : CompilerState)
-    (h_wf_t : TagRenameWF ρt)
-    (h_tbd : TagRenameBounded ρt sM.perms.NextTag sA.perms.NextTag)
-    (h_lbs : LocalBindingSim ρa ρt sM.env sA csA)
-    (h_prb : PlaceRegMapBound csA)
-    (h_psim : PermSim ρt sM.perms sA.perms)
-    (h_pc : sA.pc = csA.nextLabel)
-    {srcReg : Register} {tagS : Tag}
-    (h_entryS : PtrRegisterEntry sA.reg srcReg bS.addr 0 (blockSize σs) tagS)
-    (h_raS : ρa bS.addr = some bS.addr)
-    (h_rtS : ρt bS.tag = some tagS)
-    (h_domS : ∀ k, k < blockSize σs → ∃ a, ρa (bS.addr + k) = some a)
-    (h_fit : off + blockSize τ ≤ blockSize σs)
-    {perms' : MSB.State} {freshTag : Tag}
-    (h_ref_src : MSB.ref sM.perms (bS.addr + off) (blockSize τ) bS.tag kind prot mask
-      = .ok (perms', freshTag))
-    (h_code : compProg sA.pc
-      = some (Instr.Assgn (Register.R csA.nextReg)
-          (Rhs.Borrow kind prot mask (blockSize τ) srcReg off))) :
-    ∃ tgtPerms : MSB.State,
-      -- the tag mirlite minted IS its next tag (the caller's `h_step` still
-      -- says `freshTag`, so this comes back as an `rfl` to substitute)
-      freshTag = sM.perms.NextTag ∧
-      TagRenameIncr ρt (ρt.extend sM.perms.NextTag sA.perms.NextTag) ∧
-      TagRenameWF (ρt.extend sM.perms.NextTag sA.perms.NextTag) ∧
-      TagRenameBounded (ρt.extend sM.perms.NextTag sA.perms.NextTag) perms'.NextTag tgtPerms.NextTag ∧
-      PermSim (ρt.extend sM.perms.NextTag sA.perms.NextTag) perms' tgtPerms ∧
-      oseair.runN MSB 1 sA compProg = oseair.Result.Ok
-        { sA with
-        perms := tgtPerms,
-        reg := oseair.RegMap.insert sA.reg (Register.R csA.nextReg)
-          (obseq.TyVal.PTy, [Val.Ptr bS.addr (0 + off) (blockSize σs) sA.perms.NextTag]),
-        pc := sA.pc + 1 } ∧
-      LocalBindingSim ρa (ρt.extend sM.perms.NextTag sA.perms.NextTag) sM.env
-        { sA with
-        perms := tgtPerms,
-        reg := oseair.RegMap.insert sA.reg (Register.R csA.nextReg)
-          (obseq.TyVal.PTy, [Val.Ptr bS.addr (0 + off) (blockSize σs) sA.perms.NextTag]),
-        pc := sA.pc + 1 }
-        (emit csA
-          [Instr.Assgn (Register.R csA.nextReg)
-        (Rhs.Borrow kind prot mask (blockSize τ) srcReg off)]) ∧
-      ({ sA with
-        perms := tgtPerms,
-        reg := oseair.RegMap.insert sA.reg (Register.R csA.nextReg)
-          (obseq.TyVal.PTy, [Val.Ptr bS.addr (0 + off) (blockSize σs) sA.perms.NextTag]),
-        pc := sA.pc + 1 }).pc
-        = (emit csA
-            [Instr.Assgn (Register.R csA.nextReg)
-        (Rhs.Borrow kind prot mask (blockSize τ) srcReg off)]).nextLabel ∧
-      ListRel (MemValSim ρa (ρt.extend sM.perms.NextTag sA.perms.NextTag))
-        [mirlite.MemValue.ptrVal bS.addr (bS.addr + off - bS.addr) (blockSize σs)
-          sM.perms.NextTag]
-        [Val.Ptr bS.addr (0 + off) (blockSize σs) sA.perms.NextTag] := by
-  obtain ⟨tgtPerms, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
-    sb_ref_respects_PermSim h_psim h_wf_t h_tbd h_rtS h_ref_src
-  subst h_fresh_eq
-  have h_rt_new : (ρt.extend sM.perms.NextTag sA.perms.NextTag) sM.perms.NextTag = some sA.perms.NextTag :=
-    TagRenameMap.extend_self _ _ _
-  have h0 : wildcardTag < sM.perms.NextTag := (h_tbd _ _ h_wf_t.2).1
-  have h_nw_new : (sM.perms.NextTag == wildcardTag) = false := by grind
-  have h_ref_tgt' : MSB.ref sA.perms (bS.addr + 0 + off) (blockSize τ) tagS
-      kind prot mask = .ok (tgtPerms, sA.perms.NextTag) := by
-    simpa using h_ref_tgt
-  have h_le : bS.addr + 0 + off + blockSize τ ≤ bS.addr + blockSize σs := by
-    simp only [Nat.add_zero, Nat.add_assoc]
-    exact Nat.add_le_add_left h_fit _
-  have h_run := runN_Assgn_Borrow_step compProg sA
-    (Register.R csA.nextReg) srcReg kind prot mask (blockSize τ) off
-    h_code h_entryS h_le h_ref_tgt'
-  refine ⟨tgtPerms, rfl, h_incr_t, h_wf_t', h_tbd', h_psim', by simpa using h_run, ?_,
-    (by show sA.pc + 1 = _
-        rw [h_pc]
-        simp only [emit, List.length_cons, List.length_nil]),
-    ⟨⟨h_raS, by simp [Nat.add_sub_cancel_left], rfl, h_rt_new,
-      h_domS⟩, trivial⟩⟩
-  exact LocalBindingSim.placeRegMap_congr rfl
-    (LocalBindingSim.insert_fresh_reg
-      (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_lbs)
-      h_prb (Nat.le_refl _) rfl)
 
 
 

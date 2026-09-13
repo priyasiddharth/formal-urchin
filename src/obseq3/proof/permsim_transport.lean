@@ -1919,15 +1919,7 @@ theorem sb_expose_NextTag (ap : AccessPerms) (t : Tag) :
   unfold sb_expose
   split <;> rfl
 
-theorem sb_expose_StackMap (ap : AccessPerms) (t : Tag) :
-    (sb_expose ap t).StackMap = ap.StackMap := by
-  unfold sb_expose
-  split <;> rfl
 
-theorem sb_expose_protFrames (ap : AccessPerms) (t : Tag) :
-    (sb_expose ap t).protFrames = ap.protFrames := by
-  unfold sb_expose
-  split <;> rfl
 
 theorem sb_expose_respects_PermSim
     {ρt : TagRenameMap} {src tgt : AccessPerms} {t t' : Tag}

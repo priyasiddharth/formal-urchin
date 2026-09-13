@@ -3206,23 +3206,6 @@ theorem const_store_resolved_simulation
       exact const_store_deref_simulation compProg rhs h_len (h_rel ρa ρt) h_size F
         h_comp h_inv h_stmt h_prep h_res h_write
 
-theorem prepare_local_assign_resolves
-    {Γ : Ctx} {τ : LayoutTy}
-    {s s' : mirlite.State MSB Γ}
-    {loc : Local Γ τ}
-    (h_prep : mirlite.preparePlaceAssign MSB s (.local loc) = .ok s') :
-    ∃ resolved, mirlite.resolvePlace? s' (.local loc) = some resolved := by
-  simp only [mirlite.preparePlaceAssign] at h_prep
-  split at h_prep
-  · rename_i resolved h_res
-    cases h_prep
-    exact ⟨resolved, h_res⟩
-  · simp only [mirlite.allocateRoot, mirlite.allocateBase] at h_prep
-    split at h_prep
-    · simp at h_prep
-    · rename_i permsOwned tag h_own
-      cases h_prep
-      simp [mirlite.resolvePlace?, mirlite.Env.lookup, mirlite.Env.set]
 
 theorem CompilerInv_step_constStore
     {τ : LayoutTy} {dst : Place Γ τ}
