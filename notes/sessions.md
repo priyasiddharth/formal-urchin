@@ -3729,6 +3729,9 @@ destinations, then `const_write` — and answer what `ptrCast` is.
   leaves left in copy.lean, ref.lean, const_write.lean.
 - A `grind` pass: fifty tactic blocks to one tactic each, +18% build time,
   which the user accepted.
+- durable/ptroffset-defers-ub-to-the-use.md — NEW, from a follow-up
+  question: `add` is modelled as `wrapping_add` in both machines, so the
+  differential suite is blind to it. Parked with a witness plan.
 
 **Critical corrections:**
 - I wrote "there is no temporary" of ref's borrow lowering in a

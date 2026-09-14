@@ -592,3 +592,21 @@ family.
 **Effort estimate:** ~1 day for `ptrCast`; unknown for `refSlice`.
 **References:** ptrcast-is-a-memcpy-not-a-store.md,
 one-leaf-per-destination-shape.md
+
+## Does `ptrOffset`'s deferred UB ever diverge from Miri?
+**Status:** parked 2026-09-14
+**Context:** mirlite and oseair both model `p.add(n)` as `wrapping_add` —
+only `newOff < 0` is rejected, so an out-of-bounds pointer may be formed
+and UB waits for the use. Rust makes the checked forms UB at the
+computation. See durable/ptroffset-defers-ub-to-the-use.md.
+**Why parked:** unwitnessed. Both corpus uses of `add` dereference
+immediately, and the differential suite cannot see it because both
+machines share the choice.
+**To resume:** write a Rust witness that forms an out-of-bounds pointer
+with `add` and never uses it, run it under Miri to pin the verdict, add
+it to the manifest. If Miri says UB and we say ok, decide between a
+bound argument on `ptrOffset` and splitting checked/wrapping.
+**Effort estimate:** ~1h for the witness and the Miri run; ~half-day to
+close it if it diverges.
+**References:** ptroffset-defers-ub-to-the-use.md,
+stacked-borrows-does-not-subsume-bounds-checks.md
