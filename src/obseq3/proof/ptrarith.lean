@@ -172,8 +172,9 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
                   [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2]),
               pc := s_mid1.pc + 1 } csA :=
           LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
-        refine ⟨h_sclean, n1 + 1, _, perms',
+        refine ⟨h_sclean, ρt, n1 + 1, _, perms',
           [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2],
+          TagRenameIncr.refl ρt, h_wf_t,
           rfl, rfl, oseair_runN_trans h_srun h_run1,
           (by grind [emit]),
           (by grind [emit]),
@@ -425,7 +426,8 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
           { s_mid1 with perms := q3, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_lbsB h_prb
           (Nat.le_trans h_sregmono (Nat.le_succ _)) rfl
-      refine ⟨h_sclean, _, _, perms', [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2], rfl, rfl,
+      refine ⟨h_sclean, ρt, _, _, perms', [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2],
+        TagRenameIncr.refl ρt, h_wf_t, rfl, rfl,
         oseair_runN_trans (oseair_runN_trans (oseair_runN_trans h_srun h_run1)
           h_run2) h_run3,
         (by grind [emit]),
@@ -523,7 +525,7 @@ theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
       h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
       copy_chainsrc_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb
         h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_instS h_instD
-    exact ⟨h_sclean, n1 + 1, _, perms₂, _, rfl,
+    exact ⟨h_sclean, ρt, n1 + 1, _, perms₂, _, TagRenameIncr.refl ρt, h_wf_t, rfl,
       (by rw [oseair_readWordSeq_length]; rfl),
       h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
       RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel⟩
@@ -567,7 +569,7 @@ theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
       copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
         h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_regP h_clP
         h_instS h_instCS
-    exact ⟨h_sclean, n1, _, perms₂, _, rfl,
+    exact ⟨h_sclean, ρt, n1, _, perms₂, _, TagRenameIncr.refl ρt, h_wf_t, rfl,
       (by rw [oseair_readWordSeq_length]; rfl),
       h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
       RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel⟩

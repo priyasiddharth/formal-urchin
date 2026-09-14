@@ -155,7 +155,8 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
               (obseq.TyVal.NatTy, [Val.Dat (pb2 + po2)]),
             pc := s_mid1.pc + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
-      refine ⟨h_sclean, n1 + 1, _, MSB.expose perms' pt, [Val.Dat (pb2 + po2)],
+      refine ⟨h_sclean, ρt, n1 + 1, _, MSB.expose perms' pt, [Val.Dat (pb2 + po2)],
+        TagRenameIncr.refl ρt, h_wf_t,
         rfl, rfl, oseair_runN_trans h_srun h_run1,
         (by grind [emit]),
         (by grind [emit]),
@@ -411,7 +412,8 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
           { s_mid1 with perms := MSB.expose q3 pt2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.NatTy, [Val.Dat (pb2 + po2)]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_lbsB h_prb
           (Nat.le_trans h_sregmono (Nat.le_succ _)) rfl
-      refine ⟨h_sclean, _, _, MSB.expose perms' pt, [Val.Dat (pb2 + po2)], rfl, rfl,
+      refine ⟨h_sclean, ρt, _, _, MSB.expose perms' pt, [Val.Dat (pb2 + po2)],
+        TagRenameIncr.refl ρt, h_wf_t, rfl, rfl,
         oseair_runN_trans (oseair_runN_trans (oseair_runN_trans h_srun h_run1)
           h_run2) h_run3,
         (by grind [emit]),
@@ -654,7 +656,8 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
           { s_mid1 with perms := q3, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 (sM.mem.resolveAddr n).2.2 wildcardTag]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_lbsB h_prb
           (Nat.le_trans h_sregmono (Nat.le_succ _)) rfl
-      refine ⟨h_sclean, _, _, perms', [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 (sM.mem.resolveAddr n).2.2 wildcardTag], rfl, rfl,
+      refine ⟨h_sclean, ρt, _, _, perms', [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 (sM.mem.resolveAddr n).2.2 wildcardTag],
+        TagRenameIncr.refl ρt, h_wf_t, rfl, rfl,
         oseair_runN_trans (oseair_runN_trans (oseair_runN_trans h_srun h_run1)
           h_run2) h_run3,
         (by grind [emit]),
@@ -799,9 +802,10 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
       have h_ins : LocalBindingSim ρa ρt sM.env
           { s_mid1 with perms := p2, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 (sM.mem.resolveAddr n).2.2 wildcardTag]), pc := s_mid1.pc + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
-      refine ⟨h_sclean, n1 + 1, _, perms',
+      refine ⟨h_sclean, ρt, n1 + 1, _, perms',
         [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1
           (sM.mem.resolveAddr n).2.2 wildcardTag],
+        TagRenameIncr.refl ρt, h_wf_t,
         rfl, rfl, oseair_runN_trans h_srun h_run1,
         (by grind [emit]),
         (by grind [emit]),
