@@ -33,3 +33,16 @@ sessions.md          — chronological index, always oldest first;
 - `[EMP]` notes stamp "Verified against" with this repo's commit
   (`git rev-parse --short HEAD`), since the Lean code is the moving
   target.
+
+## Using the skill
+
+- Invoke it as `better-than-fish:better-than-fish` (plugin-namespaced).
+  The bare name `better-than-fish` fails with "Unknown skill" even
+  though the plugin is installed at user scope and enabled in
+  `~/.claude/settings.json`.
+- Link style here: bare filenames in a `## See also` section (the
+  skill's `references/format.md`). Older notes also use inline
+  `[[wikilinks]]`; both grep, so leave them, but write new links the
+  first way. Do NOT use the memory system's `[[...]]` convention in
+  notes — they are different corpora.
+
