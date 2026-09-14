@@ -53,12 +53,30 @@ removed forty-six further declarations across five files.
 Zero sorries and exactly propext / Classical.choice / Quot.sound at every
 commit, all four suites green at every commit.
 
-What this does not touch is `const_write.lean`. `constInit` and `uninit`
-emit a `CStore`, whose values ride in the instruction rather than in a
-register, so neither `ValuePkg` nor the `RStore`-executing write seams
-fit. Collapsing it means abstracting the seams over the store step
-instead of the store instruction — a deeper change, and the obvious next
-one.
+The last family fell the next day. `constInit` and `uninit` emit a
+`CStore`, whose values ride in the instruction rather than in a register,
+so neither the value package nor the `RStore`-executing write seams
+fitted them. But the gap is one instruction wide: both stores reduce to
+the same `writeThroughPtr`, and even the invalid-pointer string they hand
+it is unobservable once the write succeeds. So the seams took a
+`StoreStep` — "executing this instruction performs the write, at any
+state whose registers agree with the post-rvalue state's below this
+watermark" — and the watermark is the only interesting part, since it is
+what carries a register store's operand across a destination lowering
+that allocates registers of its own. A constant store ignores it.
+
+After that a constant store's value package is three lines: the
+pre-phase emits no code, so the package is the invariant handed straight
+back. const_write 3,291 -> 441, and the totals:
+
+    copy   6,155 ->  1,891
+    ref    6,836 ->    895
+    const  3,291 ->    441
+    spine  3,954 ->  4,889
+    total 27,604 -> 15,277
+
+Every rvalue in the proved fragment is now a value package, and the whole
+development has five leaves and two recursions.
 
 ---
 

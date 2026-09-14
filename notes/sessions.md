@@ -3656,13 +3656,51 @@ per-destination `incrs` towers.
     spine  3,954 -> 4,813
     total 27,604 -> 18,116
 
-**What is left.** `const_write.lean` (3,291 lines, 8 leaves and 3
-recursions) is untouched, because `constInit` and `uninit` emit a
-`CStore` — the values ride in the instruction, not in a register — so
-`ValuePkg`'s `store d = [RStore ty vreg d]` does not fit and neither do
-the `RStore`-executing write seams. Collapsing it means abstracting the
-seams over the store STEP rather than over the store instruction, which
-is a deeper change than anything in this stretch.
+**const_write, the last family (2026-09-14).** `constInit` and `uninit`
+emit a `CStore`, whose values ride in the instruction rather than in a
+register, so neither `ValuePkg` nor the `RStore`-executing write seams
+fitted. The gap turned out to be one instruction wide: both stores reduce
+to the same `writeThroughPtr`, and even the invalid-pointer string they
+hand it is unobservable on the successful path
+(`writeThroughPtr_msg_irrel`).
+
+    StoreStep compProg sR bound mkStore vals
+
+says what a seam actually needs — that executing the instruction performs
+the write, at any state whose registers agree with the post-rvalue
+state's below `bound`. `bound` is the whole subtlety: it is what carries
+a REGISTER store's operand across a destination lowering that allocates
+registers of its own, and a constant store ignores it. `StoreStep.rstore`
+builds it from the operand lookup plus that frame; `StoreStep.cstore`
+from nothing but the value list's length.
+
+With the eight seams, `projDstTail`, `ValuePkg` and the five leaves
+stated over `mkStore` and `StoreStep`, the constant stores' package is
+three lines each: a `PureCStore` rvalue emits no code, so its package is
+the invariant handed straight back with `nR = 0`.
+`CompilerInv_step_constStore` became the same destination case split as
+the other three families, and `ConstStoreFrags`, its eight leaves, its
+three recursions and everything only they used went. const_write 3,291
+-> 441.
+
+    copy   6,155 ->  1,891
+    ref    6,836 ->    895
+    const  3,291 ->    441
+    spine  3,954 ->  4,889
+    total 27,604 -> 15,277
+
+Every rvalue in the proved fragment is now a value package, and there are
+five leaves and two recursions in the whole development.
+
+**A grind pass (2026-09-14).** Fifty arithmetic obligations that unfolded
+and then counted — twenty-nine of them
+`simp only [emit, List.length_cons, List.length_nil]; omega` — became one
+`grind [emit]`. Net 36 lines; a clean proof build goes 11.2s -> 13.4s.
+Whole-body `grind` was tried mechanically on every theorem with a short
+tactic proof and closed three, all in common.lean: this development is
+mostly compiler-state unfolding, which grind cannot do without the simp
+set that does it anyway. The thirty-odd bare `omega` calls were left
+alone — swapping one word for a slower word saves nothing.
 
 **Process note.** One deletion swallowed the neighbouring theorem because
 the span I cut ran to the next section marker rather than to the next
