@@ -104,10 +104,19 @@ theorem compileStmt_ref_fresh_local_lowers
 
 /-! ## `ref` as a value package
 
-A retag is a read-then-store rvalue too: its pre-phase is the borrow
-lowering, and the register it stores is the one that lowering returns —
-there is no temporary and no `Load`. Packaging it this way is what lets
-ref's leaves BE copy's leaves.
+A retag is a read-then-store rvalue too. Its pre-phase is the borrow
+lowering, and the register it stores is the one that lowering ALREADY
+allocated for the `Borrow`'s result — so unlike copy, whose arm allocates
+a further register for the `Load` to land in, the ref arm allocates none
+of its own and emits no instruction of its own. Either way exactly one
+register holds the value and exactly one `RStore` writes it, which is
+what lets ref's leaves BE copy's leaves.
+
+The borrow temp is deliberately NOT retired: `placeToBorrowRegChecked`
+returns it with a `cleanup` entry and the ref arm drops it, because the
+reference is being written INTO memory and its tag has to stay live past
+the statement. Copy's source cleanup, by contrast, is emitted right after
+the `Load`.
 
 Every ref source is the projection `f` of a POINTER CHAIN `B` — a bare
 local at the nil path, a projected local, a deref, a projected deref.
