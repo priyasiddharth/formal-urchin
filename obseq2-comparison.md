@@ -4,6 +4,58 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-14 (second) — refSlice: the Rule Worked, the Answer Was No
+
+Same rule as `ptrCast`: check the lowering before building machinery.
+This time the lowering was fine — `refSlice` lowers its source shared and
+emits one `Rhs.BorrowRest`, so `readRhsShape_refSlice` holds by `rfl` and
+it is a read-then-store member like the other six. The machine step and
+the chain-class read package went in without incident. It is the only
+member that mints, which is why the read packages now let the tag
+renaming grow, the way `ValuePkg` always has for ref's sake.
+
+Then the projected-source case refused, and the reason is a compiler bug.
+
+A projected source at nonzero offset lowers to `Borrow(Shared)` at the
+field, the instruction, then a cleanup `Die`. So the projection's borrow
+is alive across the mint. A `Mut` slice retag performs a write access
+through the LOADED pointer's tag; if that pointer's range covers the cell
+it is itself stored in, the write pops everything above the granting item
+— the projection borrow with it — and `dieCellContent` fails, because it
+demands its tag be on top. mirlite has no projection borrow at all.
+
+    (t.0) = 1
+    p      = &raw mut t
+    (*p).1 = ptrCast p
+    q      = refSlice Mut ((*p).1)
+
+    mirlite: ok        oseair: ub
+
+It took three attempts to build that witness, and the two failures are
+the interesting part. The first had the loaded pointer's tag covering
+only its own cell, so the mint failed on both machines — agreement, no
+bug. The second used a `Raw` retag, which accesses for READ and whose
+item is inserted directly above the granting one, leaving the projection
+borrow on top — again agreement. Only a write-access retag over a range
+containing its own cell separates them. The model's insert-above-granting
+discipline is doing more work than I expected.
+
+So `refSlice` stays outside `CoreRhs`, and this time not because a proof
+is missing: `pkgProjOffset` is FALSE as the compiler stands. Shipping a
+theorem gated on "the flattened source is not a nonzero projection" would
+have been a statement nobody could read, so instead the divergence is
+pinned as a test with teeth and the groundwork is kept for whoever fixes
+the lowering.
+
+The fix is worth more than the rvalue. The narrow version gives
+`Rhs.BorrowRest` an offset operand, mirroring what `Rhs.Borrow` already
+does for `ref`. The broad version generalises `readRhsPre`'s `mk` to take
+the projection offset, which would drop the `Borrow`/`Die` from copy,
+both casts, `ptrOffset` and `ptrCast` at projected sources and retire
+BRIDGE 1S along with them — a deletion, not an addition.
+
+---
+
 ## 2026-09-14 — Two Rvalues, and a Lowering That Was Wrong
 
 `ptrOffset` and `ptrCast` are in. `refSlice` is the only rvalue left

@@ -596,3 +596,25 @@ bound argument on `ptrOffset` and splitting checked/wrapping.
 close it if it diverges.
 **References:** ptroffset-defers-ub-to-the-use.md,
 stacked-borrows-does-not-subsume-bounds-checks.md
+
+## Fix the projected-source lowering for minting rvalues (unblocks `refSlice`)
+**Status:** parked 2026-09-14
+**Context:** `refSlice` is a proved read-then-store member except for
+`pkgProjOffset`, which is FALSE as the compiler stands: the projection's
+`Borrow(Shared)` is alive across the mint and a `Mut` retag pops it. See
+durable/refslice-projsrc-mut-pops-the-projection-borrow.md; the witness
+is pinned as `rs_known_divergence_projsrc_mut`.
+**Why parked:** the fix is an ISA or lowering change, and the attractive
+version of it is large.
+**To resume:** two options. (a) Add an offset operand to
+`Rhs.BorrowRest`, mirroring `Rhs.Borrow`, and lower a projected source
+without a borrow — narrow, unblocks `refSlice` alone. (b) Generalise
+`readRhsPre`'s `mk` to `Register → Nat → Rhs` so EVERY read-then-store
+rvalue reads at an offset through the base register; that drops the
+`Borrow`/`Die` from copy, both casts, `ptrOffset` and `ptrCast` at
+projected sources, and retires BRIDGE 1S. Then refSlice's
+`pkgProjOffset` becomes its `pkgLowered`.
+**Effort estimate:** ~half-day for (a); ~2 days for (b), which also
+deletes machinery.
+**References:** refslice-projsrc-mut-pops-the-projection-borrow.md,
+one-leaf-per-destination-shape.md

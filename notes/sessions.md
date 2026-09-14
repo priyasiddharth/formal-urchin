@@ -3736,6 +3736,13 @@ destinations, then `const_write` — and answer what `ptrCast` is.
   `refSlice` is now the only rvalue outside `compile_correct`.
 - durable/ptrcast-was-the-last-memcpy-caller.md — NEW; it supersedes
   ptrcast-is-a-memcpy-not-a-store.md.
+- `refSlice` attempted and BLOCKED — not by the proof but by a compiler
+  bug, found by following the same rule. Witness pinned with teeth as
+  `rs_known_divergence_projsrc_mut`; groundwork (shape, step lemma,
+  chain-class package) kept.
+- durable/refslice-projsrc-mut-pops-the-projection-borrow.md — NEW.
+- The read packages now let the tag renaming grow (1bc9d26), since
+  `refSlice` is the one member that mints.
 
 **Critical corrections:**
 - I claimed admitting `ptrCast` needed a second store abstraction. Wrong:
@@ -3755,7 +3762,8 @@ destinations, then `const_write` — and answer what `ptrCast` is.
 unchanged at propext / Classical.choice / Quot.sound with zero sorries.
 
 **Next-session pickup candidates:**
-- `refSlice`, the last excluded rvalue — check its lowering for the same
-  kind of outlier before assuming it needs new machinery.
+- loose-ends/parked.md — "Fix the projected-source lowering for minting
+  rvalues", the two options (a) narrow and (b) the one that also retires
+  BRIDGE 1S across five rvalues.
 - loose-ends/parked.md — "Does `ptrOffset`'s deferred UB ever diverge
   from Miri?" (a Miri-pinned witness, ~1h).
