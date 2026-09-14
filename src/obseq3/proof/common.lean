@@ -88,6 +88,7 @@ def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .exposeAddr _ => True
   | .fromExposed _ => True
   | .ptrOffset _ _ => True
+  | .ptrCast _ => True
   | _ => False
 
 /-- Statements in the proof-core fragment: `halt` and assignments with a
@@ -1812,6 +1813,14 @@ theorem readRhsShape_fromExposed {Γ : Ctx} {τ : LayoutTy}
     (src : Place Γ obseq.LayoutTy.NatL) :
     ReadRhsShape (.fromExposed (τ := τ) src) src Rhs.FromExposed :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.fromExposed src srcRes srcEv, rfl⟩
+
+/-- A ptr-to-ptr cast is read-then-store: it IS a one-cell `Load` at
+    `PTy`, the same instruction `copy` emits at a pointer layout. -/
+theorem readRhsShape_ptrCast {Γ : Ctx} {σ τ : LayoutTy}
+    (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    ReadRhsShape (.ptrCast (τ := τ) src) src
+      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL τ))) :=
+  ⟨fun srcRes srcEv _ => RExprToEvidence.ptrCast src srcRes srcEv, rfl⟩
 
 /-- Pointer arithmetic is read-then-store too: the delta is pre-scaled to
     cells at compile time, so `mk` is a CLOSED function of the source

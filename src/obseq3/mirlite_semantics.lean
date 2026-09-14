@@ -264,6 +264,12 @@ def evalRExpr
       match resolvePlaceAcc M state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
+          -- the cell must be readable, exactly as the compiled `Load`
+          -- requires of the register it reads through; the same guard
+          -- `.copy` carries and the one the casts got on 2026-09-13
+          if resolved.addr + 1 > resolved.allocBase + resolved.allocSize then
+            .err "ptr-to-ptr cast of an out-of-bounds place"
+          else
           match M.read permsR resolved.addr 1 resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>

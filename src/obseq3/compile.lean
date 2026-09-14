@@ -622,14 +622,31 @@ def compileRExprPreChecked
         postCleanup := [],
         ev := fun _ => RExprToEvidence.fromExposed src srcRes srcOut.evidence
       }
-  | .ptrCast src => do
-      -- tag-preserving type-punning cast = a one-cell copy with an SB
-      -- read, which is exactly Memcpy at PTy
+  | .ptrCast (τ := τ) src => do
+      -- A tag-preserving type-punning cast IS a one-cell copy at `PTy`,
+      -- so it lowers exactly as `.copy` does: read the cell into a
+      -- REGISTER temporary, retire the source borrow, store the temp.
+      --
+      -- It used to emit `Memcpy dstPtr srcReg PTy` (one instruction).
+      -- That was the last caller of the nonoverlapping-Memcpy lowering
+      -- the `.copy` arm abandoned on 2026-08-29, and it left a
+      -- divergence: `p = p as *mut U` is fine in mirlite (the overlap
+      -- guard came out on 2026-08-30, because rustc reads through a
+      -- temporary and Miri runs it clean) but `Memcpy` rejects
+      -- overlapping ranges. Materializing the same register temporary
+      -- removes the divergence and puts the cast in the read-then-store
+      -- family, whose leaves and seams prove it.
       let srcOut ← placeToRegChecked RefKind.Shared src
       let srcRes := srcOut.result
+      let tmpReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Assgn tmpReg
+            (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL τ)) srcRes.reg)]
+          ++ cleanupInstrs srcRes.cleanup))
       pure {
-        store := fun dstPtr => [Instr.Memcpy dstPtr srcRes.reg obseq.TyVal.PTy],
-        postCleanup := srcRes.cleanup,
+        store := fun dstPtr =>
+          [Instr.RStore (layoutToTyVal (obseq.LayoutTy.PtrL τ)) tmpReg dstPtr],
+        postCleanup := [],
         ev := fun _ => RExprToEvidence.ptrCast src srcRes srcOut.evidence
       }
   | .ptrOffset (σ := σ) src delta => do

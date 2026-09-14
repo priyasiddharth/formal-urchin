@@ -484,4 +484,136 @@ theorem CompilerInv_step_ptrOffset
     h_inv h_stmt h_step
 
 
+/-! ## `ptrCast`: a one-cell copy at `PTy`
+
+Since the cast lowers with a register temporary (compile.lean), its
+compiled shape IS copy's at a pointer layout, so both read packages are
+copy's with only the mirlite inversion changed — `blockSize (PtrL σ)` is
+`1`, which is the literal the cast's own arm writes. -/
+
+/-- **The `ptrCast` read package**, chain-class source. -/
+theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
+    {src : Place Γ (obseq.LayoutTy.PtrL σ)}
+    (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
+    ReadPkgLowered compProg (.ptrCast (τ := τ) src) src
+      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) := by
+  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
+    output h_eval
+  simp only [mirlite.evalRExpr] at h_eval
+  cases h_sres : mirlite.resolvePlaceAcc MSB sM src with
+  | error e => rw [h_sres] at h_eval; simp at h_eval
+  | ok pr =>
+  obtain ⟨rs, permsS⟩ := pr
+  rw [h_sres] at h_eval
+  simp only at h_eval
+  by_cases h_fit : rs.addr + 1 > rs.allocBase + rs.allocSize
+  · rw [if_pos h_fit] at h_eval
+    simp at h_eval
+  · rw [if_neg h_fit] at h_eval
+    cases h_read_src : MSB.read permsS rs.addr 1 rs.tag with
+    | error e => rw [h_read_src] at h_eval; simp at h_eval
+    | ok perms₂ =>
+    rw [h_read_src] at h_eval
+    injection h_eval with h_out
+    subst h_out
+    refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
+        (resolvePlace?_of_resolveAcc h_sres), ?_⟩
+    intro sOut0 h_sval0 h_instS h_instD
+    obtain ⟨h_sclean, n1, s_mid1, p2, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
+      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
+      copy_chainsrc_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb
+        h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_instS h_instD
+    exact ⟨h_sclean, n1 + 1, _, perms₂, _, rfl,
+      (by rw [oseair_readWordSeq_length]; rfl),
+      h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
+      RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel⟩
+
+
+/-- **The `ptrCast` read package**, projected source at a nonzero offset:
+    the projection's `Borrow(Shared)`, the `Load` through it, and the
+    `Die`. Copy's `copy_projsrc_offset_read` does all of it. -/
+theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
+    {spath : PathTo σs (obseq.LayoutTy.PtrL σ)}
+    (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
+    ReadPkgProjOffset compProg (.ptrCast (τ := τ) (.proj B spath)) B spath
+      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) := by
+  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
+    output h_eval
+  simp only [mirlite.evalRExpr] at h_eval
+  cases h_sres : mirlite.resolvePlaceAcc MSB sM B with
+  | error e =>
+      rw [resolvePlaceAcc_proj_base_err h_sres] at h_eval
+      simp at h_eval
+  | ok pr =>
+  obtain ⟨rs, permsS⟩ := pr
+  rw [resolvePlaceAcc_proj_base_ok h_sres] at h_eval
+  simp only [gt_iff_lt] at h_eval
+  by_cases h_fit : rs.allocBase + rs.allocSize < rs.addr + PathTo.offset spath + 1
+  · rw [if_pos h_fit] at h_eval
+    simp at h_eval
+  · rw [if_neg h_fit] at h_eval
+    cases h_read_src : MSB.read permsS (rs.addr + PathTo.offset spath) 1 rs.tag with
+    | error e => rw [h_read_src] at h_eval; simp at h_eval
+    | ok perms₂ =>
+    rw [h_read_src] at h_eval
+    injection h_eval with h_out
+    subst h_out
+    refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
+        (resolvePlace?_of_resolveAcc
+          (resolvePlaceAcc_proj_base_ok (path := spath) h_sres)), ?_⟩
+    intro sOut0 h_sval0 sOutP h_regP h_clP h_instS h_instCS
+    obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
+      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
+      copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
+        h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_regP h_clP
+        h_instS h_instCS
+    exact ⟨h_sclean, n1, _, perms₂, _, rfl,
+      (by rw [oseair_readWordSeq_length]; rfl),
+      h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
+      RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel⟩
+
+/-- The mirlite step of a `ptrCast` assignment does not see the difference
+    between a source place and its flattening. -/
+theorem stepStmt_assign_ptrcastsrc_anyflatten
+    {Γ : Ctx} {σ τ : LayoutTy} {M : PermissionModel}
+    (s : mirlite.State M Γ) (dst : Place Γ (obseq.LayoutTy.PtrL τ))
+    (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    mirlite.stepStmt M s (.assign dst (.ptrCast src))
+      = mirlite.stepStmt M s (.assign dst (.ptrCast (flattenPlace src))) := by
+  have h1 : ∀ st : mirlite.State M Γ,
+      mirlite.resolvePlaceAcc M st (flattenPlace src)
+        = mirlite.resolvePlaceAcc M st src :=
+    fun st => resolvePlaceAcc_flatten src
+  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.evalRExpr, h1]
+
+/-- `ptrCast` is a read-then-store family. -/
+theorem ptrCast_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (compProg : oseair.Prog) :
+    ReadRhsFamily (Γ := Γ) compProg
+      (fun src : Place Γ (obseq.LayoutTy.PtrL σ) => RExpr.ptrCast (τ := τ) src)
+      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) where
+  shape := fun src => readRhsShape_ptrCast src
+  stepFlat := fun s dst src => stepStmt_assign_ptrcastsrc_anyflatten s dst src
+  pkgLowered := fun _ h => ptrcast_readpkg_lowered compProg h
+  pkgProjOffset := fun _ _ h _ _ => ptrcast_readpkg_projoffset compProg h
+
+/-- One `ptrCast` statement, simulated. -/
+theorem CompilerInv_step_ptrCast
+    {σ τ : LayoutTy}
+    {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {src : Place Γ (obseq.LayoutTy.PtrL σ)}
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    (h_stmt : prog.get? s_mir.pc = some (.assign dst (.ptrCast src)))
+    (h_step : mirlite.stepStmt MSB s_mir (.assign dst (.ptrCast src))
+      = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' :=
+  CompilerInv_step_readrhs compProg (ptrCast_readRhsFamily compProg) h_comp
+    h_inv h_stmt h_step
+
+
 end obseq3.proof
