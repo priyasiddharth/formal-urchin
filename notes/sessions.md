@@ -3732,8 +3732,17 @@ destinations, then `const_write` — and answer what `ptrCast` is.
 - durable/ptroffset-defers-ub-to-the-use.md — NEW, from a follow-up
   question: `add` is modelled as `wrapping_add` in both machines, so the
   differential suite is blind to it. Parked with a witness plan.
+- `ptrOffset` and `ptrCast` PROVED into `CoreRhs` (d9c0a41, 42f538d).
+  `refSlice` is now the only rvalue outside `compile_correct`.
+- durable/ptrcast-was-the-last-memcpy-caller.md — NEW; it supersedes
+  ptrcast-is-a-memcpy-not-a-store.md.
 
 **Critical corrections:**
+- I claimed admitting `ptrCast` needed a second store abstraction. Wrong:
+  its `Memcpy` lowering was an outlier left behind by the 2026-08-29 copy
+  change, and it carried a live overlap divergence with mirlite. Fixing
+  the lowering made the proof 90 lines. Superseded, with the "why I was
+  misled" line, in durable/.
 - I wrote "there is no temporary" of ref's borrow lowering in a
   docstring. Wrong: `placeToBorrowRegChecked` allocates a fresh register
   for the `Borrow`'s result. What is true is that the ref ARM allocates
@@ -3746,7 +3755,7 @@ destinations, then `const_write` — and answer what `ptrCast` is.
 unchanged at propext / Classical.choice / Quot.sound with zero sorries.
 
 **Next-session pickup candidates:**
-- loose-ends/parked.md — "Admit `ptrCast` into `CoreRhs`".
-- `ptrOffset` and `refSlice`, the other two excluded rvalues, are
-  unexamined; `ptrOffset` also stores through a register, so it may be
-  closer to the shared leaves than `ptrCast` is.
+- `refSlice`, the last excluded rvalue — check its lowering for the same
+  kind of outlier before assuming it needs new machinery.
+- loose-ends/parked.md — "Does `ptrOffset`'s deferred UB ever diverge
+  from Miri?" (a Miri-pinned witness, ~1h).

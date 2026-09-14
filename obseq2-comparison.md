@@ -4,6 +4,64 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-14 — Two Rvalues, and a Lowering That Was Wrong
+
+`ptrOffset` and `ptrCast` are in. `refSlice` is the only rvalue left
+outside `compile_correct`.
+
+`ptrOffset` went the way the architecture predicts. `readRhsShape_ptrOffset`
+holds by `rfl` — pointer arithmetic lowers exactly like copy and the two
+casts — so every destination leaf, seam and fragment lemma served it
+unchanged, and all it needed of its own was a machine-step lemma and two
+read packages. Those are simpler than the casts': the delta is scaled to
+cells at compile time, so both sides' offset arithmetic is the same
+expression; the tag is preserved, so the permission state after the step
+is just the one the read produced; and the below-the-base guard matches
+on the nose. The projected-source package is the casts' with the exposure
+deleted. About 400 lines.
+
+`ptrCast` was supposed to be the hard one. Its store was a `Memcpy`,
+which fits neither the value package nor the write seams: the values come
+from a source-side read at execution time, it performs two Stacked-Borrows
+events in one instruction, and its post-cleanup is non-empty. I had
+written all that down as a durable note concluding that admitting it
+needed a second store abstraction.
+
+That note was wrong, and the way it was wrong is the interesting part. I
+took the compiler as fixed and asked only what proof machinery could
+accept the instruction it emitted. The question that finds it in one step
+is *is this rvalue's lowering an outlier, and if so why* — and the answer
+was in the compiler's own comments two arms up. `.copy` abandoned the
+`Memcpy` lowering on 2026-08-29 for the event-order fix, and mirlite
+dropped its overlapping-assignment guard on 2026-08-30 to match, with the
+reason recorded in `doAssign`: rustc reads through a temporary, Miri runs
+`*p = *p` clean, so the guard has nothing left to protect. `ptrCast` was
+never updated. It was the last Memcpy caller, and it therefore still
+*rejected* the overlap that mirlite had stopped rejecting:
+
+    p = p as *mut U      mirlite: ok      oseair: "Memcpy overlapping ranges"
+
+A live divergence, invisible to both suites — `g5_compiler_total` writes
+exactly that statement but only checks that the compiler accepts the
+program.
+
+Materialising the register temporary fixed the divergence and made the
+cast copy's compiled shape at a pointer layout. `readRhsShape_ptrCast`
+then holds by `rfl`, both read packages are copy's with only the mirlite
+inversion changed, and each delegates to an existing read lemma
+unaltered. Ninety lines, no new seam.
+
+Both rvalues also gained the source bounds guard the integer-pointer
+casts got the day before: the compiled instruction reads through the
+source register and errs out of bounds, so mirlite must too.
+
+Two of the three excluded rvalues turned out to be excluded for reasons
+that dissolved on inspection, and the one real obstacle was an
+inconsistency in the compiler that the proof surfaced. Worth remembering
+before assuming the frontier is where it looks.
+
+---
+
 ## 2026-09-13 — One Leaf Per Destination
 
 The question that found this was "which hypotheses does this leaf
