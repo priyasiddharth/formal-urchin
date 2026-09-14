@@ -43,3 +43,37 @@ identity-on-domain conjunct. PermSim is CompCert-`inject`-faithful but
 heavier and touches permission.lean; on-the-fly derivation gets stuck
 (identity is not derivable without a global fact).
 → rho-maps-are-identity-on-domain.md
+
+[FACT] **MIR's `Operand` layer in `RExpr`** — rejected 2026-09-14.
+mirlite has no `Operand` type: MIR's `Rvalue::Use(Operand)` is inlined as
+two rvalue constructors (`copy p`, `constInit v`), `Move` is folded into
+`copy` (nothing deinitializes a source), and every other rvalue takes a
+`Place` rather than an operand — so a constant cannot be cast, which the
+ingestion admits with `unsupported "ptr/int cast of a non-place"`
+(src/conformance/ullbc_ast.lean:665).
+
+Copying MIR faithfully was considered and rejected on measurement: of the
+41 unsupported ULLBC tests, ZERO are blocked by the operand restriction.
+The manifest's reasons are heap containers and trait objects (Box, Rc,
+String, Vec, custom allocators, vtables — ~12), protectors (~8), threads
+(3), slices (3), interior mutability (3), named ADTs, transmute,
+closures, fn pointers, two-phase, MaybeUninit, unions. The binding
+constraint is the type/feature frontier, not the rvalue grammar.
+
+    python3 -c "import json,collections; m=json.load(open('conformance/manifest.json')); \
+      c=collections.Counter(t['reason'] for t in m if t.get('status')=='unsupported'); \
+      [print(n,r) for r,n in c.most_common()]"
+
+The cost side is the reason not to do it anyway: the FLAT, place-only
+grammar is what makes `ValuePkg` work — one non-recursive dispatch in
+`compileRExprPreChecked`, and the source shape vanishing behind the
+package (see one-leaf-per-destination-shape.md). Operands would multiply
+the packages per rvalue (a cast of a constant is not the package a cast
+of a place is) and re-open the compiler to materialize constants into
+registers before casting, adding instructions and fragment lemmas under
+both audit roots.
+
+**Revisit if:** an `unsupported "…non-place"` ever becomes a binding
+constraint. Even then the cheap fix is in the INGESTION — hoist the
+constant into a temporary local and emit two statements — which keeps
+mirlite's grammar and the whole proof surface fixed.
