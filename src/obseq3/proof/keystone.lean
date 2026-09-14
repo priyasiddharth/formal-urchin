@@ -987,3 +987,117 @@ theorem chain_key_not_mem {W : Nat → BorrowStack} {addr b : Word}
     simp [keysOf]
   termination_by len - i
 
+/-! ## Sliding a `Die` past the mint it brackets (2026-09-14)
+
+`refSlice` is the one read-then-store rvalue that MINTS, and at a
+projected source its mint runs BETWEEN the projection's `Borrow(Shared)`
+and the `Die` that retires it. BRIDGE 1S cannot see through that, so the
+bracket has to be re-collapsed with the mint inside.
+
+Everything reduces to one shape: the temporary sits on TOP of the cell's
+stack when the mint runs, so each of `refCellOp`'s four branches acts on
+`Item.Ref t :: r`, and the question is whether that leading item can be
+peeled off. It can, for every branch — the pivot is below it, so a write
+discards it with the rest of `above`, a read leaves it (it is not
+`poppedByRead`), and an insert-above splices below it. The `Die` then
+removes it wherever the branch left it, which is what the 2026-09-14
+strengthening of `dieCellContent` is for. -/
+
+/-- A `die` whose tag is absent leaves the stack alone. -/
+theorem dieCellContent_absent {pf : List (List Tag)} {t : Tag} :
+    ∀ (s : BorrowStack), (∀ k ∈ s, k.tag ≠ t) → dieCellContent pf t s = .ok s
+  | [], _ => rfl
+  | item :: below, h => by
+      have h_ne : item.tag ≠ t := h item (by simp)
+      have h_beq : (item.tag == t) = false := by grind
+      cases item <;>
+        simp_all [dieCellContent,
+          dieCellContent_absent below (fun k hk => h k (by simp [hk]))]
+
+/-- …and past a leading item that is not its tag, it recurses. -/
+theorem dieCellContent_cons_ne {pf : List (List Tag)} {t : Tag} {item : Item}
+    (h_ne : item.tag ≠ t) (below : BorrowStack) :
+    dieCellContent pf t (item :: below)
+      = (dieCellContent pf t below).map (item :: ·) := by
+  have h_beq : (item.tag == t) = false := by grind
+  cases item <;>
+    (simp only [dieCellContent, Item.tag] at h_beq ⊢
+     simp only [h_beq, Bool.false_eq_true, if_false]
+     cases dieCellContent pf t below <;> rfl)
+
+/-- `splitStack` past a leading item that is not the pivot. -/
+theorem splitStack_cons_ne {item : Item} {p : Tag} (h_ne : item.tag ≠ p)
+    (s : BorrowStack) :
+    splitStack (item :: s) p
+      = (splitStack s p).map (fun r => (item :: r.1, r.2.1, r.2.2)) := by
+  have h_beq : (item.tag == p) = false := by grind
+  rw [splitStack, h_beq]
+  simp only [Bool.false_eq_true, if_false]
+  cases splitStack s p <;> rfl
+
+/-- The wildcard resolver skips a leading item whose tag is not exposed —
+    and a freshly minted borrow temporary never is. -/
+theorem resolveWildcardIn_cons_unexposed {ex : List Tag} {item : Item}
+    (h_ex : ex.contains item.tag = false) (s : BorrowStack) (nw : Bool) :
+    resolveWildcardIn ex (item :: s) nw = resolveWildcardIn ex s nw := by
+  cases item <;> simp_all [resolveWildcardIn, Item.tag]
+
+/-- `firstProtectedIn` skips a leading unprotected item. -/
+theorem firstProtectedIn_cons_unprot {pf : List (List Tag)} {item : Item}
+    (h_np : isProtectedIn pf item.tag = false) (l : List Item) :
+    firstProtectedIn pf (item :: l) = firstProtectedIn pf l := by
+  cases item with
+  | Own tg => simp_all [firstProtectedIn, Item.tag]
+  | MutRef tg => simp_all [firstProtectedIn, Item.tag]
+  | Ref tg => simp_all [firstProtectedIn, Item.tag]
+  | RawPtr b tg => cases b <;> simp_all [firstProtectedIn, Item.tag]
+  | Disabled tg => simp_all [firstProtectedIn, Item.tag]
+
+/-- The wildcard resolver only ever returns an EXPOSED tag. -/
+theorem resolveWildcardIn_exposed {ex : List Tag} {s : BorrowStack} {nw : Bool}
+    {q : Tag} (h : resolveWildcardIn ex s nw = some q) :
+    ex.contains q = true := by
+  unfold resolveWildcardIn at h
+  rw [Option.map_eq_some_iff] at h
+  obtain ⟨k, hk, rfl⟩ := h
+  have hp := List.find?_some hk
+  cases k <;> simp_all
+
+/-- A READ access sees past a leading frozen temporary: it is not
+    `poppedByRead`, so it survives the disable-map untouched, and both the
+    protector scan and the wildcard resolver skip it. -/
+theorem readCellContent_cons_ref {pf : List (List Tag)} {ex : List Tag}
+    {a : Word} {p t : Tag} (s : BorrowStack)
+    (h_ne : t ≠ p) (h_np : isProtectedIn pf t = false)
+    (h_ex : ex.contains t = false) :
+    readCellContent pf ex a p (.Ref t :: s)
+      = (readCellContent pf ex a p s).map (Item.Ref t :: ·) := by
+  unfold readCellContent
+  rw [resolveWildcardIn_cons_unexposed (item := Item.Ref t) (by simpa using h_ex) s false]
+  split
+  · rfl
+  · rename_i q h_q
+    have h_tq : t ≠ q := by
+      by_cases h_w : (p == wildcardTag) = true
+      · simp only [h_w, if_true] at h_q
+        cases h_r : resolveWildcardIn ex s false with
+        | none => rw [h_r] at h_q; simp at h_q
+        | some q' =>
+            rw [h_r] at h_q
+            simp only [Option.elim] at h_q
+            have := resolveWildcardIn_exposed h_r
+            intro hc
+            rw [hc] at h_ex
+            grind
+      · simp only [h_w, Bool.false_eq_true, if_false] at h_q
+        grind
+    rw [splitStack_cons_ne (item := Item.Ref t) (by simpa using h_tq) s]
+    cases splitStack s q with
+    | none => rfl
+    | some tri =>
+        obtain ⟨above, item, below⟩ := tri
+        simp only [Option.map_some]
+        cases item <;>
+          simp_all [Except.map, Item.poppedByRead, firstProtectedIn_cons_unprot
+            (item := Item.Ref t) (by simpa using h_np)]
+        all_goals (split <;> simp [Except.map])
