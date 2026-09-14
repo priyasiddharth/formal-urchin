@@ -530,6 +530,16 @@ theorem dieCellContent_top
     dieCellContent pf t (.MutRef t :: rest) = .ok rest := by
   simp [dieCellContent, Item.tag, h_np]
 
+/-- The same for a SHARED temporary, which is what BRIDGE 1S retires.
+    Split out 2026-09-14: with the not-on-top branch of `dieCellContent`
+    permissive, the two constructors no longer unify through the error
+    case and each needs its own equation. -/
+theorem dieCellContent_top_ref
+    {pf : List (List Tag)} {t : Tag}
+    (h_np : isProtectedIn pf t = false) (rest : BorrowStack) :
+    dieCellContent pf t (.Ref t :: rest) = .ok rest := by
+  simp [dieCellContent, Item.tag, h_np]
+
 /-! ## The keystone -/
 
 /-- BRIDGE 1 (keystone), CLOSED: the compiled place-write pattern
@@ -934,7 +944,7 @@ theorem sb_ref_read_die_cancels
           (fun j h1 h2 => by
             simp only [Nat.zero_add] at h2
             rw [h_W₁ j h2]
-            exact dieCellContent_top h_unprot (W j))
+            exact dieCellContent_top_ref h_unprot (W j))
         rw [show addr + 0 = addr from rfl] at this
         rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
         exact this

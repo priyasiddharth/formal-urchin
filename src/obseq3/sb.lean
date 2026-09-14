@@ -468,7 +468,35 @@ def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
 
 /-- The stack-level content of a `die` at one cell (factored for the
     compiler-correctness proofs): pop the item with `tag` if it is on top
-    and is neither the allocation root nor protected. -/
+    and is neither the allocation root nor protected.
+
+    PERMISSIVE IF NOT ON TOP (2026-09-14, SEMANTICS CHANGE, flagged).
+    `Die` has no Rust counterpart: Stacked Borrows never ends a borrow
+    actively, items are popped by the next conflicting access. `Die`
+    exists only to retire the COMPILER's own scaffolding — the temporary
+    a projected place lowering borrows — and the old "must be on top"
+    branch was a self-check that brackets nest, not a semantic
+    requirement. When an intervening access has already popped the
+    temporary, SB has ended the borrow itself and the cleanup has nothing
+    left to do, so a no-op is the faithful answer.
+
+    This is what makes `Borrow; use; Die` equal `use through the parent`
+    in EVERY case rather than only when nothing intervenes — see
+    `sb_ref_use_die_cancels` / `sb_ref_read_die_cancels`. A `Mut` mint
+    inside the bracket pops the temporary (write access) and the `Die`
+    then does nothing; a `Raw`/`Shared` mint inserts above the granting
+    item, below the temporary, and the `Die` pops as before.
+
+    Mis-nesting is still caught, and caught better: `Die` only ever
+    removes its OWN tag from the top, so the only way a bad bracket
+    differs is a stale item left on the target's stack, which `PermSim`
+    (positional `StackSim`) cannot relate to mirlite's — the simulation
+    step fails to typecheck rather than erroring at runtime on whichever
+    inputs a test happens to exercise.
+
+    The `Own`-root and protected branches stay errors: a compiler
+    temporary is never either, so they are dead for the proof and kept as
+    sanity checks. -/
 def dieCellContent (pf : List (List Tag)) (tag : Tag) : BorrowStack → Except String BorrowStack
   | [] => .error "sb-die: stack empty"
   | item :: below =>
@@ -479,7 +507,7 @@ def dieCellContent (pf : List (List Tag)) (tag : Tag) : BorrowStack → Except S
             if isProtectedIn pf item.tag then
               .error s!"sb-die: tag {tag} is strongly protected"
             else .ok below
-      else .error s!"sb-die: top of stack is {item.tag}, expected {tag}"
+      else .ok (item :: below)
 
 /-- Kill a reference over a range: pop the item with `tag` if it is on top
     of each cell's stack (and is not the root `Own`). -/

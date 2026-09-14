@@ -843,31 +843,23 @@ def pD34 : Place ΓD34 (.PtrL tPairL) := .local ⟨⟨1, by decide⟩, rfl⟩
 def wD34 : Place ΓD34 (.PtrL ptrNat) := .local ⟨⟨2, by decide⟩, rfl⟩
 def xD34 : Place ΓD34 natL := .local ⟨⟨3, by decide⟩, rfl⟩
 
-/-- **KNOWN DIVERGENCE, pinned 2026-09-14.** A `Mut` slice retag whose
-    source is a PROJECTED field at nonzero offset, where the fat pointer
-    covers the cell it is itself stored in.
+/-- Differential: a `Mut` slice retag whose source is a PROJECTED field
+    at nonzero offset, where the fat pointer covers the cell it is itself
+    stored in. The retag's write access through the loaded pointer's tag
+    pops the projection's temporary `Borrow(Shared)`, so the cleanup
+    `Die` finds its tag gone.
 
-    The compiled source lowering takes a `Borrow(Shared)` at the field
-    offset and retires it with a `Die` after the instruction. A `Mut`
-    retag performs a WRITE access through the loaded pointer's tag, which
-    pops everything above it — including that projection borrow — and
-    `dieCellContent` then fails, because it demands its tag be on top.
-    mirlite has no projection borrow at all and runs clean.
-
-    `Raw true` and `Shared` retags do NOT diverge: they access for READ
-    and their item is inserted directly above the granting one, leaving
-    the projection borrow on top.
-
-    This is why `refSlice` is still outside `CoreRhs` — see
-    notes/durable/refslice-projsrc-mut-pops-the-projection-borrow.md.
-    TEETH: when the lowering is fixed, this test FAILS. Replace it with
-    `expectDiff ΓRS prog .ok "…"` at that point; do not weaken it. -/
+    This DIVERGED until 2026-09-14: `dieCellContent` demanded its tag be
+    on top and errored, while mirlite — which has no projection borrow at
+    all — ran clean. Making the not-on-top branch a no-op (sb.lean) fixed
+    it, because `Die` retires compiler scaffolding and SB had already
+    ended the borrow. Kept as the regression witness for that change. -/
 def ΓRS : Ctx := [tPairL, obseq.LayoutTy.PtrL tPairL, ptrNat]
 def tRS : Place ΓRS tPairL := .local ⟨⟨0, by decide⟩, rfl⟩
 def pRS : Place ΓRS (obseq.LayoutTy.PtrL tPairL) := .local ⟨⟨1, by decide⟩, rfl⟩
 def qRS : Place ΓRS ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
 
-def rs_known_divergence_projsrc_mut : IO Unit := do
+def rs_mut_slice_retag_pops_projection_borrow : IO Unit := do
   let prog : Prog ΓRS :=
     [.assign (.proj tRS (.field ⟨0, by decide⟩ .nil)) (.constInit 1),
      -- a raw over the WHOLE tuple: its tag grants at every cell
@@ -879,15 +871,8 @@ def rs_known_divergence_projsrc_mut : IO Unit := do
      -- projection borrow sits on
      .assign qRS (.refSlice .Mut false
        (.proj (.deref pRS) (.field ⟨1, by decide⟩ .nil)))]
-  assert (srcRun ΓRS prog == .ok)
-    "rs known divergence: mirlite no longer runs it clean — re-check the note"
-  match tgtRun ΓRS prog with
-  | .error e => throw (IO.userError s!"rs known divergence: compile error {e}")
-  | .ok t =>
-      assert (t == .ub 3)
-        s!"rs known divergence: target verdict {reprStr t}, expected `ub 3`. If the \
-           refSlice projected-source lowering was fixed, replace this test with \
-           `expectDiff ΓRS prog .ok`."
+  expectDiff ΓRS prog .ok
+    "rs Mut slice retag pops the projection borrow; the Die is a no-op"
 
 /-- Differential: a write through a `ptrOffset`-derived raw pointer
     invalidates a shared borrow of the cell it lands on, and the later
@@ -2230,7 +2215,7 @@ def allTests : List (IO Unit) := [
   d32_field_copy_zero_offset,
   d33_overlap_junk_copy_agrees,
   px_write_through_projected_ptroffset,
-  rs_known_divergence_projsrc_mut,
+  rs_mut_slice_retag_pops_projection_borrow,
   d34_deref_dst_temp_killed_by_rhs_spine,
   d35_self_copy_is_ok,
   d36_field_copy_nonzero_offset,
