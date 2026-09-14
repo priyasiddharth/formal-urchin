@@ -494,11 +494,34 @@ def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
     step fails to typecheck rather than erroring at runtime on whichever
     inputs a test happens to exercise.
 
+    STRENGTHENED the same day: the item is removed WHEREVER it sits, not
+    only from the top. "No-op if not on top" is not enough, because a
+    read access DISABLES rather than removes (`readCellContent`), so a
+    `Shared` or `Raw false` mint inside the bracket leaves the temporary
+    buried under the item it pushes:
+
+        Mut         write POPS above the parent  -> temp gone, die no-ops
+        Raw true    insertAbove, no access       -> temp on top, die pops
+        Shared      read DISABLES, then PUSH     -> temp BURIED
+        Raw false   same                         -> temp BURIED
+
+    A buried temporary is a stale item mirlite never had. No access can
+    observe it — its tag is dead — but `PermSim` relates stacks
+    positionally, so the simulation step would be unprovable. Removing it
+    wherever it sits makes `Borrow; use; Die` equal `use through the
+    parent` in ALL four cases.
+
+    Removal is only ever of the compiler's own dead temporary and can
+    only move the target's stack TOWARDS mirlite's: no other tag's item
+    changes, and a shorter `above` means an access through anything below
+    pops strictly less — which is exactly mirlite's situation, since
+    mirlite never had the item at all.
+
     The `Own`-root and protected branches stay errors: a compiler
     temporary is never either, so they are dead for the proof and kept as
     sanity checks. -/
 def dieCellContent (pf : List (List Tag)) (tag : Tag) : BorrowStack → Except String BorrowStack
-  | [] => .error "sb-die: stack empty"
+  | [] => .ok []
   | item :: below =>
       if item.tag == tag then
         match item with
@@ -507,7 +530,10 @@ def dieCellContent (pf : List (List Tag)) (tag : Tag) : BorrowStack → Except S
             if isProtectedIn pf item.tag then
               .error s!"sb-die: tag {tag} is strongly protected"
             else .ok below
-      else .ok (item :: below)
+      else
+        match dieCellContent pf tag below with
+        | .error e => .error e
+        | .ok below' => .ok (item :: below')
 
 /-- Kill a reference over a range: pop the item with `tag` if it is on top
     of each cell's stack (and is not the root `Own`). -/
