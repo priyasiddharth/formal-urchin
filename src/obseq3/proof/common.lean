@@ -1608,31 +1608,6 @@ theorem ensurePlaceRoot_run_eq_of_mapped
   | deref ptrPlace ih =>
       exact ih h_mapped
 
-/-- `ensurePlaceRoot` establishes its own postcondition: after it runs,
-    every local leaf reachable from the ROOT of `p` is mapped (the fresh
-    branch of `ensureLocalRegE` records the allocation in `placeRegMap`).
-    Since `PlaceInputsMapped` only constrains the root chain, this is
-    exactly `PlaceInputsMapped` for `p`. -/
-theorem ensurePlaceRoot_maps_root
-    {Γ : Ctx} {τ : LayoutTy}
-    (p : Place Γ τ) (cs : CompilerState) :
-    PlaceInputsMapped (CompilerM.run (ensurePlaceRoot p) cs) p := by
-  induction p with
-  | «local» loc =>
-      show ∃ reg layout,
-        getPlaceInfo (CompilerM.run (ensurePlaceRoot (.local loc)) cs) loc.idx.1
-          = some (reg, layout)
-      simp only [ensurePlaceRoot, CompilerM.run_bind, CompilerM.run_pure]
-      unfold CompilerM.run ensureLocalRegE
-      split
-      · rename_i reg layout h_lookup
-        exact ⟨reg, layout, h_lookup⟩
-      · rename_i h_lookup
-        exact ⟨_, _, by
-          simp only [setPlaceInfo, getPlaceInfo, freshReg, List.lookup, beq_self_eq_true]
-          exact rfl⟩
-  | proj base path ih => exact ih
-  | deref ptrPlace ih => exact ih
 
 /-- Compute `ensureLocalRegE` on an already-mapped local: no compiler-state
     change, and the returned pointer result is the mapped register. -/
@@ -1727,9 +1702,6 @@ macro_rules
         setPlaceInfo_nextReg, setPlaceInfo_nextLabel, setPlaceInfo_code,
         freshReg_fst, freshReg_snd] $[$loc:location]?)
 
-/-- A `nextReg` bump touches only the register counter. -/
-theorem getPlaceInfo_setNextReg (cs : CompilerState) (n idx : Nat) :
-    getPlaceInfo { cs with nextReg := n } idx = getPlaceInfo cs idx := rfl
 
 /-- `emit` touches only code and labels. -/
 theorem getPlaceInfo_emit (cs : CompilerState) (is : List Instr) (idx : Nat) :
@@ -1843,38 +1815,6 @@ theorem readRhsShape_fromExposed {Γ : Ctx} {τ : LayoutTy}
     ReadRhsShape (.fromExposed (τ := τ) src) src Rhs.FromExposed :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.fromExposed src srcRes srcEv, rfl⟩
 
-/-- The compiled fragment of a constant write to an UNMAPPED local is two
-    instructions: the root `Alloc` that `ensurePlaceRoot` emits (mirroring
-    mirlite's `preparePlaceAssign`) followed by the `CStore`. -/
-theorem compileStmt_local_fresh_run
-    {Γ : Ctx} {τ : LayoutTy} {loc : Local Γ τ} {cs : CompilerState}
-    {rhs : RExpr Γ τ} {ty : obseq.TyVal} {vs' : List Val}
-    (h_pure : PureCStore rhs ty vs')
-    (h : getPlaceInfo cs loc.idx.1 = none) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs
-      = emit
-          (setPlaceInfo
-            (emit { cs with nextReg := cs.nextReg + 1 }
-              [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
-            loc.idx.1 (Register.R cs.nextReg, τ))
-          [Instr.CStore ty vs' (Register.R cs.nextReg)] := by
-  obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
-  obtain ⟨h_prun, pre, h_pval, h_pstore, h_pclean⟩ := h_pure
-    (setPlaceInfo
-      (emit { cs with nextReg := cs.nextReg + 1 }
-        [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
-      loc.idx.1 (Register.R cs.nextReg, τ))
-  have h_pi : getPlaceInfo
-      (setPlaceInfo
-        (emit { cs with nextReg := cs.nextReg + 1 }
-          [Instr.Assgn (Register.R cs.nextReg) (Rhs.Alloc (layoutToTyVal τ))])
-        loc.idx.1 (Register.R cs.nextReg, τ))
-      loc.idx.1 = some (Register.R cs.nextReg, τ) :=
-    getPlaceInfo_setPlaceInfo_self _ _ _
-  simp [compileStmtChecked, compileRExprToChecked, CompilerM.run_bind, CompilerM.run_pure,
-    h_run, h_val, placeToRegChecked, h_pi, h_prun, h_pval, h_pstore, h_pclean]
-  simp [CompilerM.run, CompilerM.value, emitM, cleanupInstrs, emit_nil]
 
 /-! ## §E Fragment layout + emit-preserves-memory -/
 
