@@ -3711,14 +3711,39 @@ write a comment-aware chunker that splits the file into top-level
 declarations first — after which deleting 46 declarations across five
 files in four rounds was uneventful.
 
-## side question — what `ptrCast` is (2026-09-14)
+## 2026-09-14 — the destination collapse, and what `ptrCast` costs
 
-Asked mid-session. Answered from source and written up as
-durable/ptrcast-is-a-memcpy-not-a-store.md: a tag-preserving type-punning
-cast, one mirlite cell-read through the source's own tag, compiling to a
-single `Memcpy`. The note records WHY it is still outside `CoreRhs` —
-Memcpy's values come from a source-side read at execution time, it
-performs two SB events in one instruction, and its `postCleanup` is
-non-empty, so none of the three fit `ValuePkg`/`StoreStep`. Admitting it
-needs a second store abstraction, not another `StoreStep` instance.
+**Session:** unnamed (Claude Code, this repo).
 
+**Theme:** finish the leaf collapse — ref, then the projected
+destinations, then `const_write` — and answer what `ptrCast` is.
+
+**Key outputs:**
+- durable/one-leaf-per-destination-shape.md — NEW. `ValuePkg`,
+  `StoreStep`, the five leaves, and the one conjunct that had to sit
+  outside the code-inclusion gate.
+- durable/ptrcast-is-a-memcpy-not-a-store.md — NEW. Why `ptrCast` is
+  still outside `CoreRhs`, in three specific mismatches.
+- loose-ends/parked.md — new entry for admitting `ptrCast`.
+- Proof: 27,604 -> 15,277 lines across commits e2d997e..762dade. Zero
+  leaves left in copy.lean, ref.lean, const_write.lean.
+- A `grind` pass: fifty tactic blocks to one tactic each, +18% build time,
+  which the user accepted.
+
+**Critical corrections:**
+- I wrote "there is no temporary" of ref's borrow lowering in a
+  docstring. Wrong: `placeToBorrowRegChecked` allocates a fresh register
+  for the `Borrow`'s result. What is true is that the ref ARM allocates
+  none of its own. Corrected in commit 3f7b4f6.
+- Two bulk deletions cut by line pattern swallowed a neighbouring
+  theorem and split a docstring. Both caught by the build, restored from
+  git; the fix was a comment-aware chunker that splits on declarations.
+
+**Status:** complete. Everything pushed, four suites green, audit
+unchanged at propext / Classical.choice / Quot.sound with zero sorries.
+
+**Next-session pickup candidates:**
+- loose-ends/parked.md — "Admit `ptrCast` into `CoreRhs`".
+- `ptrOffset` and `refSlice`, the other two excluded rvalues, are
+  unexamined; `ptrOffset` also stores through a register, so it may be
+  closer to the shared leaves than `ptrCast` is.

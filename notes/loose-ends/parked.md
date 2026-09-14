@@ -570,3 +570,23 @@ separate `def`, `@[reducible]` included.
 **When to do it anyway:** if `assignPlaceArm` is wanted STRUCTURALLY —
 to give future leaves a name for the arm — rather than for line count.
 The 159-site sweep is mechanical and the four suites catch slips.
+
+## Admit `ptrCast` into `CoreRhs`
+**Status:** parked 2026-09-14
+**Context:** `ptrCast` is implemented, compiled and differentially tested
+(`d19`, `d20`, `d59`) but excluded from `compile_correct`. Its store is a
+`Memcpy`, not an `RStore`/`CStore`, so it fits neither `ValuePkg` nor the
+`StoreStep`-based write seams — see
+durable/ptrcast-is-a-memcpy-not-a-store.md for the three mismatches.
+**Why parked:** the constant-store collapse needed only a third
+`StoreStep` instance; this needs a second store ABSTRACTION (values from
+a source-side read at execution time, two SB events in one instruction,
+non-empty `postCleanup`). Different size of job, and the seams it touches
+sit under both audit roots.
+**To resume:** decide whether to generalise `StoreStep` over "the values
+are produced by the instruction itself" or to give Memcpy its own seam
+family; check `ptrOffset` first, since it stores through a register and
+may already fit.
+**Effort estimate:** ~1 day for `ptrCast`; unknown for `refSlice`.
+**References:** ptrcast-is-a-memcpy-not-a-store.md,
+one-leaf-per-destination-shape.md
