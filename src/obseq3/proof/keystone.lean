@@ -221,8 +221,7 @@ theorem nodup_keysOf_chain {W : Nat → BorrowStack} {addr : Word} {i len : Nat}
     constructor
     · intro h_mem
       obtain ⟨j, h1, _, h3⟩ := mem_keysOf_chain (b := addr + i) h_mem
-      have h_ij : i = j := Nat.add_left_cancel h3
-      omega
+      grind
     · exact nodup_keysOf_chain (i := i + 1)
   · rw [chain_stop h]
     simp [keysOf]
@@ -355,9 +354,7 @@ theorem foldCellsIdx_ok_of_cells
     rw [foldCellsIdx_ok_of_cells h_op (i := i + 1)
       { ap with StackMap := SB.set ap.StackMap (addr + i) (W i) } W h_pf h_ex h_nt
       (fun j h1 h2 => by
-        have h_ne : addr + j ≠ addr + i := fun hc => by
-          have := Nat.add_left_cancel hc
-          omega
+        have h_ne : addr + j ≠ addr + i := by grind
         rw [show ({ ap with StackMap := SB.set ap.StackMap (addr + i) (W i) }
               : AccessPerms).StackMap = SB.set ap.StackMap (addr + i) (W i) from rfl,
             SB.find?_set_ne _ h_ne]
@@ -405,9 +402,7 @@ theorem foldCells_ok_of_cells
         { ap with StackMap := SB.set ap.StackMap (addr + i) (W i) } V W
         h_pf h_ex h_nt
         (fun j h1 h2 => by
-          have h_ne : addr + j ≠ addr + i := fun hc => by
-            have := Nat.add_left_cancel hc
-            omega
+          have h_ne : addr + j ≠ addr + i := by grind
           rw [SB.find?_set_ne _ h_ne]
           exact h_find j (by omega) (by omega))
         (fun j h1 h2 => h_content j (by omega) (by omega))

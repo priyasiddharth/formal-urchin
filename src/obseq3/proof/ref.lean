@@ -35,8 +35,7 @@ theorem PathTo.sizeOf_le {σ ρ : LayoutTy} (p : PathTo σ ρ) :
   | @field ρ' tys idx rest ih =>
       have h_lt : sizeOf (tys.get idx) < sizeOf tys :=
         List.sizeOf_lt_of_mem (List.get_mem tys idx)
-      simp only [obseq.LayoutTy.TupL.sizeOf_spec]
-      omega
+      grind [obseq.LayoutTy.TupL.sizeOf_spec]
 
 
 
@@ -95,7 +94,7 @@ theorem compileStmt_ref_fresh_local_lowers
       h_pval, h_pres]
     simp [csRun, cleanupInstrs, emit_nil, setPlaceInfo, emit]
     funext label
-    rw [if_neg (fun h => by rcases h with ⟨h1, h2⟩; omega)]
+    rw [if_neg (fun h => by grind)]
   · obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
       placeToRegChecked_local_existing (kind := kind) h_srcPost
     simp only [csCompile, csMonad, compileRExprToChecked, placeToBorrowRegChecked, h_run, h_pval]
@@ -240,14 +239,14 @@ theorem ref_valuePkg_chain
         h_ref_src h_dval _ rfl h_instS (hFrag.instrAt 0 rfl rfl)
     refine ⟨_, nB, sB, perms', _, h_incr_t, h_wf_t', rfl,
       by simp [blockSize, obseq.layoutSize], h_runB,
-      by rw [h_pre]; simp only [emit]; exact h_dprm,
-      by rw [h_pre]; simp only [emit]; omega,
+      by grind [emit],
+      by rw [h_pre]; grind [emit],
       by rw [h_pre]; exact h_lbsB,
       by rw [hsB]; exact h_psim', by rw [hsB]; exact h_tbd', h_memB,
       by rw [h_pre]; exact h_pcB,
       StoreStep.rstore compProg sB _ obseq.TyVal.PTy _ _
         (by rw [hsB]; exact RegMap.lookup_insert_self _ _ _)
-        (by rw [h_pre]; show _ < _; simp only [emit]; omega),
+        (by rw [h_pre]; grind [emit]),
       h_relB⟩
 
 /-- A BARE LOCAL source: the chain lowering emits nothing, so the whole

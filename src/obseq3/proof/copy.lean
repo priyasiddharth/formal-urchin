@@ -626,8 +626,7 @@ theorem copy_chainsrc_read
           (Rhs.Load (layoutToTyVal τ) sOut.result.reg)) := by
     rw [h_spc]
     refine h_instD' _ _ ?_ ?_
-    · simp only [emit, List.length_cons, List.length_nil]
-      omega
+    · grind [emit]
     · have h := emit_code_at_new
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with
           nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 }
@@ -645,14 +644,14 @@ theorem copy_chainsrc_read
     (layoutToTyVal τ) h_code1 h_sentry (by rw [h_ts]; grind) h_read2t
   rw [h_ts, h_cancelS] at h_run1
   refine ⟨p2, oseair_runN_trans h_srun h_run1,
-    (by simp only [emit]; exact h_sprm),
-    (by simp only [emit]; exact Nat.le_trans h_sregmono (Nat.le_succ _)),
+    (by grind [emit]),
+    (by grind [emit]),
     ?_, h_psim2,
     (by rw [sb_read_NextTag h_read_src, sb_read_NextTag h_read_tgt, h_snt1]
         exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2),
     h_smem, h_spc,
     (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
-    (by show _ < _; simp only [emit]; omega),
+    (by grind [emit]),
     (by rw [h_smem]; exact readWordSeq_sim h_id_a h_sms (blockSize τ) rs.addr)⟩
   -- the post-Load LocalBindingSim: the fresh temp is above every mapped register
   have h_ins : LocalBindingSim ρa ρt sM.env
@@ -846,10 +845,9 @@ theorem copy_projsrc_offset_read
             (pathOffset spath))) := by
     rw [h_spc]
     refine h_instCS2 _ _ ?_ ?_
-    · simp only [emit, List.length_cons, List.length_nil]
-      omega
+    · grind [emit]
     · rw [emit_code_lt_nextLabel _ _ (by
-        simp only [emit, List.length_cons, List.length_nil]; omega)]
+        grind [emit])]
       have h := emit_code_at_new
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
         [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
@@ -862,8 +860,7 @@ theorem copy_projsrc_offset_read
           (Rhs.Load (layoutToTyVal τ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg))) := by
     rw [h_spc]
     refine h_instCS2 _ _ ?_ ?_
-    · simp only [emit, List.length_cons, List.length_nil]
-      omega
+    · grind [emit]
     · have h := emit_code_at_new
         { (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
@@ -878,8 +875,7 @@ theorem copy_projsrc_offset_read
       = some (Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τ)) := by
     rw [h_spc]
     refine h_instCS2 _ _ ?_ ?_
-    · simp only [emit, List.length_cons, List.length_nil]
-      omega
+    · grind [emit]
     · have h := emit_code_at_new
         { (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
@@ -925,9 +921,7 @@ theorem copy_projsrc_offset_read
   rw [h_ts, ← Nat.add_assoc, h_cancelS] at h_run2
   have h_regbv : (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
       ≠ (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) := by
-    intro h_eq
-    injection h_eq with h_eq'
-    omega
+    grind
   have h_bentry2 : oseair.RegMap.lookup (oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
               (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath)
                 rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
@@ -979,7 +973,7 @@ theorem copy_projsrc_offset_read
   refine ⟨_, s_mid1, q3,
     oseair_runN_trans (oseair_runN_trans (oseair_runN_trans h_srun h_run1) h_run2)
       h_run3,
-    h_prmCS2, (by simp only [emit]; omega), ?_, h_psim2q,
+    h_prmCS2, (by grind [emit]), ?_, h_psim2q,
     (by rw [sb_read_NextTag h_read_src, h_snt1]
         refine TagRenameBounded.mono h_tbd (Nat.le_refl _) ?_
         refine Nat.le_trans h_snt2 ?_
@@ -987,7 +981,7 @@ theorem copy_projsrc_offset_read
         exact h_ntle),
     h_smem, h_spc,
     (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
-    (by show _ < _; simp only [emit]; omega),
+    (by grind [emit]),
     (by rw [h_smem]
         exact readWordSeq_sim h_id_a h_sms (blockSize τ) _)⟩
   intro τ' loc' binding' h_env'

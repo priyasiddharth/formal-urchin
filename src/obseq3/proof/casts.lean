@@ -116,9 +116,7 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
             (Rhs.ExposeAddr sOut.result.reg)) := by
         rw [h_spc]
         refine h_instD _ _ ?_ ?_
-        · simp only [csCleanup, h_sclean, List.append_nil, emit,
-            List.length_cons, List.length_nil]
-          omega
+        · grind [emit]
         · simp only [csCleanup, h_sclean, List.append_nil]
           have h := emit_code_at_new
             { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with
@@ -159,14 +157,14 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
         LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
       refine ⟨h_sclean, n1 + 1, _, MSB.expose perms' pt, [Val.Dat (pb2 + po2)],
         rfl, rfl, oseair_runN_trans h_srun h_run1,
-        (by simp only [emit]; exact h_sprm),
-        (by simp only [emit]; exact Nat.le_trans h_sregmono (Nat.le_succ _)),
+        (by grind [emit]),
+        (by grind [emit]),
         ?_,
         sb_expose_respects_PermSim h_psim2 h_wf_t h_pt,
         ?_, h_smem,
         (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
-        (by show _ < _; simp only [emit]; omega),
+        (by grind [emit]),
         ⟨rfl, trivial⟩⟩
       · intro τ' loc' binding' h_env'
         obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
@@ -284,10 +282,9 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
                 sOut.result.reg (pathOffset spath))) := by
         rw [h_spc]
         refine h_instCS2 _ _ ?_ ?_
-        · simp only [emit, List.length_cons, List.length_nil]
-          omega
+        · grind [emit]
         · rw [emit_code_lt_nextLabel _ _ (by
-            simp only [emit, List.length_cons, List.length_nil]; omega)]
+            grind [emit])]
           have h := emit_code_at_new
             { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
             [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
@@ -300,8 +297,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
               (Rhs.ExposeAddr (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg))) := by
         rw [h_spc]
         refine h_instCS2 _ _ ?_ ?_
-        · simp only [emit, List.length_cons, List.length_nil]
-          omega
+        · grind [emit]
         · have h := emit_code_at_new
             { (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
@@ -318,8 +314,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
               (blockSize (obseq.LayoutTy.PtrL σ))) := by
         rw [h_spc]
         refine h_instCS2 _ _ ?_ ?_
-        · simp only [emit, List.length_cons, List.length_nil]
-          omega
+        · grind [emit]
         · have h := emit_code_at_new
             { (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
@@ -376,9 +371,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
         h_code2 h_bentry h_lt h_read2 h_cell_tgt
       have h_regbv : (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
           ≠ (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) := by
-        intro h_eq
-        injection h_eq with h_eq'
-        omega
+        grind
       have h_bentry2 : oseair.RegMap.lookup
           (oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg
             (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
@@ -421,11 +414,11 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
       refine ⟨h_sclean, _, _, MSB.expose perms' pt, [Val.Dat (pb2 + po2)], rfl, rfl,
         oseair_runN_trans (oseair_runN_trans (oseair_runN_trans h_srun h_run1)
           h_run2) h_run3,
-        (by simp only [emit]; exact h_sprm),
-        (by simp only [emit]; omega), ?_, h_psim3, ?_, h_smem,
+        (by grind [emit]),
+        (by grind [emit]), ?_, h_psim3, ?_, h_smem,
         (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
-        (by show _ < _; simp only [emit]; omega),
+        (by grind [emit]),
         ⟨rfl, trivial⟩⟩
       · intro τ' loc' binding' h_env'
         obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
@@ -537,10 +530,9 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
                 sOut.result.reg (pathOffset spath))) := by
         rw [h_spc]
         refine h_instCS2 _ _ ?_ ?_
-        · simp only [emit, List.length_cons, List.length_nil]
-          omega
+        · grind [emit]
         · rw [emit_code_lt_nextLabel _ _ (by
-            simp only [emit, List.length_cons, List.length_nil]; omega)]
+            grind [emit])]
           have h := emit_code_at_new
             { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
             [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
@@ -553,8 +545,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
               (Rhs.FromExposed (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg))) := by
         rw [h_spc]
         refine h_instCS2 _ _ ?_ ?_
-        · simp only [emit, List.length_cons, List.length_nil]
-          omega
+        · grind [emit]
         · have h := emit_code_at_new
             { (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
@@ -571,8 +562,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
               (blockSize obseq.LayoutTy.NatL)) := by
         rw [h_spc]
         refine h_instCS2 _ _ ?_ ?_
-        · simp only [emit, List.length_cons, List.length_nil]
-          omega
+        · grind [emit]
         · have h := emit_code_at_new
             { (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
@@ -632,9 +622,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
         h_code2 h_bentry h_lt h_read2 h_cell_tgt h_res_tgt
       have h_regbv : (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
           ≠ (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) := by
-        intro h_eq
-        injection h_eq with h_eq'
-        omega
+        grind
       have h_bentry2 : oseair.RegMap.lookup
           (oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg
             (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
@@ -669,11 +657,11 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
       refine ⟨h_sclean, _, _, perms', [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 (sM.mem.resolveAddr n).2.2 wildcardTag], rfl, rfl,
         oseair_runN_trans (oseair_runN_trans (oseair_runN_trans h_srun h_run1)
           h_run2) h_run3,
-        (by simp only [emit]; exact h_sprm),
-        (by simp only [emit]; omega), ?_, h_psim2q, ?_, h_smem,
+        (by grind [emit]),
+        (by grind [emit]), ?_, h_psim2q, ?_, h_smem,
         (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
-        (by show _ < _; simp only [emit]; omega),
+        (by grind [emit]),
         ⟨⟨h_alloc.2.2 _, rfl, rfl, h_wf_t.2,
           fun k _ => ⟨_, h_alloc.2.2 ((sM.mem.resolveAddr n).1 + k)⟩⟩, trivial⟩⟩
       · intro τ' loc' binding' h_env'
@@ -777,9 +765,7 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
             (Rhs.FromExposed sOut.result.reg)) := by
         rw [h_spc]
         refine h_instD _ _ ?_ ?_
-        · simp only [csCleanup, h_sclean, List.append_nil, emit,
-            List.length_cons, List.length_nil]
-          omega
+        · grind [emit]
         · simp only [csCleanup, h_sclean, List.append_nil]
           have h := emit_code_at_new
             { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with
@@ -817,15 +803,15 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
         [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1
           (sM.mem.resolveAddr n).2.2 wildcardTag],
         rfl, rfl, oseair_runN_trans h_srun h_run1,
-        (by simp only [emit]; exact h_sprm),
-        (by simp only [emit]; exact Nat.le_trans h_sregmono (Nat.le_succ _)),
+        (by grind [emit]),
+        (by grind [emit]),
         ?_, h_psim2,
         (by rw [sb_read_NextTag h_read_src, sb_read_NextTag h_read_tgt, h_snt1]
             exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2),
         h_smem,
         (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
-        (by show _ < _; simp only [emit]; omega),
+        (by grind [emit]),
         ⟨⟨h_alloc.2.2 _, rfl, rfl, h_wf_t.2,
           fun k _ => ⟨_, h_alloc.2.2 ((sM.mem.resolveAddr n).1 + k)⟩⟩, trivial⟩⟩
       · intro τ' loc' binding' h_env'

@@ -1265,13 +1265,12 @@ theorem ptrChain_lowering_sim
                   rw [h_bpc]
                   refine h_inst _ _ ?_ ?_
                   · rw [h_runD]
-                    simp only [emit, List.length_cons, List.length_nil]
-                    omega
+                    grind [emit]
                   · rw [h_runD]
                     rw [emit_code_lt_nextLabel _ _ (by
-                      simp only [emit, List.length_cons, List.length_nil]; omega)]
+                      grind [emit])]
                     rw [emit_code_lt_nextLabel _ _ (by
-                      simp only [emit, List.length_cons, List.length_nil]; omega)]
+                      grind [emit])]
                     have h := emit_code_at_new
                       { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs) with
                           nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1 }
@@ -1309,11 +1308,10 @@ theorem ptrChain_lowering_sim
                         (Rhs.Load obseq.TyVal.PTy (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg))) := by
                   refine h_inst _ _ ?_ ?_
                   · rw [h_runD, h_bpc]
-                    simp only [emit, List.length_cons, List.length_nil]
-                    omega
+                    grind [emit]
                   · rw [h_runD, h_bpc]
                     rw [emit_code_lt_nextLabel _ _ (by
-                      simp only [emit, List.length_cons, List.length_nil]; omega)]
+                      grind [emit])]
                     have h := emit_code_at_new
                       { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs) with
                             nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1 }
@@ -1366,8 +1364,7 @@ theorem ptrChain_lowering_sim
                   exact h_die1
                 have h_regne : Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg
                     ≠ Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1) := by
-                  simp only [ne_eq, Register.R.injEq]
-                  omega
+                  grind
                 have h_entry_tmp2 : PtrRegisterEntry
                     (oseair.RegMap.insert
                       (oseair.RegMap.insert s_mid.reg
@@ -1390,8 +1387,7 @@ theorem ptrChain_lowering_sim
                         (blockSize (obseq.LayoutTy.PtrL τ'))) := by
                   refine h_inst _ _ ?_ ?_
                   · rw [h_runD, h_bpc]
-                    simp only [emit, List.length_cons, List.length_nil]
-                    omega
+                    grind [emit]
                   · rw [h_runD, h_bpc]
                     have h := emit_code_at_new
                       (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs) with
@@ -1492,8 +1488,7 @@ theorem ptrChain_lowering_sim
                     (Nat.le_trans (Nat.le_succ _) (Nat.le_succ _))
                 · rw [h_runD]
                   have h_lab := h_blabmono
-                  simp only [emit, List.length_cons, List.length_nil]
-                  omega
+                  grind [emit]
                 · intro r h_below
                   have h_ne1 : r ≠ Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg := by
                     cases r with
@@ -2858,7 +2853,7 @@ theorem ref_chainsrc_borrow
     oseair_runN_trans h_drun h_run1, ?_, ?_, h_dprm, h_dregmono, h_dmem, h_dclean,
     h_rt_new,
     ⟨⟨h_dbase, h_off_eq, rfl, h_rt_new, fun k hk => h_drange k hk⟩, trivial⟩⟩
-  · exact LocalBindingSim.placeRegMap_congr (by simp only [emit]; exact h_dprm)
+  · exact LocalBindingSim.placeRegMap_congr (by grind [emit])
       (LocalBindingSim.insert_fresh_reg
         (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_dlbs)
         h_prb h_dregmono rfl)
@@ -3045,7 +3040,7 @@ theorem copy_boundproj_write_after_read
       (fun k hk => by
         rw [show rd.addr + k = dbase + (boff + off + k) by
           rw [h_rdaddr, Nat.add_assoc]]
-        obtain ⟨a', ha'⟩ := h_domD (boff + off + k) (by rw [h_mlen] at hk; omega)
+        obtain ⟨a', ha'⟩ := h_domD (boff + off + k) (by grind)
         rw [ha', h_id_a _ _ ha'])
       h_step
   have h_run2 := h_exec sB _ (Register.R csR.nextReg)
@@ -3208,7 +3203,7 @@ theorem copy_boundplain_write_after_read
       (fun k hk => by
         rw [show rd.addr + k = dbase + (boff + k) by
           rw [h_rdaddr, Nat.add_assoc]]
-        obtain ⟨a', ha'⟩ := h_domD (boff + k) (by rw [h_mlen] at hk; omega)
+        obtain ⟨a', ha'⟩ := h_domD (boff + k) (by grind)
         rw [ha', h_id_a _ _ ha'])
       h_step
   have h_run2 := h_exec sR _ dstReg (fun _ _ => rfl) h_code h_wtp
@@ -4057,8 +4052,7 @@ theorem storereg_localfresh_simulation
       rw [h_pc]
       refine ((CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono
         h_incrAlloc) _ _ ?_ ?_
-      · simp only [emit, List.length_cons, List.length_nil]
-        omega
+      · grind [emit]
       · have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
           [Instr.Assgn (Register.R csPrefix.nextReg)
             (Rhs.Alloc (layoutToTyVal τ))] (k := 0) (by simp)
@@ -4577,8 +4571,7 @@ theorem storereg_projlocalfresh_simulation
       rw [h_pc]
       refine ((CodeIncluded.of_stmt h_comp h_csAt h_stmt h_stmtOut).mono
         h_incrAlloc) _ _ ?_ ?_
-      · simp only [emit, List.length_cons, List.length_nil]
-        omega
+      · grind [emit]
       · have h := emit_code_at_new { csPrefix with nextReg := csPrefix.nextReg + 1 }
           [Instr.Assgn (Register.R csPrefix.nextReg)
             (Rhs.Alloc (layoutToTyVal σ))] (k := 0) (by simp)

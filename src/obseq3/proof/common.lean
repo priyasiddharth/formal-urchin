@@ -520,7 +520,6 @@ theorem TagRenameBounded.extend {ρt : TagRenameMap} {nS nT nS' nT' s t : Tag}
     (h_bd : TagRenameBounded ρt nS nT)
     (h_le : nS ≤ nS') (h_le' : nT ≤ nT') (h_s : s < nS') (h_t : t < nT') :
     TagRenameBounded (ρt.extend s t) nS' nT' := by
-  intro x x' hx
   grind
 
 /-- The bound is monotone in the counters (both machines only ever mint). -/
@@ -820,7 +819,6 @@ theorem AddrRenameIncr.extend_id {ρa : AddrRenameMap}
 theorem IdentityOnDomain.extend_id {ρa : AddrRenameMap}
     (h_id : IdentityOnDomain ρa) (a : Word) :
     IdentityOnDomain (ρa.extend a a) := by
-  intro x x' hx
   grind
 
 /-- Identity extension over a whole block: every cell of `[base, base+n)`
@@ -848,7 +846,6 @@ theorem AddrRenameIncr.extendIdRange {ρa : AddrRenameMap}
 theorem IdentityOnDomain.extendIdRange {ρa : AddrRenameMap}
     (h_id : IdentityOnDomain ρa) (base : Word) (n : Nat) :
     IdentityOnDomain (ρa.extendIdRange base n) := by
-  intro x x' hx
   grind
 
 /-- `PlaceInputsMapped` only reads `placeRegMap`, so it transfers across
@@ -2128,12 +2125,12 @@ theorem EmittedAt.snoc {cs : CompilerState} {base : Nat} {l : List Instr}
   · intro k hk
     rw [List.length_append] at hk
     by_cases hkl : k < l.length
-    · rw [emit_code_lt_nextLabel _ _ (by rw [h.nextLabel]; omega), h.code k hkl]
+    · rw [emit_code_lt_nextLabel _ _ (by grind [EmittedAt.nextLabel]), h.code k hkl]
       simp only [List.get?, List.getElem?_append_left hkl]
     · have hge : l.length ≤ k := Nat.not_lt.mp hkl
       have hj : k - l.length < l'.length := by omega
       have hb : base + k = cs.nextLabel + (k - l.length) := by
-        rw [h.nextLabel]; omega
+        grind [EmittedAt.nextLabel]
       rw [hb, emit_code_at_new _ _ hj]
       simp only [List.get?, List.getElem?_append_right hge]
   · rw [emit, h.nextLabel, List.length_append]
@@ -2162,7 +2159,7 @@ theorem CodeIncluded.fragmentAt {compProg : obseq3.oseair.Prog}
     FragmentAt compProg base instrs := by
   intro k i h_get
   have hk : k < instrs.length := (List.get?_eq_some_iff.mp h_get).1
-  exact h _ _ (by rw [h_em.nextLabel]; omega) (by rw [h_em.code k hk]; exact h_get)
+  exact h _ _ (by grind [EmittedAt.nextLabel]) (by rw [h_em.code k hk]; exact h_get)
 
 /-- The leaf knows its fragment starts at `s_osea.pc`, not at
     `csPrefix.nextLabel`; `h_pc` bridges them. -/
