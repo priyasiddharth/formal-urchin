@@ -597,47 +597,58 @@ close it if it diverges.
 **References:** ptroffset-defers-ub-to-the-use.md,
 stacked-borrows-does-not-subsume-bounds-checks.md
 
-## Admit `refSlice` — the bracket-with-a-mint keystone
-**Status:** parked 2026-09-14, groundwork landed (6b51120).
+## Admit `refSlice` — the fold assembly is all that is left
+**Status:** parked 2026-09-14. Content layer DONE (6b51120, 5c3acab).
 **Context:** `refSlice` is a proved read-then-store member except for
 `pkgProjOffset`. Its mint runs BETWEEN the projection's `Borrow(Shared)`
-and the `Die`, and `bridge1S_of_read` cannot see through that: the
-intermediate state still carries the temporary, so it is not `PermSim`
-to mirlite's post-read state — only the post-die state is.
-**Already proved** (keystone.lean, "Sliding a `Die` past the mint"):
-`dieCellContent_absent`, `dieCellContent_cons_ne`, `splitStack_cons_ne`,
-`resolveWildcardIn_cons_unexposed`, `resolveWildcardIn_exposed`,
-`firstProtectedIn_cons_unprot`, and the READ branch
-`readCellContent_cons_ref`.
-**To resume — three branches left**, all of the same shape (peel
-`Item.Ref t ::` off the front):
-  * `insertAboveContent` — easy, no protector or filter involvement; the
-    result is literally `Ref t :: (above ++ item :: granting :: below)`.
-    Covers `Raw true`, masked `Shared`/`Raw false`, and TwoPhase's tail.
-  * `writeCellContent` — the leading item is DISCARDED, not peeled, so
-    the statement is `write (Ref t :: r) = write r`. Two subtleties:
-    (i) the SRW run. `grp = above.reverse.takeWhile isSrw`, and since
-    `Ref t` is not SRW and lands LAST in the reversed list, `takeWhile`
-    stops before it either way — so `grp` is unchanged. Needs a
-    `takeWhile (L ++ [x])` lemma with `x` failing the predicate.
-    (ii) `rest = above.take (above.length - grp.length)` gains `Ref t`
-    at its head, which only reaches `firstProtectedIn` — discharged by
-    `firstProtectedIn_cons_unprot`.
-  * TwoPhase = read then insert-above; falls out of the other two.
-**The one non-local obligation.** In the `Mut` case the write discards
-the temporary, so the `Die` must then find NO `t` in the result — which
-needs `t ∉ r`, i.e. tag freshness. The existing keystones dodge every
-such invariant by CONSTRUCTING the post-borrow stacks as explicit chains
-(`W₁ j = Item.Ref s.NextTag :: W j`) rather than reasoning about
-arbitrary stacks; do the same here and `t ∉ r` is immediate from the
-construction. Do NOT try to add a global "all tags < NextTag" invariant.
-**Then:** fold-level plumbing (cells outside the mint range are
-untouched — the `foldCells_ok_inv` family), assemble as
-`bridge1S_of_read_then_ref` beside `bridge1S_of_read`, derive
-`refslice_readpkg_projoffset` the way `expose_readpkg_projoffset`
-derives, then family / `CoreRhs` / dispatcher.
-**Effort estimate:** ~half-day remaining. It is a third keystone of the
-same order as the two existing ones (~200 lines each), plus plumbing.
+and the `Die`, and `bridge1S_of_read` cannot see through that.
+**Proved and green** (keystone.lean, "Sliding a `Die` past the mint";
+permsim_transport.lean):
+  dieCellContent_absent / _cons_ne / _top_ref   the die's own algebra
+  splitStack_cons_ne, splitStack_mem
+  resolveWildcardIn_cons_unexposed / _exposed
+  firstProtectedIn_cons_unprot
+  readCellContent_cons_ref        READ peels the temporary
+  insertAboveContent_cons_ref     INSERT-ABOVE splices below it
+  writeCellContent_cons_ref       WRITE discards it (SRW run unaffected,
+                                  via takeWhile_append_singleton_false)
+  writeCellContent_mem            a write introduces nothing new
+  freshTag_not_in_stack           the fresh tag is in no target stack
+All four `refCellOp` branches (mask is `[]` for `BorrowRest`, so the
+masked arms do not arise) have their content lemma.
+
+**What is left: the fold assembly, and the invariant is settled.**
+Carry, over `foldCellsIdx (refCellOp p kind n [])`:
+    (i)  ∀ b ≠ a, find? ap1 b = find? ap2 b
+    (ii) dieCellContent pf t (find? ap1 a) = .ok (find? ap2 a)
+Cells `c ≠ a` preserve both — the op touches only `c`. The cell `c = a`
+is where the content lemmas fire. Crucially the fold visits `a` AT MOST
+ONCE (offsets are distinct), so (ii) does not have to be preserved by a
+second visit — which is what lets the whole thing avoid membership
+lemmas for read and insert-above.
+
+**The one piece of plumbing that does not exist yet:** a way to use
+"visited at most once". Two routes:
+  * a disjointness lemma — the fold preserves `find?` at cells outside
+    `[addr+i, addr+len)` — plus splitting the fold at `a`'s index, which
+    needs a `foldCellsIdx` composition lemma; or
+  * carry `∀ j, i ≤ j → j < len → addr + j ≠ a` in the "already visited"
+    branch of the invariant, so the induction never has to revisit.
+The second is probably cheaper and needs no new composition lemma.
+
+**Do NOT** try to prove `readCellContent_mem` / `insertAboveContent_mem`
+first: they were attempted and are only needed if the invariant is stated
+without the visited-once observation. They also fight Lean's `split` on
+the 5-constructor item match (`writeCellContent_mem` shows the pattern
+that does work: `cases item with` enumerating all five).
+
+**Then:** assemble as `bridge1S_of_read_then_ref` beside
+`bridge1S_of_read`, derive `refslice_readpkg_projoffset` the way
+`expose_readpkg_projoffset` derives, then family / `CoreRhs` /
+dispatcher — `refslice_readpkg_lowered`, `readRhsShape_refSlice` and
+`runN_Assgn_BorrowRest_step` are already in.
+**Effort estimate:** ~3-4h. The content mathematics is done; what remains
+is the induction and the wiring.
 **References:** die-is-permissive-when-not-on-top.md,
 refslice-projsrc-mut-pops-the-projection-borrow.md,
 one-leaf-per-destination-shape.md
