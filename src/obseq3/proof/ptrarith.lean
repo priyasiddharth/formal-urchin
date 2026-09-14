@@ -618,4 +618,177 @@ theorem CompilerInv_step_ptrCast
     h_inv h_stmt h_step
 
 
+
+/-! ## `refSlice`: the one read-then-store rvalue that MINTS
+
+A slice retag reads the fat-pointer cell and then takes a fresh tag over
+the REST of its allocation (`size - offset`), which is why the read
+packages let the renaming grow (2026-09-14). The chain-class package
+below is `ptrOffset`'s with `sb_ref_respects_PermSim` where the offset
+arithmetic was.
+
+**`refSlice` is NOT in `CoreRhs`, and the obstacle is a COMPILER BUG, not
+a missing package.** The projected-source-at-nonzero-offset case is
+mis-compiled: the source lowering holds a `Borrow(Shared)` on the
+fat-pointer cell across the mint, and a `Mut` retag whose range covers
+that cell performs a write access through the loaded pointer's tag, which
+pops the borrow — so the cleanup `Die` fails while mirlite, which has no
+projection borrow at all, runs clean. Pinned as
+`rs_known_divergence_projsrc_mut` (compile_tests.lean) with teeth, and
+written up in
+notes/durable/refslice-projsrc-mut-pops-the-projection-borrow.md.
+
+`Raw`/`Shared` retags do not diverge — they access for read and their
+item is inserted directly above the granting one — so the bug is narrow,
+but `ReadRhsFamily` needs `pkgProjOffset` for every kind. The chain-class
+package, the shape instance (`readRhsShape_refSlice`, by `rfl`) and the
+machine step (`runN_Assgn_BorrowRest_step`) are kept as the groundwork a
+fix would build on; nothing depends on them yet. -/
+
+/-- **The `refSlice` read package**, chain-class source. -/
+theorem refslice_readpkg_lowered {σ τ : LayoutTy}
+    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (kind : RefKind) (prot : Bool)
+    (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
+    ReadPkgLowered compProg (.refSlice (τ := τ) kind prot src) src
+      (Rhs.BorrowRest kind prot) := by
+  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
+    output h_eval
+  simp only [mirlite.evalRExpr] at h_eval
+  cases h_sres : mirlite.resolvePlaceAcc MSB sM src with
+  | error e => rw [h_sres] at h_eval; simp at h_eval
+  | ok pr =>
+  obtain ⟨rs, permsS⟩ := pr
+  rw [h_sres] at h_eval
+  simp only at h_eval
+  by_cases h_fit : rs.addr + 1 > rs.allocBase + rs.allocSize
+  · rw [if_pos h_fit] at h_eval
+    simp at h_eval
+  · rw [if_neg h_fit] at h_eval
+    cases h_read_src : MSB.read permsS rs.addr 1 rs.tag with
+    | error e => rw [h_read_src] at h_eval; simp at h_eval
+    | ok perms' =>
+    rw [h_read_src] at h_eval
+    simp only at h_eval
+    cases h_cell : mirlite.Mem.find? sM.mem rs.addr with
+    | none => rw [h_cell] at h_eval; simp at h_eval
+    | some v =>
+      cases v with
+      | undef => rw [h_cell] at h_eval; simp at h_eval
+      | word n => rw [h_cell] at h_eval; simp at h_eval
+      | ptrVal pb po ps pt =>
+      rw [h_cell] at h_eval
+      simp only at h_eval
+      cases h_ref_src : MSB.ref perms' (pb + po) (ps - po) pt kind prot [] with
+      | error e => rw [h_ref_src] at h_eval; simp at h_eval
+      | ok pr2 =>
+        obtain ⟨perms'', newTag⟩ := pr2
+        rw [h_ref_src] at h_eval
+        injection h_eval with h_out
+        subst h_out
+        refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
+            (resolvePlace?_of_resolveAcc h_sres), ?_⟩
+        intro sOut0 h_sval0 h_instS h_instD
+        -- the source mother
+        obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
+          h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
+          h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
+          h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
+            rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
+        have h_sOut_eq : sOut = sOut0 := by
+          rw [h_sval0] at h_sval
+          exact (Except.ok.inj h_sval).symm
+        subst h_sOut_eq
+        have h_cancel := resolvedAddr_cancel h_sle
+        -- the STORED pointer, on the target side
+        obtain ⟨addr', value', h_ra', h_find_tgt, h_mvs⟩ := h_sms rs.addr _ h_cell
+        have h_addr' : addr' = rs.addr := (h_id_a _ _ h_ra').symm
+        subst h_addr'
+        cases value' with
+        | Undef => exact h_mvs.elim
+        | Dat _ => exact h_mvs.elim
+        | Ptr pb2 po2 ps2 pt2 =>
+        obtain ⟨h_pb, h_po, h_ps, h_pt, h_prange⟩ := h_mvs
+        have h_pb2 : pb2 = pb := (h_id_a _ _ h_pb).symm
+        subst h_pb2
+        subst h_po
+        subst h_ps
+        -- the READ: transport, then execute the offset
+        obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
+          sb_read_respects_PermSim h_spsim h_wf_t h_srt h_read_src
+        have h_code1 : compProg s_mid1.pc
+            = some (Instr.Assgn (Register.R (CheckedCompilerM.run
+                (placeToRegChecked RefKind.Shared src) csA).nextReg)
+              (Rhs.BorrowRest kind prot sOut.result.reg)) := by
+          rw [h_spc]
+          refine h_instD _ _ ?_ ?_
+          · grind [emit]
+          · simp only [csCleanup, h_sclean, List.append_nil]
+            have h := emit_code_at_new
+              { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with
+                nextReg := (CheckedCompilerM.run
+                  (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 }
+              [Instr.Assgn (Register.R (CheckedCompilerM.run
+                  (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                (Rhs.BorrowRest kind prot sOut.result.reg)]
+              (k := 0) (by simp)
+            simpa using h
+        have h_lt : rs.addr - rs.allocBase < rs.allocSize := by
+          have h1 : rs.addr + 1 ≤ rs.allocBase + rs.allocSize := Nat.not_lt.mp h_fit
+          have h2 := h_sle
+          grind
+        have h_read2t : MSB.read s_mid1.perms
+            (rs.allocBase + (rs.addr - rs.allocBase)) 1 tres = .ok p2 := by
+          rw [h_cancel]
+          exact h_read_tgt
+        have h_cell_tgt : oseair.Mem.find? s_mid1.mem
+            (rs.allocBase + (rs.addr - rs.allocBase))
+            = some (Val.Ptr pb2 po2 ps2 pt2) := by
+          rw [h_cancel, h_smem]
+          exact h_find_tgt
+        -- the retag transports and extends the renaming
+        have h_tbd_mid : TagRenameBounded ρt perms'.NextTag p2.NextTag := by
+          rw [sb_read_NextTag h_read_src, sb_read_NextTag h_read_tgt, h_snt1]
+          exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2
+        obtain ⟨q, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
+          sb_ref_respects_PermSim h_psim2 h_wf_t h_tbd_mid h_pt h_ref_src
+        subst h_fresh_eq
+        have h_run1 := runN_Assgn_BorrowRest_step compProg s_mid1
+          (Register.R (CheckedCompilerM.run
+            (placeToRegChecked RefKind.Shared src) csA).nextReg)
+          sOut.result.reg kind prot
+          h_code1 h_sentry h_lt h_read2t h_cell_tgt h_ref_tgt
+        -- the temporary is above every mapped register, and the offset
+        -- touches nothing else
+        have h_ins : LocalBindingSim ρa ρt sM.env
+            { s_mid1 with
+              perms := q,
+              reg := oseair.RegMap.insert s_mid1.reg
+                (Register.R (CheckedCompilerM.run
+                  (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                (obseq.TyVal.PTy, [Val.Ptr pb2 po2 ps2 p2.NextTag]),
+              pc := s_mid1.pc + 1 } csA :=
+          LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
+        refine ⟨h_sclean, ρt.extend perms'.NextTag p2.NextTag, n1 + 1, _, perms'',
+          [Val.Ptr pb2 po2 ps2 p2.NextTag],
+          h_incr_t, h_wf_t',
+          rfl, rfl, oseair_runN_trans h_srun h_run1,
+          (by grind [emit]),
+          (by grind [emit]),
+          ?_,
+          h_psim',
+          h_tbd', h_smem,
+          (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
+          RegMap.lookup_insert_self _ _ _,
+          (by grind [emit]),
+          ⟨⟨h_pb, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩⟩
+        · intro τ' loc' binding' h_env'
+          obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
+            (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_ins)
+              loc' binding' h_env'
+          refine ⟨reg', base', tag', ?_, h_entry', h_ra2', h_rt', h_nw', h_dom'⟩
+          show getPlaceInfo _ loc'.idx.1 = _
+          simp only [getPlaceInfo, emit]
+          rw [h_sprm]
+          exact h_pi'
+
 end obseq3.proof

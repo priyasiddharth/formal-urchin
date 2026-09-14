@@ -1814,6 +1814,15 @@ theorem readRhsShape_fromExposed {Γ : Ctx} {τ : LayoutTy}
     ReadRhsShape (.fromExposed (τ := τ) src) src Rhs.FromExposed :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.fromExposed src srcRes srcEv, rfl⟩
 
+/-- A slice retag is read-then-store: it lowers its source place shared
+    and emits one `Rhs.BorrowRest`. Unlike every other member it MINTS,
+    which is why the read packages let the renaming grow. -/
+theorem readRhsShape_refSlice {Γ : Ctx} {σ τ : LayoutTy}
+    (kind : RefKind) (prot : Bool) (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    ReadRhsShape (.refSlice (τ := τ) kind prot src) src
+      (Rhs.BorrowRest kind prot) :=
+  ⟨fun srcRes srcEv _ => RExprToEvidence.refSlice kind prot src srcRes srcEv, rfl⟩
+
 /-- A ptr-to-ptr cast is read-then-store: it IS a one-cell `Load` at
     `PTy`, the same instruction `copy` emits at a pointer layout. -/
 theorem readRhsShape_ptrCast {Γ : Ctx} {σ τ : LayoutTy}
@@ -2024,6 +2033,42 @@ theorem runN_Assgn_ExposeAddr_step
                pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
       h_bounds, Bool.false_eq_true, if_false, h_read, h_cell]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- A slice retag executes in one `runN` step: the pointer register is
+    read, the SB read of the fat-pointer cell succeeds, the cell holds a
+    pointer, and a fresh tag is minted over the REST of its allocation
+    (`size - offset`). The destination register receives the same block,
+    offset and size at the new tag. -/
+theorem runN_Assgn_BorrowRest_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst preg : Register) (kind : RefKind) (prot : Bool)
+    {b o sz : Word} {t : Tag} {p2 p3 : AccessPerms}
+    {pb po ps : Word} {pt newTag : Tag}
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.BorrowRest kind prot preg)))
+    (h_entry : PtrRegisterEntry s.reg preg b o sz t)
+    (h_lt : o < sz)
+    (h_read : MSB.read s.perms (b + o) 1 t = .ok p2)
+    (h_cell : oseair.Mem.find? s.mem (b + o) = some (Val.Ptr pb po ps pt))
+    (h_ref : MSB.ref p2 (pb + po) (ps - po) pt kind prot [] = .ok (p3, newTag)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p3,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr pb po ps newTag]),
+               pc := s.pc + 1 } := by
+  have h_lookup : oseair.RegMap.lookup s.reg preg
+      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  have h_bounds : ((b + o < b) || (b + o ≥ b + sz)) = false := by
+    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
+    exact ⟨Nat.not_lt.mpr (Nat.le_add_right b o),
+      Nat.not_le.mpr (Nat.add_lt_add_left h_lt b)⟩
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p3,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr pb po ps newTag]),
+               pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
+      h_bounds, Bool.false_eq_true, if_false, h_read, h_cell, h_ref]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- Pointer arithmetic executes in one `runN` step: the pointer register

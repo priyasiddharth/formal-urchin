@@ -311,6 +311,12 @@ def evalRExpr
       match resolvePlaceAcc M state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
+          -- the fat-pointer cell must be readable, exactly as the
+          -- compiled `Rhs.BorrowRest` requires of the register it reads
+          -- through (oseair.lean: `addr < base || addr >= base + size`)
+          if resolved.addr + 1 > resolved.allocBase + resolved.allocSize then
+            .err "slice retag of an out-of-bounds place"
+          else
           match M.read permsR resolved.addr 1 resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
