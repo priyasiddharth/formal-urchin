@@ -2409,6 +2409,86 @@ theorem runN_CStore_step
     · exact h_wtp
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
+/-! ### The store STEP, abstracted over the instruction
+
+    `RStore` and `CStore` differ in exactly one place: where the values
+    come from. Both reduce to the same `writeThroughPtr`, and even the
+    error string they hand it is unobservable on the successful path.
+    `StoreStep` is what a write seam actually needs of a store — that
+    executing it performs the write — so a seam stated over `StoreStep`
+    serves the register stores of copy, the casts and ref, and the
+    constant stores of `constInit` and `uninit`, alike. -/
+
+/-- The invalid-pointer message is only ever produced on the failing
+    branch, so a successful write does not depend on it. -/
+theorem writeThroughPtr_msg_irrel {M : PermissionModel} {s s' : oseair.State M}
+    {ptr : Register} {vals : List Val} (m1 m2 : String)
+    (h : oseair.writeThroughPtr M s ptr vals m1 = oseair.Result.Ok s') :
+    oseair.writeThroughPtr M s ptr vals m2 = oseair.Result.Ok s' := by
+  revert h
+  unfold oseair.writeThroughPtr
+  split
+  · exact id
+  · simp
+
+/-- One store instruction, at a state whose registers agree with the
+    post-rvalue state's below `bound`, performs the write. `bound` is
+    what carries a REGISTER store's operand across a destination lowering
+    that allocates registers of its own; a constant store ignores it. -/
+def StoreStep (compProg : oseair.Prog) (sR : oseair.State MSB) (bound : Nat)
+    (mkStore : Register → Instr) (vals : List Val) : Prop :=
+  ∀ (s s' : oseair.State MSB) (dreg : Register),
+    (∀ r, RegisterBelow bound r →
+      oseair.RegMap.lookup s.reg r = oseair.RegMap.lookup sR.reg r) →
+    compProg s.pc = some (mkStore dreg) →
+    oseair.writeThroughPtr MSB s dreg vals "store" = oseair.Result.Ok s' →
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok s'
+
+/-- A REGISTER store: the operand register must still hold the value, which
+    is what the frame agreement and `RegisterBelow` deliver. -/
+theorem StoreStep.rstore (compProg : oseair.Prog) (sR : oseair.State MSB)
+    (bound : Nat) (ty : obseq.TyVal) (vreg : Register) (vals : List Val)
+    (h_vregR : oseair.RegMap.lookup sR.reg vreg = some (ty, vals))
+    (h_vbelow : RegisterBelow bound vreg) :
+    StoreStep compProg sR bound (fun d => Instr.RStore ty vreg d) vals := by
+  intro s s' dreg h_frame h_code h_wtp
+  have h_v : oseair.RegMap.lookup s.reg vreg = some (ty, vals) := by
+    rw [h_frame vreg h_vbelow]; exact h_vregR
+  have h_ptr : ∃ x, oseair.RegMap.lookup s.reg dreg = some x := by
+    cases hL : oseair.RegMap.lookup s.reg dreg with
+    | none =>
+        exfalso
+        rw [oseair.writeThroughPtr, hL] at h_wtp
+        simp at h_wtp
+    | some x => exact ⟨x, rfl⟩
+  obtain ⟨x, hx⟩ := h_ptr
+  exact runN_RStore_step compProg s s' ty vreg dreg vals x h_code h_v hx
+    (writeThroughPtr_msg_irrel _ _ h_wtp)
+
+/-- Transport a store across a later state and a higher watermark: the
+    later state must agree with the earlier one on everything below the
+    ORIGINAL watermark, which is what a destination lowering's register
+    frame gives. -/
+theorem StoreStep.mono {compProg : oseair.Prog} {sR sR' : oseair.State MSB}
+    {b b' : Nat} {mkStore : Register → Instr} {vals : List Val}
+    (h : StoreStep compProg sR b mkStore vals) (h_le : b ≤ b')
+    (h_frame : ∀ r, RegisterBelow b r →
+      oseair.RegMap.lookup sR'.reg r = oseair.RegMap.lookup sR.reg r) :
+    StoreStep compProg sR' b' mkStore vals := by
+  intro s s' dreg h_fr h_code h_wtp
+  refine h s s' dreg (fun r hr => ?_) h_code h_wtp
+  rw [h_fr r (RegisterBelow.mono h_le hr), h_frame r hr]
+
+/-- A CONSTANT store: the values ride in the instruction, so no register
+    has to survive anything. -/
+theorem StoreStep.cstore (compProg : oseair.Prog) (sR : oseair.State MSB)
+    (bound : Nat) (ty : obseq.TyVal) (vals : List Val)
+    (h_size : vals.length = obseq.typeSize ty) :
+    StoreStep compProg sR bound (fun d => Instr.CStore ty vals d) vals := by
+  intro s s' dreg _ h_code h_wtp
+  exact runN_CStore_step compProg s s' ty vals dreg h_code h_size
+    (writeThroughPtr_msg_irrel _ _ h_wtp)
+
 theorem runN_Die_step
     (compProg : oseair.Prog) (s : oseair.State MSB) (r : Register) (len : Nat)
     {b o sz : Word} {t : Tag} {p2 : AccessPerms}

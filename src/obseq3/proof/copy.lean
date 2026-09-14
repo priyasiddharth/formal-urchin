@@ -1030,8 +1030,9 @@ theorem ValuePkg.of_readPkgLowered
     simp only [h_rhs, readRhsPre, csMonad, csRun, h_sval0]
   rw [h_rhs]
   simp only [readRhsPre, csMonad, csRun, h_sval0]
-  refine ⟨Register.R (CheckedCompilerM.run
-      (placeToRegChecked RefKind.Shared src) csA).nextReg, _, rfl, fun _ => rfl, rfl,
+  refine ⟨fun d => Instr.RStore (layoutToTyVal τ) (Register.R
+      (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) d,
+    _, rfl, fun _ => rfl, rfl,
     by simp only [emit]; exact h_prmS csA, ?_⟩
   intro h_code
   obtain ⟨h_sclean, nR, sR, perms₂, vals, h_ost, h_vlen, h_runR, h_prmR,
@@ -1042,9 +1043,11 @@ theorem ValuePkg.of_readPkgLowered
       h_code
   -- with the source cleanup empty the two spellings of the tower agree
   simp only [csCleanup, h_sclean, List.append_nil]
+  have h_execR := StoreStep.rstore compProg sR _ (layoutToTyVal τ) _ vals
+    h_vregR h_vbelow
   exact ⟨ρt, nR, sR, perms₂, vals, TagRenameIncr.refl ρt, h_wf_t, h_ost, h_vlen,
-    h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR,
-    h_vbelow, h_valsRel⟩
+    h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_execR,
+    h_valsRel⟩
 
 /-- copy's chain-class read package, as an instance of the generic one. -/
 theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
@@ -1112,9 +1115,10 @@ theorem ValuePkg.of_readPkgProjOffset
     h_np h_o h_sval0
   rw [h_rhs]
   simp only [readRhsPre, csMonad, csRun, h_svalP]
-  refine ⟨Register.R (CheckedCompilerM.run
-      (placeToRegChecked RefKind.Shared (Place.proj B spath)) csA).nextReg, _, rfl,
-    fun _ => rfl, rfl,
+  refine ⟨fun d => Instr.RStore (layoutToTyVal τ) (Register.R
+      (CheckedCompilerM.run
+        (placeToRegChecked RefKind.Shared (Place.proj B spath)) csA).nextReg) d,
+    _, rfl, fun _ => rfl, rfl,
     by rw [h_prun]; simp only [emit]; exact h_prmB csA, ?_⟩
   intro h_code
   rw [h_prun] at h_code
@@ -1132,9 +1136,11 @@ theorem ValuePkg.of_readPkgProjOffset
   simp only [csCleanup, h_sclean, List.nil_append, List.append_nil,
     List.reverse_cons, List.map_cons, List.map_nil, List.cons_append]
   csnorm at h_vregR h_vbelow h_prmR h_regmonoR h_lbsR h_pcR ⊢
+  have h_execR := StoreStep.rstore compProg sR _ (layoutToTyVal τ) _ vals
+    h_vregR h_vbelow
   exact ⟨ρt, nR, sR, perms₂, vals, TagRenameIncr.refl ρt, h_wf_t, h_ost, h_vlen,
-    h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR,
-    h_vbelow, h_valsRel⟩
+    h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_execR,
+    h_valsRel⟩
 
 /-- copy's projected-source read package, as an instance of the generic one. -/
 theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : PathTo σs τ}

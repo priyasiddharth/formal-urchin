@@ -213,8 +213,8 @@ theorem ref_valuePkg_chain
       (cs := csA) (kind := kindL) h_mapped
     have h_pre := h_shape.preRun csA dOut h_dval
     obtain ⟨pOut, h_pval, h_store, h_clean⟩ := h_shape.preValue csA dOut h_dval
-    refine ⟨Register.R
-      (CheckedCompilerM.run (placeToRegChecked kindL B) csA).nextReg,
+    refine ⟨fun d => Instr.RStore obseq.TyVal.PTy (Register.R
+        (CheckedCompilerM.run (placeToRegChecked kindL B) csA).nextReg) d,
       pOut, h_pval, h_store, h_clean,
       by rw [h_pre]; simp only [emit]
          exact h_shape.chain.placeToRegChecked_placeRegMap kindL csA, ?_⟩
@@ -245,8 +245,9 @@ theorem ref_valuePkg_chain
       by rw [h_pre]; exact h_lbsB,
       by rw [hsB]; exact h_psim', by rw [hsB]; exact h_tbd', h_memB,
       by rw [h_pre]; exact h_pcB,
-      by rw [hsB]; exact RegMap.lookup_insert_self _ _ _,
-      by rw [h_pre]; show _ < _; simp only [emit]; omega,
+      StoreStep.rstore compProg sB _ obseq.TyVal.PTy _ _
+        (by rw [hsB]; exact RegMap.lookup_insert_self _ _ _)
+        (by rw [h_pre]; show _ < _; simp only [emit]; omega),
       h_relB⟩
 
 /-- A BARE LOCAL source: the chain lowering emits nothing, so the whole
