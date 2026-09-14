@@ -1,4 +1,4 @@
-# `Die` does nothing when its tag is no longer on top
+# `Die` removes its tag wherever it sits (and errors nowhere)
 
 Load this when reasoning about the `Borrow; use; Die` bracket a projected
 place lowering emits, or when tempted to treat `Die` as a Stacked Borrows
@@ -12,8 +12,14 @@ field offset. Its old "must be on top" branch was a self-check that
 brackets nest, not a semantic requirement.
 → src/obseq3/sb.lean, `dieCellContent`
 
-[FACT, 2026-09-14] **So the not-on-top branch is a no-op.** `.ok (item ::
-below)`, not an error. When an intervening access has already popped the
+[FACT, 2026-09-14] **So the not-on-top branch removes the item wherever
+it sits**, and an absent tag is a no-op. The first version of this change
+was only "no-op if not on top", which is NOT enough: a read access
+DISABLES rather than removes (`readCellContent`), so a `Shared` or
+`Raw false` mint inside the bracket PUSHES above the temporary and buries
+it. A buried temporary is a stale item mirlite never had — unobservable
+by any access, since its tag is dead, but `PermSim` relates stacks
+positionally and could not have related it. When an intervening access has already popped the
 temporary, SB has ended the borrow itself and the cleanup has nothing to
 do. The `Own`-root and protected branches stay errors: a compiler
 temporary is never either, so they are dead for the proof and kept as

@@ -597,42 +597,47 @@ close it if it diverges.
 **References:** ptroffset-defers-ub-to-the-use.md,
 stacked-borrows-does-not-subsume-bounds-checks.md
 
-## Admit `refSlice` — one commutation lemma left
-**Status:** parked 2026-09-14 (was "fix the projected-source lowering";
-that framing is superseded — the DIVERGENCE is fixed, see
-durable/die-is-permissive-when-not-on-top.md).
+## Admit `refSlice` — the bracket-with-a-mint keystone
+**Status:** parked 2026-09-14, groundwork landed (6b51120).
 **Context:** `refSlice` is a proved read-then-store member except for
-`pkgProjOffset`. Everything else is in: `readRhsShape_refSlice` (by
-`rfl`), `runN_Assgn_BorrowRest_step`, `refslice_readpkg_lowered`, and the
-read packages now let the tag renaming grow. With the permissive `Die`
-the projected case is TRUE — it just is not proved.
-**Why parked:** `bridge1S_of_read` gives `Borrow; read; die ≈ read`, but
-`refSlice` MINTS between the read and the die, and the mint cannot be
-transported at the intermediate state `q2` — `q2` carries the temporary,
-so it is not `PermSim` to mirlite's post-read state. Only `q3` (after the
-die) is. So the mint has to slide past the die.
-**To resume:** prove, at the `find?` level that `StackMapSim` uses,
-
-    sb_die (sb_ref s R pT k) a 1 tmp  ≈  sb_ref (sb_die s a 1 tmp) R pT k
-
-given that `tmp` is on top at cell `a` in `s`. Two cases:
-  * `a ∉ R` — `sb_ref`'s fold never touches cell `a`, so the die's cell
-    is untouched either way. Needs "foldCells preserves find? outside its
-    range", which is the easy half and may already follow from the
-    `foldCells_ok_inv` family in keystone.lean.
-  * `a ∈ R` — the per-cell argument. `Mut`: the write access pops `tmp`,
-    then `Unique` is pushed; the die no-ops. Order reversed: die pops
-    `tmp`, then the write pops above `pT` and pushes. Same stack.
-    `Raw`/`Shared`: the read leaves `tmp` (it is shared), the new item is
-    inserted directly above the GRANTING item — below `tmp` — and the die
-    pops `tmp` from the top. Order reversed: die pops `tmp`, then insert.
-    Same stack.
-Then package it as `bridge1S_of_read_then_ref` alongside
-`bridge1S_of_read` and derive `refslice_readpkg_projoffset` from it the
-way `expose_readpkg_projoffset` derives from `bridge1S_of_read`.
-**Effort estimate:** ~half-day. The two existing keystones are ~200 lines
-each and this is of that order; the disjoint half is much easier than the
-overlapping one.
+`pkgProjOffset`. Its mint runs BETWEEN the projection's `Borrow(Shared)`
+and the `Die`, and `bridge1S_of_read` cannot see through that: the
+intermediate state still carries the temporary, so it is not `PermSim`
+to mirlite's post-read state — only the post-die state is.
+**Already proved** (keystone.lean, "Sliding a `Die` past the mint"):
+`dieCellContent_absent`, `dieCellContent_cons_ne`, `splitStack_cons_ne`,
+`resolveWildcardIn_cons_unexposed`, `resolveWildcardIn_exposed`,
+`firstProtectedIn_cons_unprot`, and the READ branch
+`readCellContent_cons_ref`.
+**To resume — three branches left**, all of the same shape (peel
+`Item.Ref t ::` off the front):
+  * `insertAboveContent` — easy, no protector or filter involvement; the
+    result is literally `Ref t :: (above ++ item :: granting :: below)`.
+    Covers `Raw true`, masked `Shared`/`Raw false`, and TwoPhase's tail.
+  * `writeCellContent` — the leading item is DISCARDED, not peeled, so
+    the statement is `write (Ref t :: r) = write r`. Two subtleties:
+    (i) the SRW run. `grp = above.reverse.takeWhile isSrw`, and since
+    `Ref t` is not SRW and lands LAST in the reversed list, `takeWhile`
+    stops before it either way — so `grp` is unchanged. Needs a
+    `takeWhile (L ++ [x])` lemma with `x` failing the predicate.
+    (ii) `rest = above.take (above.length - grp.length)` gains `Ref t`
+    at its head, which only reaches `firstProtectedIn` — discharged by
+    `firstProtectedIn_cons_unprot`.
+  * TwoPhase = read then insert-above; falls out of the other two.
+**The one non-local obligation.** In the `Mut` case the write discards
+the temporary, so the `Die` must then find NO `t` in the result — which
+needs `t ∉ r`, i.e. tag freshness. The existing keystones dodge every
+such invariant by CONSTRUCTING the post-borrow stacks as explicit chains
+(`W₁ j = Item.Ref s.NextTag :: W j`) rather than reasoning about
+arbitrary stacks; do the same here and `t ∉ r` is immediate from the
+construction. Do NOT try to add a global "all tags < NextTag" invariant.
+**Then:** fold-level plumbing (cells outside the mint range are
+untouched — the `foldCells_ok_inv` family), assemble as
+`bridge1S_of_read_then_ref` beside `bridge1S_of_read`, derive
+`refslice_readpkg_projoffset` the way `expose_readpkg_projoffset`
+derives, then family / `CoreRhs` / dispatcher.
+**Effort estimate:** ~half-day remaining. It is a third keystone of the
+same order as the two existing ones (~200 lines each), plus plumbing.
 **References:** die-is-permissive-when-not-on-top.md,
 refslice-projsrc-mut-pops-the-projection-borrow.md,
 one-leaf-per-destination-shape.md
