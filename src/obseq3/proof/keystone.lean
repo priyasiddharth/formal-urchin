@@ -1101,3 +1101,160 @@ theorem readCellContent_cons_ref {pf : List (List Tag)} {ex : List Tag}
           simp_all [Except.map, Item.poppedByRead, firstProtectedIn_cons_unprot
             (item := Item.Ref t) (by simpa using h_np)]
         all_goals (split <;> simp [Except.map])
+
+/-- An INSERT-ABOVE sees past a leading temporary: it splices below it. -/
+theorem insertAboveContent_cons_ref {ex : List Tag} {a : Word} {p t : Tag}
+    {newItem : Item} (s : BorrowStack)
+    (h_ne : t ≠ p) (h_ex : ex.contains t = false) :
+    insertAboveContent ex a p newItem (.Ref t :: s)
+      = (insertAboveContent ex a p newItem s).map (Item.Ref t :: ·) := by
+  unfold insertAboveContent
+  rw [resolveWildcardIn_cons_unexposed (item := Item.Ref t) (by simpa using h_ex) s false]
+  split
+  · rfl
+  · rename_i q h_q
+    have h_tq : t ≠ q := by
+      by_cases h_w : (p == wildcardTag) = true
+      · simp only [h_w, if_true] at h_q
+        cases h_r : resolveWildcardIn ex s false with
+        | none => rw [h_r] at h_q; simp at h_q
+        | some q' =>
+            rw [h_r] at h_q
+            simp only [Option.elim] at h_q
+            have := resolveWildcardIn_exposed h_r
+            intro hc
+            rw [hc] at h_ex
+            grind
+      · simp only [h_w, Bool.false_eq_true, if_false] at h_q
+        grind
+    rw [splitStack_cons_ne (item := Item.Ref t) (by simpa using h_tq) s]
+    cases splitStack s q with
+    | none => rfl
+    | some tri =>
+        obtain ⟨above, item, below⟩ := tri
+        cases item <;> simp [Except.map]
+
+/-- `takeWhile` ignores a trailing element that fails the predicate. -/
+theorem takeWhile_append_singleton_false {α : Type _} {P : α → Bool} {x : α}
+    (hx : P x = false) :
+    ∀ (L : List α), (L ++ [x]).takeWhile P = L.takeWhile P
+  | [] => by simp [List.takeWhile, hx]
+  | y :: L => by
+      by_cases hy : P y = true
+      · simp [List.takeWhile, hy, takeWhile_append_singleton_false hx L]
+      · simp [List.takeWhile, hy]
+
+/-- A WRITE access DISCARDS a leading temporary rather than peeling it:
+    everything above the granting item goes, and the temporary is above
+    it. The SharedReadWrite run is unaffected — `Item.Ref` is not SRW and
+    lands last in the reversed `above`, so `takeWhile` stops before it
+    either way — and the extra head only reaches the protector scan. -/
+theorem writeCellContent_cons_ref {pf : List (List Tag)} {ex : List Tag}
+    {a : Word} {p t : Tag} (s : BorrowStack)
+    (h_ne : t ≠ p) (h_np : isProtectedIn pf t = false)
+    (h_ex : ex.contains t = false) :
+    writeCellContent pf ex a p (.Ref t :: s) = writeCellContent pf ex a p s := by
+  unfold writeCellContent
+  rw [resolveWildcardIn_cons_unexposed (item := Item.Ref t) (by simpa using h_ex) s true]
+  split
+  · rfl
+  · rename_i q h_q
+    have h_tq : t ≠ q := by
+      by_cases h_w : (p == wildcardTag) = true
+      · simp only [h_w, if_true] at h_q
+        cases h_r : resolveWildcardIn ex s true with
+        | none => rw [h_r] at h_q; simp at h_q
+        | some q' =>
+            rw [h_r] at h_q
+            simp only [Option.elim] at h_q
+            have := resolveWildcardIn_exposed h_r
+            intro hc
+            rw [hc] at h_ex
+            grind
+      · simp only [h_w, Bool.false_eq_true, if_false] at h_q
+        grind
+    rw [splitStack_cons_ne (item := Item.Ref t) (by simpa using h_tq) s]
+    cases splitStack s q with
+    | none => rfl
+    | some tri =>
+        obtain ⟨above, item, below⟩ := tri
+        simp only [Option.map_some]
+        have h_grp : ((Item.Ref t :: above).reverse.takeWhile Item.isSrw)
+            = (above.reverse.takeWhile Item.isSrw) := by
+          simp only [List.reverse_cons]
+          exact takeWhile_append_singleton_false (by simp [Item.isSrw]) above.reverse
+        have h_le : (above.reverse.takeWhile Item.isSrw).length ≤ above.length := by
+          have h := (List.takeWhile_sublist (p := Item.isSrw) (l := above.reverse)).length_le
+          simpa using h
+        cases item with
+        | Own tg => simp_all [h_grp, Item.grantsWrite, Item.isSrw,
+              firstProtectedIn_cons_unprot (item := Item.Ref t) (by simpa using h_np),
+              Nat.succ_sub h_le]
+        | MutRef tg => simp_all [h_grp, Item.grantsWrite, Item.isSrw,
+              firstProtectedIn_cons_unprot (item := Item.Ref t) (by simpa using h_np),
+              Nat.succ_sub h_le]
+        | Ref tg => simp_all [h_grp, Item.grantsWrite, Item.isSrw,
+              firstProtectedIn_cons_unprot (item := Item.Ref t) (by simpa using h_np),
+              Nat.succ_sub h_le]
+        | RawPtr b tg => cases b <;> simp_all [h_grp, Item.grantsWrite, Item.isSrw,
+              firstProtectedIn_cons_unprot (item := Item.Ref t) (by simpa using h_np),
+              Nat.succ_sub h_le]
+        | Disabled tg => simp_all [h_grp, Item.grantsWrite, Item.isSrw,
+              firstProtectedIn_cons_unprot (item := Item.Ref t) (by simpa using h_np),
+              Nat.succ_sub h_le]
+
+/-- `splitStack` decomposes the stack: everything it hands back was in it. -/
+theorem splitStack_mem : ∀ {s : BorrowStack} {p : Tag} {above below : BorrowStack}
+    {item : Item}, splitStack s p = some (above, item, below) →
+    (∀ k ∈ above, k ∈ s) ∧ item ∈ s ∧ ∀ k ∈ below, k ∈ s
+  | [], _, _, _, _, h => by simp [splitStack] at h
+  | x :: xs, p, above, below, item, h => by
+      by_cases hx : (x.tag == p) = true
+      · rw [splitStack, if_pos hx] at h
+        cases h
+        exact ⟨by simp, by simp, fun k hk => by simp [hk]⟩
+      · rw [splitStack, if_neg hx] at h
+        cases h_rec : splitStack xs p with
+        | none => rw [h_rec] at h; simp at h
+        | some tri =>
+            obtain ⟨ab, it, be⟩ := tri
+            rw [h_rec] at h
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            obtain ⟨h1, h2, h3⟩ := splitStack_mem h_rec
+            refine ⟨fun k hk => ?_, by simp [h2], fun k hk => by simp [h3 k hk]⟩
+            rcases List.mem_cons.mp hk with rfl | hk'
+            · simp
+            · simp [h1 k hk']
+
+/-- Every item a WRITE leaves behind was already in the stack: the result
+    is a SharedReadWrite run taken from `above`, the granting item, and
+    `below`. This is what tells the `Mut` branch that the temporary the
+    write discarded does not come back. -/
+theorem writeCellContent_mem {pf : List (List Tag)} {ex : List Tag}
+    {a : Word} {p : Tag} {s w : BorrowStack}
+    (h : writeCellContent pf ex a p s = .ok w) :
+    ∀ k ∈ w, k ∈ s := by
+  unfold writeCellContent at h
+  split at h
+  · exact absurd h (by simp)
+  · rename_i q h_q
+    cases h_sp : splitStack s q with
+    | none => rw [h_sp] at h; simp at h
+    | some tri =>
+        obtain ⟨above, item, below⟩ := tri
+        obtain ⟨h_ab, h_it, h_be⟩ := splitStack_mem h_sp
+        rw [h_sp] at h
+        have h_run : ∀ k ∈ (above.reverse.takeWhile Item.isSrw).reverse, k ∈ s := by
+          intro k hk
+          refine h_ab k ?_
+          have hk' : k ∈ above.reverse.takeWhile Item.isSrw := by simpa using hk
+          have hmem : k ∈ above.reverse :=
+            (List.takeWhile_sublist (p := Item.isSrw) (l := above.reverse)).mem hk'
+          simpa using hmem
+        cases item with
+        | Own tg => simp_all [Item.grantsWrite, Item.isSrw]; grind
+        | MutRef tg => simp_all [Item.grantsWrite, Item.isSrw]; grind
+        | Ref tg => simp_all [Item.grantsWrite]
+        | RawPtr b tg => cases b <;> simp_all [Item.grantsWrite, Item.isSrw] <;> grind
+        | Disabled tg => simp_all [Item.grantsWrite]
