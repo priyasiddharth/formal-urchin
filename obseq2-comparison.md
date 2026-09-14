@@ -4,6 +4,58 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-14 (third) — Delete the Check, Not the Borrow
+
+The `refSlice` divergence is gone, and the fix was one branch.
+
+I had framed the choice as: change the compiler so a projected source
+needs no borrow, or change mirlite so it retags on projection. The first
+is the access-free FieldPtr rejected on 2026-08-27 — I proposed it
+without checking the decision log, which I should have. The second is a
+real semantics change with a scoping problem, since mirlite's place
+resolution has no temporary to retire.
+
+The user's answer was neither: make `Die` permissive. If its tag is no
+longer on top, do nothing.
+
+That is the faithful reading. `Die` has no Rust counterpart — Stacked
+Borrows never ends a borrow actively, items are popped by the next
+conflicting access. The instruction exists only to retire the compiler's
+own scaffolding, and the "must be on top" branch was a self-check that
+brackets nest, not part of the model. When an intervening access has
+already popped the temporary, SB has ended the borrow and there is
+nothing left to retire.
+
+It makes the bracket collapse unconditional. `Borrow; use; Die` equals
+`use through the parent` in every case, which is what both cancellation
+keystones always asserted and what the strict branch broke on. A `Mut`
+mint pops the temporary and the `Die` no-ops; a `Raw`/`Shared` mint is
+inserted directly above the granting item, below the temporary, and the
+`Die` pops as before. Any future minting rvalue inherits this.
+
+I worried aloud about losing a runtime tripwire for mis-nesting. The user
+pointed out that the proof is the tripwire and a strictly better one:
+`Die` only ever removes its own tag from the top, so the only way a bad
+bracket can differ is a stale item on the target's stack, and `PermSim`
+relates stacks positionally — a stale item is unrelatable to mirlite's,
+so the simulation step fails to build, over all inputs, rather than
+erroring at runtime on whichever inputs a test happens to exercise. The
+runtime check only ever guarded the unproved fragment.
+
+The whole proof library built unchanged; the keystones only ever used the
+on-top case. One split was needed, `dieCellContent_top_ref`, because
+`.Ref` and `.MutRef` no longer unify through the error branch. The
+witness pinned yesterday flipped from asserting `ub 3` to
+`expectDiff … .ok`, which is what its teeth were for.
+
+`refSlice` is now blocked on a proof, not a bug, and on exactly one
+lemma: the mint has to slide past the die, because `bridge1S_of_read`
+cannot transport it at the intermediate state — that state still carries
+the temporary, so it is not `PermSim` to mirlite's. The statement and its
+case analysis are in loose-ends.
+
+---
+
 ## 2026-09-14 (second) — refSlice: the Rule Worked, the Answer Was No
 
 Same rule as `ptrCast`: check the lowering before building machinery.

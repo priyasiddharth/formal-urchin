@@ -1,7 +1,27 @@
 # `refSlice` at a projected source: a `Mut` retag pops the projection's borrow
 
-Load this before trying to admit `refSlice` to `CoreRhs`, or when
-changing how a projected source is lowered for any minting rvalue.
+[SUPERSEDED 2026-09-14 → die-is-permissive-when-not-on-top.md]
+The DIVERGENCE described here is fixed. The user's call: make `Die` a
+no-op when its tag is no longer on top, rather than change the lowering
+or the source model. `Die` retires compiler scaffolding and has no Rust
+counterpart, so when an intervening access has already popped the
+temporary there is nothing left to retire. Both machines now run the
+witness clean, and its test flipped from pinning `ub 3` to
+`expectDiff … .ok`.
+
+**Why I was misled:** I read the strict "must be on top" check as part of
+the Stacked Borrows model and looked for ways to avoid tripping it — a
+lowering change or a source-model change, both large. It was a
+self-check on the compiler's own bracketing, and the two options I
+weighed were both more invasive than deleting it.
+
+What survives: the diagnosis (a minting rvalue holds a cell-borrow across
+its mint), the witness, and the `Raw`/`Shared` vs `Mut` asymmetry. What
+is now WRONG is the [OPEN] block's premise that the fix must be an ISA or
+lowering change.
+
+Load this for the diagnosis and the witness; load
+die-is-permissive-when-not-on-top.md for the resolution.
 
 [FACT, 2026-09-14] **`refSlice`'s lowering is NOT an outlier.** It lowers
 its source place shared and emits one `Rhs.BorrowRest`, so

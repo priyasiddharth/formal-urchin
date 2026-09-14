@@ -3741,10 +3741,23 @@ destinations, then `const_write` — and answer what `ptrCast` is.
   `rs_known_divergence_projsrc_mut`; groundwork (shape, step lemma,
   chain-class package) kept.
 - durable/refslice-projsrc-mut-pops-the-projection-borrow.md — NEW.
+- SEMANTICS CHANGE (user's call): `dieCellContent` is a no-op when its
+  tag is not on top. That removed the refSlice divergence at the root;
+  the whole proof library built unchanged, one lemma split
+  (`dieCellContent_top_ref`). durable/die-is-permissive-when-not-on-top.md
+  — NEW, and it supersedes the note above.
 - The read packages now let the tag renaming grow (1bc9d26), since
   `refSlice` is the one member that mints.
 
 **Critical corrections:**
+- I proposed a "broad fix" for refSlice — offset operands on the read
+  instructions so a projected source needs no borrow — which is the
+  access-free FieldPtr the user REJECTED on 2026-08-27 ("keep GEP as a
+  borrow"). I should have grepped the decision log first.
+- I called the runtime `Die` check a lost tripwire. The user pointed out
+  the proof is the tripwire and a better one: a stale item is
+  unrelatable under positional `StackSim`, so mis-nesting fails the
+  build over all inputs rather than erroring on tested ones.
 - I claimed admitting `ptrCast` needed a second store abstraction. Wrong:
   its `Memcpy` lowering was an outlier left behind by the 2026-08-29 copy
   change, and it carried a live overlap divergence with mirlite. Fixing
@@ -3762,8 +3775,7 @@ destinations, then `const_write` — and answer what `ptrCast` is.
 unchanged at propext / Classical.choice / Quot.sound with zero sorries.
 
 **Next-session pickup candidates:**
-- loose-ends/parked.md — "Fix the projected-source lowering for minting
-  rvalues", the two options (a) narrow and (b) the one that also retires
-  BRIDGE 1S across five rvalues.
+- loose-ends/parked.md — "Admit `refSlice` — one commutation lemma
+  left": `sb_die` past `sb_ref`, with the case analysis worked out.
 - loose-ends/parked.md — "Does `ptrOffset`'s deferred UB ever diverge
   from Miri?" (a Miri-pinned witness, ~1h).
