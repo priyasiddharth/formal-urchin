@@ -3710,3 +3710,15 @@ and restored from git. The fix was to stop cutting by line patterns and
 write a comment-aware chunker that splits the file into top-level
 declarations first — after which deleting 46 declarations across five
 files in four rounds was uneventful.
+
+## side question — what `ptrCast` is (2026-09-14)
+
+Asked mid-session. Answered from source and written up as
+durable/ptrcast-is-a-memcpy-not-a-store.md: a tag-preserving type-punning
+cast, one mirlite cell-read through the source's own tag, compiling to a
+single `Memcpy`. The note records WHY it is still outside `CoreRhs` —
+Memcpy's values come from a source-side read at execution time, it
+performs two SB events in one instruction, and its `postCleanup` is
+non-empty, so none of the three fit `ValuePkg`/`StoreStep`. Admitting it
+needs a second store abstraction, not another `StoreStep` instance.
+
