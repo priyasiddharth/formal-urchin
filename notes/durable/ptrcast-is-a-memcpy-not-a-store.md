@@ -1,7 +1,26 @@
 # `ptrCast` is a Memcpy, which is why it is still outside the theorem
 
-Load this when asking why `ptrCast` is excluded from `CoreRhs` although
-it is implemented and tested, or when scoping the work to admit it.
+[SUPERSEDED 2026-09-14 → ptrcast-was-the-last-memcpy-caller.md]
+The claim "admitting `ptrCast` needs a second store abstraction" was
+WRONG. It was right about the Memcpy lowering and right that Memcpy
+cannot fit `StoreStep` — but it never asked whether the LOWERING was
+correct. It was not: `.copy` abandoned Memcpy on 2026-08-29 and mirlite
+dropped its overlap guard on 2026-08-30 to match, and `ptrCast` was left
+behind as the last caller. Changing it to copy's register-temporary
+lowering removed a live divergence AND made the cast provable in 90
+lines with no new infrastructure.
+
+**Why I was misled:** I took the compiler as fixed and asked only what
+proof machinery could accommodate the instruction it emitted. The
+question that would have found it in one step is "is this rvalue's
+lowering an outlier, and if so why" — the answer was in the compiler's
+own comments, two arms up.
+
+The reading below is kept for the trail; everything except the third
+`[FACT]` and its conclusion is still accurate.
+
+Load this when asking why `ptrCast` was excluded from `CoreRhs`, or for
+the Charon-ingestion fact at the end, which still holds.
 
 [FACT, 2026-09-14] **What it is.** A tag-PRESERVING pointer type-punning
 cast — Rust's `p as *mut U`. The pointee layout changes and nothing else
