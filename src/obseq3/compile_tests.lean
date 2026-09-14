@@ -889,6 +889,48 @@ def rs_known_divergence_projsrc_mut : IO Unit := do
            refSlice projected-source lowering was fixed, replace this test with \
            `expectDiff ΓRS prog .ok`."
 
+/-- Differential: a write through a `ptrOffset`-derived raw pointer
+    invalidates a shared borrow of the cell it lands on, and the later
+    read through that borrow is UB — on BOTH machines, at the same
+    statement.
+
+    The source of the `ptrOffset` is a PROJECTED field at nonzero offset,
+    so today it is lowered with a temporary `Borrow(Shared)` on `u.1`'s
+    own cell, retired by a `Die`. That temporary is invisible here: it
+    lives and dies inside statement 5, on a DIFFERENT cell from the one
+    the write invalidates. Pins that the projection's scaffolding does
+    not perturb real program borrows — the property the broad fix in
+    loose-ends/parked.md must preserve. -/
+def tPlainL := obseq.LayoutTy.TupL [natL, natL]
+def uPtrL := obseq.LayoutTy.TupL [natL, ptrNat]
+def ΓPX : Ctx := [tPlainL, uPtrL, ptrNat, natL, obseq.LayoutTy.PtrL tPlainL]
+def tPX : Place ΓPX tPlainL := .local ⟨⟨0, by decide⟩, rfl⟩
+def uPX : Place ΓPX uPtrL := .local ⟨⟨1, by decide⟩, rfl⟩
+def rPX : Place ΓPX ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def xPX : Place ΓPX natL := .local ⟨⟨3, by decide⟩, rfl⟩
+def vPX : Place ΓPX (obseq.LayoutTy.PtrL tPlainL) := .local ⟨⟨4, by decide⟩, rfl⟩
+
+def px_write_through_projected_ptroffset : IO Unit := do
+  let f0 : PathTo tPlainL natL := .field ⟨0, by decide⟩ .nil
+  let f1 : PathTo tPlainL natL := .field ⟨1, by decide⟩ .nil
+  let g1 : PathTo uPtrL ptrNat := .field ⟨1, by decide⟩ .nil
+  let prog : Prog ΓPX :=
+    [.assign (.proj tPX f0) (.constInit 1),
+     .assign (.proj tPX f1) (.constInit 2),
+     .assign rPX (.ref .Shared false [] (.proj tPX f1)),
+     -- a raw over the WHOLE tuple, cast to element type so the offset
+     -- moves one cell: its tag grants at t.1
+     .assign vPX (.ref (.Raw true) false [] tPX),
+     .assign (.proj uPX g1) (.ptrCast vPX),
+     -- projected SOURCE at nonzero offset: today this mints a temporary
+     -- Borrow(Shared) on u.1's cell and dies it
+     .assign (.proj uPX g1) (.ptrOffset (.proj uPX g1) 1),
+     -- the write that must invalidate `r`
+     .assign (.deref (.proj uPX g1)) (.constInit 9),
+     .assign xPX (.copy (.deref rPX))]
+  expectDiff ΓPX prog (.ub 7)
+    "px write through projected ptrOffset invalidates a shared borrow"
+
 def d34_deref_dst_temp_killed_by_rhs_spine : IO Unit := do
   let prog : Prog ΓD34 :=
     [.assign xD34 (.constInit 5),
@@ -2187,6 +2229,7 @@ def allTests : List (IO Unit) := [
   d31_zst_reborrow,
   d32_field_copy_zero_offset,
   d33_overlap_junk_copy_agrees,
+  px_write_through_projected_ptroffset,
   rs_known_divergence_projsrc_mut,
   d34_deref_dst_temp_killed_by_rhs_spine,
   d35_self_copy_is_ok,
