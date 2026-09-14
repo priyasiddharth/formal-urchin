@@ -583,10 +583,12 @@ durable/ptrcast-is-a-memcpy-not-a-store.md for the three mismatches.
 a source-side read at execution time, two SB events in one instruction,
 non-empty `postCleanup`). Different size of job, and the seams it touches
 sit under both audit roots.
-**To resume:** decide whether to generalise `StoreStep` over "the values
-are produced by the instruction itself" or to give Memcpy its own seam
-family; check `ptrOffset` first, since it stores through a register and
-may already fit.
+**To resume:** do `ptrOffset` and `refSlice` FIRST — both appear in
+`URvalue`, so they widen the theorem over the Charon corpus, whereas
+`ptrCast` does not (the ingestion turns ptr→ptr casts into `use`).
+Then decide whether to generalise `StoreStep` over "the values are
+produced by the instruction itself" or to give Memcpy its own seam
+family.
 **Effort estimate:** ~1 day for `ptrCast`; unknown for `refSlice`.
 **References:** ptrcast-is-a-memcpy-not-a-store.md,
 one-leaf-per-destination-shape.md

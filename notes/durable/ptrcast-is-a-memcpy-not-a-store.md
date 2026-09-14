@@ -63,6 +63,27 @@ gap is in the THEOREM's scope, not in the implementation or its testing.
 → src/obseq3/compile_tests.lean:525, 538, 1338
 → src/obseq3/proof/compiler.lean, scope list item (a)
 
+[FACT, 2026-09-14] **The Charon path never produces it.** `URvalue`, the
+untyped conformance IR, has no `ptrCast` constructor at all
+(src/conformance/ullbc_ast.lean:122). Charon emits ONE cast kind for
+ptr↔ptr and ptr↔int alike — `UnaryOp(Cast(RawPtr(srcTy, dstTy)), op)`,
+verified in the committed JSON — and the ingestion disambiguates on the
+two types:
+
+    | true,  true,  op        => .use op          -- ptr→ptr, tag-preserving
+    | true,  false, .copy p   => .exposeAddr p    -- ptr as usize
+    | false, true,  .copy p   => .fromExposed p   -- usize as ptr
+    | false, false, op        => .use op          -- int→int
+
+→ src/obseq3/../conformance/ullbc_ast.lean:645-666
+
+So a real `p as *mut U` reaching the proof through Charon arrives as a
+plain `use` (a copy), NOT as `ptrCast`; the constructor is reachable only
+from hand-written `RExpr` programs. Consequence for scoping: admitting
+`ptrCast` to `CoreRhs` widens the theorem over the witness corpus and
+changes nothing for the ULLBC corpus. That is an argument for doing
+`ptrOffset` and `refSlice` first — both DO appear in `URvalue`.
+
 ## Why this matters
 
 `ptrCast`, `ptrOffset` and `refSlice` are the three rvalues left outside
