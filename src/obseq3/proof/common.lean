@@ -87,6 +87,7 @@ def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .uninit => True
   | .exposeAddr _ => True
   | .fromExposed _ => True
+  | .ptrOffset _ _ => True
   | _ => False
 
 /-- Statements in the proof-core fragment: `halt` and assignments with a
@@ -1812,6 +1813,15 @@ theorem readRhsShape_fromExposed {Γ : Ctx} {τ : LayoutTy}
     ReadRhsShape (.fromExposed (τ := τ) src) src Rhs.FromExposed :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.fromExposed src srcRes srcEv, rfl⟩
 
+/-- Pointer arithmetic is read-then-store too: the delta is pre-scaled to
+    cells at compile time, so `mk` is a CLOSED function of the source
+    register just like the casts'. -/
+theorem readRhsShape_ptrOffset {Γ : Ctx} {σ τ : LayoutTy}
+    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (delta : Int) :
+    ReadRhsShape (.ptrOffset (τ := τ) src delta) src
+      (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) :=
+  ⟨fun srcRes srcEv _ => RExprToEvidence.ptrOffset src delta srcRes srcEv, rfl⟩
+
 
 /-! ## §E Fragment layout + emit-preserves-memory -/
 
@@ -2005,6 +2015,41 @@ theorem runN_Assgn_ExposeAddr_step
                pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
       h_bounds, Bool.false_eq_true, if_false, h_read, h_cell]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- Pointer arithmetic executes in one `runN` step: the pointer register
+    is read, the SB read of the pointer cell succeeds, the cell holds a
+    pointer, and the destination register receives the same block, size
+    and TAG at the shifted offset. `deltaCells` is pre-scaled by the
+    compiler, so nothing here mentions the pointee layout. -/
+theorem runN_Assgn_PtrOffset_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst preg : Register) (deltaCells : Int)
+    {b o sz : Word} {t : Tag} {p2 : AccessPerms} {pb po ps : Word} {pt : Tag}
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.PtrOffset preg deltaCells)))
+    (h_entry : PtrRegisterEntry s.reg preg b o sz t)
+    (h_lt : o < sz)
+    (h_read : MSB.read s.perms (b + o) 1 t = .ok p2)
+    (h_cell : oseair.Mem.find? s.mem (b + o) = some (Val.Ptr pb po ps pt))
+    (h_nonneg : ¬ ((po : Int) + deltaCells < 0)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p2,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr pb ((po : Int) + deltaCells).toNat ps pt]),
+               pc := s.pc + 1 } := by
+  have h_lookup : oseair.RegMap.lookup s.reg preg
+      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  have h_bounds : ((b + o < b) || (b + o ≥ b + sz)) = false := by
+    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
+    exact ⟨Nat.not_lt.mpr (Nat.le_add_right b o),
+      Nat.not_le.mpr (Nat.add_lt_add_left h_lt b)⟩
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p2,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr pb ((po : Int) + deltaCells).toNat ps pt]),
+               pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
+      h_bounds, Bool.false_eq_true, if_false, h_read, h_cell, if_neg h_nonneg]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- An int-to-ptr cast executes in one `runN` step: the pointer register is

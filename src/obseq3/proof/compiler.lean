@@ -2,6 +2,7 @@ import obseq3.proof.const_write
 import obseq3.proof.copy
 import obseq3.proof.ref
 import obseq3.proof.casts
+import obseq3.proof.ptrarith
 
 /-!
 Top-level compiler-correctness theorems for the proof-core fragment
@@ -424,7 +425,8 @@ theorem CompilerInv_step
         | ref kind prot mask src =>
             exact CompilerInv_step_ref kind prot mask compProg h_comp h_inv h_get h_step
         | ptrCast src => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
-        | ptrOffset src d => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
+        | ptrOffset src d =>
+            exact CompilerInv_step_ptrOffset compProg h_comp h_inv h_get h_step
         | refSlice k p src => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
         | exposeAddr src =>
             exact CompilerInv_step_exposeAddr compProg h_comp h_inv h_get h_step

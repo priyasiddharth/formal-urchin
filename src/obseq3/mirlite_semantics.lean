@@ -279,6 +279,13 @@ def evalRExpr
       match resolvePlaceAcc M state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
+          -- the pointer CELL must be readable, exactly as the compiled
+          -- `Rhs.PtrOffset` requires of the register it reads through
+          -- (oseair.lean: `addr < base || addr >= base + size` ⇒ OOB);
+          -- the same guard the two integer-pointer casts carry
+          if resolved.addr + 1 > resolved.allocBase + resolved.allocSize then
+            .err "pointer offset of an out-of-bounds place"
+          else
           match M.read permsR resolved.addr 1 resolved.tag with
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
