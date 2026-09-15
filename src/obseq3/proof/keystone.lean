@@ -1296,3 +1296,154 @@ theorem splitStack_append_cons_ne {x : Item} {p : Tag} (h_ne : x.tag ≠ p) :
         have ih := splitStack_append_cons_ne h_ne A B
         cases h1 : splitStack (A ++ x :: B) p <;> cases h2 : splitStack (A ++ B) p <;>
           simp_all
+
+/-! ## The fold assembly: sliding the `Die` past a whole retag
+
+`refCellOp` is a content-driven rewrite of its own cell, exactly the
+shape `foldCellsIdx_ok_inv` and `foldCellsIdx_ok_of_cells` want. Naming
+that content lets the bracket collapse be proved cell by cell from the
+four `_cons_ref` lemmas above. `mask` is `[]` throughout — `BorrowRest`
+passes no freeze mask — so the masked arms never arise. -/
+
+/-- The stack-level content of one cell of a retag. -/
+def refContent (pf : List (List Tag)) (ex : List Tag) (a : Word) (tag : Tag)
+    (kind : RefKind) (newTag : Tag) : BorrowStack → Except String BorrowStack :=
+  match kind with
+  | .Mut => fun s => (writeCellContent pf ex a tag s).map (Item.MutRef newTag :: ·)
+  | .Shared => fun s => (readCellContent pf ex a tag s).map (Item.Ref newTag :: ·)
+  | .Raw false => fun s =>
+      (readCellContent pf ex a tag s).map (Item.RawPtr false newTag :: ·)
+  | .Raw true => fun s => insertAboveContent ex a tag (.RawPtr true newTag) s
+  | .TwoPhase => fun s =>
+      (readCellContent pf ex a tag s).bind
+        (insertAboveContent ex a tag (.RawPtr true newTag))
+
+/-- …lifted over the `find?` that may miss. -/
+def refContentO (pf : List (List Tag)) (ex : List Tag) (a : Word) (tag : Tag)
+    (kind : RefKind) (newTag : Tag) :
+    Option BorrowStack → Except String BorrowStack
+  | some s => refContent pf ex a tag kind newTag s
+  | none =>
+      match kind with
+      | .Mut => .error s!"sb-write: no borrow stack at address {a}"
+      | .Raw true => .error s!"sb-insert: no borrow stack at address {a}"
+      | _ => .error s!"sb-read: no borrow stack at address {a}"
+
+/-- `refCellOp` IS that content, applied to its own cell. -/
+theorem refCellOp_content (tag : Tag) (kind : RefKind) (newTag : Tag)
+    (ap : AccessPerms) (c : Word) (i : Nat) :
+    refCellOp tag kind newTag [] ap c i
+      = match refContentO ap.protFrames ap.exposed c tag kind newTag
+                (SB.find? ap.StackMap c) with
+        | .error e => .error e
+        | .ok v => .ok { ap with StackMap := SB.set ap.StackMap c v } := by
+  cases kind with
+  | Mut =>
+      cases h : SB.find? ap.StackMap c with
+      | none => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h]
+      | some st =>
+          cases hw : writeCellContent ap.protFrames ap.exposed c tag st with
+          | error e => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hw]
+          | ok v => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hw, SB.find?_set_self, SB.set_set]
+  | Shared =>
+      cases h : SB.find? ap.StackMap c with
+      | none => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h]
+      | some st =>
+          cases hr : readCellContent ap.protFrames ap.exposed c tag st with
+          | error e => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hr]
+          | ok v => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hr, SB.find?_set_self, SB.set_set]
+  | Raw b =>
+      cases b with
+      | false =>
+          cases h : SB.find? ap.StackMap c with
+          | none => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h]
+          | some st =>
+              cases hr : readCellContent ap.protFrames ap.exposed c tag st with
+              | error e => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hr]
+              | ok v => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hr, SB.find?_set_self, SB.set_set]
+      | true =>
+          cases h : SB.find? ap.StackMap c with
+          | none => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h]
+          | some st =>
+              cases hi : insertAboveContent ap.exposed c tag (.RawPtr true newTag) st with
+              | error e => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hi]
+              | ok v => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hi]
+  | TwoPhase =>
+      cases h : SB.find? ap.StackMap c with
+      | none => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h]
+      | some st =>
+          cases hr : readCellContent ap.protFrames ap.exposed c tag st with
+          | error e => simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hr]
+          | ok v =>
+              cases hi : insertAboveContent ap.exposed c tag (.RawPtr true newTag) v with
+              | error e =>
+                  simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hr, hi, SB.find?_set_self, SB.set_set]
+              | ok w =>
+                  simp [refCellOp, refContentO, refContent, readCell, writeCell, pushCell, insertAboveCell, bind, Except.bind, Except.map, h, hr, hi, SB.find?_set_self, SB.set_set]
+
+/-- **The bracket collapses at one cell.** Whatever the retag does to a
+    cell carrying the projection's temporary on top, the `Die` afterwards
+    leaves exactly what the retag would have produced without it. The
+    four branches split two ways: a write DISCARDS the temporary and the
+    die then finds nothing (which is why `writeCellContent_mem` and the
+    freshness of `t` are needed), while a read or an insert-above leaves
+    it in place and the die removes it. -/
+theorem refContent_die_cons {pf : List (List Tag)} {ex : List Tag}
+    {a : Word} {p t n : Tag} {kind : RefKind} {X : BorrowStack}
+    (h_tp : t ≠ p) (h_np : isProtectedIn pf t = false)
+    (h_ex : ex.contains t = false) (h_tn : n ≠ t)
+    (h_tX : ∀ k ∈ X, k.tag ≠ t) :
+    (refContent pf ex a p kind n (Item.Ref t :: X)).bind (dieCellContent pf t)
+      = refContent pf ex a p kind n X := by
+  have h_push : ∀ (mk : Tag → Item) (r : BorrowStack), (mk n).tag = n →
+      dieCellContent pf t (mk n :: Item.Ref t :: r) = .ok (mk n :: r) := by
+    intro mk r h_mk
+    rw [dieCellContent_cons_ne (by rw [h_mk]; exact h_tn),
+      dieCellContent_top_ref h_np]
+    rfl
+  cases kind with
+  | Mut =>
+      simp only [refContent, writeCellContent_cons_ref X h_tp h_np h_ex]
+      cases hw : writeCellContent pf ex a p X with
+      | error e => rfl
+      | ok w =>
+          have h_tw : ∀ k ∈ Item.MutRef n :: w, k.tag ≠ t := by
+            intro k hk
+            rcases List.mem_cons.mp hk with rfl | hk'
+            · simpa [Item.tag] using h_tn
+            · exact h_tX k (writeCellContent_mem hw k hk')
+          simp only [Except.map, Except.bind]
+          rw [dieCellContent_absent _ h_tw]
+  | Shared =>
+      simp only [refContent, readCellContent_cons_ref X h_tp h_np h_ex]
+      cases readCellContent pf ex a p X with
+      | error e => rfl
+      | ok r => simp only [Except.map, Except.bind]; exact h_push Item.Ref r rfl
+  | Raw b =>
+      cases b with
+      | false =>
+          simp only [refContent, readCellContent_cons_ref X h_tp h_np h_ex]
+          cases readCellContent pf ex a p X with
+          | error e => rfl
+          | ok r =>
+              simp only [Except.map, Except.bind]
+              exact h_push (Item.RawPtr false) r rfl
+      | true =>
+          simp only [refContent, insertAboveContent_cons_ref X h_tp h_ex]
+          cases insertAboveContent ex a p (Item.RawPtr true n) X with
+          | error e => rfl
+          | ok w =>
+              simp only [Except.map, Except.bind]
+              exact dieCellContent_top_ref h_np w
+  | TwoPhase =>
+      simp only [refContent, readCellContent_cons_ref X h_tp h_np h_ex]
+      cases readCellContent pf ex a p X with
+      | error e => rfl
+      | ok r =>
+          simp only [Except.map, Except.bind,
+            insertAboveContent_cons_ref r h_tp h_ex]
+          cases insertAboveContent ex a p (Item.RawPtr true n) r with
+          | error e => rfl
+          | ok w =>
+              simp only [Except.map, Except.bind]
+              exact dieCellContent_top_ref h_np w
