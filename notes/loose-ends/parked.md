@@ -652,3 +652,27 @@ is the induction and the wiring.
 **References:** die-is-permissive-when-not-on-top.md,
 refslice-projsrc-mut-pops-the-projection-borrow.md,
 one-leaf-per-destination-shape.md
+
+## Prove stale-item inertness at an arbitrary position
+**Status:** parked 2026-09-14
+**Context:** durable/a-stale-shared-item-is-unobservable.md argues, by a
+case analysis over the five ways the model inspects a stack, that an
+`Item.Ref t` for an unprotected, unexposed `t` is invisible to every
+access. That argument is what says the differential suites could not have
+caught the weak `die` — so it carries weight and deserves to be a
+theorem.
+**Why parked:** the three content lemmas already prove it for the LEADING
+position, which is all the `refSlice` bracket needs; the general-position
+version is documentation-grade rather than theorem-grade, since the
+strong `die` is already in.
+**To resume:** generalise `readCellContent_cons_ref`,
+`insertAboveContent_cons_ref` and `writeCellContent_cons_ref` from
+`Item.Ref t :: s` to `A ++ Item.Ref t :: B`, by induction on `A`. Each
+step needs a congruence — "the access on `x :: L` relates to the access
+on `x :: L'` whenever it does on `L` and `L'`" — which does not exist
+yet and is the bulk of the work. Pivot-in-`A` and pivot-in-`B` are
+separate cases.
+**Effort estimate:** ~2-3h.
+**References:** a-stale-shared-item-is-unobservable.md,
+die-is-permissive-when-not-on-top.md
+
