@@ -665,14 +665,23 @@ theorem.
 position, which is all the `refSlice` bracket needs; the general-position
 version is documentation-grade rather than theorem-grade, since the
 strong `die` is already in.
-**To resume:** generalise `readCellContent_cons_ref`,
+**CORRECTION 2026-09-14:** the first estimate here (~2-3h for a
+per-access lemma) understated it. "Unobservable" cannot be stated per
+access — verdicts depend on the whole trace, so the honest form is a
+BISIMULATION: a relation "these states differ only by stale items",
+preserved by every operation and agreeing on success. The per-access
+lemma is only its inductive step.
+**To resume:** (1) generalise `readCellContent_cons_ref`,
 `insertAboveContent_cons_ref` and `writeCellContent_cons_ref` from
-`Item.Ref t :: s` to `A ++ Item.Ref t :: B`, by induction on `A`. Each
-step needs a congruence — "the access on `x :: L` relates to the access
-on `x :: L'` whenever it does on `L` and `L'`" — which does not exist
-yet and is the bulk of the work. Pivot-in-`A` and pivot-in-`B` are
-separate cases.
-**Effort estimate:** ~2-3h.
+`Item.Ref t :: s` to `A ++ Item.Ref t :: B`, by induction on `A`, with
+pivot-in-`A` and pivot-in-`B` as separate cases — the two list-level
+ingredients, `find?_append_cons_false` and `splitStack_append_cons_ne`,
+are proved and in. Each step still needs a congruence ("the access on
+`x :: L` relates to the access on `x :: L'` whenever it does on `L` and
+`L'`"), which does not exist yet. (2) close it into a bisimulation over
+the operations.
+**Effort estimate:** ~half-day for (1), unknown for (2). Documentation
+grade — the strong `die` is already in, so nothing depends on this.
 **References:** a-stale-shared-item-is-unobservable.md,
 die-is-permissive-when-not-on-top.md
 

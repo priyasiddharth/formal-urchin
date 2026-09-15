@@ -1258,3 +1258,41 @@ theorem writeCellContent_mem {pf : List (List Tag)} {ex : List Tag}
         | Ref tg => simp_all [Item.grantsWrite]
         | RawPtr b tg => cases b <;> simp_all [Item.grantsWrite, Item.isSrw] <;> grind
         | Disabled tg => simp_all [Item.grantsWrite]
+
+/-! ## Inertness at an ARBITRARY position (2026-09-14)
+
+The three `_cons_ref` lemmas above peel the projection's temporary off
+the FRONT, which is all the `refSlice` bracket needs. The claim that a
+stale `Item.Ref t` is unobservable — the one that says no verdict test
+could have caught the weak `die` — needs the same at any position. These
+are its two list-level ingredients.
+See notes/durable/a-stale-shared-item-is-unobservable.md. -/
+
+/-- `find?` skips an element that fails the predicate, wherever it sits. -/
+theorem find?_append_cons_false {α : Type _} {P : α → Bool} {x : α}
+    (hx : P x = false) :
+    ∀ (A B : List α), (A ++ x :: B).find? P = (A ++ B).find? P
+  | [], B => by simp [List.find?, hx]
+  | y :: A, B => by
+      by_cases hy : P y = true
+      · simp [List.find?, hy]
+      · simp only [List.cons_append, List.find?, hy, Bool.false_eq_true, if_false]
+        exact find?_append_cons_false hx A B
+
+/-- `splitStack` past an item that is not the pivot, at any position: the
+    pivot is found in the same place, and the decomposition differs only
+    by where the skipped item lands. -/
+theorem splitStack_append_cons_ne {x : Item} {p : Tag} (h_ne : x.tag ≠ p) :
+    ∀ (A B : BorrowStack),
+      (splitStack (A ++ x :: B) p).isSome = (splitStack (A ++ B) p).isSome
+  | [], B => by
+      have h_beq : (x.tag == p) = false := by grind
+      simp only [List.nil_append, splitStack, h_beq, Bool.false_eq_true, if_false]
+      cases splitStack B p <;> rfl
+  | y :: A, B => by
+      by_cases hy : (y.tag == p) = true
+      · simp only [List.cons_append, splitStack, hy, if_true, Option.isSome]
+      · simp only [List.cons_append, splitStack, hy, Bool.false_eq_true, if_false]
+        have ih := splitStack_append_cons_ne h_ne A B
+        cases h1 : splitStack (A ++ x :: B) p <;> cases h2 : splitStack (A ++ B) p <;>
+          simp_all

@@ -56,13 +56,18 @@ the proof is the only witness — which is an argument for widening
 one-leaf-per-destination-shape.md.
 
 [OPEN] The argument above is a case analysis over the five ways the model
-inspects a stack, not a theorem. The airtight form is: *an
-`Item.Ref t` at ANY position, for a `t` that is unprotected, unexposed and
-not the pivot, does not change what an access computes.* The three
-content lemmas in keystone.lean prove exactly this for the LEADING
-position (`readCellContent_cons_ref`, `insertAboveContent_cons_ref`,
-`writeCellContent_cons_ref`); the general-position version needs an
-induction on the prefix. See loose-ends/parked.md.
+inspects a stack, not a theorem — and the airtight form is BIGGER than it
+looks. "Unobservable" cannot be stated per access: verdicts depend on the
+whole trace, so a later access could diverge even if this one does not.
+The honest statement is a BISIMULATION — a relation "these two states
+differ only by stale items", shown to be preserved by every operation and
+to agree on success. The per-access lemma is its inductive STEP, not the
+whole claim.
+
+Ingredients landed (keystone.lean, "Inertness at an ARBITRARY position"):
+`find?_append_cons_false` and `splitStack_append_cons_ne`. The three
+content lemmas already prove the step for the LEADING position, which is
+what the `refSlice` bracket needs. See loose-ends/parked.md.
 
 [OPEN] Scope. The five paths above are the PROVED fragment. `dealloc` is
 not traced; if it inspects stack shape, a stale item could surface there.
