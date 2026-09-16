@@ -79,7 +79,8 @@ def compileProgFrom
 
     As of 2026-09-16 it is TOTAL TOO: every `RExpr` constructor is in.
     The last to join was `refSlice`, once the compiler stopped holding a
-    projection's `Borrow` across its mint (`Rhs.RetagRest`,
+    projection's `Borrow` across its mint (a second `Rhs.Borrow` with
+    `len = none`,
     compile.lean). Before that, the casts joined when the read-then-store
     family (proof/copy.lean) made copy's leaves rvalue-generic and
     wildcard accesses transported (`resolveWildcardIn_transport`), which
@@ -320,8 +321,6 @@ def RhsRegsBelow (bound : Nat) : Rhs → Prop
   | .ExposeAddr src => RegisterBelow bound src
   | .FromExposed src => RegisterBelow bound src
   | .PtrOffset src _ => RegisterBelow bound src
-  | .BorrowRest _ _ src => RegisterBelow bound src
-  | .RetagRest _ _ src => RegisterBelow bound src
 
 /-- All registers mentioned in an `Instr` have index strictly less than `bound`. -/
 def InstrRegsBelow (bound : Nat) : Instr → Prop
@@ -1805,14 +1804,14 @@ theorem readRhsShape_fromExposed {Γ : Ctx} {τ : LayoutTy}
 
 /-- A slice retag is read-then-store, and the only member with a
     non-empty `post`: its READ is copy's `Load` at the source's pointer
-    layout, and its MINT is a separate register-to-register `RetagRest`
+    layout, and its MINT is a separate register-to-register `Borrow … none`
     emitted after the source cleanup. Unlike every other member it mints,
     which is why the read packages let the renaming grow. -/
 theorem readRhsShape_refSlice {Γ : Ctx} {σ τ : LayoutTy}
     (kind : RefKind) (prot : Bool) (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
     ReadRhsShape (.refSlice (τ := τ) kind prot src) src
       (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
-      (fun tmp => [Instr.Assgn tmp (Rhs.RetagRest kind prot tmp)]) :=
+      (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)]) :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.refSlice kind prot src srcRes srcEv, rfl⟩
 
 /-- A ptr-to-ptr cast is read-then-store: it IS a one-cell `Load` at
@@ -2027,53 +2026,18 @@ theorem runN_Assgn_ExposeAddr_step
       h_bounds, Bool.false_eq_true, if_false, h_read, h_cell]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
-/-- A slice retag executes in one `runN` step: the pointer register is
-    read, the SB read of the fat-pointer cell succeeds, the cell holds a
-    pointer, and a fresh tag is minted over the REST of its allocation
-    (`size - offset`). The destination register receives the same block,
-    offset and size at the new tag. -/
-theorem runN_Assgn_BorrowRest_step
-    (compProg : oseair.Prog) (s : oseair.State MSB)
-    (dst preg : Register) (kind : RefKind) (prot : Bool)
-    {b o sz : Word} {t : Tag} {p2 p3 : AccessPerms}
-    {pb po ps : Word} {pt newTag : Tag}
-    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.BorrowRest kind prot preg)))
-    (h_entry : PtrRegisterEntry s.reg preg b o sz t)
-    (h_lt : o < sz)
-    (h_read : MSB.read s.perms (b + o) 1 t = .ok p2)
-    (h_cell : oseair.Mem.find? s.mem (b + o) = some (Val.Ptr pb po ps pt))
-    (h_ref : MSB.ref p2 (pb + po) (ps - po) pt kind prot [] = .ok (p3, newTag)) :
-    oseair.runN MSB 1 s compProg = oseair.Result.Ok
-      { s with perms := p3,
-               reg := oseair.RegMap.insert s.reg dst
-                 (obseq.TyVal.PTy, [Val.Ptr pb po ps newTag]),
-               pc := s.pc + 1 } := by
-  have h_lookup : oseair.RegMap.lookup s.reg preg
-      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
-  have h_bounds : ((b + o < b) || (b + o ≥ b + sz)) = false := by
-    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
-    exact ⟨Nat.not_lt.mpr (Nat.le_add_right b o),
-      Nat.not_le.mpr (Nat.add_lt_add_left h_lt b)⟩
-  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
-      { s with perms := p3,
-               reg := oseair.RegMap.insert s.reg dst
-                 (obseq.TyVal.PTy, [Val.Ptr pb po ps newTag]),
-               pc := s.pc + 1 } := by
-    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
-      h_bounds, Bool.false_eq_true, if_false, h_read, h_cell, h_ref]
-  simp [oseair.runN_succ, oseair.runN_zero, h_step]
-
-/-- The register-to-register half of a slice retag executes in one
-    `runN` step. Unlike `BorrowRest` there is no cell read and no
-    address arithmetic of its own: the retagged range is the loaded
-    pointer's own rest, `(pb + po, ps - po)`, through its own tag. This
-    is what lets a projection's `Borrow`/`Die` bracket close BEFORE the
-    mint, so the `Die` always finds its tag on top. -/
-theorem runN_Assgn_RetagRest_step
+/-- A rest-of-allocation `Borrow` (`len = none`, offset `0`) executes in
+    one `runN` step: no cell read and no address arithmetic of its own —
+    the retagged range is the loaded pointer's own rest, `(pb + po,
+    ps - po)`, through its own tag, and there is no range check to
+    discharge. This is the slice mint, and it is what lets a projection's
+    `Borrow`/`Die` bracket close BEFORE the mint, so the `Die` always
+    finds its tag on top. -/
+theorem runN_Assgn_Borrow_rest_step
     (compProg : oseair.Prog) (s : oseair.State MSB)
     (dst preg : Register) (kind : RefKind) (prot : Bool)
     {pb po ps : Word} {pt newTag : Tag} {p3 : AccessPerms}
-    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.RetagRest kind prot preg)))
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.Borrow kind prot [] none preg 0)))
     (h_entry : PtrRegisterEntry s.reg preg pb po ps pt)
     (h_ref : MSB.ref s.perms (pb + po) (ps - po) pt kind prot [] = .ok (p3, newTag)) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
@@ -2089,7 +2053,7 @@ theorem runN_Assgn_RetagRest_step
                  (obseq.TyVal.PTy, [Val.Ptr pb po ps newTag]),
                pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
-      h_ref]
+      Nat.add_zero, h_ref]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- Pointer arithmetic executes in one `runN` step: the pointer register
@@ -2400,7 +2364,7 @@ theorem runN_Assgn_Borrow_step
     (len : Nat) (offset : Word)
     {b bo sz : Word} {t newTag : Tag} {p2 : AccessPerms}
     (h_instr : compProg s.pc
-      = some (Instr.Assgn dst (Rhs.Borrow kind prot mask len baseReg offset)))
+      = some (Instr.Assgn dst (Rhs.Borrow kind prot mask (some len) baseReg offset)))
     (h_entry : PtrRegisterEntry s.reg baseReg b bo sz t)
     (h_le : b + bo + offset + len ≤ b + sz)
     (h_ref : MSB.ref s.perms (b + bo + offset) len t kind prot mask

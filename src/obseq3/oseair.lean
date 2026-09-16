@@ -102,20 +102,18 @@ inductive Rhs
 | Alloc (ty : TyVal)
 | AllocN (ty : TyVal) (n : Nat)
 | AllocDyn (ty : TyVal) (lenPtr : Register)
-| Borrow (kind : RefKind) (prot : Bool) (mask : List Bool) (len : Nat)
+-- `len = some n` retags exactly `n` cells at `base + offset`, range-
+-- checked; `len = none` retags the REST of the pointer's allocation
+-- from there — mirlite's `.refSlice` — with no range check, because
+-- mirlite has none and a zero-length rest at a past-the-end address
+-- (reachable through `PtrOffset`, which guards only the low end) must
+-- succeed on both machines. One primitive for every retag: the
+-- projection temporaries, `&x.f`, and the slice mint.
+| Borrow (kind : RefKind) (prot : Bool) (mask : List Bool) (len : Option Nat)
     (base : Register) (offset : Word)
 | ExposeAddr (srcPtr : Register)
 | FromExposed (srcPtr : Register)
 | PtrOffset (srcPtr : Register) (deltaCells : Int)
-| BorrowRest (kind : RefKind) (prot : Bool) (srcPtr : Register)
--- retag the rest of a fat pointer HELD IN A REGISTER. `BorrowRest`
--- dereferences a pointer-to-the-cell and retags what it finds;
--- this takes the loaded value directly, so the read and the retag
--- are separate instructions and a projection's `Borrow`/`Die`
--- bracket can close BEFORE the mint. No address arithmetic of its
--- own: the range is the loaded pointer's own `(base+off, size-off)`,
--- exactly what `BorrowRest` computes after its load.
-| RetagRest (kind : RefKind) (prot : Bool) (srcVal : Register)
 deriving Repr, Inhabited, BEq
 
 inductive Instr
@@ -240,42 +238,6 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
            | _ => RhsResult.Err "pointer offset of a non-pointer value"
      | _ => RhsResult.Err "PtrOffset expects Ptr"
 
-  | Rhs.BorrowRest kind prot srcPtr =>
-     -- slice retag: read the fat pointer cell, then a fresh tag over the
-     -- RUNTIME rest of its allocation (size - offset) — mirlite's
-     -- `.refSlice`; the mask is always empty for slice data
-     match state.reg.lookup srcPtr with
-     | some (_, [Val.Ptr base offset size tag]) =>
-       let addr := base + offset
-       if addr < base || addr >= base + size then RhsResult.Err "OOB"
-       else
-         match M.read state.perms addr 1 tag with
-         | .error msg => RhsResult.Err msg
-         | .ok perms2 =>
-           match state.mem.find? addr with
-           | some (Val.Ptr pBase pOff pSize pTag) =>
-             let len := pSize - pOff
-             match M.ref perms2 (pBase + pOff) len pTag kind prot [] with
-             | .ok (perms3, newTag) =>
-               let s2 := { state with perms := perms3 }
-               RhsResult.Ok [Val.Ptr pBase pOff pSize newTag] obseq.TyVal.PTy s2
-             | .error msg => RhsResult.Err msg
-           | _ => RhsResult.Err "slice value is not a pointer"
-     | _ => RhsResult.Err "BorrowRest expects Ptr"
-
-  | Rhs.RetagRest kind prot srcVal =>
-     -- the second half of `BorrowRest`, on a pointer already loaded:
-     -- a fresh tag over the RUNTIME rest of the value's allocation
-     match state.reg.lookup srcVal with
-     | some (_, [Val.Ptr pBase pOff pSize pTag]) =>
-       let len := pSize - pOff
-       match M.ref state.perms (pBase + pOff) len pTag kind prot [] with
-       | .ok (perms3, newTag) =>
-         let s2 := { state with perms := perms3 }
-         RhsResult.Ok [Val.Ptr pBase pOff pSize newTag] obseq.TyVal.PTy s2
-       | .error msg => RhsResult.Err msg
-     | _ => RhsResult.Err "RetagRest expects Ptr"
-
   | Rhs.AllocN ty n =>
      let units := n * typeSize ty
      let (base, mem2) := A.alloc state.mem units
@@ -312,15 +274,26 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
      match state.reg.lookup baseReg with
      | some (_, [Val.Ptr base baseOff size tag]) =>
        let addr := base + baseOff + offset
-       -- the retagged RANGE must be dereferenceable (Miri's requirement),
-       -- which for `len = 0` admits a one-past-the-end address: a ZST
-       -- borrow is legal Rust and performs no access. Same form as
-       -- `writeThroughPtr`'s check. (Until 2026-08-22 this was
-       -- `addr >= base + size`, which rejected every zero-sized retag —
-       -- `local/zst_ref`.)
-       if addr + len > base + size then RhsResult.Err "OOB"
-       else
-         match M.ref state.perms addr len tag kind prot mask with
+       match len with
+       | some n =>
+         -- the retagged RANGE must be dereferenceable (Miri's requirement),
+         -- which for `n = 0` admits a one-past-the-end address: a ZST
+         -- borrow is legal Rust and performs no access. Same form as
+         -- `writeThroughPtr`'s check. (Until 2026-08-22 this was
+         -- `addr >= base + size`, which rejected every zero-sized retag —
+         -- `local/zst_ref`.)
+         if addr + n > base + size then RhsResult.Err "OOB"
+         else
+           match M.ref state.perms addr n tag kind prot mask with
+           | .ok (perms2, newTag) =>
+             let s2 := { state with perms := perms2 }
+             RhsResult.Ok [Val.Ptr base (baseOff + offset) size newTag] obseq.TyVal.PTy s2
+           | .error msg => RhsResult.Err msg
+       | none =>
+         -- the rest of the allocation, unchecked: `size - (baseOff + offset)`
+         -- truncates to 0 past the end, and a zero-length retag there is
+         -- what mirlite's `.refSlice` does too (see the constructor doc)
+         match M.ref state.perms addr (size - (baseOff + offset)) tag kind prot mask with
          | .ok (perms2, newTag) =>
            let s2 := { state with perms := perms2 }
            RhsResult.Ok [Val.Ptr base (baseOff + offset) size newTag] obseq.TyVal.PTy s2

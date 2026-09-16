@@ -4,6 +4,31 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-16 (later) — One Borrow Primitive
+
+The user asked why the slice mint needed its own instruction when
+`Rhs.Borrow` already retags: *can we not generalize borrow to borrow a
+subarray optionally?* It can. `RetagRest kind prot rv` was `Borrow kind
+prot [] ⟨rest⟩ rv 0` in every respect but one — `Borrow`'s length was a
+compile-time `Nat`, and the rest of an allocation is runtime data in the
+pointer value. So the length is now `Option Nat`: `some n` is the
+range-checked fixed retag, `none` is the rest, and `RetagRest` is gone.
+So is `BorrowRest`, dead since the split.
+
+The one semantic decision is that `none` performs no range check. Under
+`some n` the check `addr + n > base + size` stays; under `none` the
+length is `size − (baseOff + offset)`, which truncates to zero past the
+end, and mirlite's `.refSlice` has no check either. That corner is
+reachable — `PtrOffset` guards only the low end — so a check here would
+have been a fresh divergence, not extra safety.
+
+Everything else was `some`-wrapping: seventeen spelled-out `Rhs.Borrow`
+terms in proof statements, eight golden lines, one step lemma renamed.
+No proof changed its tactics. Build clean, four suites green, audit
+unchanged at propext / Classical.choice / Quot.sound with zero sorries.
+
+---
+
 ## 2026-09-16 — Move the Mint, Not the Semantics; Every Rvalue Is In
 
 `compile_correct` now covers every rvalue mirlite has. `CoreRhs`'s

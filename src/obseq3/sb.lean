@@ -50,7 +50,7 @@ abbrev Tag := Nat
 
     Kinds originate in the conformance lowering (`toRefKind`, from ULLBC
     `Rvalue::Ref`/`Rvalue::RawPtr` and seam retags) and are carried
-    verbatim into the target IR's `Rhs.Borrow`/`Rhs.BorrowRest`; the
+    verbatim into the target IR's `Rhs.Borrow`; the
     compiler's own internal place-lowering borrows use only `Shared` and
     `Mut`. -/
 inductive RefKind
@@ -477,7 +477,7 @@ def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
     borrows at a nonzero field offset, and "must be on top" is a
     self-check that the compiler's brackets nest.
 
-    It held for every lowering until `refSlice`, whose `BorrowRest`
+    It held for every lowering until `refSlice`, whose old `BorrowRest`
     dereferenced the source cell and MINTED in one instruction, forcing
     the bracket to span the mint: a `Mut` retag's write through the
     loaded tag popped the temporary and a `Shared`/`Raw false` retag
@@ -485,14 +485,15 @@ def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
     2026-09-14 and 2026-09-16 that was answered here, by removing the tag
     wherever it sat — which cost a recursive `dieCellContent` and four
     keystone lemmas sliding the die past the mint. The lowering now
-    splits instead (`Rhs.RetagRest`, compile.lean), the `Die` runs before
+    splits instead (a second `Rhs.Borrow` with `len = none`, compile.lean),
+    the `Die` runs before
     the mint, and this is a head match again. Every bracket in the
     compiler now closes with its temporary on top:
 
         source place    Load / ExposeAddr / FromExposed / PtrOffset
                         read THROUGH the temp; it survives, on top
         dest place      RStore writes through the temp; same
-        refSlice        Load; Die; RetagRest — the mint is outside
+        refSlice        Load; Die; Borrow none — the mint is outside
 
     Mis-nesting is caught twice over: here at runtime in the unproved
     fragment, and — better — by `PermSim`, whose positional `StackSim`

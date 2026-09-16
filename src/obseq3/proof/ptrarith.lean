@@ -629,7 +629,7 @@ A slice retag reads the fat-pointer cell and then takes a fresh tag over
 the REST of its allocation (`size - offset`), which is why the read
 packages let the renaming grow.
 
-It is also the one member with a non-empty `post`. `Rhs.BorrowRest` used
+It is also the one member with a non-empty `post`. The old `Rhs.BorrowRest` used
 to do both halves in a single instruction, which forced a projected
 source's `Borrow(Shared)` to stay live across the mint — and a `Mut`
 retag whose range covers the fat pointer's own cell then popped it with
@@ -640,7 +640,8 @@ has no projection borrow at all, ran clean: a real divergence, pinned by
 
 The lowering now splits (2026-09-16): `Load` the fat pointer through the
 temporary, `Die` it while it is still on top, then mint with a
-register-to-register `Rhs.RetagRest`. The read half is literally copy's,
+register-to-register `Rhs.Borrow … none` — the rest of the loaded
+pointer's allocation. The read half is literally copy's,
 so BRIDGE 1S collapses the bracket exactly as it does for `ptrCast`, and
 the mint is a separate step that no borrow outlives. -/
 
@@ -650,7 +651,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
     ReadPkgLowered compProg (.refSlice (τ := τ) kind prot src) src
       (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
-      (fun tmp => [Instr.Assgn tmp (Rhs.RetagRest kind prot tmp)]) := by
+      (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)]) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -719,7 +720,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
           sb_read_respects_PermSim h_spsim h_wf_t h_srt h_read_src
         have h_emit2 : ∀ (k : Nat) (instr : Instr), k < 2 →
             ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)) sOut.result.reg),
-              Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.RetagRest kind prot (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))]).get? k = some instr →
+              Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Borrow kind prot [] none (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) 0)]).get? k = some instr →
             compProg ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextLabel + k) = some instr := by
           intro k instr hk hget
           refine h_instD _ _ ?_ ?_
@@ -732,7 +733,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)) sOut.result.reg)) := by
           rw [h_spc]; exact h_emit2 0 _ (by omega) rfl
         have h_code2 : compProg (s_mid1.pc + 1)
-            = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.RetagRest kind prot (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))) := by
+            = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Borrow kind prot [] none (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) 0)) := by
           rw [h_spc]; exact h_emit2 1 _ (by omega) rfl
         have h_lt : rs.addr - rs.allocBase < rs.allocSize := by
           have h1 : rs.addr + 1 ≤ rs.allocBase + rs.allocSize := Nat.not_lt.mp h_fit
@@ -787,7 +788,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
                   ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
                 (obseq.TyVal.PTy, [Val.Ptr pb2 po2 ps2 p2.NextTag]),
               pc := s_mid1.pc + 1 + 1 } :=
-          runN_Assgn_RetagRest_step compProg _ (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) kind prot
+          runN_Assgn_Borrow_rest_step compProg _ (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) kind prot
             h_code2 (RegMap.lookup_insert_self _ _ _) h_ref_tgt
         -- the temporary is above every mapped register, twice over
         have h_ins : LocalBindingSim ρa ρt sM.env
@@ -830,7 +831,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
           exact h_pi'
 
 /-- **The `refSlice` read package**, projected source at a nonzero
-    offset — the case the old single-instruction `BorrowRest` got WRONG.
+    offset — the case the old single-instruction deref-and-retag got WRONG.
     Now the bracket is copy's, so `copy_projsrc_offset_read` (BRIDGE 1S)
     collapses `Borrow(Shared); Load; Die` exactly as it does for
     `ptrCast`, and the mint is a fourth instruction that runs after the
@@ -842,7 +843,7 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.refSlice (τ := τ) kind prot (.proj B spath))
       B spath (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
-      (fun tmp => [Instr.Assgn tmp (Rhs.RetagRest kind prot tmp)]) := by
+      (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)]) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -920,7 +921,7 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         rw [h_seq] at h_runR h_lbsR
         -- the mint, after the `Die`
         have h_code3 : compProg (s_mid1.pc + 1 + 1 + 1)
-            = some (Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Rhs.RetagRest kind prot (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)))) := by
+            = some (Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Rhs.Borrow kind prot [] none (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) 0)) := by
           have hidx : s_mid1.pc + 1 + 1 + 1 = (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextLabel + 3 := by omega
           rw [hidx]
           refine h_frag 3 _ ?_
@@ -929,7 +930,7 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         obtain ⟨q4, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
           sb_ref_respects_PermSim h_psimR h_wf_t h_tbdR h_pt h_ref_src
         subst h_fresh_eq
-        have h_run3 := runN_Assgn_RetagRest_step compProg
+        have h_run3 := runN_Assgn_Borrow_rest_step compProg
           { s_mid1 with
               perms := q3,
               reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg
@@ -980,7 +981,7 @@ theorem refSlice_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (kind : RefKind)
       (fun src : Place Γ (obseq.LayoutTy.PtrL σ) =>
         RExpr.refSlice (τ := τ) kind prot src)
       (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
-      (fun tmp => [Instr.Assgn tmp (Rhs.RetagRest kind prot tmp)]) where
+      (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)]) where
   shape := fun src => readRhsShape_refSlice kind prot src
   stepFlat := fun s dst src =>
     stepStmt_assign_refslicesrc_anyflatten s dst src kind prot

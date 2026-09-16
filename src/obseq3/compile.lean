@@ -8,8 +8,8 @@ mirlite-v3 → OSEA-IR-v3 compiler: the Checked family of
 Differences from v2:
 - the compiler is TOTAL on obseq3's statement/rvalue surface: `constInit`/
   `copy`/`ref`/`uninit`/`exposeAddr`/`fromExposed`/`ptrCast` (a Memcpy at
-  PTy)/`ptrOffset` (delta pre-scaled to cells)/`refSlice` (runtime-length
-  `BorrowRest`)/`halt`, `pushProtectors`/`popProtectors`, `alloc`/`dealloc`,
+  PTy)/`ptrOffset` (delta pre-scaled to cells)/`refSlice` (`Load`, then a
+  `Borrow` with `len = none` — the rest of the allocation)/`halt`, `pushProtectors`/`popProtectors`, `alloc`/`dealloc`,
   `assignIf` (via `SkipIf`, the target's only — forward-only — branch);
   `CompilerError.unsupported` is retained for future source constructs;
 - one `Rhs.Borrow` (kind, prot, mask, len) replaces the three v2 borrow
@@ -346,7 +346,7 @@ def ensurePlaceRoot {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → CompilerM U
 /-- Internal place-lowering borrow: no protector, no freeze mask (compiler
     temps are pushed and died with no intervening foreign access). -/
 def borrowRhs (kind : RefKind) (len : Nat) (base : Register) (offset : Word) : Rhs :=
-  Rhs.Borrow kind false [] len base offset
+  Rhs.Borrow kind false [] (some len) base offset
 
 inductive PlaceToRegEvidence {Γ : Ctx} :
     RefKind → {τ : LayoutTy} → Place Γ τ → PtrResult → Type where
@@ -471,7 +471,7 @@ def placeToBorrowRegChecked {Γ : Ctx} {τ : LayoutTy}
       let baseRes := baseOut.result
       let tmpReg ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
-        (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) baseRes.reg 0)])
+        (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (some (blockSize τ)) baseRes.reg 0)])
       pure {
         result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
         evidence := PlaceToBorrowRegEvidence.local loc baseRes tmpReg baseOut.evidence
@@ -490,7 +490,7 @@ def placeToBorrowRegChecked {Γ : Ctx} {τ : LayoutTy}
       let offset := pathOffset path
       let tmpReg ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
-        (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) baseRes.reg offset)])
+        (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (some (blockSize τ)) baseRes.reg offset)])
       pure {
         result := { reg := tmpReg, cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)] },
         evidence := PlaceToBorrowRegEvidence.proj base path baseRes tmpReg baseOut.evidence
@@ -504,7 +504,7 @@ def placeToBorrowRegChecked {Γ : Ctx} {τ : LayoutTy}
       let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
       let tmpReg ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
-        (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) loadedReg 0)])
+        (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (some (blockSize τ)) loadedReg 0)])
       pure {
         result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
         evidence := PlaceToBorrowRegEvidence.deref ptrPlace ptrRes loadedReg tmpReg ptrOut.evidence
@@ -670,13 +670,13 @@ def compileRExprPreChecked
       -- source's `Borrow`/`Die` bracket to span the mint — and the mint's
       -- access through the LOADED pointer's tag then pops the temporary
       -- (`Mut`) or buries it (`Shared`, `Raw false`). Splitting it into a
-      -- `Load` and a register-to-register `RetagRest` closes the bracket
+      -- `Load` and a register-to-register `Borrow … none` closes the bracket
       -- while the temporary is still on top. Same three accesses in the
       -- same order as `BorrowRest` did, and mirlite's `.refSlice` does:
       -- read the cell, take the pointer, retag its rest.
       readRhsPre (RExpr.refSlice (τ := τ) kind prot src) src
         (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
-        (fun tmp => [Instr.Assgn tmp (Rhs.RetagRest kind prot tmp)])
+        (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)])
         (fun srcRes evd _ => RExprToEvidence.refSlice kind prot src srcRes evd)
 
 /-- Store-through-dst rhs lowering: the pre phase followed by the store

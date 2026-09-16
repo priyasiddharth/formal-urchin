@@ -99,7 +99,7 @@ from the theorem. EVERY RVALUE IS NOW IN: `uninit` was always; both
 integer-pointer casts joined 2026-09-13; `ptrOffset` and `ptrCast`
 2026-09-14; and `refSlice`, the last one, 2026-09-16, once the compiler
 stopped holding a projection's `Borrow` across its mint
-(`Rhs.RetagRest`). `CoreRhs` is total; the gate is now purely about
+(`Rhs.Borrow` with `len = none`). `CoreRhs` is total; the gate is now purely about
 statements; (b) the direction — this is a forward
 simulation of SUCCESSFUL source runs, so it does not say the target
 goes wrong when the source has UB. That direction is probed only

@@ -3847,3 +3847,18 @@ unchanged at propext / Classical.choice / Quot.sound, zero sorries.
   real Miri".
 - The `CoreProg` statement gate is now the only scope limit: `assignIf`,
   `alloc`, `dealloc`, protector frames.
+
+## 2026-09-16 (later) — `Rhs.Borrow` with an optional length; `RetagRest` and `BorrowRest` deleted
+
+**Theme:** the user asked why the slice mint was its own instruction.
+It isn't any more: `Rhs.Borrow`'s `len` is `Option Nat`, `none` = the
+rest of the allocation, no range check (mirlite parity in the
+past-the-end corner `PtrOffset` reaches). Two constructors deleted.
+
+**Key outputs:** oseair.lean `Borrow` arm with the `Option` match;
+`runN_Assgn_Borrow_rest_step` (renamed from `_RetagRest_`);
+`runN_Assgn_BorrowRest_step` deleted; `some`-wrapping across ref.lean,
+spine.lean, compile.lean, compile_tests.lean; a `[FACT]` paragraph in
+durable/split-the-mint-out-of-the-bracket.md; dev-log increment.
+
+**Status:** complete, one commit, four suites green, audit unchanged.

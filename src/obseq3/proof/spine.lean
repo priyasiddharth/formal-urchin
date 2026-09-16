@@ -1204,7 +1204,7 @@ theorem ptrChain_lowering_sim
                               nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1 }
                             [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                               (Rhs.Borrow RefKind.Shared false []
-                                (blockSize (obseq.LayoutTy.PtrL τ'))
+                                (some (blockSize (obseq.LayoutTy.PtrL τ')))
                                 bOut.result.reg (pathOffset f))]) with
                           nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1 + 1 }
                         [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1))
@@ -1260,7 +1260,7 @@ theorem ptrChain_lowering_sim
                 have h_code1 : compProg s_mid.pc
                     = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                         (Rhs.Borrow RefKind.Shared false []
-                          (blockSize (obseq.LayoutTy.PtrL τ'))
+                          (some (blockSize (obseq.LayoutTy.PtrL τ')))
                           bOut.result.reg (pathOffset f))) := by
                   rw [h_bpc]
                   refine h_inst _ _ ?_ ?_
@@ -1276,7 +1276,7 @@ theorem ptrChain_lowering_sim
                           nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1 }
                       [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                         (Rhs.Borrow RefKind.Shared false []
-                          (blockSize (obseq.LayoutTy.PtrL τ'))
+                          (some (blockSize (obseq.LayoutTy.PtrL τ')))
                           bOut.result.reg (pathOffset f))]
                       (k := 0) (by simp)
                     simpa using h
@@ -1317,7 +1317,7 @@ theorem ptrChain_lowering_sim
                             nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1 }
                           [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                             (Rhs.Borrow RefKind.Shared false []
-                              (blockSize (obseq.LayoutTy.PtrL τ'))
+                              (some (blockSize (obseq.LayoutTy.PtrL τ')))
                               bOut.result.reg (pathOffset f))]) with
                           nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1 + 1 }
                       [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1))
@@ -1394,7 +1394,7 @@ theorem ptrChain_lowering_sim
                             nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1 }
                           [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                             (Rhs.Borrow RefKind.Shared false []
-                              (blockSize (obseq.LayoutTy.PtrL τ'))
+                              (some (blockSize (obseq.LayoutTy.PtrL τ')))
                               bOut.result.reg (pathOffset f))]) with
                           nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1 + 1 }
                         [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1))
@@ -2488,7 +2488,7 @@ theorem copy_freshproj_write_after_read
     -- all five from its `h_stmtRun`, which spells its tower its own way)
     (h_code1 : compProg sR.pc
       = some (Instr.Assgn (Register.R csR.nextReg)
-          (Rhs.Borrow RefKind.Mut false [] (blockSize τ)
+          (Rhs.Borrow RefKind.Mut false [] (some (blockSize τ))
             (Register.R csPrefix.nextReg) off)))
     (h_code2 : compProg (sR.pc + 1)
       = some (mkStore (Register.R csR.nextReg)))
@@ -2775,7 +2775,7 @@ theorem ref_chainsrc_borrow
       compProg q' = some instr)
     (h_code1 : compProg csD.nextLabel
       = some (Instr.Assgn (Register.R csD.nextReg)
-          (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f)))) :
+          (Rhs.Borrow kind prot mask (some (blockSize τ)) dOut.result.reg (pathOffset f)))) :
     ∃ (n : Nat) (s_mid sB : oseair.State MSB) (tgtPerms : MSB.State),
       sB = { s_mid with
         perms := tgtPerms,
@@ -2794,10 +2794,10 @@ theorem ref_chainsrc_borrow
       LocalBindingSim ρa (ρt.extend permsR.NextTag s_mid.perms.NextTag) sM.env sB
         (emit { csD with nextReg := csD.nextReg + 1 }
           [Instr.Assgn (Register.R csD.nextReg)
-            (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f))]) ∧
+            (Rhs.Borrow kind prot mask (some (blockSize τ)) dOut.result.reg (pathOffset f))]) ∧
       sB.pc = (emit { csD with nextReg := csD.nextReg + 1 }
           [Instr.Assgn (Register.R csD.nextReg)
-            (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f))]).nextLabel ∧
+            (Rhs.Borrow kind prot mask (some (blockSize τ)) dOut.result.reg (pathOffset f))]).nextLabel ∧
       csD.placeRegMap = csA.placeRegMap ∧
       csA.nextReg ≤ csD.nextReg ∧
       sB.mem = sA.mem ∧
@@ -2833,7 +2833,7 @@ theorem ref_chainsrc_borrow
   have h_code1' : compProg s_mid.pc
       = some (Instr.Assgn
           (Register.R (CheckedCompilerM.run (placeToRegChecked kindL B) csA).nextReg)
-          (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg (pathOffset f))) := by
+          (Rhs.Borrow kind prot mask (some (blockSize τ)) dOut.result.reg (pathOffset f))) := by
     rw [h_dpc]; exact h_code1
   have h_le1 : resolved.allocBase + (resolved.addr - resolved.allocBase)
       + pathOffset f + blockSize τ ≤ resolved.allocBase + resolved.allocSize := by
@@ -2876,7 +2876,7 @@ def projDstTail (cs : CompilerState) (off : Nat) (sz : Nat)
   if off = 0 then emit cs [mkStore dstReg]
   else emit (emit (emit { cs with nextReg := cs.nextReg + 1 }
       [Instr.Assgn (Register.R cs.nextReg)
-        (Rhs.Borrow RefKind.Mut false [] sz dstReg off)])
+        (Rhs.Borrow RefKind.Mut false [] (some sz) dstReg off)])
       [mkStore (Register.R cs.nextReg)])
       [Instr.Die (Register.R cs.nextReg) sz]
 
@@ -2890,7 +2890,7 @@ theorem projDstTail_pos (cs : CompilerState) {off : Nat} (h : off ≠ 0) (sz : N
     projDstTail cs off sz mkStore dstReg
       = emit (emit (emit { cs with nextReg := cs.nextReg + 1 }
           [Instr.Assgn (Register.R cs.nextReg)
-            (Rhs.Borrow RefKind.Mut false [] sz dstReg off)])
+            (Rhs.Borrow RefKind.Mut false [] (some sz) dstReg off)])
           [mkStore (Register.R cs.nextReg)])
           [Instr.Die (Register.R cs.nextReg) sz] := by
   simp [projDstTail, h]
@@ -2956,7 +2956,7 @@ theorem copy_boundproj_write_after_read
     -- the three instructions the destination costs, and the rebuild's two
     (h_code1 : compProg sR.pc
       = some (Instr.Assgn (Register.R csR.nextReg)
-          (Rhs.Borrow RefKind.Mut false [] (blockSize τ) dstReg off)))
+          (Rhs.Borrow RefKind.Mut false [] (some (blockSize τ)) dstReg off)))
     (h_code2 : compProg (sR.pc + 1)
       = some (mkStore (Register.R csR.nextReg)))
     (h_code3 : compProg (sR.pc + 1 + 1)

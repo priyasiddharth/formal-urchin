@@ -65,7 +65,7 @@ theorem compileStmt_ref_fresh_local_lowers
               dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ)) with
               nextReg := cs.nextReg + 1 + 1 }
           [Instr.Assgn (Register.R (cs.nextReg + 1))
-            (Rhs.Borrow kind prot mask (blockSize τ) srcReg 0)])
+            (Rhs.Borrow kind prot mask (some (blockSize τ)) srcReg 0)])
           [Instr.RStore obseq.TyVal.PTy (Register.R (cs.nextReg + 1))
             (Register.R cs.nextReg)]) := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := dstLoc) h_dst
@@ -153,7 +153,7 @@ structure RefSrcShape {Γ : Ctx} {σb τ : LayoutTy}
           [Instr.Assgn
             (Register.R
               (CheckedCompilerM.run (placeToRegChecked kindL B) cs).nextReg)
-            (Rhs.Borrow kind prot mask (blockSize τ) dOut.result.reg
+            (Rhs.Borrow kind prot mask (some (blockSize τ)) dOut.result.reg
               (pathOffset f))]
   /-- and it stores the `Borrow`'s register, with nothing to clean up -/
   preValue : ∀ (cs : CompilerState)
@@ -295,7 +295,7 @@ theorem refSrcShape_deref {τ : LayoutTy} (P : Place Γ (obseq.LayoutTy.PtrL τ)
             let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
             let tmpReg ← CheckedCompilerM.lift freshRegM
             let _ ← CheckedCompilerM.lift
-              (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) loadedReg 0)])
+              (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (some (blockSize τ)) loadedReg 0)])
             pure {
               result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
               evidence := PlaceToBorrowRegEvidence.deref P ptrRes loadedReg tmpReg
@@ -339,7 +339,7 @@ theorem refSrcShape_deref {τ : LayoutTy} (P : Place Γ (obseq.LayoutTy.PtrL τ)
             let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
             let tmpReg ← CheckedCompilerM.lift freshRegM
             let _ ← CheckedCompilerM.lift
-              (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (blockSize τ) loadedReg 0)])
+              (emitM [Instr.Assgn tmpReg (Rhs.Borrow kind prot mask (some (blockSize τ)) loadedReg 0)])
             pure {
               result := { reg := tmpReg, cleanup := [(tmpReg, blockSize τ)] },
               evidence := PlaceToBorrowRegEvidence.deref P ptrRes loadedReg tmpReg

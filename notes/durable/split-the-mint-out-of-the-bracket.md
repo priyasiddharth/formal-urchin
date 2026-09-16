@@ -54,6 +54,19 @@ still a borrow — the 2026-08-27 decision survives the change untouched,
 which the options that move the ACCESS (`readRhsPre`'s `mk` taking the
 offset; `PtrOffset` in `placeToRegChecked`) would not.
 
+[FACT, 2026-09-16, later] **The mint is `Rhs.Borrow` with `len = none`;
+there is no `RetagRest`.** `Rhs.Borrow`'s length is `Option Nat`: `some n`
+is the range-checked fixed-length retag every projection temporary and
+`&x.f` use; `none` is "the rest of the pointer's allocation from here",
+`size − (baseOff + offset)`, with NO range check — matching mirlite's
+`.refSlice`, which has none, in the past-the-end corner `PtrOffset` can
+reach (`p.add(10)` on 2 cells → a zero-length rest that must succeed on
+both machines). `RetagRest kind prot rv` was exactly `Borrow kind prot []
+none rv 0`; it and the dead `BorrowRest` are deleted. One retag
+primitive, and `Rhs.Borrow` is now literally the only instruction that
+retags as well as the only one that forms an offset.
+→ src/obseq3/oseair.lean, the `Borrow` arm; `runN_Assgn_Borrow_rest_step`
+
 ## Why this matters
 
 `compile_correct` now covers every rvalue. The bracket discipline is

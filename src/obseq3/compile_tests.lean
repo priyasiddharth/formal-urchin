@@ -59,7 +59,7 @@ def g2_protected_masked_ref : IO Unit :=
     [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
      Instr.CStore natTy [Val.Dat 7] (Register.R 0),
      Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut true [true] 1 (Register.R 0) 0),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut true [true] (some 1) (Register.R 0) 0),
      Instr.RStore pTy (Register.R 2) (Register.R 1),
      Instr.Halt]
     "g2 protected masked ref"
@@ -76,7 +76,7 @@ def g3_deref_destination : IO Unit :=
     [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
      Instr.CStore natTy [Val.Dat 1] (Register.R 0),
      Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false [] 1 (Register.R 0) 0),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 0),
      Instr.RStore pTy (Register.R 2) (Register.R 1),
      Instr.Assgn (Register.R 3) (Rhs.Load pTy (Register.R 1)),
      Instr.CStore natTy [Val.Dat 2] (Register.R 3),
@@ -100,7 +100,7 @@ def g4_field_offsets_and_die : IO Unit :=
   expectCode ΓB [.assign fld0B (.constInit 1), .assign fld1B (.constInit 2), .halt]
     [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
      Instr.CStore natTy [Val.Dat 1] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] 1 (Register.R 0) 1),
+     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 1),
      Instr.CStore natTy [Val.Dat 2] (Register.R 1),
      Instr.Die (Register.R 1) 1,
      Instr.Halt]
@@ -140,7 +140,7 @@ def g6_protector_frame : IO Unit :=
      Instr.CStore natTy [Val.Dat 7] (Register.R 0),
      Instr.PushProt,
      Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut true [] 1 (Register.R 0) 0),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut true [] (some 1) (Register.R 0) 0),
      Instr.RStore pTy (Register.R 2) (Register.R 1),
      Instr.PopProt,
      Instr.Halt]
@@ -186,7 +186,7 @@ def g11_assign_if_skip : IO Unit :=
     [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
      Instr.CStore natTy [Val.Dat 1] (Register.R 0),
      Instr.SkipIf (Register.R 0) 1 3,
-     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] 1 (Register.R 0) 1),
+     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 1),
      Instr.CStore natTy [Val.Dat 7] (Register.R 1),
      Instr.Die (Register.R 1) 1,
      Instr.Halt]
@@ -208,7 +208,7 @@ def g10_expose_addr : IO Unit :=
     [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
      Instr.CStore natTy [Val.Dat 1] (Register.R 0),
      Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] 1 (Register.R 0) 0),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] (some 1) (Register.R 0) 0),
      Instr.RStore pTy (Register.R 2) (Register.R 1),
      Instr.Assgn (Register.R 3) (Rhs.Alloc natTy),
      Instr.Assgn (Register.R 4) (Rhs.ExposeAddr (Register.R 1)),
@@ -508,7 +508,7 @@ def g12_ptr_offset_prescaled : IO Unit :=
     [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
      Instr.CStore natTy [Val.Dat 1] (Register.R 0),
      Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] 2 (Register.R 0) 0),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] (some 2) (Register.R 0) 0),
      Instr.RStore pTy (Register.R 2) (Register.R 1),
      Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
      Instr.Assgn (Register.R 4) (Rhs.PtrOffset (Register.R 1) 2),
@@ -551,7 +551,8 @@ def d21_offset_before_base : IO Unit :=
     (.ub 2) "d21 offset before base"
 
 /-- `refSlice` lowers SPLIT: a `Load` of the fat pointer out of the
-    source cell, then a register-to-register `RetagRest` carrying
+    source cell, then a register-to-register `Borrow … none` (the rest of
+    the loaded pointer's allocation) carrying
     kind/prot. The split is what lets a projected source's `Die` run
     between the two, while its tag is still on top (2026-09-16). -/
 def g13_ref_slice : IO Unit :=
@@ -563,11 +564,11 @@ def g13_ref_slice : IO Unit :=
     [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
      Instr.CStore natTy [Val.Dat 1] (Register.R 0),
      Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] 2 (Register.R 0) 0),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] (some 2) (Register.R 0) 0),
      Instr.RStore pTy (Register.R 2) (Register.R 1),
      Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
      Instr.Assgn (Register.R 4) (Rhs.Load pTy (Register.R 1)),
-     Instr.Assgn (Register.R 4) (Rhs.RetagRest .Mut false (Register.R 4)),
+     Instr.Assgn (Register.R 4) (Rhs.Borrow .Mut false [] none (Register.R 4) 0),
      Instr.RStore pTy (Register.R 4) (Register.R 3),
      Instr.Halt]
     "g13 refSlice"
@@ -853,11 +854,11 @@ def xD34 : Place ΓD34 natL := .local ⟨⟨3, by decide⟩, rfl⟩
     pops the projection's temporary `Borrow(Shared)`, so the cleanup
     `Die` finds its tag gone.
 
-    This DIVERGED until 2026-09-16: `BorrowRest` dereferenced the source
+    This DIVERGED until 2026-09-16: the old `BorrowRest` dereferenced the source
     cell and minted in ONE instruction, so the bracket spanned the mint
     and the cleanup `Die` found its tag gone, while mirlite — which has
     no projection borrow at all — ran clean. Splitting the lowering into
-    `Load; Die; RetagRest` (compile.lean) fixed it: the bracket closes
+    `Load; Die; Borrow none` (compile.lean) fixed it: the bracket closes
     while its temporary is still on top. Kept as the regression witness —
     reverting the split makes this report `.ub 3` again. -/
 def ΓRS : Ctx := [tPairL, obseq.LayoutTy.PtrL tPairL, ptrNat]
