@@ -1,5 +1,24 @@
 # `Die` removes its tag wherever it sits (and errors nowhere)
 
+[SUPERSEDED 2026-09-16 → split-the-mint-out-of-the-bracket.md]
+REVERTED. `dieCellContent` is a strict head match again. The permissive
+version was correct and did make the bracket collapse unconditional, but
+it paid for that with a RECURSIVE `die` that every lemma then had to
+induct over: +472 lines in keystone.lean, none of which survive. Fixing
+the LOWERING instead — split `BorrowRest` so the mint runs after the
+`Die` — costs one `Rhs` constructor and one step lemma, and leaves every
+borrow exactly where it was.
+
+**Why I was misled:** I justified it as generality for future minting
+rvalues. There are none: `refSlice` was the last rvalue outside
+`CoreRhs`, and `ref` already avoids the problem via the offset operand on
+`Rhs.Borrow`.
+
+What survives below: the four-kind analysis (which mints pop, bury, or
+spare the temporary) and the argument that `PermSim` catches mis-nesting
+better than a runtime check. What is now WRONG is the conclusion that
+`die` should absorb the problem.
+
 Load this when reasoning about the `Borrow; use; Die` bracket a projected
 place lowering emits, or when tempted to treat `Die` as a Stacked Borrows
 operation.

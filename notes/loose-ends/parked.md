@@ -597,61 +597,53 @@ close it if it diverges.
 **References:** ptroffset-defers-ub-to-the-use.md,
 stacked-borrows-does-not-subsume-bounds-checks.md
 
-## Admit `refSlice` — the fold assembly is all that is left
-**Status:** parked 2026-09-14. Content layer DONE (6b51120, 5c3acab).
-**Context:** `refSlice` is a proved read-then-store member except for
-`pkgProjOffset`. Its mint runs BETWEEN the projection's `Borrow(Shared)`
-and the `Die`, and `bridge1S_of_read` cannot see through that.
-**Proved and green** (keystone.lean, "Sliding a `Die` past the mint";
-permsim_transport.lean):
-  dieCellContent_absent / _cons_ne / _top_ref   the die's own algebra
-  splitStack_cons_ne, splitStack_mem
-  resolveWildcardIn_cons_unexposed / _exposed
-  firstProtectedIn_cons_unprot
-  readCellContent_cons_ref        READ peels the temporary
-  insertAboveContent_cons_ref     INSERT-ABOVE splices below it
-  writeCellContent_cons_ref       WRITE discards it (SRW run unaffected,
-                                  via takeWhile_append_singleton_false)
-  writeCellContent_mem            a write introduces nothing new
-  freshTag_not_in_stack           the fresh tag is in no target stack
-All four `refCellOp` branches (mask is `[]` for `BorrowRest`, so the
-masked arms do not arise) have their content lemma.
+## Admit `refSlice` (RESOLVED 2026-09-16 — split the mint out of the bracket)
+**Status:** DONE. `refSlice` is in `CoreRhs`; `CoreRhs` is now total.
+**How it went, versus what was parked here:** the parked plan was to
+prove the mint COMMUTES with the `Die` it sits inside (`refFold_die_comm`
+over a range, on top of a permissive `dieCellContent`). That whole line
+was abandoned on the user's call. The mint was moved OUT of the bracket
+instead — `Rhs.BorrowRest` split into `Rhs.Load` + `Rhs.RetagRest`, with
+the compiler's shared `readRhsPre` gaining a `post` slot that runs after
+the source cleanup — and `dieCellContent` went back to a strict head
+match. `refFold_die_comm` was never finished and is not needed; the 472
+lines of keystone machinery it sat on are deleted.
+**Cost comparison, measured:** permissive die = +60 lines sb.lean, +472
+keystone.lean, +27 permsim_transport.lean, one lemma still open. Split
+lowering = +12 lines oseair.lean (`Rhs.RetagRest` + its arm), +35
+common.lean (its step lemma), +20 compile.lean (`emit_append_state_incr`
+and the arm), and the four `refSlice` proofs.
+**References:** durable/split-the-mint-out-of-the-bracket.md;
+durable/die-is-permissive-when-not-on-top.md (superseded);
+durable/refslice-projsrc-mut-pops-the-projection-borrow.md (diagnosis).
 
-**What is left: the fold assembly, and the invariant is settled.**
-Carry, over `foldCellsIdx (refCellOp p kind n [])`:
-    (i)  ∀ b ≠ a, find? ap1 b = find? ap2 b
-    (ii) dieCellContent pf t (find? ap1 a) = .ok (find? ap2 a)
-Cells `c ≠ a` preserve both — the op touches only `c`. The cell `c = a`
-is where the content lemmas fire. Crucially the fold visits `a` AT MOST
-ONCE (offsets are distinct), so (ii) does not have to be preserved by a
-second visit — which is what lets the whole thing avoid membership
-lemmas for read and insert-above.
-
-**The one piece of plumbing that does not exist yet:** a way to use
-"visited at most once". Two routes:
-  * a disjointness lemma — the fold preserves `find?` at cells outside
-    `[addr+i, addr+len)` — plus splitting the fold at `a`'s index, which
-    needs a `foldCellsIdx` composition lemma; or
-  * carry `∀ j, i ≤ j → j < len → addr + j ≠ a` in the "already visited"
-    branch of the invariant, so the induction never has to revisit.
-The second is probably cheaper and needs no new composition lemma.
-
-**Do NOT** try to prove `readCellContent_mem` / `insertAboveContent_mem`
-first: they were attempted and are only needed if the invariant is stated
-without the visited-once observation. They also fight Lean's `split` on
-the 5-constructor item match (`writeCellContent_mem` shows the pattern
-that does work: `cases item with` enumerating all five).
-
-**Then:** assemble as `bridge1S_of_read_then_ref` beside
-`bridge1S_of_read`, derive `refslice_readpkg_projoffset` the way
-`expose_readpkg_projoffset` derives, then family / `CoreRhs` /
-dispatcher — `refslice_readpkg_lowered`, `readRhsShape_refSlice` and
-`runN_Assgn_BorrowRest_step` are already in.
-**Effort estimate:** ~3-4h. The content mathematics is done; what remains
-is the induction and the wiring.
-**References:** die-is-permissive-when-not-on-top.md,
-refslice-projsrc-mut-pops-the-projection-borrow.md,
-one-leaf-per-destination-shape.md
+## GEP: drop the `Borrow` at read-only projected sources (the user's call, twice)
+**Status:** parked 2026-09-16, and REJECTED as scoped — recorded so it
+is not re-proposed a third time.
+**Context:** BRIDGE 1S proves `Borrow(Shared) +off; access through it;
+Die` equals the bare access through the base's tag, so the compiler
+could emit the shorter form. Two shapes: (b) `readRhsPre`'s `mk` takes
+the projection offset, so the rvalue's own instruction accesses at
+`base+off` through the base's tag — the access survives, the retag does
+not; (c) `placeToRegChecked` emits `Rhs.PtrOffset` — tag-preserving
+arithmetic, NO access. Either retires BRIDGE 1S and the `Borrow`/`Die`
+at projected sources for all six read-then-store rvalues.
+**Why parked:** both make field addressing unborrowed. The user's
+2026-08-27 decision ("keep GEP as a borrow — do NOT add an access-free
+FieldPtr; narrow the borrow to the field instead") covers (c) directly;
+asked again on 2026-09-16 about (b), the user's answer was that the
+offset is still applied with the base's provenance and no capability for
+the field is ever created, so (b) does not escape the objection either.
+The distinction between them — (b) keeps address formation fused to the
+access, (c) lets a bare field pointer exist in a register — is a
+difference of degree.
+**To resume:** only if the decision changes. The payoff would be
+deleting BRIDGE 1S, `copy_projsrc_offset_read`, and the proj-offset half
+of all six read packages.
+**Effort estimate:** ~1 day for (b), most of it re-checking the 45
+compile facts through a changed `readRhsPre`.
+**References:** obseq2-comparison.md 2026-08-27 (later);
+durable/split-the-mint-out-of-the-bracket.md.
 
 ## Prove stale-item inertness at an arbitrary position
 **Status:** parked 2026-09-14

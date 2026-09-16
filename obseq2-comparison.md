@@ -4,6 +4,79 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-16 — Move the Mint, Not the Semantics; Every Rvalue Is In
+
+`compile_correct` now covers every rvalue mirlite has. `CoreRhs`'s
+catch-all `| _ => False` is gone. The gate that remains is about
+statements — `assignIf`, `alloc`, `dealloc`, protector frames — not
+rvalues.
+
+Getting there meant undoing the previous entry. Two days ago I answered
+the `refSlice` divergence by weakening `Die` to remove its tag wherever
+it sits, and wrote that the bracket collapse was now unconditional and
+that future minting rvalues would inherit it for free. Both halves were
+worth re-examining. The user re-examined the first: *earlier die had
+simple semantics; now we make it permissive but that is too weak, so we
+strengthen it again — overall die becomes more complicated.* That is
+exactly what happened. `dieCellContent` went from a non-recursive head
+match to a recursive search-and-remove, and recursion in the definition
+meant induction in every lemma about it. The bill came to 472 lines of
+keystone machinery whose only purpose was to slide a `Die` past a mint,
+and I was stuck on the last of them.
+
+The second half does not survive either. There are no future minting
+rvalues: `refSlice` was the last rvalue outside the theorem, and `ref`,
+the only other one that mints, has never had this problem because
+`Rhs.Borrow` carries an offset operand — a projected source needs no
+bracket at all. A generality argument over an empty population.
+
+So the fix moved into the lowering. `Rhs.BorrowRest` dereferenced the
+source cell and retagged in one instruction, which is what forced the
+projection's `Borrow(Shared)` to stay live across the mint. Split it:
+`Rhs.RetagRest` takes the fat pointer from a register, and `refSlice`
+lowers `Borrow Shared; Load; Die; RetagRest`. The same three accesses in
+the same order — read the cell, take the pointer, retag its rest, which
+is also mirlite's `.refSlice` line for line — with the `Die` moved ahead
+of the mint. The temporary is on top when the bracket closes, so `Die`
+is strict again and the 472 lines are deleted rather than proved.
+
+The compiler-side cost is one `Rhs` constructor, its step lemma, and a
+`post` slot on the shared read-then-store lowering. That slot is the
+part worth keeping: `readRhsPre` — which moved out of the proof and into
+compile.lean, so the six near-identical arms are now three lines each
+and the proof's duplicate copy is gone — emits `mk`, then the source
+cleanup, then `post`. Five members pass `fun _ => []`. An rvalue that
+mints puts its mint in `post`, and the bracket closes first by
+construction.
+
+A constraint held throughout, at the user's instruction: **every pointer
+offset computation in oseair stays a borrow.** Audited rather than
+assumed. `Rhs.Borrow` is the only instruction that forms a new offset
+(`base + baseOff + offset`, oseair.lean:293), it bounds-checks the
+retagged range and performs `M.ref` at that address through the base's
+tag, and all four place-lowering sites emit it. `Rhs.PtrOffset` appears
+once, for the source-level `ptrOffset` rvalue. `RetagRest` adds no
+arithmetic of its own. The 2026-08-27 decision — GEP stays a borrow, of
+exactly the field — is untouched.
+
+That constraint is also what rules out the cheaper-looking routes. BRIDGE
+1S proves `Borrow(Shared) +off; access; Die` equals the bare access
+through the base's tag, so the compiler could emit the shorter form and
+retire the bridge. Two ways to spell it: give the rvalue's instruction
+an offset operand, or emit `Rhs.PtrOffset` in `placeToRegChecked`. I
+argued the first was different in kind because the access survives and
+only the retag disappears. The user's reply settles it: the offset is
+still applied with the base's provenance, and no capability for the
+field is ever created. The two differ in degree — one keeps address
+formation fused to the access, the other lets a bare field pointer sit
+in a register — not in kind. Both are now recorded as rejected.
+
+Six commits, four suites green at each, audit unchanged at propext /
+Classical.choice / Quot.sound with zero sorries. Units 17/17 + 106/106,
+corpus 82/0/41, differential 82 matched.
+
+---
+
 ## 2026-09-14 (third) — Delete the Check, Not the Borrow
 
 The `refSlice` divergence is gone, and the fix was one branch.

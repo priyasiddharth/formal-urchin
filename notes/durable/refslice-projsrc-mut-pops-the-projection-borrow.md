@@ -1,6 +1,7 @@
 # `refSlice` at a projected source: a `Mut` retag pops the projection's borrow
 
-[SUPERSEDED 2026-09-14 → die-is-permissive-when-not-on-top.md]
+[SUPERSEDED 2026-09-16 → split-the-mint-out-of-the-bracket.md]
+[SUPERSEDED 2026-09-14 → die-is-permissive-when-not-on-top.md, itself reverted]
 The DIVERGENCE described here is fixed. The user's call: make `Die` a
 no-op when its tag is no longer on top, rather than change the lowering
 or the source model. `Die` retires compiler scaffolding and has no Rust
@@ -16,12 +17,22 @@ self-check on the compiler's own bracketing, and the two options I
 weighed were both more invasive than deleting it.
 
 What survives: the diagnosis (a minting rvalue holds a cell-borrow across
-its mint), the witness, and the `Raw`/`Shared` vs `Mut` asymmetry. What
-is now WRONG is the [OPEN] block's premise that the fix must be an ISA or
-lowering change.
+its mint), the witness, and the `Raw`/`Shared` vs `Mut` asymmetry — and,
+after the 2026-09-16 revert, the [OPEN] block's premise that the fix must
+be an ISA or lowering change. It was right; the 2026-09-14 line above,
+which called it wrong, is the part that did not hold. The fix taken is
+neither (a) nor (b) below but a third option: SPLIT `BorrowRest` so the
+mint leaves the bracket, keeping every borrow where it is.
+
+One correction to the analysis below: "`Raw` and `Shared` retags do not
+diverge … inserted directly ABOVE THE GRANTING ITEM" is true only of
+`Raw true`, the kind actually probed. `Shared` and `Raw false` CONS on
+top of a read that merely disables, so they BURY the temporary — a
+different failure, invisible to any verdict test. See
+split-the-mint-out-of-the-bracket.md.
 
 Load this for the diagnosis and the witness; load
-die-is-permissive-when-not-on-top.md for the resolution.
+split-the-mint-out-of-the-bracket.md for the resolution.
 
 [FACT, 2026-09-14] **`refSlice`'s lowering is NOT an outlier.** It lowers
 its source place shared and emits one `Rhs.BorrowRest`, so

@@ -3779,3 +3779,71 @@ unchanged at propext / Classical.choice / Quot.sound with zero sorries.
   left": `sb_die` past `sb_ref`, with the case analysis worked out.
 - loose-ends/parked.md — "Does `ptrOffset`'s deferred UB ever diverge
   from Miri?" (a Miri-pinned witness, ~1h).
+
+## 2026-09-16 — `refSlice` admitted by fixing the lowering, not the semantics
+
+**Theme:** the permissive `die` was reverted and `refSlice` joined
+`CoreRhs` instead by splitting its mint out of the projection's bracket.
+`CoreRhs` is now TOTAL — every rvalue is inside `compile_correct`.
+
+**Key outputs:**
+- `Rhs.RetagRest` (oseair.lean) — the second half of `BorrowRest`, on a
+  pointer already loaded — plus `runN_Assgn_RetagRest_step`.
+- `readRhsPre` MOVED from proof/common.lean into compile.lean and given
+  a `post : Register → List Instr` slot emitted after the source
+  cleanup. The six read-then-store arms are now three lines each; the
+  proof-side duplicate is gone. Net −23 lines, no behaviour change.
+- `.refSlice` lowers `Borrow Shared; Load; Die; RetagRest`.
+- `dieCellContent` reverted to the strict head match; 488 lines deleted
+  across keystone.lean and permsim_transport.lean, including the
+  unfinished `refFold_die_comm`.
+- `emit_append_state_incr` (compile.lean): a three-instruction bracket
+  lemma can see through an emitted four.
+- `refslice_readpkg_lowered` (rewritten), `refslice_readpkg_projoffset`,
+  `stepStmt_assign_refslicesrc_anyflatten`, `refSlice_readRhsFamily`,
+  `CompilerInv_step_refSlice`.
+- durable/split-the-mint-out-of-the-bracket.md; supersede headers on
+  die-is-permissive-when-not-on-top.md and
+  refslice-projsrc-mut-pops-the-projection-borrow.md.
+- loose-ends/parked.md: refSlice entry RESOLVED; new entry recording the
+  GEP-as-a-borrow decision a second time.
+
+**Critical corrections (user):**
+- "Earlier die had simple semantics. Now we make it permissive but that
+  is too weak, so we need to strengthen it again … Overall die becomes
+  more complicated." Correct, and I had not weighed it: the permissive
+  die turned a head match into a recursive search, and the four keystone
+  lemmas that then existed only to induct over it were exactly the work
+  I was stuck on. I had defended it with a generality argument —
+  "future minting rvalues get the collapse free" — over an EMPTY
+  population: `refSlice` was the last rvalue, and `ref` already avoids
+  the problem with an offset operand on `Rhs.Borrow`.
+- I said the burying case (`Shared`/`Raw false` mints) was "not covered
+  by instruction splitting". Wrong — splitting takes the mint out of the
+  bracket, so it covers that case too. Retracted in the same exchange.
+- Asked whether option (b) means "geps become simple pointer addition
+  with no borrow semantics", I answered "no, the access survives". The
+  user's follow-up — "even with b, pointer arithmetic will be without
+  borrow" — is right: no capability for the field is ever created, and
+  the difference from the already-rejected (c) is degree, not kind. Both
+  are now recorded as rejected in parked.md.
+- I over-generalised a `Raw true` probe to "Raw and Shared retags do not
+  diverge". `Shared` and `Raw false` cons on top of a merely-disabling
+  read, so they BURY the temporary. Corrected in the diagnosis note.
+
+**User constraint carried through:** "make sure all pointer offset
+computations become borrow in oseair" — audited and preserved.
+`Rhs.Borrow` (oseair.lean:293) is the only instruction that forms a new
+pointer offset; all four place-lowering sites emit it; `Rhs.PtrOffset`
+is only the source-level rvalue; `RetagRest` adds no arithmetic.
+
+**Status:** complete. Six commits, four suites green at every one, audit
+unchanged at propext / Classical.choice / Quot.sound, zero sorries.
+
+**Next-session pickup candidates:**
+- loose-ends/parked.md — "Does `ptrOffset`'s deferred UB ever diverge
+  from Miri?" (~1h, needs a Miri toolchain).
+- loose-ends/parked.md — "Verify local conformance witnesses against
+  real Miri".
+- The `CoreProg` statement gate is now the only scope limit: `assignIf`,
+  `alloc`, `dealloc`, protector frames.
