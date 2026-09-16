@@ -550,7 +550,10 @@ def d21_offset_before_base : IO Unit :=
      .assign qE (.ptrOffset pE (-1))]
     (.ub 2) "d21 offset before base"
 
-/-- `refSlice` emits a runtime-length `BorrowRest` carrying kind/prot. -/
+/-- `refSlice` lowers SPLIT: a `Load` of the fat pointer out of the
+    source cell, then a register-to-register `RetagRest` carrying
+    kind/prot. The split is what lets a projected source's `Die` run
+    between the two, while its tag is still on top (2026-09-16). -/
 def g13_ref_slice : IO Unit :=
   expectCode ΓF
     [.assign fld0F (.constInit 1),
@@ -563,7 +566,8 @@ def g13_ref_slice : IO Unit :=
      Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] 2 (Register.R 0) 0),
      Instr.RStore pTy (Register.R 2) (Register.R 1),
      Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 4) (Rhs.BorrowRest .Mut false (Register.R 1)),
+     Instr.Assgn (Register.R 4) (Rhs.Load pTy (Register.R 1)),
+     Instr.Assgn (Register.R 4) (Rhs.RetagRest .Mut false (Register.R 4)),
      Instr.RStore pTy (Register.R 4) (Register.R 3),
      Instr.Halt]
     "g13 refSlice"

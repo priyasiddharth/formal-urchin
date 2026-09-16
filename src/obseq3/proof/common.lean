@@ -1794,13 +1794,16 @@ theorem readRhsShape_fromExposed {Γ : Ctx} {τ : LayoutTy}
     ReadRhsShape (.fromExposed (τ := τ) src) src Rhs.FromExposed (fun _ => []) :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.fromExposed src srcRes srcEv, rfl⟩
 
-/-- A slice retag is read-then-store: it lowers its source place shared
-    and emits one `Rhs.BorrowRest`. Unlike every other member it MINTS,
+/-- A slice retag is read-then-store, and the only member with a
+    non-empty `post`: its READ is copy's `Load` at the source's pointer
+    layout, and its MINT is a separate register-to-register `RetagRest`
+    emitted after the source cleanup. Unlike every other member it mints,
     which is why the read packages let the renaming grow. -/
 theorem readRhsShape_refSlice {Γ : Ctx} {σ τ : LayoutTy}
     (kind : RefKind) (prot : Bool) (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
     ReadRhsShape (.refSlice (τ := τ) kind prot src) src
-      (Rhs.BorrowRest kind prot) (fun _ => []) :=
+      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+      (fun tmp => [Instr.Assgn tmp (Rhs.RetagRest kind prot tmp)]) :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.refSlice kind prot src srcRes srcEv, rfl⟩
 
 /-- A ptr-to-ptr cast is read-then-store: it IS a one-cell `Load` at

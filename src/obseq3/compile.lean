@@ -646,9 +646,20 @@ def compileRExprPreChecked
       readRhsPre (RExpr.ptrOffset src delta) src
         (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => [])
         (fun srcRes evd _ => RExprToEvidence.ptrOffset src delta srcRes evd)
-  | .refSlice (τ := τ) kind prot src =>
+  | .refSlice (σ := σ) (τ := τ) kind prot src =>
+      -- The one minting member of the read-then-store family, and so the
+      -- one that needs `post`. `BorrowRest` would deref the source cell
+      -- and retag in a single instruction, which forces a projected
+      -- source's `Borrow`/`Die` bracket to span the mint — and the mint's
+      -- access through the LOADED pointer's tag then pops the temporary
+      -- (`Mut`) or buries it (`Shared`, `Raw false`). Splitting it into a
+      -- `Load` and a register-to-register `RetagRest` closes the bracket
+      -- while the temporary is still on top. Same three accesses in the
+      -- same order as `BorrowRest` did, and mirlite's `.refSlice` does:
+      -- read the cell, take the pointer, retag its rest.
       readRhsPre (RExpr.refSlice (τ := τ) kind prot src) src
-        (Rhs.BorrowRest kind prot) (fun _ => [])
+        (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+        (fun tmp => [Instr.Assgn tmp (Rhs.RetagRest kind prot tmp)])
         (fun srcRes evd _ => RExprToEvidence.refSlice kind prot src srcRes evd)
 
 /-- Store-through-dst rhs lowering: the pre phase followed by the store
