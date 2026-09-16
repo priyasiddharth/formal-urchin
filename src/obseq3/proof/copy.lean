@@ -38,7 +38,8 @@ seams ever look at. The rvalue instances (`copy_readpkg_*`, and the cast
 packages) do their own inversion. -/
 
 def ReadPkgLowered {Γ : Ctx} {τs τ : LayoutTy} (compProg : oseair.Prog)
-    (rhs : RExpr Γ τ) (src : Place Γ τs) (mk : Register → Rhs) : Prop :=
+    (rhs : RExpr Γ τ) (src : Place Γ τs) (mk : Register → Rhs)
+    (post : Register → List Instr) : Prop :=
   ∀ (ρa : AddrRenameMap) (ρt : TagRenameMap)
     (sM : mirlite.State MSB Γ) (sA : oseair.State MSB) (csA : CompilerState),
     IdentityOnDomain ρa → TagRenameWF ρt →
@@ -58,10 +59,10 @@ def ReadPkgLowered {Γ : Ctx} {τs τ : LayoutTy} (compProg : oseair.Prog)
       (∀ q instr,
         q < (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 }
           ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)]
-            ++ cleanupInstrs sOut0.result.cleanup)).nextLabel →
+            ++ cleanupInstrs sOut0.result.cleanup ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))).nextLabel →
         (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 }
           ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)]
-            ++ cleanupInstrs sOut0.result.cleanup)).code q = some instr →
+            ++ cleanupInstrs sOut0.result.cleanup ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))).code q = some instr →
         compProg q = some instr) →
       sOut0.result.cleanup = [] ∧
       ∃ (ρt' : TagRenameMap) (nR : Nat) (sR : oseair.State MSB)
@@ -71,19 +72,20 @@ def ReadPkgLowered {Γ : Ctx} {τs τ : LayoutTy} (compProg : oseair.Prog)
         output.state = { sM with perms := perms₂ } ∧
         vals.length = blockSize τ ∧
         oseair.runN MSB nR sA compProg = oseair.Result.Ok sR ∧
-        (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)]).placeRegMap = csA.placeRegMap ∧
-        csA.nextReg ≤ (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)]).nextReg ∧
-        LocalBindingSim ρa ρt' sM.env sR (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)]) ∧
+        (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)] ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))).placeRegMap = csA.placeRegMap ∧
+        csA.nextReg ≤ (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)] ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))).nextReg ∧
+        LocalBindingSim ρa ρt' sM.env sR (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)] ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))) ∧
         PermSim ρt' perms₂ sR.perms ∧
         TagRenameBounded ρt' perms₂.NextTag sR.perms.NextTag ∧
         sR.mem = sA.mem ∧
-        sR.pc = (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)]).nextLabel ∧
+        sR.pc = (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)] ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))).nextLabel ∧
         oseair.RegMap.lookup sR.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) = some (layoutToTyVal τ, vals) ∧
-        RegisterBelow (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)]).nextReg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) ∧
+        RegisterBelow (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)] ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))).nextReg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) ∧
         ListRel (MemValSim ρa ρt') output.values vals
 
 def ReadPkgProjOffset {Γ : Ctx} {τs σs τ : LayoutTy} (compProg : oseair.Prog)
-    (rhs : RExpr Γ τ) (B : Place Γ σs) (spath : PathTo σs τs) (mk : Register → Rhs) : Prop :=
+    (rhs : RExpr Γ τ) (B : Place Γ σs) (spath : PathTo σs τs) (mk : Register → Rhs)
+    (post : Register → List Instr) : Prop :=
   ∀ (ρa : AddrRenameMap) (ρt : TagRenameMap)
     (sM : mirlite.State MSB Γ) (sA : oseair.State MSB) (csA : CompilerState),
     IdentityOnDomain ρa → TagRenameWF ρt →
@@ -105,7 +107,7 @@ def ReadPkgProjOffset {Γ : Ctx} {τs σs τ : LayoutTy} (compProg : oseair.Prog
       CodeIncluded compProg (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) →
       CodeIncluded compProg (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]).nextReg + 1 }
         ([Instr.Assgn (Register.R (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]).nextReg) (mk sOutP.result.reg)]
-          ++ cleanupInstrs sOutP.result.cleanup)) →
+          ++ cleanupInstrs sOutP.result.cleanup ++ post (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)))) →
       sOut0.result.cleanup = [] ∧
       ∃ (ρt' : TagRenameMap) (nR : Nat) (sR : oseair.State MSB)
         (perms₂ : MSB.State) (vals : List Val),
@@ -114,15 +116,15 @@ def ReadPkgProjOffset {Γ : Ctx} {τs σs τ : LayoutTy} (compProg : oseair.Prog
         output.state = { sM with perms := perms₂ } ∧
         vals.length = blockSize τ ∧
         oseair.runN MSB nR sA compProg = oseair.Result.Ok sR ∧
-        (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)]).placeRegMap = csA.placeRegMap ∧
-        csA.nextReg ≤ (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)]).nextReg ∧
-        LocalBindingSim ρa ρt' sM.env sR (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)]) ∧
+        (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)] ++ post (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)))).placeRegMap = csA.placeRegMap ∧
+        csA.nextReg ≤ (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)] ++ post (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)))).nextReg ∧
+        LocalBindingSim ρa ρt' sM.env sR (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)] ++ post (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)))) ∧
         PermSim ρt' perms₂ sR.perms ∧
         TagRenameBounded ρt' perms₂.NextTag sR.perms.NextTag ∧
         sR.mem = sA.mem ∧
-        sR.pc = (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)]).nextLabel ∧
+        sR.pc = (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)] ++ post (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)))).nextLabel ∧
         oseair.RegMap.lookup sR.reg (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) = some (layoutToTyVal τ, vals) ∧
-        RegisterBelow (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)]).nextReg (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) ∧
+        RegisterBelow (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)] ++ post (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)))).nextReg (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) ∧
         ListRel (MemValSim ρa ρt') output.values vals
 
 
@@ -133,9 +135,9 @@ def ReadPkgProjOffset {Γ : Ctx} {τs σs τ : LayoutTy} (compProg : oseair.Prog
 
 theorem compileRExprToChecked_readrhs_flatten_run
     {Γ : Ctx} {τ τs : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τs)}
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs (.deref P) mk)
-    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk)
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs (.deref P) mk post)
+    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk post)
     (r : Register) (cs : CompilerState) :
     CheckedCompilerM.run
         (compileRExprToChecked r rhs) cs
@@ -176,9 +178,9 @@ theorem compileRExprToChecked_readrhs_flatten_run
 
 theorem compileRExprToChecked_readrhs_flatten_valunit
     {Γ : Ctx} {τ τs : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τs)}
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs (.deref P) mk)
-    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk)
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs (.deref P) mk post)
+    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk post)
     (r : Register) (cs : CompilerState) :
     (CheckedCompilerM.value
         (compileRExprToChecked r rhs) cs).map
@@ -221,9 +223,9 @@ theorem compileRExprToChecked_readrhs_flatten_valunit
 theorem compileStmt_readrhs_derefsrc_flatten_run
     {Γ : Ctx} {τ τs : LayoutTy}
     {dstLoc : Local Γ τ} {P : Place Γ (obseq.LayoutTy.PtrL τs)}
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs (.deref P) mk)
-    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk)
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs (.deref P) mk post)
+    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk post)
     (cs : CompilerState) :
     CheckedCompilerM.run
         (compileStmtChecked
@@ -270,9 +272,9 @@ theorem compileStmt_readrhs_derefsrc_flatten_run
 theorem compileStmt_readrhs_derefsrc_flatten_value
     {Γ : Ctx} {τ τs : LayoutTy}
     {dstLoc : Local Γ τ} {P : Place Γ (obseq.LayoutTy.PtrL τs)}
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs (.deref P) mk)
-    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk)
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs (.deref P) mk post)
+    (h_shape2 : ReadRhsShape rhs2 (.deref (flattenPlace P)) mk post)
     (cs : CompilerState) :
     ∀ so, CheckedCompilerM.value
         (compileStmtChecked
@@ -325,9 +327,9 @@ theorem compileStmt_readrhs_derefsrc_flatten_value
 theorem compileRExprToChecked_readrhs_anyflatten_run
     {Γ : Ctx} {τ τs : LayoutTy} (src : Place Γ τs)
     (r : Register) (cs : CompilerState)
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk) :
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
+    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk post) :
     CheckedCompilerM.run (compileRExprToChecked r rhs) cs
       = CheckedCompilerM.run
           (compileRExprToChecked r rhs2) cs := by
@@ -362,9 +364,9 @@ theorem compileRExprToChecked_readrhs_anyflatten_run
 theorem compileRExprToChecked_readrhs_anyflatten_valunit
     {Γ : Ctx} {τ τs : LayoutTy} (src : Place Γ τs)
     (r : Register) (cs : CompilerState)
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk) :
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
+    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk post) :
     (CheckedCompilerM.value (compileRExprToChecked r rhs) cs).map
       (fun _ => ())
       = (CheckedCompilerM.value
@@ -400,9 +402,9 @@ theorem compileRExprToChecked_readrhs_anyflatten_valunit
 theorem compileStmt_readrhs_srcflatten_run
     {Γ : Ctx} {τ τs : LayoutTy} {dstLoc : Local Γ τ} (src : Place Γ τs)
     (cs : CompilerState)
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk) :
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
+    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk post) :
     CheckedCompilerM.run
         (compileStmtChecked (Stmt.assign (.local dstLoc) rhs)) cs
       = CheckedCompilerM.run
@@ -454,9 +456,9 @@ theorem compileStmt_readrhs_srcflatten_run
 theorem compileStmt_readrhs_srcflatten_value
     {Γ : Ctx} {τ τs : LayoutTy} {dstLoc : Local Γ τ} (src : Place Γ τs)
     (cs : CompilerState)
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk)
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
+    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk post)
     (h_ex : ∃ so, CheckedCompilerM.value
         (compileStmtChecked
           (Stmt.assign (.local dstLoc) rhs2)) cs
@@ -656,7 +658,7 @@ theorem copy_chainsrc_read
     (by rw [sb_read_NextTag h_read_src, sb_read_NextTag h_read_tgt, h_snt1]
         exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2),
     h_smem, h_spc,
-    (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
+    (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
     (by grind [emit]),
     (by rw [h_smem]; exact readWordSeq_sim h_id_a h_sms (blockSize τ) rs.addr)⟩
   -- the post-Load LocalBindingSim: the fresh temp is above every mapped register
@@ -986,7 +988,7 @@ theorem copy_projsrc_offset_read
         rw [← sb_read_NextTag h_read_tgt]
         exact h_ntle),
     h_smem, h_spc,
-    (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
+    (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
     (by grind [emit]),
     (by rw [h_smem]
         exact readWordSeq_sim h_id_a h_sms (blockSize τ) _)⟩
@@ -1004,12 +1006,12 @@ theorem copy_projsrc_offset_read
     instruction, so the single code-inclusion obligation covers both of
     the ones the read package asks for. -/
 theorem ValuePkg.of_readPkgLowered
-    {σ τ : LayoutTy} {rhs : RExpr Γ τ} {src : Place Γ σ} {mk : Register → Rhs}
+    {σ τ : LayoutTy} {rhs : RExpr Γ τ} {src : Place Γ σ} {mk : Register → Rhs} {post : Register → List Instr}
     (compProg : oseair.Prog)
-    (h_shape : ReadRhsShape rhs src mk)
+    (h_shape : ReadRhsShape rhs src mk post)
     (h_prmS : ∀ cs, (CheckedCompilerM.run
       (placeToRegChecked RefKind.Shared src) cs).placeRegMap = cs.placeRegMap)
-    (h_pkg : ReadPkgLowered compProg rhs src mk) :
+    (h_pkg : ReadPkgLowered compProg rhs src mk post) :
     ValuePkg compProg rhs := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
@@ -1026,7 +1028,9 @@ theorem ValuePkg.of_readPkgLowered
             (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 }
         ([Instr.Assgn (Register.R (CheckedCompilerM.run
             (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)]
-          ++ cleanupInstrs sOut0.result.cleanup) := by
+          ++ cleanupInstrs sOut0.result.cleanup
+          ++ post (Register.R (CheckedCompilerM.run
+            (placeToRegChecked RefKind.Shared src) csA).nextReg)) := by
     simp only [h_rhs, readRhsPre, csMonad, csRun, h_sval0]
   rw [h_rhs]
   simp only [readRhsPre, csMonad, csRun, h_sval0]
@@ -1052,7 +1056,7 @@ theorem ValuePkg.of_readPkgLowered
 /-- copy's chain-class read package, as an instance of the generic one. -/
 theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
-    ReadPkgLowered compProg (.copy src) src (Rhs.Load (layoutToTyVal τ)) := by
+    ReadPkgLowered compProg (.copy src) src (Rhs.Load (layoutToTyVal τ)) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -1075,6 +1079,7 @@ theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
     refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
         (resolvePlace?_of_resolveAcc h_sres), ?_⟩
     intro sOut0 h_sval0 h_instS h_instD
+    simp only [List.append_nil] at h_instD
     obtain ⟨h_sclean, n1, s_mid1, p2, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
       h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
       copy_chainsrc_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb
@@ -1090,15 +1095,15 @@ theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
     the single code-inclusion obligation covers all three. -/
 theorem ValuePkg.of_readPkgProjOffset
     {σs τs τ : LayoutTy} {rhs : RExpr Γ τ} {B : Place Γ σs} {spath : PathTo σs τs}
-    {mk : Register → Rhs}
+    {mk : Register → Rhs} {post : Register → List Instr}
     (compProg : oseair.Prog)
-    (h_shape : ReadRhsShape rhs (.proj B spath) mk)
+    (h_shape : ReadRhsShape rhs (.proj B spath) mk post)
     (h_np : ∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs),
       B = b.proj q → False)
     (h_o : pathOffset spath ≠ 0)
     (h_prmB : ∀ cs, (CheckedCompilerM.run
       (placeToRegChecked RefKind.Shared B) cs).placeRegMap = cs.placeRegMap)
-    (h_pkg : ReadPkgProjOffset compProg rhs B spath mk) :
+    (h_pkg : ReadPkgProjOffset compProg rhs B spath mk post) :
     ValuePkg compProg rhs := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
@@ -1146,7 +1151,7 @@ theorem ValuePkg.of_readPkgProjOffset
 /-- copy's projected-source read package, as an instance of the generic one. -/
 theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : PathTo σs τ}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
-    ReadPkgProjOffset compProg (.copy (.proj B spath)) B spath (Rhs.Load (layoutToTyVal τ)) := by
+    ReadPkgProjOffset compProg (.copy (.proj B spath)) B spath (Rhs.Load (layoutToTyVal τ)) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -1171,6 +1176,7 @@ theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : 
     refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
         (resolvePlace?_of_resolveAcc (resolvePlaceAcc_proj_base_ok (path := spath) h_sres)), ?_⟩
     intro sOut0 h_sval0 sOutP h_regP h_clP h_instS h_instCS
+    simp only [List.append_nil] at h_instCS
     obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
       h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
       copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
@@ -1225,9 +1231,9 @@ both places cleanup-free the whole statement is
 theorem compileStmt_readrhs_derefdst_srcflatten_run
     {Γ : Ctx} {τ τs : LayoutTy}
     (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τs) (cs : CompilerState)
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk) :
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
+    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk post) :
     CheckedCompilerM.run
         (compileStmtChecked (Stmt.assign (.deref pp) rhs)) cs
       = CheckedCompilerM.run
@@ -1264,9 +1270,9 @@ theorem compileStmt_readrhs_derefdst_srcflatten_run
 theorem compileStmt_readrhs_derefdst_srcflatten_value
     {Γ : Ctx} {τ τs : LayoutTy}
     (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τs) (cs : CompilerState)
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk)
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
+    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk post)
     (h_ex : ∃ so, CheckedCompilerM.value
         (compileStmtChecked (Stmt.assign (.deref pp) rhs2)) cs
       = Except.ok so) :
@@ -1313,8 +1319,8 @@ theorem compileStmt_readrhs_derefdst_srcflatten_value
 theorem compileStmt_readrhs_derefdst_dstflatten_run
     {Γ : Ctx} {τ τs : LayoutTy}
     (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τs) (cs : CompilerState)
-    {rhs : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk) :
+    {rhs : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post) :
     CheckedCompilerM.run
         (compileStmtChecked (Stmt.assign (.deref pp) rhs)) cs
       = CheckedCompilerM.run
@@ -1334,7 +1340,8 @@ theorem compileStmt_readrhs_derefdst_dstflatten_run
             nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1 }
           ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
               (mk oS.result.reg)]
-            ++ cleanupInstrs oS.result.cleanup))
+            ++ cleanupInstrs oS.result.cleanup
+              ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)))
       rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl]
         at h_dagr h_dagv
       cases hDO : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.deref pp))
@@ -1343,7 +1350,8 @@ theorem compileStmt_readrhs_derefdst_dstflatten_run
               nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1 }
             ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
                 (mk oS.result.reg)]
-              ++ cleanupInstrs oS.result.cleanup)) with
+              ++ cleanupInstrs oS.result.cleanup
+                ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg))) with
       | error eDO =>
           cases hDF : CheckedCompilerM.value
               (placeToRegChecked RefKind.Mut (Place.deref (flattenPlace pp)))
@@ -1352,7 +1360,8 @@ theorem compileStmt_readrhs_derefdst_dstflatten_run
                   nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1 }
                 ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
                     (mk oS.result.reg)]
-                  ++ cleanupInstrs oS.result.cleanup)) with
+                  ++ cleanupInstrs oS.result.cleanup
+                    ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg))) with
           | error eDF =>
               exact h_dagr.symm
           | ok oDF =>
@@ -1367,7 +1376,8 @@ theorem compileStmt_readrhs_derefdst_dstflatten_run
                   nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1 }
                 ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
                     (mk oS.result.reg)]
-                  ++ cleanupInstrs oS.result.cleanup)) with
+                  ++ cleanupInstrs oS.result.cleanup
+                    ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg))) with
           | error eDF =>
               exfalso
               rw [hDO, hDF] at h_dagv
@@ -1381,8 +1391,8 @@ theorem compileStmt_readrhs_derefdst_dstflatten_run
 theorem compileStmt_readrhs_derefdst_dstflatten_value
     {Γ : Ctx} {τ τs : LayoutTy}
     (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τs) (cs : CompilerState)
-    {rhs : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
+    {rhs : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
     (h_ex : ∃ so, CheckedCompilerM.value
         (compileStmtChecked (Stmt.assign (.deref (flattenPlace pp)) rhs)) cs
       = Except.ok so) :
@@ -1409,7 +1419,8 @@ theorem compileStmt_readrhs_derefdst_dstflatten_value
             nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1 }
           ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
               (mk oS.result.reg)]
-            ++ cleanupInstrs oS.result.cleanup))
+            ++ cleanupInstrs oS.result.cleanup
+              ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)))
       rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl]
         at h_dagr h_dagv
       split
@@ -1423,7 +1434,8 @@ theorem compileStmt_readrhs_derefdst_dstflatten_value
                 nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg + 1 }
               ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg)
                   (mk oS.result.reg)]
-                ++ cleanupInstrs oS.result.cleanup)) with
+                ++ cleanupInstrs oS.result.cleanup
+                  ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) (ensurePlaceRoot (Place.deref pp) cs).snd.val).nextReg))) with
         | ok oDF =>
             rw [h_dO, h_dF] at h_dagv
             simp [Except.map] at h_dagv
@@ -1453,9 +1465,9 @@ theorem compileStmt_readrhs_projdst_srcflatten_run
     {Γ : Ctx} {τ τs σ : LayoutTy}
     (dbase : Place Γ σ) (path : PathTo σ τ)
     (src : Place Γ τs) (cs : CompilerState)
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk) :
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
+    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk post) :
     CheckedCompilerM.run
         (compileStmtChecked (Stmt.assign (Place.proj (dbase) path) rhs)) cs
       = CheckedCompilerM.run
@@ -1493,9 +1505,9 @@ theorem compileStmt_readrhs_projdst_srcflatten_value
     {Γ : Ctx} {τ τs σ : LayoutTy}
     (dbase : Place Γ σ) (path : PathTo σ τ)
     (src : Place Γ τs) (cs : CompilerState)
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk)
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
+    (h_shape2 : ReadRhsShape rhs2 (flattenPlace src) mk post)
     (h_ex : ∃ so, CheckedCompilerM.value
         (compileStmtChecked (Stmt.assign (Place.proj (dbase) path) rhs2)) cs
       = Except.ok so) :
@@ -1574,9 +1586,9 @@ theorem compileStmt_readrhs_projdst_srcflatten_value
     state it once, parameterised by the normal form. -/
 theorem copy_local_srcflat_bridge {Γ : Ctx} {τ τs σ' : LayoutTy}
     {dstLoc : Local Γ τ} (src : Place Γ τs) {B : Place Γ σ'} {path' : PathTo σ' τs}
-    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_shape2 : ReadRhsShape rhs2 (Place.proj B path') mk)
+    {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
+    (h_shape2 : ReadRhsShape rhs2 (Place.proj B path') mk post)
     (h_flat : flattenPlace src = Place.proj B path') :
     (∀ cs, CheckedCompilerM.run
         (compileStmtChecked (Stmt.assign (.local dstLoc) rhs)) cs
@@ -1586,7 +1598,7 @@ theorem copy_local_srcflat_bridge {Γ : Ctx} {τ τs σ' : LayoutTy}
         (Stmt.assign (.local dstLoc) rhs2)) cs = Except.ok so →
         ∃ so', CheckedCompilerM.value (compileStmtChecked
           (Stmt.assign (.local dstLoc) rhs)) cs = Except.ok so') := by
-  have h_shape2' : ReadRhsShape rhs2 (flattenPlace src) mk := by
+  have h_shape2' : ReadRhsShape rhs2 (flattenPlace src) mk post := by
     rw [h_flat]; exact h_shape2
   exact ⟨fun cs => compileStmt_readrhs_srcflatten_run
       (h_shape := h_shape) (h_shape2 := h_shape2') src cs,
@@ -1598,9 +1610,9 @@ theorem copy_local_srcflat_bridge {Γ : Ctx} {τ τs σ' : LayoutTy}
     `flattenPlace src`. -/
 theorem copy_derefdst_flat_bridge {Γ : Ctx} {τ τs : LayoutTy}
     (pp : Place Γ (obseq.LayoutTy.PtrL τ)) (src : Place Γ τs)
-    {X : Place Γ τs} {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs}
-    (h_shape : ReadRhsShape rhs src mk)
-    (h_shape2 : ReadRhsShape rhs2 X mk)
+    {X : Place Γ τs} {rhs rhs2 : RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
+    (h_shape : ReadRhsShape rhs src mk post)
+    (h_shape2 : ReadRhsShape rhs2 X mk post)
     (h_seq : flattenPlace src = X) :
     (∀ cs, CheckedCompilerM.run
         (compileStmtChecked (Stmt.assign (.deref pp) rhs)) cs
@@ -1628,18 +1640,19 @@ theorem copy_derefdst_flat_bridge {Γ : Ctx} {τ τs : LayoutTy}
     nonzero offset). `copy`, `exposeAddr` and `fromExposed` differ only
     in these four fields. -/
 structure ReadRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (compProg : oseair.Prog)
-    (rhsOf : Place Γ σ → RExpr Γ τ) (mk : Register → Rhs) : Prop where
-  shape : ∀ src, ReadRhsShape (rhsOf src) src mk
+    (rhsOf : Place Γ σ → RExpr Γ τ) (mk : Register → Rhs)
+    (post : Register → List Instr) : Prop where
+  shape : ∀ src, ReadRhsShape (rhsOf src) src mk post
   stepFlat : ∀ (s : mirlite.State MSB Γ) (dst : Place Γ τ) (src : Place Γ σ),
     mirlite.stepStmt MSB s (.assign dst (rhsOf src))
       = mirlite.stepStmt MSB s (.assign dst (rhsOf (flattenPlace src)))
   pkgLowered : ∀ (src : Place Γ σ), LoweringSimAny compProg src →
-    ReadPkgLowered compProg (rhsOf src) src mk
+    ReadPkgLowered compProg (rhsOf src) src mk post
   pkgProjOffset : ∀ {σs : LayoutTy} (B : Place Γ σs) (spath : PathTo σs σ),
     LoweringSimAny compProg B →
     (∀ (σ' : LayoutTy) (b : Place Γ σ') (q : PathTo σ' σs), B = b.proj q → False) →
     pathOffset spath ≠ 0 →
-    ReadPkgProjOffset compProg (rhsOf (.proj B spath)) B spath mk
+    ReadPkgProjOffset compProg (rhsOf (.proj B spath)) B spath mk post
 
 /-- LEAF SORRY 2 → DISPATCHER 2026-08-28: per-statement simulation for
     `.assign dst (.copy src)`, decomposed by the shapes of the two
@@ -1648,9 +1661,9 @@ structure ReadRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (compProg : oseair.Prog)
 theorem CompilerInv_step_readrhs
     {σ τ : LayoutTy}
     {dst : Place Γ τ} {src : Place Γ σ}
-    {rhsOf : Place Γ σ → RExpr Γ τ} {mk : Register → Rhs}
+    {rhsOf : Place Γ σ → RExpr Γ τ} {mk : Register → Rhs} {post : Register → List Instr}
     (compProg : oseair.Prog)
-    (F : ReadRhsFamily compProg rhsOf mk)
+    (F : ReadRhsFamily compProg rhsOf mk post)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     (h_stmt : prog.get? s_mir.pc = some (.assign dst (rhsOf src)))
@@ -1868,7 +1881,7 @@ theorem CompilerInv_step_readrhs
     layout, and the instruction it emits is the `Load`. -/
 theorem copy_readRhsFamily {Γ : Ctx} {τ : LayoutTy} (compProg : oseair.Prog) :
     ReadRhsFamily (Γ := Γ) compProg (fun src => RExpr.copy (τ := τ) src)
-      (Rhs.Load (layoutToTyVal τ)) where
+      (Rhs.Load (layoutToTyVal τ)) (fun _ => []) where
   shape := fun src => readRhsShape_copy src
   stepFlat := fun s dst src => stepStmt_assign_copysrc_anyflatten s dst src
   pkgLowered := fun _ h => copy_readpkg_lowered compProg h

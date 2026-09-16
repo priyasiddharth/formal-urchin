@@ -51,7 +51,7 @@ theorem stepStmt_assign_exposesrc_anyflatten
     word clause of `MemValSim` relates by plain equality. -/
 theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
-    ReadPkgLowered compProg (.exposeAddr src) src Rhs.ExposeAddr := by
+    ReadPkgLowered compProg (.exposeAddr src) src Rhs.ExposeAddr (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -83,6 +83,7 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
       refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
           (resolvePlace?_of_resolveAcc h_sres), ?_⟩
       intro sOut0 h_sval0 h_instS h_instD
+      simp only [List.append_nil] at h_instD
       -- the source mother
       obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
@@ -163,7 +164,7 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
         ?_,
         sb_expose_respects_PermSim h_psim2 h_wf_t h_pt,
         ?_, h_smem,
-        (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
+        (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
         ⟨rfl, trivial⟩⟩
@@ -192,7 +193,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
     {spath : PathTo σs (obseq.LayoutTy.PtrL σ)}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.exposeAddr (.proj B spath)) B spath
-      Rhs.ExposeAddr := by
+      Rhs.ExposeAddr (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -227,6 +228,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
           (resolvePlace?_of_resolveAcc
             (resolvePlaceAcc_proj_base_ok (path := spath) h_sres)), ?_⟩
       intro sOut0 h_sval0 sOutP h_regP h_clP h_instS h_instCS
+      simp only [List.append_nil] at h_instCS
       -- the source mother, on the chain BASE
       obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
@@ -418,7 +420,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
           h_run2) h_run3,
         (by grind [emit]),
         (by grind [emit]), ?_, h_psim3, ?_, h_smem,
-        (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
+        (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
         ⟨rfl, trivial⟩⟩
@@ -444,7 +446,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
     {spath : PathTo σs obseq.LayoutTy.NatL}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.fromExposed (τ := τ) (.proj B spath)) B spath
-      Rhs.FromExposed := by
+      Rhs.FromExposed (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -479,6 +481,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
           (resolvePlace?_of_resolveAcc
             (resolvePlaceAcc_proj_base_ok (path := spath) h_sres)), ?_⟩
       intro sOut0 h_sval0 sOutP h_regP h_clP h_instS h_instCS
+      simp only [List.append_nil] at h_instCS
       -- the source mother, on the chain BASE
       obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
@@ -662,7 +665,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
           h_run2) h_run3,
         (by grind [emit]),
         (by grind [emit]), ?_, h_psim2q, ?_, h_smem,
-        (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
+        (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
         ⟨⟨h_alloc.2.2 _, rfl, rfl, h_wf_t.2,
@@ -706,7 +709,7 @@ theorem stepStmt_assign_fromexposedsrc_anyflatten
 theorem fromexposed_readpkg_lowered {τ : LayoutTy}
     {src : Place Γ obseq.LayoutTy.NatL}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
-    ReadPkgLowered compProg (.fromExposed (τ := τ) src) src Rhs.FromExposed := by
+    ReadPkgLowered compProg (.fromExposed (τ := τ) src) src Rhs.FromExposed (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -738,6 +741,7 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
       refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
           (resolvePlace?_of_resolveAcc h_sres), ?_⟩
       intro sOut0 h_sval0 h_instS h_instD
+      simp only [List.append_nil] at h_instD
       -- the source mother
       obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
@@ -813,7 +817,7 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
         (by rw [sb_read_NextTag h_read_src, sb_read_NextTag h_read_tgt, h_snt1]
             exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2),
         h_smem,
-        (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
+        (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
         ⟨⟨h_alloc.2.2 _, rfl, rfl, h_wf_t.2,
@@ -833,7 +837,7 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
 theorem exposeAddr_readRhsFamily {Γ : Ctx} {σ : LayoutTy} (compProg : oseair.Prog) :
     ReadRhsFamily (Γ := Γ) compProg
       (fun src : Place Γ (obseq.LayoutTy.PtrL σ) => RExpr.exposeAddr src)
-      Rhs.ExposeAddr where
+      Rhs.ExposeAddr (fun _ => []) where
   shape := fun src => readRhsShape_exposeAddr src
   stepFlat := fun s dst src => stepStmt_assign_exposesrc_anyflatten s dst src
   pkgLowered := fun _ h => expose_readpkg_lowered compProg h
@@ -864,7 +868,7 @@ theorem CompilerInv_step_exposeAddr
 theorem fromExposed_readRhsFamily {Γ : Ctx} {τ : LayoutTy} (compProg : oseair.Prog) :
     ReadRhsFamily (Γ := Γ) compProg
       (fun src : Place Γ obseq.LayoutTy.NatL => RExpr.fromExposed (τ := τ) src)
-      Rhs.FromExposed where
+      Rhs.FromExposed (fun _ => []) where
   shape := fun src => readRhsShape_fromExposed src
   stepFlat := fun s dst src => stepStmt_assign_fromexposedsrc_anyflatten s dst src
   pkgLowered := fun _ h => fromexposed_readpkg_lowered compProg h

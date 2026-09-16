@@ -550,6 +550,35 @@ structure RhsPre (Γ : Ctx) (τ : LayoutTy) (expr : RExpr Γ τ) where
   postCleanup : List (Register × Nat)
   ev : (dstPtr : Register) → RExprToEvidence dstPtr expr
 
+/-- The shared lowering of every READ-THEN-STORE rvalue: lower the source
+    place to a register, emit ONE instruction into a fresh temporary,
+    retire the source borrow, then emit whatever `post` asks for, and
+    store the temporary.
+
+    `post` runs AFTER the cleanup, which is the entire reason it exists.
+    An rvalue that MINTS must not hold a projection's `Borrow` across its
+    mint: a `Mut` retag's write through the loaded tag POPS the
+    temporary, and a `Shared` or `Raw false` retag BURIES it, so the
+    cleanup `Die` no longer finds its tag on top (`refSlice`,
+    2026-09-14). Splitting the mint out into `post` closes the bracket
+    first. Everything that only reads passes `fun _ => []`. -/
+def readRhsPre {Γ : Ctx} {σ τ : LayoutTy} (rhs : RExpr Γ τ) (src : Place Γ σ)
+    (mk : Register → Rhs) (post : Register → List Instr)
+    (ev : (srcRes : PtrResult) → PlaceToRegEvidence RefKind.Shared src srcRes →
+      (dstPtr : Register) → RExprToEvidence dstPtr rhs) :
+    CheckedCompilerM (RhsPre Γ τ rhs) := do
+  let srcOut ← placeToRegChecked RefKind.Shared src
+  let srcRes := srcOut.result
+  let tmpReg ← CheckedCompilerM.lift freshRegM
+  let _ ← CheckedCompilerM.lift
+    (emitM ([Instr.Assgn tmpReg (mk srcRes.reg)] ++ cleanupInstrs srcRes.cleanup
+      ++ post tmpReg))
+  pure {
+    store := fun dstPtr => [Instr.RStore (layoutToTyVal τ) tmpReg dstPtr],
+    postCleanup := [],
+    ev := fun dstPtr => ev srcRes srcOut.evidence dstPtr
+  }
+
 def compileRExprPreChecked
   {Γ : Ctx} {τ : LayoutTy} :
     (expr : RExpr Γ τ) → CheckedCompilerM (RhsPre Γ τ expr)
@@ -570,17 +599,8 @@ def compileRExprPreChecked
       -- notes/2026-08-29-copy-nonlocal-dst-order.md. The temp is a
       -- REGISTER, not an allocation: registers hold whole value lists,
       -- so nothing perturbs the allocator watermarks.
-      let srcOut ← placeToRegChecked RefKind.Shared src
-      let srcRes := srcOut.result
-      let tmpReg ← CheckedCompilerM.lift freshRegM
-      let _ ← CheckedCompilerM.lift
-        (emitM ([Instr.Assgn tmpReg (Rhs.Load (layoutToTyVal τ) srcRes.reg)]
-          ++ cleanupInstrs srcRes.cleanup))
-      pure {
-        store := fun dstPtr => [Instr.RStore (layoutToTyVal τ) tmpReg dstPtr],
-        postCleanup := [],
-        ev := fun _ => RExprToEvidence.copy src srcRes srcOut.evidence
-      }
+      readRhsPre (RExpr.copy src) src (Rhs.Load (layoutToTyVal τ)) (fun _ => [])
+        (fun srcRes evd _ => RExprToEvidence.copy src srcRes evd)
   | .ref kind prot mask src => do
       let srcOut ← placeToBorrowRegChecked kind prot mask src
       let srcRes := srcOut.result
@@ -598,30 +618,12 @@ def compileRExprPreChecked
         postCleanup := [],
         ev := fun _ => RExprToEvidence.uninit
       }
-  | .exposeAddr src => do
-      let srcOut ← placeToRegChecked RefKind.Shared src
-      let srcRes := srcOut.result
-      let tmpReg ← CheckedCompilerM.lift freshRegM
-      let _ ← CheckedCompilerM.lift
-        (emitM ([Instr.Assgn tmpReg (Rhs.ExposeAddr srcRes.reg)]
-          ++ cleanupInstrs srcRes.cleanup))
-      pure {
-        store := fun dstPtr => [Instr.RStore obseq.TyVal.NatTy tmpReg dstPtr],
-        postCleanup := [],
-        ev := fun _ => RExprToEvidence.exposeAddr src srcRes srcOut.evidence
-      }
-  | .fromExposed src => do
-      let srcOut ← placeToRegChecked RefKind.Shared src
-      let srcRes := srcOut.result
-      let tmpReg ← CheckedCompilerM.lift freshRegM
-      let _ ← CheckedCompilerM.lift
-        (emitM ([Instr.Assgn tmpReg (Rhs.FromExposed srcRes.reg)]
-          ++ cleanupInstrs srcRes.cleanup))
-      pure {
-        store := fun dstPtr => [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr],
-        postCleanup := [],
-        ev := fun _ => RExprToEvidence.fromExposed src srcRes srcOut.evidence
-      }
+  | .exposeAddr src =>
+      readRhsPre (RExpr.exposeAddr src) src Rhs.ExposeAddr (fun _ => [])
+        (fun srcRes evd _ => RExprToEvidence.exposeAddr src srcRes evd)
+  | .fromExposed (τ := τ) src =>
+      readRhsPre (RExpr.fromExposed (τ := τ) src) src Rhs.FromExposed (fun _ => [])
+        (fun srcRes evd _ => RExprToEvidence.fromExposed src srcRes evd)
   | .ptrCast (τ := τ) src => do
       -- A tag-preserving type-punning cast IS a one-cell copy at `PTy`,
       -- so it lowers exactly as `.copy` does: read the cell into a
@@ -636,44 +638,18 @@ def compileRExprPreChecked
       -- overlapping ranges. Materializing the same register temporary
       -- removes the divergence and puts the cast in the read-then-store
       -- family, whose leaves and seams prove it.
-      let srcOut ← placeToRegChecked RefKind.Shared src
-      let srcRes := srcOut.result
-      let tmpReg ← CheckedCompilerM.lift freshRegM
-      let _ ← CheckedCompilerM.lift
-        (emitM ([Instr.Assgn tmpReg
-            (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL τ)) srcRes.reg)]
-          ++ cleanupInstrs srcRes.cleanup))
-      pure {
-        store := fun dstPtr =>
-          [Instr.RStore (layoutToTyVal (obseq.LayoutTy.PtrL τ)) tmpReg dstPtr],
-        postCleanup := [],
-        ev := fun _ => RExprToEvidence.ptrCast src srcRes srcOut.evidence
-      }
+      readRhsPre (RExpr.ptrCast (τ := τ) src) src
+        (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL τ))) (fun _ => [])
+        (fun srcRes evd _ => RExprToEvidence.ptrCast src srcRes evd)
   | .ptrOffset (σ := σ) src delta => do
       -- delta is in pointees of the SOURCE type; pre-scale to cells
-      let srcOut ← placeToRegChecked RefKind.Shared src
-      let srcRes := srcOut.result
-      let tmpReg ← CheckedCompilerM.lift freshRegM
-      let _ ← CheckedCompilerM.lift
-        (emitM ([Instr.Assgn tmpReg (Rhs.PtrOffset srcRes.reg (delta * (blockSize σ : Int)))]
-          ++ cleanupInstrs srcRes.cleanup))
-      pure {
-        store := fun dstPtr => [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr],
-        postCleanup := [],
-        ev := fun _ => RExprToEvidence.ptrOffset src delta srcRes srcOut.evidence
-      }
-  | .refSlice kind prot src => do
-      let srcOut ← placeToRegChecked RefKind.Shared src
-      let srcRes := srcOut.result
-      let tmpReg ← CheckedCompilerM.lift freshRegM
-      let _ ← CheckedCompilerM.lift
-        (emitM ([Instr.Assgn tmpReg (Rhs.BorrowRest kind prot srcRes.reg)]
-          ++ cleanupInstrs srcRes.cleanup))
-      pure {
-        store := fun dstPtr => [Instr.RStore obseq.TyVal.PTy tmpReg dstPtr],
-        postCleanup := [],
-        ev := fun _ => RExprToEvidence.refSlice kind prot src srcRes srcOut.evidence
-      }
+      readRhsPre (RExpr.ptrOffset src delta) src
+        (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => [])
+        (fun srcRes evd _ => RExprToEvidence.ptrOffset src delta srcRes evd)
+  | .refSlice (τ := τ) kind prot src =>
+      readRhsPre (RExpr.refSlice (τ := τ) kind prot src) src
+        (Rhs.BorrowRest kind prot) (fun _ => [])
+        (fun srcRes evd _ => RExprToEvidence.refSlice kind prot src srcRes evd)
 
 /-- Store-through-dst rhs lowering: the pre phase followed by the store
     and the post-store cleanups. The instruction stream is UNCHANGED

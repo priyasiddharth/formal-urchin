@@ -61,7 +61,7 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
     {src : Place Γ (obseq.LayoutTy.PtrL σ)} (delta : Int)
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
     ReadPkgLowered compProg (.ptrOffset (τ := τ) src delta) src
-      (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) := by
+      (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -98,6 +98,7 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
         refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
             (resolvePlace?_of_resolveAcc h_sres), ?_⟩
         intro sOut0 h_sval0 h_instS h_instD
+        simp only [List.append_nil] at h_instD
         -- the source mother
         obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
           h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
@@ -181,7 +182,7 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
           ?_,
           h_psim2,
           ?_, h_smem,
-          (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
+          (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
           RegMap.lookup_insert_self _ _ _,
           (by grind [emit]),
           ⟨⟨h_pb, rfl, rfl, h_pt, h_prange⟩, trivial⟩⟩
@@ -206,7 +207,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
     {spath : PathTo σs (obseq.LayoutTy.PtrL σ)} (delta : Int)
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.ptrOffset (τ := τ) (.proj B spath) delta) B spath
-      (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) := by
+      (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -246,6 +247,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
           (resolvePlace?_of_resolveAcc
             (resolvePlaceAcc_proj_base_ok (path := spath) h_sres)), ?_⟩
       intro sOut0 h_sval0 sOutP h_regP h_clP h_instS h_instCS
+      simp only [List.append_nil] at h_instCS
       -- the source mother, on the chain BASE
       obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
@@ -432,7 +434,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
           h_run2) h_run3,
         (by grind [emit]),
         (by grind [emit]), ?_, h_psim3, ?_, h_smem,
-        (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
+        (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
         ⟨⟨h_pb, rfl, rfl, h_pt, h_prange⟩, trivial⟩⟩
@@ -460,7 +462,7 @@ theorem ptrOffset_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (delta : Int)
     ReadRhsFamily (Γ := Γ) compProg
       (fun src : Place Γ (obseq.LayoutTy.PtrL σ) =>
         RExpr.ptrOffset (τ := τ) src delta)
-      (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) where
+      (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => []) where
   shape := fun src => readRhsShape_ptrOffset src delta
   stepFlat := fun s dst src => stepStmt_assign_ptroffsetsrc_anyflatten s dst src delta
   pkgLowered := fun _ h => ptroffset_readpkg_lowered delta compProg h
@@ -498,7 +500,7 @@ theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
     {src : Place Γ (obseq.LayoutTy.PtrL σ)}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
     ReadPkgLowered compProg (.ptrCast (τ := τ) src) src
-      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) := by
+      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -521,6 +523,7 @@ theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
     refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
         (resolvePlace?_of_resolveAcc h_sres), ?_⟩
     intro sOut0 h_sval0 h_instS h_instD
+    simp only [List.append_nil] at h_instD
     obtain ⟨h_sclean, n1, s_mid1, p2, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
       h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
       copy_chainsrc_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb
@@ -538,7 +541,7 @@ theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
     {spath : PathTo σs (obseq.LayoutTy.PtrL σ)}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.ptrCast (τ := τ) (.proj B spath)) B spath
-      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) := by
+      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -564,6 +567,7 @@ theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         (resolvePlace?_of_resolveAcc
           (resolvePlaceAcc_proj_base_ok (path := spath) h_sres)), ?_⟩
     intro sOut0 h_sval0 sOutP h_regP h_clP h_instS h_instCS
+    simp only [List.append_nil] at h_instCS
     obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
       h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
       copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
@@ -592,7 +596,7 @@ theorem stepStmt_assign_ptrcastsrc_anyflatten
 theorem ptrCast_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (compProg : oseair.Prog) :
     ReadRhsFamily (Γ := Γ) compProg
       (fun src : Place Γ (obseq.LayoutTy.PtrL σ) => RExpr.ptrCast (τ := τ) src)
-      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) where
+      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) (fun _ => []) where
   shape := fun src => readRhsShape_ptrCast src
   stepFlat := fun s dst src => stepStmt_assign_ptrcastsrc_anyflatten s dst src
   pkgLowered := fun _ h => ptrcast_readpkg_lowered compProg h
@@ -650,7 +654,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
     {src : Place Γ (obseq.LayoutTy.PtrL σ)} (kind : RefKind) (prot : Bool)
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
     ReadPkgLowered compProg (.refSlice (τ := τ) kind prot src) src
-      (Rhs.BorrowRest kind prot) := by
+      (Rhs.BorrowRest kind prot) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -688,6 +692,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
         refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
             (resolvePlace?_of_resolveAcc h_sres), ?_⟩
         intro sOut0 h_sval0 h_instS h_instD
+        simp only [List.append_nil] at h_instD
         -- the source mother
         obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
           h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
@@ -777,7 +782,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
           ?_,
           h_psim',
           h_tbd', h_smem,
-          (by rw [h_spc]; simp only [emit, List.length_cons, List.length_nil]),
+          (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
           RegMap.lookup_insert_self _ _ _,
           (by grind [emit]),
           ⟨⟨h_pb, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩⟩

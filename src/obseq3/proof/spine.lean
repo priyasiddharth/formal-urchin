@@ -2859,7 +2859,7 @@ theorem ref_chainsrc_borrow
         h_prb h_dregmono rfl)
   · show s_mid.pc + 1 = _
     rw [h_dpc]
-    simp only [emit, List.length_cons, List.length_nil]
+    simp only [emit, List.append_nil, List.length_cons, List.length_nil]
 
 /-! ## The projected-destination TAIL, parameterised by the offset
 
