@@ -627,34 +627,30 @@ theorem CompilerInv_step_ptrCast
 
 A slice retag reads the fat-pointer cell and then takes a fresh tag over
 the REST of its allocation (`size - offset`), which is why the read
-packages let the renaming grow (2026-09-14). The chain-class package
-below is `ptrOffset`'s with `sb_ref_respects_PermSim` where the offset
-arithmetic was.
+packages let the renaming grow.
 
-**`refSlice` is NOT in `CoreRhs`, and the obstacle is a COMPILER BUG, not
-a missing package.** The projected-source-at-nonzero-offset case is
-mis-compiled: the source lowering holds a `Borrow(Shared)` on the
-fat-pointer cell across the mint, and a `Mut` retag whose range covers
-that cell performs a write access through the loaded pointer's tag, which
-pops the borrow — so the cleanup `Die` fails while mirlite, which has no
-projection borrow at all, runs clean. Pinned as
-`rs_known_divergence_projsrc_mut` (compile_tests.lean) with teeth, and
-written up in
-notes/durable/refslice-projsrc-mut-pops-the-projection-borrow.md.
+It is also the one member with a non-empty `post`. `Rhs.BorrowRest` used
+to do both halves in a single instruction, which forced a projected
+source's `Borrow(Shared)` to stay live across the mint — and a `Mut`
+retag whose range covers the fat pointer's own cell then popped it with
+its write access, while a `Shared` or `Raw false` retag buried it. Either
+way the cleanup `Die` no longer found its tag on top, and mirlite, which
+has no projection borrow at all, ran clean: a real divergence, pinned by
+`rs_mut_slice_retag_pops_projection_borrow`.
 
-`Raw`/`Shared` retags do not diverge — they access for read and their
-item is inserted directly above the granting one — so the bug is narrow,
-but `ReadRhsFamily` needs `pkgProjOffset` for every kind. The chain-class
-package, the shape instance (`readRhsShape_refSlice`, by `rfl`) and the
-machine step (`runN_Assgn_BorrowRest_step`) are kept as the groundwork a
-fix would build on; nothing depends on them yet. -/
+The lowering now splits (2026-09-16): `Load` the fat pointer through the
+temporary, `Die` it while it is still on top, then mint with a
+register-to-register `Rhs.RetagRest`. The read half is literally copy's,
+so BRIDGE 1S collapses the bracket exactly as it does for `ptrCast`, and
+the mint is a separate step that no borrow outlives. -/
 
 /-- **The `refSlice` read package**, chain-class source. -/
 theorem refslice_readpkg_lowered {σ τ : LayoutTy}
     {src : Place Γ (obseq.LayoutTy.PtrL σ)} (kind : RefKind) (prot : Bool)
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
     ReadPkgLowered compProg (.refSlice (τ := τ) kind prot src) src
-      (Rhs.BorrowRest kind prot) (fun _ => []) := by
+      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+      (fun tmp => [Instr.Assgn tmp (Rhs.RetagRest kind prot tmp)]) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr] at h_eval
@@ -692,7 +688,6 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
         refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
             (resolvePlace?_of_resolveAcc h_sres), ?_⟩
         intro sOut0 h_sval0 h_instS h_instD
-        simp only [List.append_nil] at h_instD
         -- the source mother
         obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
           h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
@@ -717,32 +712,39 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
         subst h_pb2
         subst h_po
         subst h_ps
-        -- the READ: transport, then execute the offset
+        -- the READ transports, and BOTH emitted instructions are in the
+        -- program: the `Load` at the fragment's first label, the mint at
+        -- the second
         obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
           sb_read_respects_PermSim h_spsim h_wf_t h_srt h_read_src
-        have h_code1 : compProg s_mid1.pc
-            = some (Instr.Assgn (Register.R (CheckedCompilerM.run
-                (placeToRegChecked RefKind.Shared src) csA).nextReg)
-              (Rhs.BorrowRest kind prot sOut.result.reg)) := by
-          rw [h_spc]
+        have h_emit2 : ∀ (k : Nat) (instr : Instr), k < 2 →
+            ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)) sOut.result.reg),
+              Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.RetagRest kind prot (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))]).get? k = some instr →
+            compProg ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextLabel + k) = some instr := by
+          intro k instr hk hget
           refine h_instD _ _ ?_ ?_
           · grind [emit]
-          · simp only [csCleanup, h_sclean, List.append_nil]
-            have h := emit_code_at_new
-              { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with
-                nextReg := (CheckedCompilerM.run
-                  (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 }
-              [Instr.Assgn (Register.R (CheckedCompilerM.run
-                  (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                (Rhs.BorrowRest kind prot sOut.result.reg)]
-              (k := 0) (by simp)
-            simpa using h
+          · simp only [csCleanup, h_sclean, List.nil_append, List.append_nil,
+              List.cons_append]
+            rw [emit_code_at_new _ _ (k := k) (by simpa using hk)]
+            exact hget
+        have h_code1 : compProg s_mid1.pc
+            = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)) sOut.result.reg)) := by
+          rw [h_spc]; exact h_emit2 0 _ (by omega) rfl
+        have h_code2 : compProg (s_mid1.pc + 1)
+            = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.RetagRest kind prot (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))) := by
+          rw [h_spc]; exact h_emit2 1 _ (by omega) rfl
         have h_lt : rs.addr - rs.allocBase < rs.allocSize := by
           have h1 : rs.addr + 1 ≤ rs.allocBase + rs.allocSize := Nat.not_lt.mp h_fit
           have h2 := h_sle
           grind
+        have h_lt1 : (rs.addr - rs.allocBase) + obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL σ)) ≤ rs.allocSize := by
+          show (rs.addr - rs.allocBase) + 1 ≤ rs.allocSize
+          exact h_lt
         have h_read2t : MSB.read s_mid1.perms
-            (rs.allocBase + (rs.addr - rs.allocBase)) 1 tres = .ok p2 := by
+            (rs.allocBase + (rs.addr - rs.allocBase)) (obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL σ))) tres
+            = .ok p2 := by
+          show MSB.read s_mid1.perms (rs.allocBase + (rs.addr - rs.allocBase)) 1 tres = _
           rw [h_cancel]
           exact h_read_tgt
         have h_cell_tgt : oseair.Mem.find? s_mid1.mem
@@ -750,39 +752,70 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             = some (Val.Ptr pb2 po2 ps2 pt2) := by
           rw [h_cancel, h_smem]
           exact h_find_tgt
-        -- the retag transports and extends the renaming
+        have h_seq : oseair.readWordSeq s_mid1.mem
+            (rs.allocBase + (rs.addr - rs.allocBase)) (obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+            = [Val.Ptr pb2 po2 ps2 pt2] := by
+          show oseair.readWordSeq s_mid1.mem _ 1 = _
+          simp [oseair.readWordSeq, h_cell_tgt]
+        -- STEP 1: the Load, through the projection's temporary
+        have h_run1 : oseair.runN MSB 1 s_mid1 compProg = oseair.Result.Ok
+            { s_mid1 with
+              perms := p2,
+              reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2]),
+              pc := s_mid1.pc + 1 } := by
+          have h := runN_Assgn_Load_ptr_step compProg s_mid1 (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+            sOut.result.reg (layoutToTyVal (obseq.LayoutTy.PtrL σ)) h_code1 h_sentry h_lt1 h_read2t
+          rwa [h_seq] at h
+        -- the mint transports and EXTENDS the renaming
         have h_tbd_mid : TagRenameBounded ρt perms'.NextTag p2.NextTag := by
           rw [sb_read_NextTag h_read_src, sb_read_NextTag h_read_tgt, h_snt1]
           exact TagRenameBounded.mono h_tbd (Nat.le_refl _) h_snt2
         obtain ⟨q, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
           sb_ref_respects_PermSim h_psim2 h_wf_t h_tbd_mid h_pt h_ref_src
         subst h_fresh_eq
-        have h_run1 := runN_Assgn_BorrowRest_step compProg s_mid1
-          (Register.R (CheckedCompilerM.run
-            (placeToRegChecked RefKind.Shared src) csA).nextReg)
-          sOut.result.reg kind prot
-          h_code1 h_sentry h_lt h_read2t h_cell_tgt h_ref_tgt
-        -- the temporary is above every mapped register, and the offset
-        -- touches nothing else
+        -- STEP 2: the mint, register to register, the bracket already closed
+        have h_run2 : oseair.runN MSB 1
+            { s_mid1 with
+              perms := p2,
+              reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2]),
+              pc := s_mid1.pc + 1 } compProg = oseair.Result.Ok
+            { s_mid1 with
+              perms := q,
+              reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                  ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                (obseq.TyVal.PTy, [Val.Ptr pb2 po2 ps2 p2.NextTag]),
+              pc := s_mid1.pc + 1 + 1 } :=
+          runN_Assgn_RetagRest_step compProg _ (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) kind prot
+            h_code2 (RegMap.lookup_insert_self _ _ _) h_ref_tgt
+        -- the temporary is above every mapped register, twice over
         have h_ins : LocalBindingSim ρa ρt sM.env
             { s_mid1 with
               perms := q,
-              reg := oseair.RegMap.insert s_mid1.reg
-                (Register.R (CheckedCompilerM.run
-                  (placeToRegChecked RefKind.Shared src) csA).nextReg)
+              reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                  ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
                 (obseq.TyVal.PTy, [Val.Ptr pb2 po2 ps2 p2.NextTag]),
-              pc := s_mid1.pc + 1 } csA :=
-          LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
-        refine ⟨h_sclean, ρt.extend perms'.NextTag p2.NextTag, n1 + 1, _, perms'',
+              pc := s_mid1.pc + 1 + 1 } csA :=
+          LocalBindingSim.insert_fresh_reg
+            (s := { s_mid1 with
+              perms := p2,
+              reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2]),
+              pc := s_mid1.pc + 1 })
+            (LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl)
+            h_prb h_sregmono rfl
+        refine ⟨h_sclean, ρt.extend perms'.NextTag p2.NextTag, n1 + 1 + 1, _, perms'',
           [Val.Ptr pb2 po2 ps2 p2.NextTag],
           h_incr_t, h_wf_t',
-          rfl, rfl, oseair_runN_trans h_srun h_run1,
+          rfl, rfl, oseair_runN_trans (oseair_runN_trans h_srun h_run1) h_run2,
           (by grind [emit]),
           (by grind [emit]),
           ?_,
           h_psim',
           h_tbd', h_smem,
-          (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
+          (by rw [h_spc]; simp only [emit, List.length_append, List.length_cons,
+            List.length_nil]),
           RegMap.lookup_insert_self _ _ _,
           (by grind [emit]),
           ⟨⟨h_pb, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩⟩
