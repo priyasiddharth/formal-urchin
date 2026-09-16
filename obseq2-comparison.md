@@ -4,6 +4,38 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-16 (later still) — Protector Frames Enter the Theorem
+
+Two questions from the user, answered by the code. *Do I need to add
+protectors to `CoreRhs`?* No — protection is not an rvalue property, and
+`CoreRhs` already admits `prot = true` on `ref` and `refSlice` with the
+leaves generic over it. What it lacked was the two *statements*, and
+without them a core program's `protFrames` was `[]` forever, so every
+protected retag could only fail in the source: the `prot = true` paths
+were proved for runs that could not exist.
+
+*Does oseair even need push/pop frames for forward simulation?* Strictly
+no. Every place Stacked Borrows consults protection is a guard — read,
+write, die, dealloc — that turns a success into UB and leaves the
+success path's state untouched; the one non-guard use, registering a
+`prot = true` tag, touches only `protFrames`. A target with no frames
+succeeds on strictly more runs and computes identical stacks and memory
+on every run where the source succeeds. But the proof cost of keeping
+them is two trivial step lemmas, and removing them would make every
+protector-UB program a `--osea` mismatch — the instrument that found
+every compiler bug this month. Kept.
+
+So the statements went into `CoreStmt`. Both machines run the same
+`PermissionModel` field — `pushFrame` conses an empty frame, `popFrame`
+drops the innermost or errors on none — and the compiler emits
+`PushProt`/`PopProt` one-to-one. The only moving invariant clause is
+`PermSim`'s frame list, a positional `ListRel`: push is `cons` with an
+empty pair, pop is inversion on `_ :: _`, and the source succeeding means
+the target's list is non-empty too. Around 150 lines, built clean on the
+first try. The statement gate is now `assignIf`, `alloc`, `dealloc`.
+
+---
+
 ## 2026-09-16 (later) — One Borrow Primitive
 
 The user asked why the slice mint needed its own instruction when

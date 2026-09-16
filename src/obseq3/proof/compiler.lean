@@ -3,6 +3,7 @@ import obseq3.proof.copy
 import obseq3.proof.ref
 import obseq3.proof.casts
 import obseq3.proof.ptrarith
+import obseq3.proof.protectors
 
 /-!
 Top-level compiler-correctness theorems for the proof-core fragment
@@ -93,9 +94,11 @@ runs from `oseair.State.initial` to a `CompilerInv`-related state, with
 no invariant hypothesis to supply. BOTH are audited roots.
 
 What is NOT proven, and is not a gap in the proof but in its SCOPE:
-(a) the `CoreProg` gate — `assignIf`, `alloc`, `dealloc` and the
-protector frames are implemented and conformance-tested but excluded
-from the theorem. EVERY RVALUE IS NOW IN: `uninit` was always; both
+(a) the `CoreProg` gate — `assignIf`, `alloc` and `dealloc` are
+implemented and conformance-tested but excluded from the theorem.
+The protector-frame statements joined 2026-09-16 (proof/protectors.lean),
+which is what makes every `prot = true` retag path NON-vacuous: a core
+program can now have a frame to register into. EVERY RVALUE IS IN: `uninit` was always; both
 integer-pointer casts joined 2026-09-13; `ptrOffset` and `ptrCast`
 2026-09-14; and `refSlice`, the last one, 2026-09-16, once the compiler
 stopped holding a projection's `Borrow` across its mint
@@ -443,8 +446,10 @@ theorem CompilerInv_step
     | assignIf discr val dst rhs => exact absurd h_stmt_core (by simp [CoreStmt])
     | alloc dst len => exact absurd h_stmt_core (by simp [CoreStmt])
     | dealloc p => exact absurd h_stmt_core (by simp [CoreStmt])
-    | pushProtectors => exact absurd h_stmt_core (by simp [CoreStmt])
-    | popProtectors => exact absurd h_stmt_core (by simp [CoreStmt])
+    | pushProtectors =>
+        exact CompilerInv_step_pushProtectors compProg h_comp h_inv h_get h_step
+    | popProtectors =>
+        exact CompilerInv_step_popProtectors compProg h_comp h_inv h_get h_step
 
 /-- Main compiler-correctness theorem (forward simulation of successful
     source runs): every n-step source execution of a proof-core program is

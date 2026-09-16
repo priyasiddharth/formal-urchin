@@ -3846,7 +3846,7 @@ unchanged at propext / Classical.choice / Quot.sound, zero sorries.
 - loose-ends/parked.md — "Verify local conformance witnesses against
   real Miri".
 - The `CoreProg` statement gate is now the only scope limit: `assignIf`,
-  `alloc`, `dealloc`, protector frames.
+  `alloc`, `dealloc` (protector frames joined later the same day).
 
 ## 2026-09-16 (later) — `Rhs.Borrow` with an optional length; `RetagRest` and `BorrowRest` deleted
 
@@ -3862,3 +3862,23 @@ spine.lean, compile.lean, compile_tests.lean; a `[FACT]` paragraph in
 durable/split-the-mint-out-of-the-bracket.md; dev-log increment.
 
 **Status:** complete, one commit, four suites green, audit unchanged.
+
+## 2026-09-16 (later still) — `pushProtectors`/`popProtectors` join `CoreStmt`
+
+**Theme:** the user asked whether forward simulation needs protectors in
+`CoreRhs`. It doesn't — they are a statement-level thing — and whether
+oseair needs frames at all for forward simulation. Strictly no
+(protection is a monotone guard: it only turns successes into UB and
+never changes the state on the success path), but dropping them would
+cost the verdict-differential claim for nothing, so the statements were
+admitted instead.
+
+**Key outputs:** proof/protectors.lean — `runN_PushProt_step`,
+`runN_PopProt_step`, `PermSim.pushFrame`, `PermSim.popFrame`,
+`CompilerInv_step_pushProtectors`, `CompilerInv_step_popProtectors`;
+`CoreStmt` gains both statements; compiler.lean dispatches them. ~150
+lines, no keystone content, built clean first try. Every existing
+`prot = true` path in the ref/refSlice leaves is now non-vacuous.
+
+**Status:** complete. Remaining statement gate: `assignIf`, `alloc`,
+`dealloc`.

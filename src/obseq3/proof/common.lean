@@ -106,6 +106,8 @@ def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
 def CoreStmt {Γ : Ctx} : Stmt Γ → Prop
   | .halt => True
   | .assign _ rhs => CoreRhs rhs
+  | .pushProtectors => True
+  | .popProtectors => True
   | _ => False
 
 /-- Every statement of the program is in the proof-core fragment. -/
