@@ -829,4 +829,181 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
           rw [h_sprm]
           exact h_pi'
 
+/-- **The `refSlice` read package**, projected source at a nonzero
+    offset — the case the old single-instruction `BorrowRest` got WRONG.
+    Now the bracket is copy's, so `copy_projsrc_offset_read` (BRIDGE 1S)
+    collapses `Borrow(Shared); Load; Die` exactly as it does for
+    `ptrCast`, and the mint is a fourth instruction that runs after the
+    `Die` with no borrow outstanding. `emit_append_state_incr` is what
+    lets the three-instruction bracket lemma see through the emitted
+    four. -/
+theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
+    {spath : PathTo σs (obseq.LayoutTy.PtrL σ)} (kind : RefKind) (prot : Bool)
+    (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
+    ReadPkgProjOffset compProg (.refSlice (τ := τ) kind prot (.proj B spath))
+      B spath (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+      (fun tmp => [Instr.Assgn tmp (Rhs.RetagRest kind prot tmp)]) := by
+  intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
+    output h_eval
+  simp only [mirlite.evalRExpr] at h_eval
+  cases h_sres : mirlite.resolvePlaceAcc MSB sM B with
+  | error e =>
+      rw [resolvePlaceAcc_proj_base_err h_sres] at h_eval
+      simp at h_eval
+  | ok pr =>
+  obtain ⟨rs, permsS⟩ := pr
+  rw [resolvePlaceAcc_proj_base_ok h_sres] at h_eval
+  simp only [gt_iff_lt] at h_eval
+  by_cases h_fit : rs.allocBase + rs.allocSize < rs.addr + PathTo.offset spath + 1
+  · rw [if_pos h_fit] at h_eval
+    simp at h_eval
+  · rw [if_neg h_fit] at h_eval
+    cases h_read_src : MSB.read permsS (rs.addr + PathTo.offset spath) 1 rs.tag with
+    | error e => rw [h_read_src] at h_eval; simp at h_eval
+    | ok perms' =>
+    rw [h_read_src] at h_eval
+    simp only at h_eval
+    cases h_cell : mirlite.Mem.find? sM.mem (rs.addr + PathTo.offset spath) with
+    | none => rw [h_cell] at h_eval; simp at h_eval
+    | some v =>
+      cases v with
+      | undef => rw [h_cell] at h_eval; simp at h_eval
+      | word n => rw [h_cell] at h_eval; simp at h_eval
+      | ptrVal pb po ps pt =>
+      rw [h_cell] at h_eval
+      simp only at h_eval
+      cases h_ref_src : MSB.ref perms' (pb + po) (ps - po) pt kind prot [] with
+      | error e => rw [h_ref_src] at h_eval; simp at h_eval
+      | ok pr2 =>
+        obtain ⟨perms'', newTag⟩ := pr2
+        rw [h_ref_src] at h_eval
+        injection h_eval with h_out
+        subst h_out
+        refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
+            (resolvePlace?_of_resolveAcc
+              (resolvePlaceAcc_proj_base_ok (path := spath) h_sres)), ?_⟩
+        intro sOut0 h_sval0 sOutP h_regP h_clP h_instS h_instCS
+        -- the emitted fragment is FOUR instructions; the bracket lemma
+        -- reasons about the first three
+        have h_frag := h_instCS.fragmentAt
+          (((((EmittedAt.nil _).setNextReg _).snoc _).setNextReg _).snoc _)
+        have h_instCS3 := h_instCS.mono (emit_append_state_incr _ _ _)
+        obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR,
+          h_psimR, h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
+          copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
+            h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_regP
+            h_clP h_instS h_instCS3
+        -- `csA.nextReg ≤ n`, from the source mother
+        obtain ⟨-, -, -, -, -, -, -, -, -, -, -, -, -, -, -, -, -, -, -, h_sregmono,
+          -, -, -⟩ :=
+          h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
+            rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
+        -- the STORED pointer, on the target side
+        obtain ⟨addr', value', h_ra', h_find_tgt, h_mvs⟩ :=
+          h_sms (rs.addr + PathTo.offset spath) _ h_cell
+        have h_addr' : addr' = rs.addr + PathTo.offset spath := (h_id_a _ _ h_ra').symm
+        subst h_addr'
+        cases value' with
+        | Undef => exact h_mvs.elim
+        | Dat _ => exact h_mvs.elim
+        | Ptr pb2 po2 ps2 pt2 =>
+        obtain ⟨h_pb, h_po, h_ps, h_pt, h_prange⟩ := h_mvs
+        have h_pb2 : pb2 = pb := (h_id_a _ _ h_pb).symm
+        subst h_pb2
+        subst h_po
+        subst h_ps
+        have h_seq : oseair.readWordSeq s_mid1.mem (rs.addr + pathOffset spath)
+            (blockSize (obseq.LayoutTy.PtrL σ)) = [Val.Ptr pb2 po2 ps2 pt2] := by
+          show oseair.readWordSeq s_mid1.mem _ 1 = _
+          rw [h_smem]
+          simp [oseair.readWordSeq, h_find_tgt]
+        rw [h_seq] at h_runR h_lbsR
+        -- the mint, after the `Die`
+        have h_code3 : compProg (s_mid1.pc + 1 + 1 + 1)
+            = some (Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Rhs.RetagRest kind prot (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)))) := by
+          have hidx : s_mid1.pc + 1 + 1 + 1 = (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextLabel + 3 := by omega
+          rw [hidx]
+          refine h_frag 3 _ ?_
+          simp only [h_clP, h_sclean]
+          rfl
+        obtain ⟨q4, h_ref_tgt, h_fresh_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
+          sb_ref_respects_PermSim h_psimR h_wf_t h_tbdR h_pt h_ref_src
+        subst h_fresh_eq
+        have h_run3 := runN_Assgn_RetagRest_step compProg
+          { s_mid1 with
+              perms := q3,
+              reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg
+                  (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
+                  (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
+                    (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize
+                    s_mid1.perms.NextTag]))
+                (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2]),
+              pc := s_mid1.pc + 1 + 1 + 1 }
+          (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) kind prot
+          h_code3 (RegMap.lookup_insert_self _ _ _) h_ref_tgt
+        refine ⟨h_sclean, ρt.extend perms'.NextTag q3.NextTag, n1 + 1, _, perms'',
+          [Val.Ptr pb2 po2 ps2 q3.NextTag],
+          h_incr_t, h_wf_t', rfl, rfl,
+          oseair_runN_trans h_runR h_run3,
+          (by simp only [emit] at h_prmR ⊢; exact h_prmR),
+          (by simp only [emit] at h_regmonoR ⊢; exact h_regmonoR),
+          ?_, h_psim', h_tbd', h_smem,
+          (by simp [emit] at h_pcR ⊢; omega),
+          RegMap.lookup_insert_self _ _ _,
+          (by simp only [emit] at h_vbelow ⊢; exact h_vbelow),
+          ⟨⟨h_pb, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩⟩
+        refine LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t ?_
+        refine LocalBindingSim.placeRegMap_congr (cs := csA)
+          (by simp only [emit] at h_prmR ⊢; exact h_prmR) ?_
+        exact LocalBindingSim.insert_fresh_reg
+          (LocalBindingSim.placeRegMap_congr h_prmR.symm h_lbsR) h_prb
+          (by omega) rfl
+
+/-- The mirlite step of a `refSlice` assignment does not see the
+    difference between a source place and its flattening. -/
+theorem stepStmt_assign_refslicesrc_anyflatten
+    {Γ : Ctx} {σ τ : LayoutTy} {M : PermissionModel}
+    (s : mirlite.State M Γ) (dst : Place Γ (obseq.LayoutTy.PtrL τ))
+    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (kind : RefKind) (prot : Bool) :
+    mirlite.stepStmt M s (.assign dst (.refSlice kind prot src))
+      = mirlite.stepStmt M s (.assign dst (.refSlice kind prot (flattenPlace src))) := by
+  have h1 : ∀ st : mirlite.State M Γ,
+      mirlite.resolvePlaceAcc M st (flattenPlace src)
+        = mirlite.resolvePlaceAcc M st src :=
+    fun st => resolvePlaceAcc_flatten src
+  simp only [mirlite.stepStmt, mirlite.doAssign, mirlite.evalRExpr, h1]
+
+/-- `refSlice` is a read-then-store family — the last rvalue to join. -/
+theorem refSlice_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (kind : RefKind)
+    (prot : Bool) (compProg : oseair.Prog) :
+    ReadRhsFamily (Γ := Γ) compProg
+      (fun src : Place Γ (obseq.LayoutTy.PtrL σ) =>
+        RExpr.refSlice (τ := τ) kind prot src)
+      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+      (fun tmp => [Instr.Assgn tmp (Rhs.RetagRest kind prot tmp)]) where
+  shape := fun src => readRhsShape_refSlice kind prot src
+  stepFlat := fun s dst src =>
+    stepStmt_assign_refslicesrc_anyflatten s dst src kind prot
+  pkgLowered := fun _ h => refslice_readpkg_lowered kind prot compProg h
+  pkgProjOffset := fun _ _ h _ _ => refslice_readpkg_projoffset kind prot compProg h
+
+/-- One `refSlice` statement, simulated. -/
+theorem CompilerInv_step_refSlice
+    {σ τ : LayoutTy} {kind : RefKind} {prot : Bool}
+    {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {src : Place Γ (obseq.LayoutTy.PtrL σ)}
+    (compProg : oseair.Prog)
+    (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
+    (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
+    (h_stmt : prog.get? s_mir.pc = some (.assign dst (.refSlice kind prot src)))
+    (h_step : mirlite.stepStmt MSB s_mir (.assign dst (.refSlice kind prot src))
+      = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' :=
+  CompilerInv_step_readrhs compProg (refSlice_readRhsFamily kind prot compProg)
+    h_comp h_inv h_stmt h_step
+
 end obseq3.proof

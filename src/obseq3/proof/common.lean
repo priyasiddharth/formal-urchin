@@ -75,11 +75,20 @@ def compileProgFrom
 
 /-- Rvalues in the proof-core fragment. The v3 compiler is TOTAL, so this
     predicate scopes the correctness THEOREMS (obseq2's proof scope), not
-    the compiler. Both integer-pointer casts joined once the
-    read-then-store family (proof/copy.lean) made copy's leaves
-    rvalue-generic and wildcard accesses transported
-    (`resolveWildcardIn_transport`), which is what admits the
-    `wildcardTag` pointer `fromExposed` mints. -/
+    the compiler.
+
+    As of 2026-09-16 it is TOTAL TOO: every `RExpr` constructor is in.
+    The last to join was `refSlice`, once the compiler stopped holding a
+    projection's `Borrow` across its mint (`Rhs.RetagRest`,
+    compile.lean). Before that, the casts joined when the read-then-store
+    family (proof/copy.lean) made copy's leaves rvalue-generic and
+    wildcard accesses transported (`resolveWildcardIn_transport`), which
+    is what admits the `wildcardTag` pointer `fromExposed` mints.
+
+    The predicate is kept rather than deleted: `CoreStmt`/`CoreProg`
+    still gate on statements (`assignIf`, `alloc`, `dealloc`, protector
+    frames), and a new rvalue should have to be admitted here
+    deliberately. -/
 def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .constInit _ => True
   | .copy _ => True
@@ -89,7 +98,7 @@ def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .fromExposed _ => True
   | .ptrOffset _ _ => True
   | .ptrCast _ => True
-  | _ => False
+  | .refSlice _ _ _ => True
 
 /-- Statements in the proof-core fragment: `halt` and assignments with a
     core rvalue. -/

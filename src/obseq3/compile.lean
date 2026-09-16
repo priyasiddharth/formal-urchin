@@ -238,6 +238,23 @@ theorem emit_code_at_new
     (emit cs instrs).code (cs.nextLabel + k) = instrs.get? k := by
   simp [emit, Nat.le_add_right, Nat.add_lt_add_left h]
 
+/-- Emitting MORE at the same point only extends: everything the shorter
+    emission laid down is still at the same label. This is what lets a
+    fragment lemma written for `[…]` be applied when the compiler in fact
+    emitted `[…] ++ post` — the `refSlice` split's extra mint instruction
+    sits strictly above the bracket the lemma reasons about. -/
+theorem emit_append_state_incr (cs : CompilerState) (l1 l2 : List Instr) :
+    StateIncr (emit cs l1) (emit cs (l1 ++ l2)) := by
+  refine ⟨by simp [emit], by simp [emit], ?_, fun _ _ h => h⟩
+  intro label h_label
+  simp only [emit] at h_label ⊢
+  by_cases h_lo : cs.nextLabel ≤ label
+  · have h_hi : label - cs.nextLabel < l1.length := by omega
+    rw [if_pos ⟨h_lo, by simp only [List.length_append]; omega⟩,
+      if_pos ⟨h_lo, by omega⟩]
+    exact List.getElem?_append_left h_hi
+  · rw [if_neg (by omega), if_neg (by omega)]
+
 theorem emit_nextLabel_ge
     (cs : CompilerState) (instrs : List Instr) :
     cs.nextLabel ≤ (emit cs instrs).nextLabel := by

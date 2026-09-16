@@ -93,11 +93,14 @@ runs from `oseair.State.initial` to a `CompilerInv`-related state, with
 no invariant hypothesis to supply. BOTH are audited roots.
 
 What is NOT proven, and is not a gap in the proof but in its SCOPE:
-(a) the `CoreProg` gate — `assignIf`, `alloc`, `dealloc`, the protector
-frames, and the rvalue `refSlice` are implemented and conformance-tested
-but excluded from the theorem (`uninit` is IN; both integer-pointer casts
-joined 2026-09-13; `ptrOffset` and `ptrCast` joined 2026-09-14, which
-leaves `refSlice` the only excluded rvalue); (b) the direction — this is a forward
+(a) the `CoreProg` gate — `assignIf`, `alloc`, `dealloc` and the
+protector frames are implemented and conformance-tested but excluded
+from the theorem. EVERY RVALUE IS NOW IN: `uninit` was always; both
+integer-pointer casts joined 2026-09-13; `ptrOffset` and `ptrCast`
+2026-09-14; and `refSlice`, the last one, 2026-09-16, once the compiler
+stopped holding a projection's `Borrow` across its mint
+(`Rhs.RetagRest`). `CoreRhs` is total; the gate is now purely about
+statements; (b) the direction — this is a forward
 simulation of SUCCESSFUL source runs, so it does not say the target
 goes wrong when the source has UB. That direction is probed only
 empirically, by the `expectDiff` corpus comparing VERDICTS, which is
@@ -429,7 +432,8 @@ theorem CompilerInv_step
             exact CompilerInv_step_ptrCast compProg h_comp h_inv h_get h_step
         | ptrOffset src d =>
             exact CompilerInv_step_ptrOffset compProg h_comp h_inv h_get h_step
-        | refSlice k p src => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
+        | refSlice k p src =>
+            exact CompilerInv_step_refSlice compProg h_comp h_inv h_get h_step
         | exposeAddr src =>
             exact CompilerInv_step_exposeAddr compProg h_comp h_inv h_get h_step
         | fromExposed src =>
