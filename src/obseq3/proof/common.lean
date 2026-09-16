@@ -312,6 +312,7 @@ def RhsRegsBelow (bound : Nat) : Rhs → Prop
   | .FromExposed src => RegisterBelow bound src
   | .PtrOffset src _ => RegisterBelow bound src
   | .BorrowRest _ _ src => RegisterBelow bound src
+  | .RetagRest _ _ src => RegisterBelow bound src
 
 /-- All registers mentioned in an `Instr` have index strictly less than `bound`. -/
 def InstrRegsBelow (bound : Nat) : Instr → Prop
@@ -2069,6 +2070,35 @@ theorem runN_Assgn_BorrowRest_step
                pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
       h_bounds, Bool.false_eq_true, if_false, h_read, h_cell, h_ref]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- The register-to-register half of a slice retag executes in one
+    `runN` step. Unlike `BorrowRest` there is no cell read and no
+    address arithmetic of its own: the retagged range is the loaded
+    pointer's own rest, `(pb + po, ps - po)`, through its own tag. This
+    is what lets a projection's `Borrow`/`Die` bracket close BEFORE the
+    mint, so the `Die` always finds its tag on top. -/
+theorem runN_Assgn_RetagRest_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst preg : Register) (kind : RefKind) (prot : Bool)
+    {pb po ps : Word} {pt newTag : Tag} {p3 : AccessPerms}
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.RetagRest kind prot preg)))
+    (h_entry : PtrRegisterEntry s.reg preg pb po ps pt)
+    (h_ref : MSB.ref s.perms (pb + po) (ps - po) pt kind prot [] = .ok (p3, newTag)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with perms := p3,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr pb po ps newTag]),
+               pc := s.pc + 1 } := by
+  have h_lookup : oseair.RegMap.lookup s.reg preg
+      = some (obseq.TyVal.PTy, [Val.Ptr pb po ps pt]) := h_entry
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with perms := p3,
+               reg := oseair.RegMap.insert s.reg dst
+                 (obseq.TyVal.PTy, [Val.Ptr pb po ps newTag]),
+               pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
+      h_ref]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- Pointer arithmetic executes in one `runN` step: the pointer register

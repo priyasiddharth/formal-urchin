@@ -108,6 +108,14 @@ inductive Rhs
 | FromExposed (srcPtr : Register)
 | PtrOffset (srcPtr : Register) (deltaCells : Int)
 | BorrowRest (kind : RefKind) (prot : Bool) (srcPtr : Register)
+-- retag the rest of a fat pointer HELD IN A REGISTER. `BorrowRest`
+-- dereferences a pointer-to-the-cell and retags what it finds;
+-- this takes the loaded value directly, so the read and the retag
+-- are separate instructions and a projection's `Borrow`/`Die`
+-- bracket can close BEFORE the mint. No address arithmetic of its
+-- own: the range is the loaded pointer's own `(base+off, size-off)`,
+-- exactly what `BorrowRest` computes after its load.
+| RetagRest (kind : RefKind) (prot : Bool) (srcVal : Register)
 deriving Repr, Inhabited, BEq
 
 inductive Instr
@@ -254,6 +262,19 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
              | .error msg => RhsResult.Err msg
            | _ => RhsResult.Err "slice value is not a pointer"
      | _ => RhsResult.Err "BorrowRest expects Ptr"
+
+  | Rhs.RetagRest kind prot srcVal =>
+     -- the second half of `BorrowRest`, on a pointer already loaded:
+     -- a fresh tag over the RUNTIME rest of the value's allocation
+     match state.reg.lookup srcVal with
+     | some (_, [Val.Ptr pBase pOff pSize pTag]) =>
+       let len := pSize - pOff
+       match M.ref state.perms (pBase + pOff) len pTag kind prot [] with
+       | .ok (perms3, newTag) =>
+         let s2 := { state with perms := perms3 }
+         RhsResult.Ok [Val.Ptr pBase pOff pSize newTag] obseq.TyVal.PTy s2
+       | .error msg => RhsResult.Err msg
+     | _ => RhsResult.Err "RetagRest expects Ptr"
 
   | Rhs.AllocN ty n =>
      let units := n * typeSize ty
