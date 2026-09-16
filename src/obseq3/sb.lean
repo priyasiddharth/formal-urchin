@@ -470,58 +470,37 @@ def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
     compiler-correctness proofs): pop the item with `tag` if it is on top
     and is neither the allocation root nor protected.
 
-    PERMISSIVE IF NOT ON TOP (2026-09-14, SEMANTICS CHANGE, flagged).
-    `Die` has no Rust counterpart: Stacked Borrows never ends a borrow
-    actively, items are popped by the next conflicting access. `Die`
-    exists only to retire the COMPILER's own scaffolding — the temporary
-    a projected place lowering borrows — and the old "must be on top"
-    branch was a self-check that brackets nest, not a semantic
-    requirement. When an intervening access has already popped the
-    temporary, SB has ended the borrow itself and the cleanup has nothing
-    left to do, so a no-op is the faithful answer.
+    STRICT, and it can afford to be. `Die` has no Rust counterpart —
+    Stacked Borrows never ends a borrow actively, items are popped by the
+    next conflicting access. The instruction exists only to retire the
+    COMPILER's own scaffolding, the temporary that `placeToRegChecked`
+    borrows at a nonzero field offset, and "must be on top" is a
+    self-check that the compiler's brackets nest.
 
-    This is what makes `Borrow; use; Die` equal `use through the parent`
-    in EVERY case rather than only when nothing intervenes — see
-    `sb_ref_use_die_cancels` / `sb_ref_read_die_cancels`. A `Mut` mint
-    inside the bracket pops the temporary (write access) and the `Die`
-    then does nothing; a `Raw`/`Shared` mint inserts above the granting
-    item, below the temporary, and the `Die` pops as before.
+    It held for every lowering until `refSlice`, whose `BorrowRest`
+    dereferenced the source cell and MINTED in one instruction, forcing
+    the bracket to span the mint: a `Mut` retag's write through the
+    loaded tag popped the temporary and a `Shared`/`Raw false` retag
+    buried it, so the `Die` no longer found its tag on top. Between
+    2026-09-14 and 2026-09-16 that was answered here, by removing the tag
+    wherever it sat — which cost a recursive `dieCellContent` and four
+    keystone lemmas sliding the die past the mint. The lowering now
+    splits instead (`Rhs.RetagRest`, compile.lean), the `Die` runs before
+    the mint, and this is a head match again. Every bracket in the
+    compiler now closes with its temporary on top:
 
-    Mis-nesting is still caught, and caught better: `Die` only ever
-    removes its OWN tag from the top, so the only way a bad bracket
-    differs is a stale item left on the target's stack, which `PermSim`
-    (positional `StackSim`) cannot relate to mirlite's — the simulation
-    step fails to typecheck rather than erroring at runtime on whichever
-    inputs a test happens to exercise.
+        source place    Load / ExposeAddr / FromExposed / PtrOffset
+                        read THROUGH the temp; it survives, on top
+        dest place      RStore writes through the temp; same
+        refSlice        Load; Die; RetagRest — the mint is outside
 
-    STRENGTHENED the same day: the item is removed WHEREVER it sits, not
-    only from the top. "No-op if not on top" is not enough, because a
-    read access DISABLES rather than removes (`readCellContent`), so a
-    `Shared` or `Raw false` mint inside the bracket leaves the temporary
-    buried under the item it pushes:
-
-        Mut         write POPS above the parent  -> temp gone, die no-ops
-        Raw true    insertAbove, no access       -> temp on top, die pops
-        Shared      read DISABLES, then PUSH     -> temp BURIED
-        Raw false   same                         -> temp BURIED
-
-    A buried temporary is a stale item mirlite never had. No access can
-    observe it — its tag is dead — but `PermSim` relates stacks
-    positionally, so the simulation step would be unprovable. Removing it
-    wherever it sits makes `Borrow; use; Die` equal `use through the
-    parent` in ALL four cases.
-
-    Removal is only ever of the compiler's own dead temporary and can
-    only move the target's stack TOWARDS mirlite's: no other tag's item
-    changes, and a shorter `above` means an access through anything below
-    pops strictly less — which is exactly mirlite's situation, since
-    mirlite never had the item at all.
-
-    The `Own`-root and protected branches stay errors: a compiler
-    temporary is never either, so they are dead for the proof and kept as
-    sanity checks. -/
+    Mis-nesting is caught twice over: here at runtime in the unproved
+    fragment, and — better — by `PermSim`, whose positional `StackSim`
+    cannot relate a stale item to mirlite's stack, so a bad bracket fails
+    to typecheck over ALL inputs rather than erroring on whichever ones a
+    test happens to exercise. -/
 def dieCellContent (pf : List (List Tag)) (tag : Tag) : BorrowStack → Except String BorrowStack
-  | [] => .ok []
+  | [] => .error "sb-die: stack empty"
   | item :: below =>
       if item.tag == tag then
         match item with
@@ -530,10 +509,7 @@ def dieCellContent (pf : List (List Tag)) (tag : Tag) : BorrowStack → Except S
             if isProtectedIn pf item.tag then
               .error s!"sb-die: tag {tag} is strongly protected"
             else .ok below
-      else
-        match dieCellContent pf tag below with
-        | .error e => .error e
-        | .ok below' => .ok (item :: below')
+      else .error s!"sb-die: top of stack is {item.tag}, expected {tag}"
 
 /-- Kill a reference over a range: pop the item with `tag` if it is on top
     of each cell's stack (and is not the root `Own`). -/

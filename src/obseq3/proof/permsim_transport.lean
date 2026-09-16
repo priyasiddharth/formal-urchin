@@ -1406,39 +1406,6 @@ theorem freshTag_not_protected {ρt : TagRenameMap} {src tgt : AccessPerms}
   obtain ⟨ts, h_ts⟩ := TagListSim.mem_range h_fsim h_mem_t
   exact absurd (h_bd _ _ h_ts).2 (Nat.lt_irrefl _)
 
-/-- The fresh tag occurs in no target STACK either — same argument as
-    `freshTag_not_protected`, through `StackMapSim` instead of the
-    protector frames: every item of a related stack came through ρt, and
-    `TagRenameBounded` puts ρt's whole range strictly below the counter.
-
-    This is what tells the `refSlice` bracket that a `Mut` mint, which
-    DISCARDS the projection's temporary rather than leaving it on top,
-    leaves a stack the `Die` then finds nothing in. -/
-theorem freshTag_not_in_stack {ρt : TagRenameMap} {src tgt : AccessPerms}
-    (h_sim : PermSim ρt src tgt)
-    (h_bd : TagRenameBounded ρt src.NextTag tgt.NextTag)
-    {a : Word} {stack : BorrowStack}
-    (h_find : SB.find? tgt.StackMap a = some stack) :
-    ∀ k ∈ stack, k.tag ≠ tgt.NextTag := by
-  intro k hk hc
-  obtain ⟨h_sm, -, -, -⟩ := h_sim
-  have h := h_sm a
-  rw [h_find] at h
-  cases h_s : SB.find? src.StackMap a with
-  | none => rw [h_s] at h; exact h.elim
-  | some ss =>
-      rw [h_s] at h
-      obtain ⟨k', -, h_rel⟩ := ListRel.mem_right h hk
-      have h_tag := ItemSim.tag_rel h_rel
-      rw [hc] at h_tag
-      exact absurd (h_bd _ _ h_tag).2 (Nat.lt_irrefl _)
-
-/-- A mutable retag succeeds wherever the corresponding WRITE succeeds:
-    `sb_ref … .Mut` is per cell `writeCell` followed by `pushCell`, and a
-    push onto a stack the write just produced cannot fail. BRIDGE 1 takes
-    the retag's success as a hypothesis; on the target side nothing else
-    supplies it, because the SOURCE performs a bare write and there is no
-    retag to transport. -/
 theorem sb_ref_Mut_ok_of_sb_write_ok {ap ap' : AccessPerms}
     {addr : Word} {len : Nat} {tag : Tag}
     (h : sb_write ap addr len tag = .ok ap') :

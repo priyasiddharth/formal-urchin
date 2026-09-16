@@ -853,11 +853,13 @@ def xD34 : Place ΓD34 natL := .local ⟨⟨3, by decide⟩, rfl⟩
     pops the projection's temporary `Borrow(Shared)`, so the cleanup
     `Die` finds its tag gone.
 
-    This DIVERGED until 2026-09-14: `dieCellContent` demanded its tag be
-    on top and errored, while mirlite — which has no projection borrow at
-    all — ran clean. Making the not-on-top branch a no-op (sb.lean) fixed
-    it, because `Die` retires compiler scaffolding and SB had already
-    ended the borrow. Kept as the regression witness for that change. -/
+    This DIVERGED until 2026-09-16: `BorrowRest` dereferenced the source
+    cell and minted in ONE instruction, so the bracket spanned the mint
+    and the cleanup `Die` found its tag gone, while mirlite — which has
+    no projection borrow at all — ran clean. Splitting the lowering into
+    `Load; Die; RetagRest` (compile.lean) fixed it: the bracket closes
+    while its temporary is still on top. Kept as the regression witness —
+    reverting the split makes this report `.ub 3` again. -/
 def ΓRS : Ctx := [tPairL, obseq.LayoutTy.PtrL tPairL, ptrNat]
 def tRS : Place ΓRS tPairL := .local ⟨⟨0, by decide⟩, rfl⟩
 def pRS : Place ΓRS (obseq.LayoutTy.PtrL tPairL) := .local ⟨⟨1, by decide⟩, rfl⟩
