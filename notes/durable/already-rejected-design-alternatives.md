@@ -77,3 +77,14 @@ both audit roots.
 constraint. Even then the cheap fix is in the INGESTION — hoist the
 constant into a temporary local and emit two statements — which keeps
 mirlite's grammar and the whole proof surface fixed.
+
+[FACT] **Rejecting a guarded write to a never-written local at COMPILE
+time** — rejected 2026-09-17. The alternative to allocating a guard's
+destination root on both paths (mirlite `ensureRoot` + compiler
+`ensurePlaceRoot` before the guard). It keeps `compile_correct` honest
+and the corpus never produces the shape, but it cuts scope where the
+MODEL is wrong: MIR storage exists on every path; mirlite's lazy
+first-write allocation is the abstraction that became path-dependent at
+a guard, and the fix is to make the statement allocate its root as
+`assign` already does. A target-only hoist was never an option
+(`AllocLockstep`). → journal/2026-09/2026-09-17-assignif-guarded-root.md

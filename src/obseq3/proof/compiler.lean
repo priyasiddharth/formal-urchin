@@ -4,6 +4,7 @@ import obseq3.proof.ref
 import obseq3.proof.casts
 import obseq3.proof.ptrarith
 import obseq3.proof.protectors
+import obseq3.proof.assign_if
 
 /-!
 Top-level compiler-correctness theorems for the proof-core fragment
@@ -443,7 +444,10 @@ theorem CompilerInv_step
             exact CompilerInv_step_fromExposed compProg h_comp h_inv h_get h_step
         | uninit =>
             exact CompilerInv_step_uninit compProg h_comp h_inv h_get h_step
-    | assignIf discr val dst rhs => exact absurd h_stmt_core (by simp [CoreStmt])
+    | assignIf discr val dst rhs =>
+        exact CompilerInv_step_assignIf compProg
+          (assignLeaf_core compProg dst rhs (by simpa [CoreStmt] using h_stmt_core))
+          h_comp h_inv h_get h_step
     | alloc dst len => exact absurd h_stmt_core (by simp [CoreStmt])
     | dealloc p => exact absurd h_stmt_core (by simp [CoreStmt])
     | pushProtectors =>

@@ -885,6 +885,44 @@ def rs_mut_slice_retag_pops_projection_borrow : IO Unit := do
   expectDiff ΓRS prog .ok
     "rs Mut slice retag pops the projection borrow; the Die is a no-op"
 
+/-- Differential PROBE (2026-09-17): a guarded write to a local that is
+    NOT yet rooted, skipped, and then an unguarded write to the same
+    local. mirlite: the guard is skipped, `x` stays unbound, the second
+    write allocates it — `.ok`. The compiler roots `x` at COMPILE time
+    inside the guarded block; if the guard is skipped the root `Alloc`
+    never runs, and the second write is compiled as a store through a
+    register that was never assigned. -/
+def ΓGR : Ctx := [natL, natL]
+def dGR : Place ΓGR natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def xGR : Place ΓGR natL := .local ⟨⟨1, by decide⟩, rfl⟩
+
+def rs_guarded_fresh_root_then_write : IO Unit :=
+  expectDiff ΓGR
+    [.assign dGR (.constInit 0),
+     .assignIf dGR 1 xGR (.constInit 5),
+     .assign xGR (.constInit 7),
+     .halt]
+    .ok "rs guarded write to an unrooted local, skipped, then written"
+
+/-- Golden for the fix: the root `Alloc` of a guarded destination sits
+    BEFORE the discriminant `Load` and the `SkipIf`, outside the guarded
+    block, so it runs on both paths. -/
+def g12_assign_if_roots_before_guard : IO Unit :=
+  expectCode ΓGR
+    [.assign dGR (.constInit 0),
+     .assignIf dGR 1 xGR (.constInit 5),
+     .assign xGR (.constInit 7),
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
+     Instr.CStore natTy [Val.Dat 0] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc natTy),
+     Instr.Assgn (Register.R 2) (Rhs.Load natTy (Register.R 0)),
+     Instr.SkipIf (Register.R 2) 1 1,
+     Instr.CStore natTy [Val.Dat 5] (Register.R 1),
+     Instr.CStore natTy [Val.Dat 7] (Register.R 1),
+     Instr.Halt]
+    "g12 assignIf roots its destination before the guard"
+
 /-- Differential: a write through a `ptrOffset`-derived raw pointer
     invalidates a shared borrow of the cell it lands on, and the later
     read through that borrow is UB — on BOTH machines, at the same
@@ -2227,6 +2265,8 @@ def allTests : List (IO Unit) := [
   d33_overlap_junk_copy_agrees,
   px_write_through_projected_ptroffset,
   rs_mut_slice_retag_pops_projection_borrow,
+  rs_guarded_fresh_root_then_write,
+  g12_assign_if_roots_before_guard,
   d34_deref_dst_temp_killed_by_rhs_spine,
   d35_self_copy_is_ok,
   d36_field_copy_nonzero_offset,

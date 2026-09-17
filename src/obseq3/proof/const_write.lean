@@ -367,6 +367,48 @@ theorem uninit_valuePkg {Γ : Ctx} (τ : LayoutTy) (compProg : oseair.Prog) :
     the casts and ref use: the rvalue contributes only its value package,
     and a constant store's package is `StoreStep.cstore` over a
     `PureCStore` witness. -/
+theorem assignStep_constStore
+    {τ : LayoutTy} {dst : Place Γ τ} {rhs : RExpr Γ τ}
+    (compProg : oseair.Prog)
+    (h_pkg : ValuePkg compProg rhs)
+    {csStart : CompilerState}
+    (h_invAt : InvAt ρa ρt s_mir s_osea csStart)
+    (hF : (∃ so, CheckedCompilerM.value
+        (compileStmtChecked (.assign dst rhs)) csStart = Except.ok so) →
+      StmtFrame compProg cs0 prog s_mir.pc
+        (CheckedCompilerM.run (compileStmtChecked (.assign dst rhs)) csStart))
+    (h_step : mirlite.stepStmt MSB s_mir (.assign dst rhs) = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
+  cases dst with
+  | «local» loc =>
+      cases h_envD : mirlite.Env.lookup s_mir.env loc with
+      | some bD =>
+          obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+            storereg_local_simulation compProg h_pkg h_invAt (StmtFrame.congr hF
+              (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_envD h_step
+          exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+      | none =>
+          exact storereg_localfresh_simulation compProg h_pkg h_invAt (StmtFrame.congr hF
+            (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_envD h_step
+  | proj base path =>
+      exact storereg_projdst_recursion compProg h_pkg h_invAt (StmtFrame.congr hF
+        (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_step
+  | deref P =>
+      rw [stepStmt_assign_dstderef_flatten] at h_step
+      obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+        storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
+          (PtrChain_flatten_deref P) h_invAt (StmtFrame.congr hF
+          (fun cs => compileStmt_assign_derefdst_flatten_run _ cs)
+          (fun cs so h => compileStmt_assign_derefdst_flatten_value _ cs so h))
+          h_step
+      exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+
+/-- The `constInit` instance of the constant-store step. -/
+
 theorem CompilerInv_step_constStore
     {τ : LayoutTy} {dst : Place Γ τ} {rhs : RExpr Γ τ}
     (compProg : oseair.Prog)
@@ -381,31 +423,10 @@ theorem CompilerInv_step_constStore
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   obtain ⟨csPrefix, h_csAt, h_invAt⟩ := h_inv.invAt
-  cases dst with
-  | «local» loc =>
-      cases h_envD : mirlite.Env.lookup s_mir.env loc with
-      | some bD =>
-          obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-            storereg_local_simulation compProg h_pkg h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
-              (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_envD h_step
-          exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
-      | none =>
-          exact storereg_localfresh_simulation compProg h_pkg h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
-            (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_envD h_step
-  | proj base path =>
-      exact storereg_projdst_recursion compProg h_pkg h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
-        (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_step
-  | deref P =>
-      rw [stepStmt_assign_dstderef_flatten] at h_step
-      obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-        storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
-          (PtrChain_flatten_deref P) h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
-          (fun cs => compileStmt_assign_derefdst_flatten_run _ cs)
-          (fun cs so h => compileStmt_assign_derefdst_flatten_value _ cs so h))
-          h_step
-      exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+  exact assignStep_constStore compProg h_pkg h_invAt
+    (StmtFrame.ofAssign h_comp h_csAt h_stmt (fun _ => rfl) (fun _ so h => ⟨so, h⟩))
+    h_step
 
-/-- The `constInit` instance of the constant-store step. -/
 theorem CompilerInv_step_constWrite
     {dst : Place Γ obseq.LayoutTy.NatL}
     (compProg : oseair.Prog)

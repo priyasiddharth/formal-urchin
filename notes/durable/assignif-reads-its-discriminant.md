@@ -53,14 +53,44 @@ its own; the correspondence with `assignIf` is a property of the
 lowering (`emitSkipIfAround` sets `n` to the compiled assign's length),
 which is what the simulation lemma has to establish.
 
+[FACT, 2026-09-17] **The destination's root local is allocated BEFORE
+the read, on both paths.** mirlite's arm runs `ensureRoot dst` first
+(allocate the root local if unbound, recursing through proj and deref);
+the compiler's arm runs `ensurePlaceRoot dst` before `guardRead discr`.
+Until this change the compiler rooted the destination INSIDE the guarded
+block — a compile-time `placeRegMap` entry whose `Alloc` ran only when
+the guard was taken; a skipped guard followed by a write to the same
+local stored through a never-assigned register (probe
+`rs_guarded_fresh_root_then_write`: source `.ok`, target `.ub 2`). The
+seam never produces the shape (`dst.0 := copy src.0` precedes every
+guard), which is why the corpus was silent. A target-only hoist would
+break `AllocLockstep`; a compile-time rejection was considered and
+rejected (already-rejected-design-alternatives.md). Statement order is
+now root, read, compare, assign — the same root-first order `assign`
+has (`preparePlaceAssign` before the rvalue).
+→ src/obseq3/mirlite_semantics.lean `ensureRoot`; compile.lean, the
+`.assignIf` arm and `guardRead`
+→ journal/2026-09/2026-09-17-assignif-guarded-root.md
+
+[FACT, 2026-09-17] **`assignIf` IS in `CoreStmt`**, with `CoreRhs rhs`
+and no shape condition on the discriminant or the destination.
+proof/assign_if.lean: `CompilerInv_step_assignIf` = the root step
+(`ensureRoot_simulation`) + copy's read package with its register
+exposed (`copy_readRegPkg_flat`) + one `SkipIf` step + either the assign
+leaf at the fall-through state (`AssignLeaf`, every rvalue) or the
+invariant rebuilt at the statement's end from the fact that the
+never-run body kept the place map (`compileAssignChecked_placeRegMap_of_mapped`).
+
 ## Why this matters
 
-`assignIf` can now enter `CoreStmt` with NO shape condition: the guard's
+The last statement gate on `CoreProg` is `alloc`/`dealloc`. The guard's
 read is copy's proved read package at `NatL`, and the taken arm is the
-existing assign leaves with their code starting one `SkipIf` later.
+existing assign leaves with their code starting one `SkipIf` later —
+which is what the leaves' `InvAt` + `StmtFrame` interface exists for.
 
 ## See also
 
+- journal/2026-09/2026-09-17-assignif-guarded-root.md  (the guarded-root bug)
 - protectors-and-the-charon-inlining-seam.md  (where `assignIf` comes from)
 - split-the-mint-out-of-the-bracket.md
 - one-leaf-per-destination-shape.md

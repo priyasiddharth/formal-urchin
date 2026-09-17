@@ -4,6 +4,48 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-17 (later) — A Guard Allocates Its Destination on Both Paths; `assignIf` Enters the Theorem
+
+The last step of the `assignIf` plan was the proof's skipped arm, whose
+one non-trivial obligation is that the guarded body — never executed on
+that path — changed no entry of the compiler's place map. Writing the
+probe for that fact found a compiler bug the corpus cannot reach: a
+guarded write to a local nothing had written yet. `compileAssignChecked`
+inside the guarded block rooted the local, emitting its `Alloc` *inside*
+the block and recording the register at compile time; a skipped guard
+jumped over the `Alloc`, and the next write to that local stored
+through a register nothing had assigned. mirlite said `.ok`, the target
+said UB. Charon's seam always writes the discriminant field before any
+guard, so 82 matched programs said nothing.
+
+The fix is on both machines, because a target-only hoist would put the
+two allocators out of lockstep, and the invariant says they never are.
+mirlite gains `ensureRoot` — allocate the destination's root local if
+unbound, recursing through projections and derefs exactly as the
+compiler's `ensurePlaceRoot` does — and the guard runs it before the
+discriminant read, on both paths; the compiler roots before the guard.
+This is the order `assign` already has (root, then rvalue), and it is
+the honest reading of MIR, where a local's storage exists whether or not
+a branch writes it: the lazy first-write allocation was an abstraction
+that had become path-dependent at exactly one statement. The other
+option — reject the shape at compile time — keeps the theorem honest
+and is corpus-safe, but it is a scope cut where the model is what is
+wrong. Rejected and recorded. Verdict-neutral everywhere: units 108/108,
+corpus 82/0/41, differential 82 matched, and the probe agrees.
+
+With that, `assignIf` joins `CoreStmt` with a core rvalue and no shape
+condition. The arm is the sum of parts the previous sessions built for
+it: the root step, copy's read package with its register exposed, one
+`SkipIf` step, and then either the plain assign leaf from the state the
+guard falls through to — the leaves take an `InvAt` and a statement
+frame for exactly this — or, on the skip, the invariant rebuilt at the
+statement's end from the fact that a body whose root is already mapped
+keeps the place map. That lemma is the bug's negation, which is the
+satisfying part. The remaining statement gate is `alloc` and `dealloc`.
+Audit unchanged: three axioms, zero sorries.
+
+---
+
 ## 2026-09-17 — The Discriminant Is a Read
 
 Planning `assignIf` into the theorem turned up a modelling deviation I

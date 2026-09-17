@@ -3904,3 +3904,42 @@ deviation from Miri, and the target's borrow was never the problem. My
 **Status:** step 0 complete and green. Steps 1–4 (unify the assign
 lowerings, one-run `SkipIf`, `csStart` on the leaves, the two arms)
 remain.
+
+## 2026-09-17 (later) — the guarded-root bug; `assignIf` joins `CoreStmt`
+
+**Theme:** resume of the `assignIf` plan at step 4. The uncommitted
+step-4 scaffolding (`ReadRegPkg`, `stmt_compiles_of_comp`,
+`StmtFrame.congr`/`of_patchLabel`, the `assignStep_*` leaf forms) built
+clean; the uncommitted differential probe FAILED — target `.ub 2`
+against source `.ok` — and was a real compiler bug: a guarded
+destination rooted inside the guarded block (see the journal entry).
+
+**Key outputs:** mirlite `ensureRoot` + the `.assignIf` arm (root, then
+`evalRExpr (.copy discr)`, then compare); compile.lean `guardRead` and
+the arm's `ensurePlaceRoot dst` before the guard; g12 golden;
+proof/assign_if.lean (~900 lines: `ensureRoot_simulation`, the
+placeRegMap-preservation family, the guard shape lemmas, the
+local-destination bridge, `AssignLeaf`/`assignLeaf_core`,
+`CompilerInv_step_assignIf`); `CoreStmt` admits `assignIf`;
+journal/2026-09/2026-09-17-assignif-guarded-root.md; durable updates
+(assignif-reads-its-discriminant.md, what-compile-correct-actually-says.md
+§1 superseded, already-rejected-design-alternatives.md); parked.md
+(stale raw-peek line superseded; the `.assign (.local)` fast-path loose
+end); dev-log entry.
+
+**Decision taken without the user (flagged in the hand-off):** fix on
+both machines (allocate the root on both paths) rather than reject the
+shape at compile time. Reasoning recorded in the journal entry and the
+rejected-alternatives note; the user's earlier redirect ("make the
+discriminant read a real access on both machines" over scoping) was the
+precedent.
+
+**Status:** complete. One commit; four suites green; audit unchanged
+at propext / Classical.choice / Quot.sound, zero sorries.
+
+**Next-session pickup candidates:**
+- The statement gate is now `alloc`/`dealloc` only.
+- loose-ends/parked.md — "Delete `compileStmtChecked`'s `.assign (.local
+  loc)` fast path" (~2h).
+- loose-ends/parked.md — "Does `ptrOffset`'s deferred UB ever diverge
+  from Miri?" (~1h, needs a Miri toolchain).

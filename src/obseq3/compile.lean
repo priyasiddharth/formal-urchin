@@ -842,6 +842,21 @@ theorem emitSkipIfAround_run {α : Type} (discrReg : Register) (val : Word)
   simp [emitSkipIfAround, CheckedCompilerM.run, CompilerM.run, skipCount,
     CheckedCompilerM.value, CompilerM.value, h]
 
+/-- A guard's discriminant read: copy's read of a `NatL` place — lower it
+    shared, `Load` through the result, retire any temporary BEFORE the
+    guard so it is dead on both paths — returning the VALUE register the
+    `SkipIf` compares. Its own computation so the proof can name the state
+    it leaves and relate it to `readRhsPre` once (proof/assign_if.lean). -/
+def guardRead {Γ : Ctx} (discr : Place Γ obseq.LayoutTy.NatL) :
+    CheckedCompilerM Register := do
+  let discrOut ← placeToRegChecked RefKind.Shared discr
+  let discrReg ← CheckedCompilerM.lift freshRegM
+  let _ ← CheckedCompilerM.lift
+    (emitM ([Instr.Assgn discrReg
+        (Rhs.Load (layoutToTyVal obseq.LayoutTy.NatL) discrOut.result.reg)]
+      ++ cleanupInstrs discrOut.result.cleanup))
+  pure discrReg
+
 def compileStmtChecked {Γ : Ctx} :
     (stmt : Stmt Γ) → CheckedEvidenceM Unit (fun _ => StmtEvidence stmt)
   | .halt => do
@@ -890,16 +905,18 @@ def compileStmtChecked {Γ : Ctx} :
           ++ [Instr.Dealloc loadedReg]))
       pure { result := (), evidence := StmtEvidence.dealloc dst }
   | .assignIf discr val dst rhs => do
-      -- the discriminant is READ, exactly as `copy` reads a `NatL` place:
-      -- lower it shared, `Load` through the result, retire any temporary
-      -- BEFORE the guard so it is dead on both paths, then guard on the
-      -- loaded VALUE register — `SkipIf` itself touches no memory
-      let discrOut ← placeToRegChecked RefKind.Shared discr
-      let discrReg ← CheckedCompilerM.lift freshRegM
-      let _ ← CheckedCompilerM.lift
-        (emitM ([Instr.Assgn discrReg
-            (Rhs.Load (layoutToTyVal obseq.LayoutTy.NatL) discrOut.result.reg)]
-          ++ cleanupInstrs discrOut.result.cleanup))
+      -- the destination's ROOT is allocated before the guard, on both
+      -- paths, as mirlite's `ensureRoot` does: a root allocated inside the
+      -- guarded block is recorded in `placeRegMap` at compile time but
+      -- runs only when the guard is taken, and the next write to that
+      -- local stores through a register no `Alloc` ever assigned
+      -- (`rs_guarded_fresh_root_then_write`, 2026-09-17). The body's own
+      -- `ensurePlaceRoot` then finds the root mapped and is silent.
+      let _ ← CheckedCompilerM.lift (ensurePlaceRoot dst)
+      -- the discriminant is READ, exactly as `copy` reads a `NatL` place
+      -- (`guardRead`), then the guard tests the loaded VALUE register —
+      -- `SkipIf` itself touches no memory
+      let discrReg ← guardRead discr
       emitSkipIfAround discrReg val (compileAssignChecked dst rhs)
       pure { result := (), evidence := StmtEvidence.assignIf discr val dst rhs }
 

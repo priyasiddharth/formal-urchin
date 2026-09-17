@@ -224,6 +224,26 @@ def preparePlaceAssign
   | some _ => .ok state
   | none => allocateRoot M state dst
 
+/-- The ROOT LOCAL of a place, allocated if it is still unbound; a bound
+    root — and a deref, whose pointer local is the root — is left alone.
+    `assignIf` runs this on BOTH paths (2026-09-17): the destination's
+    storage exists whether or not the guard is taken, as a MIR local's
+    always does, and the compiler roots the destination before the guard
+    the same way (`ensurePlaceRoot`, of which this is the source-side
+    image). A guard that rooted its destination only on the taken path
+    put the two allocators out of lockstep on the skipped one — the
+    compiled program stored through a register its `Alloc` never
+    assigned (`rs_guarded_fresh_root_then_write`). -/
+def ensureRoot
+  (M : PermissionModel)
+  (state : State M Γ) : Place Γ τ → Result M Γ
+  | .local loc =>
+      match state.env.lookup loc with
+      | some _ => .ok state
+      | none => allocateBase M state loc
+  | .proj base _ => ensureRoot M state base
+  | .deref ptrPlace => ensureRoot M state ptrPlace
+
 def evalRExpr
   (M : PermissionModel)
   (state : State M Γ)
@@ -475,32 +495,27 @@ def stepStmt
       | .error e => .err s!"popProtectors failed: {e}"
   | .assign dst rhs => doAssign M state dst rhs
   | .assignIf discr val dst rhs =>
-      -- The discriminant is READ (2026-09-17). `discriminant(place)` reads
+      -- The destination's root exists on both paths (`ensureRoot`), then
+      -- the discriminant is READ (2026-09-17): `discriminant(place)` reads
       -- the place in MIR and Miri performs a read access through its
-      -- provenance; until now this was a raw `mem.find?` peek, a deviation
+      -- provenance; until then this was a raw `mem.find?` peek, a deviation
       -- the compiled code had to mirror with an access-free `SkipIf`, and
       -- one that made a projected discriminant (whose lowering is a
-      -- `Borrow`/`Die` bracket, correctly) unprovable. This is exactly
-      -- `copy` of a `NatL` place — resolve for access, bounds, `M.read` —
+      -- `Borrow`/`Die` bracket, correctly) unprovable. The read IS `copy`
+      -- of the `NatL` place — resolve for access, bounds, `M.read` —
       -- followed by a compare; the guarded assign runs from the post-read
       -- state, and so does the fall-through.
-      match resolvePlaceAcc M state discr with
-      | .error e => .err e
-      | .ok (resolved, permsR) =>
-          if resolved.addr + blockSize obseq.LayoutTy.NatL
-              > resolved.allocBase + resolved.allocSize then
-            .err "assignIf discriminant out of bounds"
-          else
-          match M.read permsR resolved.addr (blockSize obseq.LayoutTy.NatL)
-              resolved.tag with
-          | .error e => .err s!"read access failed: {e}"
-          | .ok perms' =>
-              let state' := { state with perms := perms' }
-              match state'.mem.find? resolved.addr with
-              | some (.word v) =>
-                  if v == val then doAssign M state' dst rhs
-                  else .ok { state' with pc := state'.pc + 1 }
-              | _ => .err "assignIf discriminant is not a concrete word"
+      match ensureRoot M state dst with
+      | .err msg => .err msg
+      | .ok s0 =>
+      match evalRExpr M s0 (.copy discr) with
+      | .err e => .err e
+      | .ok output =>
+          match output.values with
+          | [.word v] =>
+              if v == val then doAssign M output.state dst rhs
+              else .ok { output.state with pc := output.state.pc + 1 }
+          | _ => .err "assignIf discriminant is not a concrete word"
   | .alloc (τ := τ) dst len =>
       match preparePlaceAssign M state dst with
       | .err msg => .err msg

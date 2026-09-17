@@ -44,13 +44,20 @@ all upstream and unverified — `compile_correct` starts from whatever
 `Prog` the loader produces. See
 [[protectors-and-the-charon-inlining-seam]].
 
-**1. The `CoreProg` gate.** `CoreStmt` admits only `halt` and
-`assign dst rhs` with `CoreRhs rhs`, and `CoreRhs` admits only
-`constInit`, `copy`, `ref`, `uninit` (admitted 2026-08-31). Excluded: `assignIf`, `alloc`, `dealloc`,
-`pushProtectors`, `popProtectors`, and the rvalues `ptrCast`,
-`ptrOffset`, `refSlice`, `exposeAddr`, `fromExposed`. They
-are implemented and exercised by the conformance corpus; the theorem
-discharges them with `absurd h_stmt_core`.
+**1. The `CoreProg` gate.** [As of 2026-09-17] `CoreStmt` admits
+`halt`, `assign dst rhs` and `assignIf discr val dst rhs` with
+`CoreRhs rhs`, `pushProtectors` and `popProtectors`; `CoreRhs` is
+TOTAL (every `RExpr` constructor; `refSlice` was the last, 2026-09-16).
+Excluded: `alloc` and `dealloc` only. They are implemented and exercised
+by the conformance corpus; the theorem discharges them with `absurd
+h_stmt_core`.
+[SUPERSEDED → this paragraph, 2026-09-17] The 2026-08-31 text — "admits
+only `halt` and `assign` with `constInit`/`copy`/`ref`/`uninit`;
+excluded `assignIf`, the protector frames, and the five other rvalues"
+— was true when written; the casts and `ptrOffset` joined via the
+read-then-store family (2026-09-13), `refSlice` on 2026-09-16, the
+frames on 2026-09-16, `assignIf` on 2026-09-17
+(assignif-reads-its-discriminant.md).
 
 Note the OTHER axis is total: within the fragment, `dst` and `src` are
 ARBITRARY places — any nesting of local/proj/deref, bound or unbound

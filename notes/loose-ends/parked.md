@@ -281,8 +281,9 @@ feature-level view.
 5. **Enum layout**: discriminant word + prefix-merged payload — no
    niche optimization; incompatible variant layouts and nested refs in
    payloads are unsupported; payload seam retags are assignIf-guarded;
-   the assignIf discriminant read is a raw memory inspection (no SB
-   access; miri validity-reads it).
+   [SUPERSEDED → durable/assignif-reads-its-discriminant.md, 2026-09-17]
+   the discriminant read WAS a raw memory inspection; it is now an SB
+   read on both machines, and the guard roots its destination first.
 6. **Interior-mutability fallbacks**: Atomic* = one-word cell;
    UnsafeCell/Cell with uninferrable pointee falls back to one word.
 7. **Layout/alignment**: Layout ≈ its size word; alignment is ignored
@@ -677,3 +678,23 @@ grade — the strong `die` is already in, so nothing depends on this.
 **References:** a-stale-shared-item-is-unobservable.md,
 die-is-permissive-when-not-on-top.md
 
+## Delete `compileStmtChecked`'s `.assign (.local loc)` fast path
+**Status:** parked 2026-09-17
+**Context:** commit dc164ad made `compileStmtChecked (.assign dst rhs) =
+compileAssignChecked dst rhs` by `rfl` — for non-local `dst`. The
+`.assign (.local loc)` arm survived (it carries `StmtEvidence.assignLocal`),
+and it is the same stream as `compileAssignChecked (.local loc) rhs` only
+up to `emit cs []` and a `placeToRegChecked Mut (.local loc)` lookup.
+proof/assign_if.lean bridges the two (`compileAssignChecked_local_run`,
+`_local_value`, ~60 lines) so the guarded body can hand a local
+destination to the leaves.
+**Why parked:** the bridge is cheap and the arm's proof did not need more;
+deleting the fast path touches ~15 local-destination compile lemmas in
+spine.lean/copy.lean (`compileStmt_storereg_local*`,
+`compileStmt_readrhs_*srcflatten*`) that unfold the arm.
+**To resume:** remove the arm and `StmtEvidence.assignLocal`; re-prove the
+listed lemmas through `compileAssignChecked` (`ensurePlaceRoot (.local)`
+= `ensureLocalRegE`, then `placeToRegChecked_local_value_of` /
+`placeToRegChecked_local_run` from assign_if.lean); delete the bridge.
+**Effort estimate:** ~2h
+**References:** journal/2026-09/2026-09-17-assignif-guarded-root.md

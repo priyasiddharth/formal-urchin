@@ -87,9 +87,9 @@ def compileProgFrom
     is what admits the `wildcardTag` pointer `fromExposed` mints.
 
     The predicate is kept rather than deleted: `CoreStmt`/`CoreProg`
-    still gate on statements (`assignIf`, `alloc`, `dealloc`, protector
-    frames), and a new rvalue should have to be admitted here
-    deliberately. -/
+    still gate on statements (`alloc`, `dealloc`; `assignIf` and the
+    protector frames joined 2026-09-16/17), and a new rvalue should have
+    to be admitted here deliberately. -/
 def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .constInit _ => True
   | .copy _ => True
@@ -101,11 +101,12 @@ def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .ptrCast _ => True
   | .refSlice _ _ _ => True
 
-/-- Statements in the proof-core fragment: `halt` and assignments with a
-    core rvalue. -/
+/-- Statements in the proof-core fragment: `halt`, assignments — plain or
+    guarded — with a core rvalue, and the protector frames. -/
 def CoreStmt {Γ : Ctx} : Stmt Γ → Prop
   | .halt => True
   | .assign _ rhs => CoreRhs rhs
+  | .assignIf _ _ _ rhs => CoreRhs rhs
   | .pushProtectors => True
   | .popProtectors => True
   | _ => False
@@ -2220,6 +2221,39 @@ theorem StateIncr.code_reserved {cs cs' : CompilerState}
     (h : StateIncr (reserveLabel cs) cs') : cs'.code cs.nextLabel = none := by
   rw [h.code_eq cs.nextLabel (by simp), reserveLabel_code_self]
 
+/-- Every statement of a program that compiled compiles from its own
+    prefix state. The leaves never needed this — they learn that the
+    assign compiles from its rvalue package — but a GUARD needs to run
+    its discriminant read before any package is available, so its code
+    inclusion has to come from the program having compiled at all. -/
+theorem stmt_compiles_of_comp
+    {Γ : Ctx} {cs0 csPrefix : CompilerState} {prog : obseq3.Prog Γ}
+    {compProg : obseq3.oseair.Prog} {stmtIdx : Nat} {stmt : Stmt Γ}
+    (h_comp : compileProgFrom cs0 prog = Except.ok compProg)
+    (h_prefix : csAt cs0 prog stmtIdx csPrefix)
+    (h_get : prog.get? stmtIdx = some stmt) :
+    ∃ so, CheckedCompilerM.value (compileStmtChecked stmt) csPrefix = Except.ok so := by
+  have h_all : CheckedCompilerM.value (compileStmtsChecked prog) cs0 = Except.ok () := by
+    unfold compileProgFrom compileProgFromChecked at h_comp
+    cases h : CheckedCompilerM.value (compileStmtsChecked prog) cs0 with
+    | ok u => cases u; rfl
+    | error e => rw [h] at h_comp; simp at h_comp
+  have h_split : prog = (prog.take stmtIdx ++ [stmt]) ++ prog.drop (stmtIdx + 1) := by
+    have h1 := (List.take_append_drop (stmtIdx + 1) prog).symm
+    have h2 := take_succ_eq_take_append_get h_get
+    simp only [Nat.succ_eq_add_one] at h2
+    rw [h2] at h1
+    exact h1
+  rw [h_split, List.append_assoc, compileStmts_append _ _ _ (csAt_value_ok h_prefix),
+    csAt_run_eq h_prefix] at h_all
+  simp only [List.singleton_append, compileStmtsChecked] at h_all
+  cases h : CheckedCompilerM.value (compileStmtChecked stmt) csPrefix with
+  | ok so => exact ⟨so, rfl⟩
+  | error e =>
+      exfalso
+      simp only [csMonad, h] at h_all
+      simp at h_all
+
 /-! ### The statement frame
 
     What a write seam needs to know about the STATEMENT it is finishing,
@@ -2280,6 +2314,39 @@ theorem StmtFrame.ofAssign
   have F := StmtFrame.ofStmt h_comp h_csAt h_stmt h'
   rw [h_run0] at F
   exact F
+
+/-- A frame builder transfers across a run/value congruence: if statement
+    `A`'s code equals statement `B`'s from every state, and `B` compiling
+    implies `A` compiles, a conditional frame for `A` is one for `B`. This
+    is how the flatten/reassociation congruences reach a guarded assign. -/
+theorem StmtFrame.congr
+    {Γ : Ctx} {cs0 cs : CompilerState} {prog : obseq3.Prog Γ}
+    {compProg : obseq3.oseair.Prog} {stmtIdx : Nat} {A B : Stmt Γ}
+    (hF : (∃ so, CheckedCompilerM.value (compileStmtChecked A) cs = Except.ok so) →
+      StmtFrame compProg cs0 prog stmtIdx (CheckedCompilerM.run (compileStmtChecked A) cs))
+    (h_run : ∀ cs, CheckedCompilerM.run (compileStmtChecked A) cs
+      = CheckedCompilerM.run (compileStmtChecked B) cs)
+    (h_val : ∀ cs so, CheckedCompilerM.value (compileStmtChecked B) cs = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked A) cs = Except.ok so')
+    (h_ok : ∃ so, CheckedCompilerM.value (compileStmtChecked B) cs = Except.ok so) :
+    StmtFrame compProg cs0 prog stmtIdx (CheckedCompilerM.run (compileStmtChecked B) cs) := by
+  obtain ⟨so, h⟩ := h_ok
+  have F := hF (h_val cs so h)
+  rw [h_run] at F
+  exact F
+
+/-- A frame for a patched state is a frame for the state it patched,
+    when that state is silent at the label: same `nextLabel`, `nextReg`
+    and `placeRegMap`, and code inclusion carries down. -/
+theorem StmtFrame.of_patchLabel
+    {Γ : Ctx} {cs0 cs : CompilerState} {prog : obseq3.Prog Γ}
+    {compProg : obseq3.oseair.Prog} {stmtIdx label : Nat} {i : Instr}
+    (F : StmtFrame compProg cs0 prog stmtIdx (patchLabel cs label i))
+    (h_none : cs.code label = none) :
+    StmtFrame compProg cs0 prog stmtIdx cs := by
+  obtain ⟨csNext, h_next, h_nl, h_nr, h_np⟩ := F.next
+  exact ⟨CodeIncluded.of_patchLabel_none F.code h_none,
+    ⟨csNext, h_next, by simpa using h_nl, by simpa using h_nr, by simpa using h_np⟩⟩
 
 /-- The invariant's per-state half: everything `CompilerInv` says about
     `(s_mir, s_osea)` relative to a compiler state, minus the claim that

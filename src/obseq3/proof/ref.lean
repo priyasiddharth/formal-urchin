@@ -833,6 +833,66 @@ theorem compileStmt_ref_srcflatten_proj_value
     once, read off which of the two package constructors applies, and
     hand it to the destination leaf. So this dispatcher is a case split
     on the DESTINATION alone, and every arm is three lines. -/
+theorem assignStep_ref
+    {τ : LayoutTy}
+    {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {src : Place Γ τ}
+    (kind : RefKind) (prot : Bool) (mask : List Bool)
+    (compProg : oseair.Prog)
+    {csStart : CompilerState}
+    (h_invAt : InvAt ρa ρt s_mir s_osea csStart)
+    (hF : (∃ so, CheckedCompilerM.value
+        (compileStmtChecked (.assign dst (.ref kind prot mask src))) csStart = Except.ok so) →
+      StmtFrame compProg cs0 prog s_mir.pc
+        (CheckedCompilerM.run (compileStmtChecked (.assign dst (.ref kind prot mask src))) csStart))
+    (h_step : mirlite.stepStmt MSB s_mir (.assign dst (.ref kind prot mask src)) = .ok s_mir') :
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
+      TagRenameIncr ρt ρt' ∧
+      oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
+  -- the source, normalised once and for all
+  rw [stepStmt_assign_refsrc_anyflatten] at h_step
+  have h_pkg : ValuePkg compProg (RExpr.ref kind prot mask (flattenPlace src)) := by
+    rcases flatten_chainish src with h_ch | ⟨σ', sb, sp, h_eq, h_sb⟩
+    · exact ref_valuePkg_of_chain kind prot mask compProg h_ch
+    · rw [h_eq]
+      exact ref_valuePkg_of_projchain sp kind prot mask compProg h_sb
+  cases dst with
+  | «local» dstLoc =>
+      cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
+      | some bD =>
+          obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+            storereg_local_simulation compProg h_pkg h_invAt (StmtFrame.congr hF
+              (fun cs => compileStmt_ref_srcflatten_local_run kind prot mask src cs)
+              (fun cs so h => compileStmt_ref_srcflatten_local_value kind prot mask src cs so h))
+              h_envD h_step
+          exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+      | none =>
+          exact storereg_localfresh_simulation compProg h_pkg h_invAt (StmtFrame.congr hF
+            (fun cs => compileStmt_ref_srcflatten_local_run kind prot mask src cs)
+            (fun cs so h => compileStmt_ref_srcflatten_local_value kind prot mask src cs so h))
+            h_envD h_step
+  | proj dbase g =>
+      exact storereg_projdst_recursion compProg h_pkg h_invAt (StmtFrame.congr hF
+        (fun cs => compileStmt_ref_srcflatten_proj_run kind prot mask src cs)
+        (fun cs so h =>
+          compileStmt_ref_srcflatten_proj_value kind prot mask src cs so h))
+        h_step
+  | deref P =>
+      rw [stepStmt_assign_dstderef_flatten] at h_step
+      obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
+        storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
+          (PtrChain_flatten_deref P) h_invAt (StmtFrame.congr hF
+          (fun cs => (compileStmt_ref_srcflatten_deref_run kind prot mask src cs).trans
+            (compileStmt_assign_derefdst_flatten_run _ cs))
+          (fun cs so h => by
+            obtain ⟨so1, h1⟩ := compileStmt_assign_derefdst_flatten_value _ cs so h
+            exact compileStmt_ref_srcflatten_deref_value kind prot mask src cs so1 h1))
+          h_step
+      exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+
+
 theorem CompilerInv_step_ref
     {τ : LayoutTy}
     {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
@@ -849,45 +909,8 @@ theorem CompilerInv_step_ref
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   obtain ⟨csPrefix, h_csAt, h_invAt⟩ := h_inv.invAt
-  -- the source, normalised once and for all
-  rw [stepStmt_assign_refsrc_anyflatten] at h_step
-  have h_pkg : ValuePkg compProg (RExpr.ref kind prot mask (flattenPlace src)) := by
-    rcases flatten_chainish src with h_ch | ⟨σ', sb, sp, h_eq, h_sb⟩
-    · exact ref_valuePkg_of_chain kind prot mask compProg h_ch
-    · rw [h_eq]
-      exact ref_valuePkg_of_projchain sp kind prot mask compProg h_sb
-  cases dst with
-  | «local» dstLoc =>
-      cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
-      | some bD =>
-          obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-            storereg_local_simulation compProg h_pkg h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
-              (fun cs => compileStmt_ref_srcflatten_local_run kind prot mask src cs)
-              (fun cs so h => compileStmt_ref_srcflatten_local_value kind prot mask src cs so h))
-              h_envD h_step
-          exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
-      | none =>
-          exact storereg_localfresh_simulation compProg h_pkg h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
-            (fun cs => compileStmt_ref_srcflatten_local_run kind prot mask src cs)
-            (fun cs so h => compileStmt_ref_srcflatten_local_value kind prot mask src cs so h))
-            h_envD h_step
-  | proj dbase g =>
-      exact storereg_projdst_recursion compProg h_pkg h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
-        (fun cs => compileStmt_ref_srcflatten_proj_run kind prot mask src cs)
-        (fun cs so h =>
-          compileStmt_ref_srcflatten_proj_value kind prot mask src cs so h))
-        h_step
-  | deref P =>
-      rw [stepStmt_assign_dstderef_flatten] at h_step
-      obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-        storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
-          (PtrChain_flatten_deref P) h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
-          (fun cs => (compileStmt_ref_srcflatten_deref_run kind prot mask src cs).trans
-            (compileStmt_assign_derefdst_flatten_run _ cs))
-          (fun cs so h => by
-            obtain ⟨so1, h1⟩ := compileStmt_assign_derefdst_flatten_value _ cs so h
-            exact compileStmt_ref_srcflatten_deref_value kind prot mask src cs so1 h1))
-          h_step
-      exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+  exact assignStep_ref kind prot mask compProg h_invAt
+    (StmtFrame.ofAssign h_comp h_csAt h_stmt (fun _ => rfl) (fun _ so h => ⟨so, h⟩))
+    h_step
 
 end obseq3.proof
