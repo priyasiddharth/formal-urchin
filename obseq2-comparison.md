@@ -4,6 +4,36 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-17 — The Discriminant Is a Read
+
+Planning `assignIf` into the theorem turned up a modelling deviation I
+was about to fence off instead of fix. mirlite peeked the discriminant
+with `resolvePlace?` and a raw `mem.find?` — no Stacked Borrows access —
+and oseair mirrored that with a `SkipIf` that dereferenced a pointer
+register and peeked memory itself, killing any projection temporary
+first "because SkipIf performs no SB access". A projected discriminant
+lowers to a `Borrow`/`Die` bracket, correctly, so against a source that
+performed no access it was unprovable, and my plan was to admit
+`assignIf` only for discriminant shapes whose lowering emits nothing —
+which happens to be every shape the corpus produces.
+
+The user's question was better than my plan: *shouldn't the discriminant
+read be a temporary borrow and die, to be consistent?* In MIR,
+`discriminant(place)` reads the place, and Miri performs a read access
+through its provenance. The peek was the deviation. So now both machines
+read: mirlite's arm is `copy` of a `NatL` place followed by a compare,
+and the compiler emits copy's read lowering — `placeToRegChecked Shared;
+Load NatTy; cleanup` — before a `SkipIf` that guards on the loaded
+*value* and touches no memory. No shape condition survives.
+
+It is verdict-neutral, and for a reason worth recording rather than
+assuming: the seam emits `dst.0 := copy src.0` before every guard, so
+each guard's read of `src.0` repeats a read through the same tag, and an
+SB read is idempotent. Units 106/106 with the taken/skipped tests
+untouched; corpus 82/0/41; differential 82 matched.
+
+---
+
 ## 2026-09-16 (later still) — Protector Frames Enter the Theorem
 
 Two questions from the user, answered by the code. *Do I need to add

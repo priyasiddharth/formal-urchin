@@ -3882,3 +3882,25 @@ lines, no keystone content, built clean first try. Every existing
 
 **Status:** complete. Remaining statement gate: `assignIf`, `alloc`,
 `dealloc`.
+
+## 2026-09-17 — `assignIf` step 0: the discriminant is read on both machines
+
+**Theme:** while planning `assignIf` into `CoreStmt`, the user redirected
+the design from "scope the proof to event-free discriminant shapes" to
+"make the discriminant read a real access on both machines". Done first,
+verified behaviour-identical, before any proof.
+
+**Key outputs:** mirlite `.assignIf` arm = copy-of-`NatL` then compare;
+`Instr.SkipIf` guards a VALUE register; the compiler emits copy's read
+lowering before the guard; g11 golden updated;
+durable/assignif-reads-its-discriminant.md; dev-log increment; the plan
+file's step 0.
+
+**Critical correction (user):** "Shouldn't discriminant read be a
+temporary borrow and die to be consistent" — yes; the raw peek was the
+deviation from Miri, and the target's borrow was never the problem. My
+`EventFreeDiscr` scoping is withdrawn before it was written.
+
+**Status:** step 0 complete and green. Steps 1–4 (unify the assign
+lowerings, one-run `SkipIf`, `csStart` on the leaves, the two arms)
+remain.

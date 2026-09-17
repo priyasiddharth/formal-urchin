@@ -176,8 +176,11 @@ def g9_dealloc : IO Unit :=
      Instr.Halt]
     "g9 dealloc"
 
-/-- `assignIf` compiles to an event-free `SkipIf` whose skip count is the
-    measured length of the guarded block (Borrow + CStore + Die here). -/
+/-- `assignIf` READS its discriminant (a `Load` at `NatTy`, as `copy`
+    would) and then guards on the loaded value with a `SkipIf` whose skip
+    count is the measured length of the guarded block (Borrow + CStore +
+    Die here). `fld0B` is at offset 0 of a local, so its lowering emits no
+    borrow and the `Load` reads through the root register. -/
 def g11_assign_if_skip : IO Unit :=
   expectCode ΓB
     [.assign fld0B (.constInit 1),
@@ -185,10 +188,11 @@ def g11_assign_if_skip : IO Unit :=
      .halt]
     [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
      Instr.CStore natTy [Val.Dat 1] (Register.R 0),
-     Instr.SkipIf (Register.R 0) 1 3,
-     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 1),
-     Instr.CStore natTy [Val.Dat 7] (Register.R 1),
-     Instr.Die (Register.R 1) 1,
+     Instr.Assgn (Register.R 1) (Rhs.Load natTy (Register.R 0)),
+     Instr.SkipIf (Register.R 1) 1 3,
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 1),
+     Instr.CStore natTy [Val.Dat 7] (Register.R 2),
+     Instr.Die (Register.R 2) 1,
      Instr.Halt]
     "g11 assignIf skip"
 

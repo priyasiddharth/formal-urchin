@@ -841,12 +841,17 @@ def compileStmtChecked {Γ : Ctx} :
           ++ [Instr.Dealloc loadedReg]))
       pure { result := (), evidence := StmtEvidence.dealloc dst }
   | .assignIf discr val dst rhs => do
-      -- discriminant lowering is event-free for the corpus shapes (enum
-      -- field 0 → projZero; locals → register lookup); any temp borrows
-      -- die BEFORE the SkipIf — safe because SkipIf performs no SB access
+      -- the discriminant is READ, exactly as `copy` reads a `NatL` place:
+      -- lower it shared, `Load` through the result, retire any temporary
+      -- BEFORE the guard so it is dead on both paths, then guard on the
+      -- loaded VALUE register — `SkipIf` itself touches no memory
       let discrOut ← placeToRegChecked RefKind.Shared discr
-      let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs discrOut.result.cleanup))
-      emitSkipIfAround discrOut.result.reg val (compileAssignChecked dst rhs)
+      let discrReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Assgn discrReg
+            (Rhs.Load (layoutToTyVal obseq.LayoutTy.NatL) discrOut.result.reg)]
+          ++ cleanupInstrs discrOut.result.cleanup))
+      emitSkipIfAround discrReg val (compileAssignChecked dst rhs)
       pure { result := (), evidence := StmtEvidence.assignIf discr val dst rhs }
 
 def compileStmtsChecked {Γ : Ctx} : Prog Γ → CheckedCompilerM Unit
