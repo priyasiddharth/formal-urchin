@@ -2182,6 +2182,44 @@ theorem CodeIncluded.mono {compProg : obseq3.oseair.Prog} {cs cs' : CompilerStat
     h q instr (Nat.lt_of_lt_of_le h_lt h_incr.nextLabel_le)
       (by rw [h_incr.code_eq q h_lt]; exact h_code)
 
+/-- Code inclusion of a patched state gives code inclusion of the state
+    it patched, provided that state was SILENT at the patched label —
+    which is what `reserveLabel` guarantees for a guard's body. -/
+theorem CodeIncluded.of_patchLabel_none {compProg : obseq3.oseair.Prog}
+    {cs : CompilerState} {label : Nat} {i : Instr}
+    (h : CodeIncluded compProg (patchLabel cs label i))
+    (h_none : cs.code label = none) :
+    CodeIncluded compProg cs := by
+  intro q instr h_lt h_code
+  by_cases hq : q = label
+  · subst hq; rw [h_none] at h_code; exact absurd h_code (by simp)
+  · exact h q instr h_lt (by
+      show (if q = label then some i else cs.code q) = some instr
+      rw [if_neg hq]; exact h_code)
+
+@[simp] theorem patchLabel_nextLabel (cs : CompilerState) (label : Nat) (i : Instr) :
+    (patchLabel cs label i).nextLabel = cs.nextLabel := rfl
+@[simp] theorem patchLabel_nextReg (cs : CompilerState) (label : Nat) (i : Instr) :
+    (patchLabel cs label i).nextReg = cs.nextReg := rfl
+@[simp] theorem patchLabel_placeRegMap (cs : CompilerState) (label : Nat) (i : Instr) :
+    (patchLabel cs label i).placeRegMap = cs.placeRegMap := rfl
+@[simp] theorem reserveLabel_nextLabel (cs : CompilerState) :
+    (reserveLabel cs).nextLabel = cs.nextLabel + 1 := rfl
+@[simp] theorem reserveLabel_nextReg (cs : CompilerState) :
+    (reserveLabel cs).nextReg = cs.nextReg := rfl
+@[simp] theorem reserveLabel_placeRegMap (cs : CompilerState) :
+    (reserveLabel cs).placeRegMap = cs.placeRegMap := rfl
+theorem reserveLabel_code_self (cs : CompilerState) :
+    (reserveLabel cs).code cs.nextLabel = none := by
+  show (if cs.nextLabel = cs.nextLabel then none else cs.code cs.nextLabel) = none
+  simp
+
+/-- A state reached from `reserveLabel cs` by any `StateIncr` is still
+    silent at the reserved label. -/
+theorem StateIncr.code_reserved {cs cs' : CompilerState}
+    (h : StateIncr (reserveLabel cs) cs') : cs'.code cs.nextLabel = none := by
+  rw [h.code_eq cs.nextLabel (by simp), reserveLabel_code_self]
+
 /-! ### Locating a fragment's instructions, without `StateIncr` towers
 
     `EmittedAt cs base instrs` says the emitted tower that produced `cs`

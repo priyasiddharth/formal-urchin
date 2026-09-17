@@ -771,6 +771,24 @@ def compileAssignChecked {Γ : Ctx} {τ : LayoutTy}
 def patchLabel (cs : CompilerState) (label : Nat) (i : Instr) : CompilerState :=
   { cs with code := fun l => if l = label then some i else cs.code l }
 
+/-- Reserve the next label WITHOUT writing an instruction to it: `code`
+    there is `none`, `nextLabel` moves past it. The body of a guard is
+    compiled from here, so every state it produces is silent at the
+    guard's label — which is what lets code inclusion for the whole
+    statement (the patched state) transfer to code inclusion for the
+    body alone. -/
+def reserveLabel (cs : CompilerState) : CompilerState :=
+  { cs with nextLabel := cs.nextLabel + 1,
+            code := fun l => if l = cs.nextLabel then none else cs.code l }
+
+theorem reserveLabel_state_incr (cs : CompilerState) :
+    StateIncr cs (reserveLabel cs) :=
+  ⟨Nat.le_succ _, Nat.le_refl _,
+   fun l h_l => by
+     show (if l = cs.nextLabel then none else cs.code l) = cs.code l
+     rw [if_neg (by omega)],
+   fun _ _ h => h⟩
+
 /-- Patching a label the earlier state had not yet reached preserves
     `StateIncr` from that earlier state. -/
 theorem StateIncr.patchLabel {cs cs' : CompilerState} (h : StateIncr cs cs')
@@ -784,24 +802,45 @@ theorem StateIncr.patchLabel {cs cs' : CompilerState} (h : StateIncr cs cs')
    h.placeRegMap_mono⟩
 
 /-- Emit `SkipIf discrReg val n` followed by `body`, where `n` is the
-    body's emitted length. The body is compiled ONCE, from the state
-    after a placeholder `SkipIf … 0`, and the placeholder's label is then
-    patched with the measured count — so nothing has to be proved about
-    compiling the same body from two different states. A body that fails
-    to compile rejects the whole statement without emitting anything. -/
+    body's emitted length. The guard's label is RESERVED, the body is
+    compiled ONCE from the state after it, and the label is then patched
+    with the measured count — so nothing has to be proved about compiling
+    the same body from two different states, and the body's states carry
+    no instruction at the guard's label. A body that fails to compile
+    rejects the whole statement without emitting anything. -/
 def emitSkipIfAround (discrReg : Register) (val : Word)
     (body : CheckedCompilerM α) : CheckedCompilerM Unit :=
   ⟨fun cs =>
-    let cs1 := emit cs [Instr.SkipIf discrReg val 0]
+    let cs1 := reserveLabel cs
     let real := body.toCompilerM cs1
     match real.1 with
     | .error err => (.error err, ⟨cs, StateIncr.refl cs⟩)
     | .ok _ =>
       let bodyLen := real.2.1.nextLabel - cs1.nextLabel
       (.ok (), ⟨patchLabel real.2.1 cs.nextLabel (Instr.SkipIf discrReg val bodyLen),
-        StateIncr.patchLabel
-          ((emit_state_incr cs [Instr.SkipIf discrReg val 0]).trans real.2.2)
+        StateIncr.patchLabel ((reserveLabel_state_incr cs).trans real.2.2)
           (Nat.le_refl _) _⟩)⟩
+
+/-- The skip count a successful guard body yields. -/
+def skipCount (cs : CompilerState) (body : CheckedCompilerM α) : Nat :=
+  (CheckedCompilerM.run body (reserveLabel cs)).nextLabel - (reserveLabel cs).nextLabel
+
+theorem emitSkipIfAround_value {α : Type} (discrReg : Register) (val : Word)
+    (body : CheckedCompilerM α) (cs : CompilerState) {a : α}
+    (h : CheckedCompilerM.value body (reserveLabel cs) = .ok a) :
+    CheckedCompilerM.value (emitSkipIfAround discrReg val body) cs = .ok () := by
+  simp only [CheckedCompilerM.value, CompilerM.value] at h
+  simp [emitSkipIfAround, CheckedCompilerM.value, CompilerM.value, h]
+
+theorem emitSkipIfAround_run {α : Type} (discrReg : Register) (val : Word)
+    (body : CheckedCompilerM α) (cs : CompilerState) {a : α}
+    (h : CheckedCompilerM.value body (reserveLabel cs) = .ok a) :
+    CheckedCompilerM.run (emitSkipIfAround discrReg val body) cs
+      = patchLabel (CheckedCompilerM.run body (reserveLabel cs)) cs.nextLabel
+          (Instr.SkipIf discrReg val (skipCount cs body)) := by
+  simp only [CheckedCompilerM.value, CompilerM.value] at h
+  simp [emitSkipIfAround, CheckedCompilerM.run, CompilerM.run, skipCount,
+    CheckedCompilerM.value, CompilerM.value, h]
 
 def compileStmtChecked {Γ : Ctx} :
     (stmt : Stmt Γ) → CheckedEvidenceM Unit (fun _ => StmtEvidence stmt)
