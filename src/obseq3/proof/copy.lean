@@ -233,7 +233,7 @@ theorem compileStmt_readrhs_derefsrc_flatten_run
       = CheckedCompilerM.run
           (compileStmtChecked
             (Stmt.assign (.local dstLoc) rhs2)) cs := by
-  simp only [csMonad, compileStmtChecked]
+  simp only [csMonad, compileStmtChecked, compileAssignChecked]
   have h_run := compileRExprToChecked_readrhs_flatten_run (h_shape := h_shape) (h_shape2 := h_shape2)
     ((ensureLocalRegE dstLoc).value cs).result.reg
     (CompilerM.run (ensureLocalRegE dstLoc) cs)
@@ -288,7 +288,7 @@ theorem compileStmt_readrhs_derefsrc_flatten_value
   have h_val := compileRExprToChecked_readrhs_flatten_valunit (h_shape := h_shape) (h_shape2 := h_shape2)
     ((ensureLocalRegE dstLoc).value cs).result.reg
     (CompilerM.run (ensureLocalRegE dstLoc) cs)
-  simp only [csMonad, compileStmtChecked] at h_so ⊢
+  simp only [csMonad, compileStmtChecked, compileAssignChecked] at h_so ⊢
   cases hO : CheckedCompilerM.value
       (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
         rhs)
@@ -412,7 +412,7 @@ theorem compileStmt_readrhs_srcflatten_run
             (Stmt.assign (.local dstLoc) rhs2)) cs := by
   obtain ⟨ev, h_rhs⟩ := id h_shape
   obtain ⟨ev2, h_rhs2⟩ := id h_shape2
-  simp only [csMonad, compileStmtChecked]
+  simp only [csMonad, compileStmtChecked, compileAssignChecked]
   have h_run := compileRExprToChecked_readrhs_anyflatten_run
     (h_shape := h_shape) (h_shape2 := h_shape2) src
     ((ensureLocalRegE dstLoc).value cs).result.reg
@@ -473,7 +473,7 @@ theorem compileStmt_readrhs_srcflatten_value
     (h_shape := h_shape) (h_shape2 := h_shape2) src
     ((ensureLocalRegE dstLoc).value cs).result.reg
     (CompilerM.run (ensureLocalRegE dstLoc) cs)
-  simp only [csMonad, compileStmtChecked] at h_so ⊢
+  simp only [csMonad, compileStmtChecked, compileAssignChecked] at h_so ⊢
   cases hO : CheckedCompilerM.value
       (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
         rhs)
@@ -1242,7 +1242,7 @@ theorem compileStmt_readrhs_derefdst_srcflatten_run
   obtain ⟨ev, h_rhs⟩ := id h_shape
   obtain ⟨ev2, h_rhs2⟩ := id h_shape2
   obtain ⟨h_sagr, h_sagv⟩ := placeToRegChecked_flatten_agree src RefKind.Shared (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs)
-  simp only [compileStmtChecked, compileRExprToChecked, h_rhs, h_rhs2, readRhsPre, csMonad]
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, h_rhs, h_rhs2, readRhsPre, csMonad]
   cases hO : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
   | error eO =>
       cases hF : CheckedCompilerM.value
@@ -1283,7 +1283,7 @@ theorem compileStmt_readrhs_derefdst_srcflatten_value
   obtain ⟨ev2, h_rhs2⟩ := id h_shape2
   obtain ⟨so, h_so⟩ := h_ex
   obtain ⟨h_sagr, h_sagv⟩ := placeToRegChecked_flatten_agree src RefKind.Shared (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs)
-  simp only [compileStmtChecked, compileRExprToChecked, h_rhs, h_rhs2, readRhsPre, csMonad] at h_so ⊢
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, h_rhs, h_rhs2, readRhsPre, csMonad] at h_so ⊢
   cases hO : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
   | error eO =>
       exfalso
@@ -1329,7 +1329,7 @@ theorem compileStmt_readrhs_derefdst_dstflatten_run
   obtain ⟨ev, h_rhs⟩ := id h_shape
   have h_er : ensurePlaceRoot (Place.deref (flattenPlace pp))
       = ensurePlaceRoot (Place.deref pp) := ensurePlaceRoot_flatten (Place.deref pp)
-  simp only [compileStmtChecked, compileRExprToChecked, h_rhs, readRhsPre, csMonad, h_er]
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, h_rhs, readRhsPre, csMonad, h_er]
   cases hS : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
   | error eS => simp only [hS]
   | ok oS =>
@@ -1403,7 +1403,7 @@ theorem compileStmt_readrhs_derefdst_dstflatten_value
   obtain ⟨so, h_so⟩ := h_ex
   have h_er : ensurePlaceRoot (Place.deref (flattenPlace pp))
       = ensurePlaceRoot (Place.deref pp) := ensurePlaceRoot_flatten (Place.deref pp)
-  simp only [compileStmtChecked, compileRExprToChecked, h_rhs, readRhsPre, csMonad, h_er] at h_so ⊢
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, h_rhs, readRhsPre, csMonad, h_er] at h_so ⊢
   cases hS : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.deref pp)) cs) with
   | error eS =>
       exfalso
@@ -1476,7 +1476,7 @@ theorem compileStmt_readrhs_projdst_srcflatten_run
   obtain ⟨ev, h_rhs⟩ := id h_shape
   obtain ⟨ev2, h_rhs2⟩ := id h_shape2
   obtain ⟨h_sagr, h_sagv⟩ := placeToRegChecked_flatten_agree src RefKind.Shared (CompilerM.run (ensurePlaceRoot (Place.proj (dbase) path)) cs)
-  simp only [compileStmtChecked, compileRExprToChecked, h_rhs, h_rhs2, readRhsPre, csMonad]
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, h_rhs, h_rhs2, readRhsPre, csMonad]
   cases hO : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.proj (dbase) path)) cs) with
   | error eO =>
       cases hF : CheckedCompilerM.value
@@ -1518,7 +1518,7 @@ theorem compileStmt_readrhs_projdst_srcflatten_value
   obtain ⟨ev2, h_rhs2⟩ := id h_shape2
   obtain ⟨so, h_so⟩ := h_ex
   obtain ⟨h_sagr, h_sagv⟩ := placeToRegChecked_flatten_agree src RefKind.Shared (CompilerM.run (ensurePlaceRoot (Place.proj (dbase) path)) cs)
-  simp only [compileStmtChecked, compileRExprToChecked, h_rhs, h_rhs2, readRhsPre, csMonad] at h_so ⊢
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, h_rhs, h_rhs2, readRhsPre, csMonad] at h_so ⊢
   cases hO : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) (CompilerM.run (ensurePlaceRoot (Place.proj (dbase) path)) cs) with
   | error eO =>
       exfalso

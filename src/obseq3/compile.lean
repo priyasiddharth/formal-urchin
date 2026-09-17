@@ -693,43 +693,6 @@ def compileRExprToChecked
   let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
   pure { result := (), evidence := pre.ev dstPtr }
 
-/-- Evidence-free twin of `compileStmtChecked`'s two assign cases (kept in
-    sync with them), for use as the guarded block of `assignIf`. -/
-def compileAssignChecked {Γ : Ctx} {τ : LayoutTy}
-    (dst : Place Γ τ) (rhs : RExpr Γ τ) : CheckedCompilerM Unit :=
-  match dst with
-  | .local loc => do
-      let dstOut ← CheckedCompilerM.lift (ensureLocalRegE loc)
-      let _ ← compileRExprToChecked dstOut.result.reg rhs
-      pure ()
-  | dst => do
-      let _ ← CheckedCompilerM.lift (ensurePlaceRoot dst)
-      let pre ← compileRExprPreChecked rhs
-      let dstOut ← placeToRegChecked RefKind.Mut dst
-      let _ ← CheckedCompilerM.lift (emitM (pre.store dstOut.result.reg))
-      let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
-      let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstOut.result.cleanup))
-      pure ()
-
-/-- Emit `SkipIf discrReg val n` followed by `body`, where `n` is the
-    body's emitted length — measured by a dry-run compilation from the
-    current state. The dry run and the real run start from the same
-    `nextReg`/`placeRegMap`, and instructions carry only registers and
-    *relative* skips, so both runs emit identical instruction sequences;
-    only the start label differs. A body that fails to compile rejects
-    the whole statement without emitting anything. -/
-def emitSkipIfAround (discrReg : Register) (val : Word)
-    (body : CheckedCompilerM Unit) : CheckedCompilerM Unit :=
-  ⟨fun cs =>
-    let probe := body.toCompilerM cs
-    match probe.1 with
-    | .error err => (.error err, ⟨cs, StateIncr.refl cs⟩)
-    | .ok _ =>
-      let bodyLen := probe.2.1.nextLabel - cs.nextLabel
-      let cs1 := emit cs [Instr.SkipIf discrReg val bodyLen]
-      let real := body.toCompilerM cs1
-      (real.1, ⟨real.2.1, (emit_state_incr cs [Instr.SkipIf discrReg val bodyLen]).trans real.2.2⟩)⟩
-
 /-- Lower an `AllocLen` to a register holding the fresh heap pointer.
     `const n` → `AllocN`; `fromPlace p` → lower `p` (Shared) and emit
     `AllocDyn`, whose in-instruction length read mirrors mirlite's
@@ -778,6 +741,68 @@ inductive StmtEvidence {Γ : Ctx} : Stmt Γ → Type where
       {τ : LayoutTy} (dst : Place Γ (obseq.LayoutTy.PtrL τ)) :
       StmtEvidence (.dealloc dst)
 
+/-- The assign lowering — ONE definition, used by the `.assign` statement
+    arm and, under a guard, by `.assignIf`. Returns the statement's
+    evidence so that `compileStmtChecked (.assign dst rhs)` IS this by
+    `rfl`, and every compile fact about the former transfers to a guarded
+    assign. -/
+def compileAssignChecked {Γ : Ctx} {τ : LayoutTy}
+    (dst : Place Γ τ) (rhs : RExpr Γ τ) :
+    CheckedEvidenceM Unit (fun _ => StmtEvidence (.assign dst rhs)) := do
+  -- MIR's lowering order (the d34 fix): rhs SOURCE code first, then
+  -- the destination lowering, then the store — no dst temporary
+  -- `Borrow` is live while rhs code runs
+  let _ ← CheckedCompilerM.lift (ensurePlaceRoot dst)
+  let pre ← compileRExprPreChecked rhs
+  let dstOut ← placeToRegChecked RefKind.Mut dst
+  let dstRes := dstOut.result
+  let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
+  let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
+  let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
+  pure {
+    result := (),
+    evidence := StmtEvidence.assignPlace dst rhs dstRes dstOut.evidence
+      (pre.ev dstRes.reg)
+  }
+
+
+/-- Overwrite the instruction at one label. Used to fill in a `SkipIf`'s
+    count after its body has been compiled. -/
+def patchLabel (cs : CompilerState) (label : Nat) (i : Instr) : CompilerState :=
+  { cs with code := fun l => if l = label then some i else cs.code l }
+
+/-- Patching a label the earlier state had not yet reached preserves
+    `StateIncr` from that earlier state. -/
+theorem StateIncr.patchLabel {cs cs' : CompilerState} (h : StateIncr cs cs')
+    {label : Nat} (h_label : cs.nextLabel ≤ label) (i : Instr) :
+    StateIncr cs (patchLabel cs' label i) :=
+  ⟨h.nextLabel_le, h.nextReg_le,
+   fun l h_l => by
+     show (if l = label then some i else cs'.code l) = cs.code l
+     rw [if_neg (by omega)]
+     exact h.code_eq l h_l,
+   h.placeRegMap_mono⟩
+
+/-- Emit `SkipIf discrReg val n` followed by `body`, where `n` is the
+    body's emitted length. The body is compiled ONCE, from the state
+    after a placeholder `SkipIf … 0`, and the placeholder's label is then
+    patched with the measured count — so nothing has to be proved about
+    compiling the same body from two different states. A body that fails
+    to compile rejects the whole statement without emitting anything. -/
+def emitSkipIfAround (discrReg : Register) (val : Word)
+    (body : CheckedCompilerM α) : CheckedCompilerM Unit :=
+  ⟨fun cs =>
+    let cs1 := emit cs [Instr.SkipIf discrReg val 0]
+    let real := body.toCompilerM cs1
+    match real.1 with
+    | .error err => (.error err, ⟨cs, StateIncr.refl cs⟩)
+    | .ok _ =>
+      let bodyLen := real.2.1.nextLabel - cs1.nextLabel
+      (.ok (), ⟨patchLabel real.2.1 cs.nextLabel (Instr.SkipIf discrReg val bodyLen),
+        StateIncr.patchLabel
+          ((emit_state_incr cs [Instr.SkipIf discrReg val 0]).trans real.2.2)
+          (Nat.le_refl _) _⟩)⟩
+
 def compileStmtChecked {Γ : Ctx} :
     (stmt : Stmt Γ) → CheckedEvidenceM Unit (fun _ => StmtEvidence stmt)
   | .halt => do
@@ -791,22 +816,7 @@ def compileStmtChecked {Γ : Ctx} :
         result := (),
         evidence := StmtEvidence.assignLocal loc rhs dstRes dstOut.evidence rhsOut.evidence
       }
-  | .assign dst rhs => do
-      -- MIR's lowering order (the d34 fix): rhs SOURCE code first, then
-      -- the destination lowering, then the store — no dst temporary
-      -- `Borrow` is live while rhs code runs
-      let _ ← CheckedCompilerM.lift (ensurePlaceRoot dst)
-      let pre ← compileRExprPreChecked rhs
-      let dstOut ← placeToRegChecked RefKind.Mut dst
-      let dstRes := dstOut.result
-      let _ ← CheckedCompilerM.lift (emitM (pre.store dstRes.reg))
-      let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs pre.postCleanup))
-      let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs dstRes.cleanup))
-      pure {
-        result := (),
-        evidence := StmtEvidence.assignPlace dst rhs dstRes dstOut.evidence
-          (pre.ev dstRes.reg)
-      }
+  | .assign dst rhs => compileAssignChecked dst rhs
   | .pushProtectors => do
       let _ ← CheckedCompilerM.lift (emitM [Instr.PushProt])
       pure { result := (), evidence := StmtEvidence.pushProtectors }

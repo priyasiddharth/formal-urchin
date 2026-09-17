@@ -3633,7 +3633,7 @@ theorem compileStmt_storereg_local_run
     CheckedCompilerM.run (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs
       = emit preS [mkStore dstReg] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
-  simp only [compileStmtChecked, compileRExprToChecked, csMonad, h_run, h_val,
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad, h_run, h_val,
     h_pval, h_store, h_post]
   simp only [csRun, cleanupInstrs, List.reverse_nil, List.map_nil, emit_nil, h_pre]
 
@@ -3647,7 +3647,7 @@ theorem compileStmt_storereg_local_value
     ∃ so, CheckedCompilerM.value
       (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs = Except.ok so := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
-  simp only [compileStmtChecked, compileRExprToChecked, csMonad, h_run, h_pval]
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad, h_run, h_pval]
   exact ⟨_, rfl⟩
 
 /-- The compiled fragment of `dst := rhs` for a NON-LOCAL destination and
@@ -3678,7 +3678,7 @@ theorem compileStmt_storereg_place_run
   cases dst with
   | «local» loc => exact absurd rfl (h_nl loc)
   | proj b g =>
-      simp only [compileStmtChecked, csMonad, h_root, h_pval]
+      simp only [compileStmtChecked, compileAssignChecked, csMonad, h_root, h_pval]
       simp only [csRun, h_store, h_post, cleanupInstrs, List.reverse_nil,
         List.map_nil, emit_nil]
       split
@@ -3690,7 +3690,7 @@ theorem compileStmt_storereg_place_run
       · rename_i e h_d
         exact absurd h_d (by rw [h_dval]; simp)
   | deref P =>
-      simp only [compileStmtChecked, csMonad, h_root, h_pval]
+      simp only [compileStmtChecked, compileAssignChecked, csMonad, h_root, h_pval]
       simp only [csRun, h_store, h_post, cleanupInstrs, List.reverse_nil,
         List.map_nil, emit_nil]
       split
@@ -3718,10 +3718,10 @@ theorem compileStmt_storereg_place_value
   cases dst with
   | «local» loc => exact absurd rfl (h_nl loc)
   | proj b g =>
-      simp only [compileStmtChecked, csMonad, h_root, h_pval, h_dval]
+      simp only [compileStmtChecked, compileAssignChecked, csMonad, h_root, h_pval, h_dval]
       exact ⟨_, rfl⟩
   | deref P =>
-      simp only [compileStmtChecked, csMonad, h_root, h_pval, h_dval]
+      simp only [compileStmtChecked, compileAssignChecked, csMonad, h_root, h_pval, h_dval]
       exact ⟨_, rfl⟩
 
 /-- The two code-inclusion facts a NON-LOCAL destination needs, over an
@@ -3748,7 +3748,7 @@ theorem storereg_place_incrs
   | «local» loc => exact absurd rfl (h_nl loc)
   | proj b g =>
       rw [h_run0]
-      simp only [compileStmtChecked, csMonad, h_root, h_pval]
+      simp only [compileStmtChecked, compileAssignChecked, csMonad, h_root, h_pval]
       simp only [csRun]
       generalize hR : CheckedCompilerM.run (compileRExprPreChecked rhs) cs = csR
       have hRD : StateIncr csR (CheckedCompilerM.run
@@ -3764,7 +3764,7 @@ theorem storereg_place_incrs
       · exact ⟨hRD, StateIncr.refl _⟩
   | deref P =>
       rw [h_run0]
-      simp only [compileStmtChecked, csMonad, h_root, h_pval]
+      simp only [compileStmtChecked, compileAssignChecked, csMonad, h_root, h_pval]
       simp only [csRun]
       generalize hR : CheckedCompilerM.run (compileRExprPreChecked rhs) cs = csR
       have hRD : StateIncr csR (CheckedCompilerM.run
@@ -3917,7 +3917,7 @@ theorem compileStmt_storereg_localfresh_run
       = emit preS [mkStore (Register.R cs.nextReg)] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h_dst
   simp only [freshRootCS] at h_pval h_pre
-  simp only [compileStmtChecked, compileRExprToChecked, csMonad, h_run, h_val,
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad, h_run, h_val,
     h_pval, h_store, h_post]
   simp only [csRun, cleanupInstrs, List.reverse_nil, List.map_nil, emit_nil, h_pre]
 
@@ -3932,7 +3932,7 @@ theorem compileStmt_storereg_localfresh_value
       (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs = Except.ok so := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h_dst
   simp only [freshRootCS] at h_pval
-  simp only [compileStmtChecked, compileRExprToChecked, csMonad, h_run, h_pval]
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad, h_run, h_pval]
   exact ⟨_, rfl⟩
 
 /-- FRESH local destination: the statement allocates the root, then the
@@ -4224,13 +4224,13 @@ theorem compileStmt_storereg_projdst_run
     (base := dbase) path h_np
   by_cases h_off : pathOffset path = 0
   · rw [h_off, projDstTail_zero]
-    simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_pval]
+    simp only [compileStmtChecked, compileAssignChecked, csMonad, h_proj_eq, h_root, h_pval]
     simp only [csRun]
     rw [h_dval]
     simp [h_off, dif_pos, CompilerM.run, CompilerM.value, emitM, cleanupInstrs,
       h_store, h_post, h_dclean, emit_nil]
   · rw [projDstTail_pos _ h_off]
-    simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_pval]
+    simp only [compileStmtChecked, compileAssignChecked, csMonad, h_proj_eq, h_root, h_pval]
     simp only [csRun]
     rw [h_dval]
     simp [csRun, cleanupInstrs, h_dclean, emit_nil, h_off, borrowRhs, h_store,
@@ -4253,7 +4253,7 @@ theorem compileStmt_storereg_projdst_value
       = Except.ok so := by
   have h_proj_eq := placeToRegChecked_proj_root_eq (Γ := Γ) (kind := RefKind.Mut)
     (base := dbase) path h_np
-  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_pval]
+  simp only [compileStmtChecked, compileAssignChecked, csMonad, h_proj_eq, h_root, h_pval]
   split
   · exact ⟨_, rfl⟩
   · rename_i e h_d
@@ -4393,13 +4393,13 @@ theorem compileStmt_storereg_projlocalfresh_run
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
   by_cases h_off : pathOffset path = 0
   · rw [h_off, projDstTail_zero]
-    simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_pval]
+    simp only [compileStmtChecked, compileAssignChecked, csMonad, h_proj_eq, h_root, h_pval]
     simp only [csRun]
     rw [h_brun, h_bval]
     simp [h_off, dif_pos, CompilerM.run, CompilerM.value, emitM, cleanupInstrs,
       h_bres, h_store, h_post, emit_nil]
   · rw [projDstTail_pos _ h_off]
-    simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_pval]
+    simp only [compileStmtChecked, compileAssignChecked, csMonad, h_proj_eq, h_root, h_pval]
     simp only [csRun]
     rw [h_brun, h_bval]
     simp [csRun, cleanupInstrs, h_bres, emit_nil, h_off, borrowRhs, h_store,
@@ -4428,7 +4428,7 @@ theorem compileStmt_storereg_projlocalfresh_value
     simp [CompilerM.run_bind, CompilerM.run_pure, h_run, freshRootCS]
   obtain ⟨h_brun, baseOut, h_bval, h_bres⟩ :=
     placeToRegChecked_local_existing (kind := RefKind.Mut) h_dpi
-  simp only [compileStmtChecked, csMonad, h_proj_eq, h_root, h_pval]
+  simp only [compileStmtChecked, compileAssignChecked, csMonad, h_proj_eq, h_root, h_pval]
   rw [h_bval]
   by_cases h_off : pathOffset path = 0
   · simp only [h_off, dif_pos, csMonad, csRun]
@@ -4609,7 +4609,7 @@ theorem compileStmt_assign_derefdst_flatten_run
               rhs)) cs := by
   have h_er : ensurePlaceRoot (Place.deref (flattenPlace P))
       = ensurePlaceRoot (Place.deref P) := ensurePlaceRoot_flatten (Place.deref P)
-  simp only [csMonad, compileStmtChecked, h_er]
+  simp only [csMonad, compileStmtChecked, compileAssignChecked, h_er]
   cases hP : CheckedCompilerM.value
       (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
   | error eP => simp only [hP]
@@ -4664,7 +4664,7 @@ theorem compileStmt_assign_derefdst_flatten_value
   intro so h_so
   have h_er : ensurePlaceRoot (Place.deref (flattenPlace P))
       = ensurePlaceRoot (Place.deref P) := ensurePlaceRoot_flatten (Place.deref P)
-  simp only [csMonad, compileStmtChecked, h_er] at h_so ⊢
+  simp only [csMonad, compileStmtChecked, compileAssignChecked, h_er] at h_so ⊢
   cases hP : CheckedCompilerM.value
       (compileRExprPreChecked rhs) (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs) with
   | error eP =>
@@ -4716,7 +4716,7 @@ theorem compileStmt_assign_projderefdst_flatten_run
   have h_er : ensurePlaceRoot (Place.proj (Place.deref (flattenPlace pp)) path)
       = ensurePlaceRoot (Place.proj (Place.deref pp) path) :=
     ensurePlaceRoot_flatten (Place.proj (Place.deref pp) path)
-  simp only [csMonad, compileStmtChecked, h_er]
+  simp only [csMonad, compileStmtChecked, compileAssignChecked, h_er]
   cases hP : CheckedCompilerM.value (compileRExprPreChecked rhs)
       (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) path)) cs) with
   | error eP => simp only [hP]
@@ -4766,7 +4766,7 @@ theorem compileStmt_assign_projderefdst_flatten_value
   have h_er : ensurePlaceRoot (Place.proj (Place.deref (flattenPlace pp)) path)
       = ensurePlaceRoot (Place.proj (Place.deref pp) path) :=
     ensurePlaceRoot_flatten (Place.proj (Place.deref pp) path)
-  simp only [csMonad, compileStmtChecked, h_er] at h_so ⊢
+  simp only [csMonad, compileStmtChecked, compileAssignChecked, h_er] at h_so ⊢
   cases hP : CheckedCompilerM.value (compileRExprPreChecked rhs)
       (CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref pp) path)) cs) with
   | error eP => exfalso; rw [hP] at h_so; simp at h_so

@@ -492,7 +492,7 @@ theorem writeResolvedPlace_ok_inv {Γ : Ctx} {τ : LayoutTy} {M : PermissionMode
 -- the default set, so all 205 sites listed the six by hand, three lines
 -- each. `csMonad` (registered in proof/simpattrs.lean) names them once.
 attribute [csRun] CompilerM.run CompilerM.value emitM freshReg freshRegM
-attribute [csCompile] compileStmtChecked compileRExprPreChecked
+attribute [csCompile] compileStmtChecked compileAssignChecked compileRExprPreChecked
 attribute [mirPrep] mirlite.preparePlaceAssign mirlite.resolvePlace?
 attribute [mirAlloc] mirlite.allocateRoot mirlite.allocateBase mirlite.allocate
 attribute [csCleanup] cleanupInstrs List.map_nil List.reverse_nil
