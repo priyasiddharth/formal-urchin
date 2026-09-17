@@ -380,27 +380,28 @@ theorem CompilerInv_step_constStore
       TagRenameIncr ρt ρt' ∧
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
+  obtain ⟨csPrefix, h_csAt, h_invAt⟩ := h_inv.invAt
   cases dst with
   | «local» loc =>
       cases h_envD : mirlite.Env.lookup s_mir.env loc with
       | some bD =>
           obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-            storereg_local_simulation compProg h_pkg h_comp h_inv h_stmt
-              (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_envD h_step
+            storereg_local_simulation compProg h_pkg h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
+              (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_envD h_step
           exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
       | none =>
-          exact storereg_localfresh_simulation compProg h_pkg h_comp h_inv h_stmt
-            (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_envD h_step
+          exact storereg_localfresh_simulation compProg h_pkg h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
+            (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_envD h_step
   | proj base path =>
-      exact storereg_projdst_recursion compProg h_pkg h_comp h_inv h_stmt
-        (fun _ => rfl) (fun _ so h => ⟨so, h⟩) h_step
+      exact storereg_projdst_recursion compProg h_pkg h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
+        (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_step
   | deref P =>
       rw [stepStmt_assign_dstderef_flatten] at h_step
       obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
         storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
-          (PtrChain_flatten_deref P) h_comp h_inv h_stmt
+          (PtrChain_flatten_deref P) h_invAt (StmtFrame.ofAssign h_comp h_csAt h_stmt
           (fun cs => compileStmt_assign_derefdst_flatten_run _ cs)
-          (fun cs so h => compileStmt_assign_derefdst_flatten_value _ cs so h)
+          (fun cs so h => compileStmt_assign_derefdst_flatten_value _ cs so h))
           h_step
       exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
 

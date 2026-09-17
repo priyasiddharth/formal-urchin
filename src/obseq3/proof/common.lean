@@ -2220,6 +2220,133 @@ theorem StateIncr.code_reserved {cs cs' : CompilerState}
     (h : StateIncr (reserveLabel cs) cs') : cs'.code cs.nextLabel = none := by
   rw [h.code_eq cs.nextLabel (by simp), reserveLabel_code_self]
 
+/-! ### The statement frame
+
+    What a write seam needs to know about the STATEMENT it is finishing,
+    stated over the statement's compiled run `csStmt` rather than over
+    the statement itself: its code is in the program, and the prefix
+    state at `pc + 1` agrees with `csStmt` in everything the invariant
+    reads (`nextLabel`, `nextReg`, `placeRegMap`). A plain `.assign`
+    supplies it with `csStmt` = its own run and the prefix state EQUAL
+    to it; the taken arm of `assignIf` supplies it with `csStmt` = the
+    assign's run from after the guard and the prefix state = that run
+    with the guard's label patched — same `nextLabel`, `nextReg`,
+    `placeRegMap`, different `code`. -/
+structure StmtFrame {Γ : Ctx} (compProg : obseq3.oseair.Prog) (cs0 : CompilerState)
+    (prog : obseq3.Prog Γ) (pc : Nat) (csStmt : CompilerState) : Prop where
+  code : CodeIncluded compProg csStmt
+  next : ∃ csNext, prefixCompileState cs0 prog (pc + 1) = Except.ok csNext ∧
+    csNext.nextLabel = csStmt.nextLabel ∧
+    csNext.nextReg = csStmt.nextReg ∧
+    csNext.placeRegMap = csStmt.placeRegMap
+
+/-- A plain statement's frame: its own run, from the prefix state. -/
+theorem StmtFrame.ofStmt
+    {Γ : Ctx} {cs0 csPrefix : CompilerState} {prog : obseq3.Prog Γ}
+    {compProg : obseq3.oseair.Prog} {stmtIdx : Nat} {stmt : Stmt Γ}
+    {stmtOut : ResultWithEvidence Unit (fun _ => StmtEvidence stmt)}
+    (h_comp : compileProgFrom cs0 prog = Except.ok compProg)
+    (h_prefix : csAt cs0 prog stmtIdx csPrefix)
+    (h_get : prog.get? stmtIdx = some stmt)
+    (h_stmt : CheckedCompilerM.value (compileStmtChecked stmt) csPrefix
+      = Except.ok stmtOut) :
+    StmtFrame compProg cs0 prog stmtIdx
+      (CheckedCompilerM.run (compileStmtChecked stmt) csPrefix) :=
+  ⟨CodeIncluded.of_stmt h_comp h_prefix h_get h_stmt,
+   ⟨_, prefixCompileState_succ h_prefix h_get h_stmt, rfl, rfl, rfl⟩⟩
+
+/-- The frame a plain `.assign` statement gives its leaf — or any
+    statement whose compiled run IS the assign's (the flatten
+    congruences supply `h_run0`/`h_val0`), conditional on the assign
+    compiling from the prefix state. -/
+theorem StmtFrame.ofAssign
+    {Γ : Ctx} {τ : LayoutTy} {cs0 csPrefix : CompilerState} {prog : obseq3.Prog Γ}
+    {compProg : obseq3.oseair.Prog} {stmtIdx : Nat} {stmt0 : Stmt Γ}
+    {dst : Place Γ τ} {rhs : RExpr Γ τ}
+    (h_comp : compileProgFrom cs0 prog = Except.ok compProg)
+    (h_csAt : csAt cs0 prog stmtIdx csPrefix)
+    (h_stmt : prog.get? stmtIdx = some stmt0)
+    (h_run0 : ∀ cs, CheckedCompilerM.run (compileStmtChecked stmt0) cs
+      = CheckedCompilerM.run (compileStmtChecked (Stmt.assign dst rhs)) cs)
+    (h_val0 : ∀ cs so, CheckedCompilerM.value
+        (compileStmtChecked (Stmt.assign dst rhs)) cs = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked stmt0) cs = Except.ok so')
+    (h_ok : ∃ so, CheckedCompilerM.value (compileStmtChecked (Stmt.assign dst rhs))
+      csPrefix = Except.ok so) :
+    StmtFrame compProg cs0 prog stmtIdx
+      (CheckedCompilerM.run (compileStmtChecked (Stmt.assign dst rhs)) csPrefix) := by
+  obtain ⟨so, h⟩ := h_ok
+  obtain ⟨so', h'⟩ := h_val0 csPrefix so h
+  have F := StmtFrame.ofStmt h_comp h_csAt h_stmt h'
+  rw [h_run0] at F
+  exact F
+
+/-- The invariant's per-state half: everything `CompilerInv` says about
+    `(s_mir, s_osea)` relative to a compiler state, minus the claim that
+    the state is the prefix at `s_mir.pc`. A leaf takes this at the state
+    its assign's code STARTS from, which for a guarded assign is not the
+    prefix. -/
+structure InvAt {Γ : Ctx} (ρa : AddrRenameMap) (ρt : TagRenameMap)
+    (s_mir : mirlite.State MSB Γ) (s_osea : oseair.State MSB)
+    (cs : CompilerState) : Prop where
+  pc : s_osea.pc = cs.nextLabel
+  lbs : LocalBindingSim ρa ρt s_mir.env s_osea cs
+  sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem
+  psim : PermSim ρt s_mir.perms s_osea.perms
+  id_a : IdentityOnDomain ρa
+  wf_t : TagRenameWF ρt
+  tbd : TagRenameBounded ρt s_mir.perms.NextTag s_osea.perms.NextTag
+  alloc : AllocLockstep ρa s_mir.mem s_osea.mem
+  unmap : UnboundLocalsUnmapped s_mir.env cs
+  prb : PlaceRegMapBound cs
+
+theorem CompilerInv.invAt {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir : mirlite.State MSB Γ} {s_osea : oseair.State MSB}
+    (h : CompilerInv cs0 prog ρa ρt s_mir s_osea) :
+    ∃ csPrefix, csAt cs0 prog s_mir.pc csPrefix ∧ InvAt ρa ρt s_mir s_osea csPrefix := by
+  obtain ⟨csPrefix, ⟨h_csAt, h_pc⟩, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
+    h_alloc, h_unmap, h_prb⟩ := h
+  exact ⟨csPrefix, h_csAt, ⟨h_pc, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd, h_alloc,
+    h_unmap, h_prb⟩⟩
+
+theorem getPlaceInfo_congr' {cs cs' : CompilerState}
+    (h : cs'.placeRegMap = cs.placeRegMap) (idx : Nat) :
+    getPlaceInfo cs' idx = getPlaceInfo cs idx := by
+  show cs'.placeRegMap.lookup idx = cs.placeRegMap.lookup idx
+  rw [h]
+
+/-- Rebuild `CompilerInv` from the per-state half at a state `csStmt`
+    that agrees with the real prefix state `csNext` in `nextLabel`,
+    `nextReg` and `placeRegMap` — everything the invariant reads. For a
+    plain statement the two are equal; for a guarded assign they differ
+    only in `code`. -/
+theorem CompilerInv.ofInvAt {Γ : Ctx} {cs0 : CompilerState} {prog : obseq3.Prog Γ}
+    {ρa : AddrRenameMap} {ρt : TagRenameMap}
+    {s_mir : mirlite.State MSB Γ} {s_osea : oseair.State MSB}
+    {csNext csStmt : CompilerState} {pc' : Nat}
+    (h_next : prefixCompileState cs0 prog pc' = Except.ok csNext)
+    (h_pc' : s_mir.pc = pc')
+    (h_nl : csNext.nextLabel = csStmt.nextLabel)
+    (h_nr : csNext.nextReg = csStmt.nextReg)
+    (h_np : csNext.placeRegMap = csStmt.placeRegMap)
+    (h : InvAt ρa ρt s_mir s_osea csStmt) :
+    CompilerInv cs0 prog ρa ρt s_mir s_osea :=
+  ⟨csNext, ⟨by rw [csAt, h_pc']; exact h_next, by rw [h.pc, h_nl]⟩,
+   LocalBindingSim.placeRegMap_congr h_np h.lbs, h.sms, h.psim, h.id_a, h.wf_t, h.tbd,
+   h.alloc,
+   fun loc h0 => by rw [getPlaceInfo_congr' h_np]; exact h.unmap loc h0,
+   fun idx reg τ hl => by
+     rw [getPlaceInfo_congr' h_np] at hl
+     show RegisterBelow csNext.nextReg reg
+     rw [h_nr]; exact h.prb idx reg τ hl⟩
+
+theorem getPlaceInfo_congr {cs cs' : CompilerState}
+    (h : cs'.placeRegMap = cs.placeRegMap) (idx : Nat) :
+    getPlaceInfo cs' idx = getPlaceInfo cs idx := by
+  show cs'.placeRegMap.lookup idx = cs.placeRegMap.lookup idx
+  rw [h]
+
 /-! ### Locating a fragment's instructions, without `StateIncr` towers
 
     `EmittedAt cs base instrs` says the emitted tower that produced `cs`
