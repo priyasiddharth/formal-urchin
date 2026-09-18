@@ -714,12 +714,6 @@ def compileAllocLenChecked {Γ : Ctx} (elemTy : TyVal) :
 inductive StmtEvidence {Γ : Ctx} : Stmt Γ → Type where
   | halt :
       StmtEvidence .halt
-  | assignLocal
-      {τ : LayoutTy} (loc : Local Γ τ) (rhs : RExpr Γ τ)
-      (dstRes : PtrResult)
-      (dstEv : EnsureLocalEvidence loc dstRes)
-      (rhsEv : RExprToEvidence dstRes.reg rhs) :
-      StmtEvidence (.assign (.local loc) rhs)
   | assignPlace
       {τ : LayoutTy} (dst : Place Γ τ) (rhs : RExpr Γ τ)
       (dstRes : PtrResult)
@@ -862,14 +856,6 @@ def compileStmtChecked {Γ : Ctx} :
   | .halt => do
       let _ ← CheckedCompilerM.lift (emitM [Instr.Halt])
       pure { result := (), evidence := StmtEvidence.halt }
-  | .assign (.local loc) rhs => do
-      let dstOut ← CheckedCompilerM.lift (ensureLocalRegE loc)
-      let dstRes := dstOut.result
-      let rhsOut ← compileRExprToChecked dstRes.reg rhs
-      pure {
-        result := (),
-        evidence := StmtEvidence.assignLocal loc rhs dstRes dstOut.evidence rhsOut.evidence
-      }
   | .assign dst rhs => compileAssignChecked dst rhs
   | .pushProtectors => do
       let _ ← CheckedCompilerM.lift (emitM [Instr.PushProt])

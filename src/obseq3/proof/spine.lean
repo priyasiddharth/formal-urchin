@@ -3586,8 +3586,8 @@ theorem compileStmt_storereg_local_run
     CheckedCompilerM.run (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs
       = emit preS [mkStore dstReg] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
-  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad, h_run, h_val,
-    h_pval, h_store, h_post]
+  rw [compileStmt_local_run]
+  simp only [compileRExprToChecked, csMonad, h_run, h_val, h_pval, h_store, h_post]
   simp only [csRun, cleanupInstrs, List.reverse_nil, List.map_nil, emit_nil, h_pre]
 
 /-- The same statement lowers. -/
@@ -3600,7 +3600,8 @@ theorem compileStmt_storereg_local_value
     ∃ so, CheckedCompilerM.value
       (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs = Except.ok so := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_existing h_dst
-  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad, h_run, h_pval]
+  refine (compileStmt_local_value_iff loc rhs cs).mpr ?_
+  simp only [compileRExprToChecked, csMonad, h_run, h_pval]
   exact ⟨_, rfl⟩
 
 /-- The compiled fragment of `dst := rhs` for a NON-LOCAL destination and
@@ -3863,8 +3864,8 @@ theorem compileStmt_storereg_localfresh_run
       = emit preS [mkStore (Register.R cs.nextReg)] := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h_dst
   simp only [freshRootCS] at h_pval h_pre
-  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad, h_run, h_val,
-    h_pval, h_store, h_post]
+  rw [compileStmt_local_run]
+  simp only [compileRExprToChecked, csMonad, h_run, h_val, h_pval, h_store, h_post]
   simp only [csRun, cleanupInstrs, List.reverse_nil, List.map_nil, emit_nil, h_pre]
 
 /-- The same statement lowers. -/
@@ -3878,7 +3879,8 @@ theorem compileStmt_storereg_localfresh_value
       (compileStmtChecked (Stmt.assign (.local loc) rhs)) cs = Except.ok so := by
   obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h_dst
   simp only [freshRootCS] at h_pval
-  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad, h_run, h_pval]
+  refine (compileStmt_local_value_iff loc rhs cs).mpr ?_
+  simp only [compileRExprToChecked, csMonad, h_run, h_val, h_pval]
   exact ⟨_, rfl⟩
 
 /-- FRESH local destination: the statement allocates the root, then the

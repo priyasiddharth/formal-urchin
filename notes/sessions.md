@@ -3943,3 +3943,28 @@ at propext / Classical.choice / Quot.sound, zero sorries.
   loc)` fast path" (~2h).
 - loose-ends/parked.md — "Does `ptrOffset`'s deferred UB ever diverge
   from Miri?" (~1h, needs a Miri toolchain).
+
+## 2026-09-18 — the `.assign (.local)` fast path is deleted
+
+**Theme:** the user asked what the "wart" in the previous hand-off was,
+then why the root step discards its register, then said "delete the
+local fast path then". Done in the session.
+
+**Key outputs:** compile.lean — the `.assign (.local loc)` arm and
+`StmtEvidence.assignLocal` removed; `compileStmtChecked (.assign dst
+rhs) = compileAssignChecked dst rhs` is `rfl` for every `dst`.
+common.lean — the `placeRegMap`-preservation family moved here from
+assign_if.lean, plus `ensureLocalRegE_maps`, `placeToRegChecked_local_run`
+/ `_value_of`, and the bridge `compileStmt_local_run` /
+`compileStmt_local_value_iff`. Ten sites repaired (copy.lean ×4,
+ref.lean ×3, spine.lean ×4 incl. one found by the build, not by grep:
+it unfolded through the `csCompile` simp set). assign_if.lean −150
+lines. parked.md entry marked RESOLVED; journal [HYP] confirmed by an
+[OBS]; dev-log entry.
+
+**Status:** complete. One commit; four suites green; audit unchanged.
+
+**Next-session pickup candidates:**
+- The statement gate is `alloc`/`dealloc` only.
+- loose-ends/parked.md — "Does `ptrOffset`'s deferred UB ever diverge
+  from Miri?" (~1h, needs a Miri toolchain).

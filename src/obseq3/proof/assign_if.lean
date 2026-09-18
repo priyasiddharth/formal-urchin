@@ -69,138 +69,6 @@ theorem runN_SkipIf_jump_step (compProg : oseair.Prog) (s : oseair.State MSB)
     simp [h_ne]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
-/-! ## A lowering that never touches `placeRegMap`
-
-Only `ensureLocalRegE` writes the place map (`setPlaceInfo` has one
-caller, compile.lean). Place and rvalue lowerings are built from
-`freshReg`/`emit` alone, so their runs keep it; the syntactic proof
-below is what the SKIPPED arm of a guard needs, since no source
-evaluation happens there to hand it a package's conclusion. -/
-
-theorem placeToRegChecked_placeRegMap_any {Γ : Ctx} :
-    {τ : LayoutTy} → (p : Place Γ τ) → (kind : RefKind) → (cs : CompilerState) →
-    (CheckedCompilerM.run (placeToRegChecked kind p) cs).placeRegMap = cs.placeRegMap
-  | _, .local l, kind, cs => by
-      simp only [placeToRegChecked, CheckedCompilerM.run, CompilerM.run]
-      split <;> rfl
-  | _, .proj (.proj b q) path, kind, cs => by
-      have ih := placeToRegChecked_placeRegMap_any (.proj b (q.append path)) kind cs
-      rw [placeToRegChecked_proj_assoc_eq q path]
-      simp only [csMonad]
-      split <;> simp [ih]
-  | _, .proj (.local l) path, kind, cs => by
-      have ih := placeToRegChecked_placeRegMap_any (.local l) kind cs
-      rw [placeToRegChecked_proj_root_eq path (by intro _ bb qq h; cases h)]
-      simp only [csMonad]
-      split
-      · split
-        · simp [ih]
-        · simp [csMonad, csRun, emit_placeRegMap, ih]
-      · exact ih
-  | _, .proj (.deref pp) path, kind, cs => by
-      have ih := placeToRegChecked_placeRegMap_any (.deref pp) kind cs
-      rw [placeToRegChecked_proj_root_eq path (by intro _ bb qq h; cases h)]
-      simp only [csMonad]
-      split
-      · split
-        · simp [ih]
-        · simp [csMonad, csRun, emit_placeRegMap, ih]
-      · exact ih
-  | _, .deref pp, kind, cs => by
-      have ih := placeToRegChecked_placeRegMap_any pp RefKind.Shared cs
-      have h_b : placeToRegChecked (Γ := Γ) kind (.deref pp)
-          = (do
-              let ptrOut ← placeToRegChecked RefKind.Shared pp
-              let ptrRes := ptrOut.result
-              let loadedReg ← CheckedCompilerM.lift freshRegM
-              let _ ← CheckedCompilerM.lift
-                (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
-              let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
-              pure {
-                result := { reg := loadedReg, cleanup := [] },
-                evidence := PlaceToRegEvidence.deref pp ptrRes loadedReg
-                  ptrOut.evidence
-              }) := by simp only [placeToRegChecked]
-      rw [h_b]
-      simp only [csMonad]
-      split
-      · simp [csMonad, csRun, emit_placeRegMap, ih]
-      · exact ih
-  termination_by _ p _ _ => p.depth
-  decreasing_by all_goals (simp [Place.depth]; try omega)
-
-theorem placeToBorrowRegChecked_placeRegMap_any {Γ : Ctx}
-    (kind : RefKind) (prot : Bool) (mask : List Bool) :
-    {τ : LayoutTy} → (p : Place Γ τ) → (cs : CompilerState) →
-    (CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask p) cs).placeRegMap
-      = cs.placeRegMap
-  | _, .local l, cs => by
-      have ih := placeToRegChecked_placeRegMap_any (.local l) kind cs
-      simp only [placeToBorrowRegChecked, csMonad]
-      split
-      · simp [csMonad, csRun, emit_placeRegMap, ih]
-      · exact ih
-  | _, .proj (.proj b q) path, cs => by
-      have ih := placeToBorrowRegChecked_placeRegMap_any kind prot mask
-        (.proj b (q.append path)) cs
-      simp only [placeToBorrowRegChecked, csMonad]
-      split <;> simp [ih]
-  | _, .proj (.local l) path, cs => by
-      have ih := placeToRegChecked_placeRegMap_any (.local l) kind cs
-      simp only [placeToBorrowRegChecked, csMonad]
-      split
-      · simp [csMonad, csRun, emit_placeRegMap, ih]
-      · exact ih
-  | _, .proj (.deref pp) path, cs => by
-      have ih := placeToRegChecked_placeRegMap_any (.deref pp) kind cs
-      simp only [placeToBorrowRegChecked, csMonad]
-      split
-      · simp [csMonad, csRun, emit_placeRegMap, ih]
-      · exact ih
-  | _, .deref pp, cs => by
-      have ih := placeToRegChecked_placeRegMap_any pp RefKind.Shared cs
-      simp only [placeToBorrowRegChecked, csMonad]
-      split
-      · simp [csMonad, csRun, emit_placeRegMap, ih]
-      · exact ih
-  termination_by _ p _ => p.depth
-  decreasing_by all_goals (simp [Place.depth]; try omega)
-
-theorem readRhsPre_placeRegMap_any {σ τ : LayoutTy} (rhs : RExpr Γ τ) (src : Place Γ σ)
-    (mk : Register → Rhs) (post : Register → List Instr)
-    (ev : (srcRes : PtrResult) → PlaceToRegEvidence RefKind.Shared src srcRes →
-      (dstPtr : Register) → RExprToEvidence dstPtr rhs)
-    (cs : CompilerState) :
-    (CheckedCompilerM.run (readRhsPre rhs src mk post ev) cs).placeRegMap = cs.placeRegMap := by
-  have ih := placeToRegChecked_placeRegMap_any src RefKind.Shared cs
-  simp only [readRhsPre, csMonad]
-  split
-  · simp [csMonad, csRun, emit_placeRegMap, ih]
-  · exact ih
-
-theorem compileRExprPreChecked_placeRegMap_any {τ : LayoutTy} (rhs : RExpr Γ τ)
-    (cs : CompilerState) :
-    (CheckedCompilerM.run (compileRExprPreChecked rhs) cs).placeRegMap = cs.placeRegMap := by
-  cases rhs with
-  | constInit v => simp only [compileRExprPreChecked, CheckedCompilerM.run_pure]
-  | uninit => simp only [compileRExprPreChecked, CheckedCompilerM.run_pure]
-  | copy src =>
-      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
-  | exposeAddr src =>
-      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
-  | fromExposed src =>
-      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
-  | ptrCast src =>
-      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
-  | ptrOffset src delta =>
-      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
-  | refSlice kind prot src =>
-      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
-  | ref kind prot mask src =>
-      have ih := placeToBorrowRegChecked_placeRegMap_any kind prot mask src cs
-      simp only [compileRExprPreChecked, csMonad]
-      split <;> simp [ih]
-
 /-- A guarded body whose destination root is ALREADY mapped keeps the
     place map: its own `ensurePlaceRoot` is silent, and nothing else
     writes it. -/
@@ -353,113 +221,18 @@ theorem ensurePlaceRoot_mapped {τ : LayoutTy} (p : Place Γ τ) (cs : CompilerS
         simp only [PlaceInputsMapped]
         exact ⟨_, _, getPlaceInfo_setPlaceInfo_self _ _ _⟩
 
-/-- `ensureLocalRegE` leaves its local mapped at the register it returns. -/
-theorem ensureLocalRegE_maps {τ : LayoutTy} (loc : Local Γ τ) (cs : CompilerState) :
-    ∃ layout, getPlaceInfo (CompilerM.run (ensureLocalRegE loc) cs) loc.idx.1
-      = some ((CompilerM.value (ensureLocalRegE loc) cs).result.reg, layout) := by
-  cases h : getPlaceInfo cs loc.idx.1 with
-  | some info =>
-      obtain ⟨reg, layout⟩ := info
-      unfold CompilerM.run CompilerM.value ensureLocalRegE
-      split
-      · rename_i reg' layout' h'
-        exact ⟨layout', h'⟩
-      · rename_i h'
-        rw [h'] at h
-        cases h
-  | none =>
-      obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
-      rw [h_run, h_val]
-      exact ⟨τ, getPlaceInfo_setPlaceInfo_self _ _ _⟩
-
-/-- `placeToRegChecked` of a LOCAL: a lookup, no state change. -/
-theorem placeToRegChecked_local_run {τ : LayoutTy} (kind : RefKind) (loc : Local Γ τ)
-    (cs : CompilerState) :
-    CheckedCompilerM.run (placeToRegChecked kind (.local loc)) cs = cs := by
-  simp only [placeToRegChecked, CheckedCompilerM.run, CompilerM.run]
-  split <;> rfl
-
-theorem placeToRegChecked_local_value_of {τ layout : LayoutTy} (kind : RefKind)
-    {loc : Local Γ τ} {cs : CompilerState} {reg : Register}
-    (h : getPlaceInfo cs loc.idx.1 = some (reg, layout)) :
-    ∃ ev, CheckedCompilerM.value (placeToRegChecked kind (.local loc)) cs
-      = .ok { result := { reg := reg, cleanup := [] }, evidence := ev } := by
-  simp only [placeToRegChecked, CheckedCompilerM.value, CompilerM.value]
-  split
-  · rename_i reg' layout' h'
-    rw [h'] at h
-    cases h
-    exact ⟨_, rfl⟩
-  · rename_i h'
-    rw [h'] at h
-    cases h
-
-/-- `compileAssignChecked` at a LOCAL destination is the statement
-    compiler's `.assign (.local loc)` arm, in run and in value: the same
-    lowering, with `placeToRegChecked Mut (.local loc)` — a lookup that
-    emits nothing — where the arm reuses `ensureLocalRegE`'s register,
-    and an empty final cleanup. (For every other destination the two are
-    `rfl`.) -/
-theorem compileAssignChecked_local_run {τ : LayoutTy} (loc : Local Γ τ) (rhs : RExpr Γ τ)
-    (cs : CompilerState) :
-    CheckedCompilerM.run (compileAssignChecked (.local loc) rhs) cs
-      = CheckedCompilerM.run (compileStmtChecked (.assign (.local loc) rhs)) cs := by
-  obtain ⟨layout, h_map⟩ := ensureLocalRegE_maps loc cs
-  have h_prm := compileRExprPreChecked_placeRegMap_any rhs (CompilerM.run (ensureLocalRegE loc) cs)
-  have h_map' : getPlaceInfo (CheckedCompilerM.run (compileRExprPreChecked rhs)
-      (CompilerM.run (ensureLocalRegE loc) cs)) loc.idx.1
-      = some ((CompilerM.value (ensureLocalRegE loc) cs).result.reg, layout) := by
-    rw [getPlaceInfo_congr' h_prm]; exact h_map
-  obtain ⟨ev, h_pv⟩ := placeToRegChecked_local_value_of RefKind.Mut h_map'
-  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad,
-    ensurePlaceRoot, CompilerM.run_bind, CompilerM.run_pure]
-  split
-  · rename_i pre h_pre
-    simp only [h_pv, placeToRegChecked_local_run]
-    simp [csRun, cleanupInstrs, emit_nil]
-  · rfl
-
-theorem compileAssignChecked_local_value {τ : LayoutTy} (loc : Local Γ τ) (rhs : RExpr Γ τ)
-    (cs : CompilerState) {so : ResultWithEvidence Unit (fun _ => StmtEvidence (.assign (.local loc) rhs))}
-    (h : CheckedCompilerM.value (compileStmtChecked (.assign (.local loc) rhs)) cs = .ok so) :
-    ∃ so', CheckedCompilerM.value (compileAssignChecked (.local loc) rhs) cs = .ok so' := by
-  obtain ⟨layout, h_map⟩ := ensureLocalRegE_maps loc cs
-  have h_prm := compileRExprPreChecked_placeRegMap_any rhs (CompilerM.run (ensureLocalRegE loc) cs)
-  have h_map' : getPlaceInfo (CheckedCompilerM.run (compileRExprPreChecked rhs)
-      (CompilerM.run (ensureLocalRegE loc) cs)) loc.idx.1
-      = some ((CompilerM.value (ensureLocalRegE loc) cs).result.reg, layout) := by
-    rw [getPlaceInfo_congr' h_prm]; exact h_map
-  obtain ⟨ev, h_pv⟩ := placeToRegChecked_local_value_of RefKind.Mut h_map'
-  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad,
-    ensurePlaceRoot, CompilerM.run_bind, CompilerM.run_pure] at h ⊢
-  cases h_pre : CheckedCompilerM.value (compileRExprPreChecked rhs)
-      (CompilerM.run (ensureLocalRegE loc) cs) with
-  | error e =>
-      rw [h_pre] at h
-      simp at h
-  | ok pre =>
-      simp only [h_pv, csMonad]
-      exact ⟨_, rfl⟩
-
-/-- The guarded body, as the STATEMENT compiler would lower the same
-    assign: run-equal everywhere, value-ok whenever the statement is. -/
+/-- The guarded body IS the statement compiler's lowering of the same
+    assign — `rfl` for every destination now that the `.assign (.local)`
+    fast path is gone (2026-09-18). Kept as the named interface. -/
 theorem compileAssignChecked_stmt_run {τ : LayoutTy} (dst : Place Γ τ) (rhs : RExpr Γ τ)
     (cs : CompilerState) :
     CheckedCompilerM.run (compileAssignChecked dst rhs) cs
-      = CheckedCompilerM.run (compileStmtChecked (.assign dst rhs)) cs := by
-  cases dst with
-  | «local» loc => exact compileAssignChecked_local_run loc rhs cs
-  | proj b p => rfl
-  | deref pp => rfl
+      = CheckedCompilerM.run (compileStmtChecked (.assign dst rhs)) cs := rfl
 
 theorem compileAssignChecked_stmt_value {τ : LayoutTy} (dst : Place Γ τ) (rhs : RExpr Γ τ)
     (cs : CompilerState) {so : ResultWithEvidence Unit (fun _ => StmtEvidence (.assign dst rhs))}
     (h : CheckedCompilerM.value (compileStmtChecked (.assign dst rhs)) cs = .ok so) :
-    ∃ so', CheckedCompilerM.value (compileAssignChecked dst rhs) cs = .ok so' := by
-  cases dst with
-  | «local» loc => exact compileAssignChecked_local_value loc rhs cs h
-  | proj b p => exact ⟨so, h⟩
-  | deref pp => exact ⟨so, h⟩
+    ∃ so', CheckedCompilerM.value (compileAssignChecked dst rhs) cs = .ok so' := ⟨so, h⟩
 
 /-- The guard's discriminant read, evaluated: `copy` of the flattened
     place is `copy` of the place (the read resolves for access, and

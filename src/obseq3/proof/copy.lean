@@ -233,41 +233,10 @@ theorem compileStmt_readrhs_derefsrc_flatten_run
       = CheckedCompilerM.run
           (compileStmtChecked
             (Stmt.assign (.local dstLoc) rhs2)) cs := by
-  simp only [csMonad, compileStmtChecked, compileAssignChecked]
-  have h_run := compileRExprToChecked_readrhs_flatten_run (h_shape := h_shape) (h_shape2 := h_shape2)
+  rw [compileStmt_local_run, compileStmt_local_run]
+  exact compileRExprToChecked_readrhs_flatten_run (h_shape := h_shape) (h_shape2 := h_shape2)
     ((ensureLocalRegE dstLoc).value cs).result.reg
     (CompilerM.run (ensureLocalRegE dstLoc) cs)
-  have h_val := compileRExprToChecked_readrhs_flatten_valunit (h_shape := h_shape) (h_shape2 := h_shape2)
-    ((ensureLocalRegE dstLoc).value cs).result.reg
-    (CompilerM.run (ensureLocalRegE dstLoc) cs)
-  cases hO : CheckedCompilerM.value
-      (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-        rhs)
-      (CompilerM.run (ensureLocalRegE dstLoc) cs) with
-  | error eO =>
-      cases hF : CheckedCompilerM.value
-          (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-            rhs2)
-          (CompilerM.run (ensureLocalRegE dstLoc) cs) with
-      | error eF =>
-          simp only [hO, hF]
-          exact h_run
-      | ok oF =>
-          exfalso
-          rw [hO, hF] at h_val
-          simp [Except.map] at h_val
-  | ok oO =>
-      cases hF : CheckedCompilerM.value
-          (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-            rhs2)
-          (CompilerM.run (ensureLocalRegE dstLoc) cs) with
-      | error eF =>
-          exfalso
-          rw [hO, hF] at h_val
-          simp [Except.map] at h_val
-      | ok oF =>
-          simp only [hO, hF]
-          exact h_run
 
 theorem compileStmt_readrhs_derefsrc_flatten_value
     {Γ : Ctx} {τ τs : LayoutTy}
@@ -288,26 +257,17 @@ theorem compileStmt_readrhs_derefsrc_flatten_value
   have h_val := compileRExprToChecked_readrhs_flatten_valunit (h_shape := h_shape) (h_shape2 := h_shape2)
     ((ensureLocalRegE dstLoc).value cs).result.reg
     (CompilerM.run (ensureLocalRegE dstLoc) cs)
-  simp only [csMonad, compileStmtChecked, compileAssignChecked] at h_so ⊢
+  obtain ⟨u, hu⟩ := (compileStmt_local_value_iff dstLoc rhs2 cs).mp ⟨so, h_so⟩
+  refine (compileStmt_local_value_iff dstLoc rhs cs).mpr ?_
   cases hO : CheckedCompilerM.value
       (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
         rhs)
       (CompilerM.run (ensureLocalRegE dstLoc) cs) with
   | error eO =>
       exfalso
-      cases hF : CheckedCompilerM.value
-          (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-            rhs2)
-          (CompilerM.run (ensureLocalRegE dstLoc) cs) with
-      | error eF =>
-          rw [hF] at h_so
-          simp at h_so
-      | ok oF =>
-          rw [hO, hF] at h_val
-          simp [Except.map] at h_val
-  | ok oO =>
-      simp only [hO]
-      exact ⟨_, rfl⟩
+      rw [hO, hu] at h_val
+      simp [Except.map] at h_val
+  | ok oO => exact ⟨oO, rfl⟩
 
 
 
@@ -410,49 +370,12 @@ theorem compileStmt_readrhs_srcflatten_run
       = CheckedCompilerM.run
           (compileStmtChecked
             (Stmt.assign (.local dstLoc) rhs2)) cs := by
-  obtain ⟨ev, h_rhs⟩ := id h_shape
-  obtain ⟨ev2, h_rhs2⟩ := id h_shape2
-  simp only [csMonad, compileStmtChecked, compileAssignChecked]
-  have h_run := compileRExprToChecked_readrhs_anyflatten_run
+  rw [compileStmt_local_run, compileStmt_local_run]
+  exact compileRExprToChecked_readrhs_anyflatten_run
     (h_shape := h_shape) (h_shape2 := h_shape2) src
     ((ensureLocalRegE dstLoc).value cs).result.reg
     (CompilerM.run (ensureLocalRegE dstLoc) cs)
-  have h_val := compileRExprToChecked_readrhs_anyflatten_valunit
-    (h_shape := h_shape) (h_shape2 := h_shape2) src
-    ((ensureLocalRegE dstLoc).value cs).result.reg
-    (CompilerM.run (ensureLocalRegE dstLoc) cs)
-  cases hO : CheckedCompilerM.value
-      (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-        rhs)
-      (CompilerM.run (ensureLocalRegE dstLoc) cs) with
-  | error eO =>
-      cases hF : CheckedCompilerM.value
-          (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-            rhs2)
-          (CompilerM.run (ensureLocalRegE dstLoc) cs) with
-      | error eF =>
-          simp only [hO, hF]
-          exact h_run
-      | ok oF =>
-          exfalso
-          rw [hO, hF] at h_val
-          simp [Except.map] at h_val
-  | ok oO =>
-      cases hF : CheckedCompilerM.value
-          (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-            rhs2)
-          (CompilerM.run (ensureLocalRegE dstLoc) cs) with
-      | error eF =>
-          exfalso
-          rw [hO, hF] at h_val
-          simp [Except.map] at h_val
-      | ok oF =>
-          simp only [hO, hF]
-          exact h_run
 
-/-- Existential form: the dependent evidence type of the flattened
-    statement's value is not transportable along the flattening
-    equation, but its EXISTENTIAL is (the motive hides the type). -/
 theorem compileStmt_readrhs_srcflatten_value
     {Γ : Ctx} {τ τs : LayoutTy} {dstLoc : Local Γ τ} (src : Place Γ τs)
     (cs : CompilerState)
@@ -466,33 +389,21 @@ theorem compileStmt_readrhs_srcflatten_value
     ∃ so', CheckedCompilerM.value
         (compileStmtChecked (Stmt.assign (.local dstLoc) rhs)) cs
       = Except.ok so' := by
-  obtain ⟨ev, h_rhs⟩ := id h_shape
-  obtain ⟨ev2, h_rhs2⟩ := id h_shape2
-  obtain ⟨so, h_so⟩ := h_ex
   have h_val := compileRExprToChecked_readrhs_anyflatten_valunit
     (h_shape := h_shape) (h_shape2 := h_shape2) src
     ((ensureLocalRegE dstLoc).value cs).result.reg
     (CompilerM.run (ensureLocalRegE dstLoc) cs)
-  simp only [csMonad, compileStmtChecked, compileAssignChecked] at h_so ⊢
+  obtain ⟨u, hu⟩ := (compileStmt_local_value_iff dstLoc rhs2 cs).mp h_ex
+  refine (compileStmt_local_value_iff dstLoc rhs cs).mpr ?_
   cases hO : CheckedCompilerM.value
       (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
         rhs)
       (CompilerM.run (ensureLocalRegE dstLoc) cs) with
   | error eO =>
       exfalso
-      cases hF : CheckedCompilerM.value
-          (compileRExprToChecked ((ensureLocalRegE dstLoc).value cs).result.reg
-            rhs2)
-          (CompilerM.run (ensureLocalRegE dstLoc) cs) with
-      | error eF =>
-          rw [hF] at h_so
-          simp at h_so
-      | ok oF =>
-          rw [hO, hF] at h_val
-          simp [Except.map] at h_val
-  | ok oO =>
-      simp only [hO]
-      exact ⟨_, rfl⟩
+      rw [hO, hu] at h_val
+      simp [Except.map] at h_val
+  | ok oO => exact ⟨oO, rfl⟩
 
 /-! ## FRESH destination (regime B for copy): `ensurePlaceRoot`'s root
     `Alloc` runs first, then the source lowering, then the `Memcpy`. -/

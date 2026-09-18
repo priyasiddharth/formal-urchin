@@ -66,6 +66,22 @@ Deleting the arm would make the bridge `rfl` at the cost of re-proving
 ~15 local-destination compile lemmas through `placeToRegChecked Mut
 (.local loc)`. Parked.
 
+[OBS 2026-09-18] **Confirmed and done the next day, at the user's
+request ("delete the local fast path then").** The cost estimate was
+wrong in the right direction: not ~15 lemmas re-proved, but ten sites
+each repaired by one rewrite, because the general path can be restated
+in the fast path's SHAPE once (`compileStmt_local_run`,
+`compileStmt_local_value_iff`, common.lean) — the destination lookup
+returns the register the root step recorded because the rvalue
+lowering kept the place map, which is the same lemma family the
+guard's skipped arm needed. The user's question that led here —
+*why does the root step discard the register?* — has the answer that
+made the deletion obviously safe: `ensurePlaceRoot` is a side effect
+on the place map, not a destination computation; the store register
+comes from lowering the whole place, and a local is the one shape
+where the two coincide, so the fast path was an optimization of
+nothing. Net −90 lines; audit unchanged.
+
 ## See also
 
 - assignif-reads-its-discriminant.md

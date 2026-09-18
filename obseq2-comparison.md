@@ -4,6 +4,32 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-18 — One Assign Lowering, For Locals Too
+
+Yesterday's commit message claimed the statement compiler's assign arm
+*is* `compileAssignChecked` by `rfl`. It was, for every destination but
+a local: `compileStmtChecked` kept a `.assign (.local loc)` fast path
+that took the register straight out of `ensureLocalRegE` and skipped
+the destination lowering. The two produce the same instruction stream —
+for a local, `placeToRegChecked Mut` is a lookup that emits nothing and
+returns the register the root step just recorded — but they are
+different terms, and the `assignIf` proof had to bridge them to hand a
+local destination from the guarded body to the leaves.
+
+The user asked why the root step discards its register. Because
+`ensurePlaceRoot` is a side effect on the place map, not a destination
+computation: for `x.1` or `*p` the store register is a fresh temporary
+from lowering the whole place, and only for a bare local do the two
+coincide. That made the fast path an optimization of nothing, so it is
+gone, with its evidence constructor. The ten local-destination compile
+lemmas that unfolded it were repaired by one rewrite each, against a
+lemma pair that restates the general path in the fast path's shape,
+proved once from the fact that no lowering touches the place map — the
+same fact the guard's skipped arm needed. Net minus ninety lines; the
+commit message is now true; audit unchanged.
+
+---
+
 ## 2026-09-17 (later) — A Guard Allocates Its Destination on Both Paths; `assignIf` Enters the Theorem
 
 The last step of the `assignIf` plan was the proof's skipped arm, whose

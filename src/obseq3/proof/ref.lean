@@ -90,14 +90,17 @@ theorem compileStmt_ref_fresh_local_lowers
   refine ⟨?_, ?_⟩
   · obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
       placeToRegChecked_local_existing (kind := kind) h_srcPost
-    simp [csCompile, compileRExprToChecked, placeToBorrowRegChecked, h_run, h_val, h_prun,
-      h_pval, h_pres]
+    rw [compileStmt_local_run]
+    simp [compileRExprToChecked, compileRExprPreChecked, placeToBorrowRegChecked, h_run, h_val,
+      h_prun, h_pval, h_pres]
     simp [csRun, cleanupInstrs, emit_nil, setPlaceInfo, emit]
     funext label
     rw [if_neg (fun h => by grind)]
   · obtain ⟨h_prun, placeOut, h_pval, h_pres⟩ :=
       placeToRegChecked_local_existing (kind := kind) h_srcPost
-    simp only [csCompile, csMonad, compileRExprToChecked, placeToBorrowRegChecked, h_run, h_pval]
+    refine (compileStmt_local_value_iff _ _ cs).mpr ?_
+    simp only [csMonad, compileRExprToChecked, compileRExprPreChecked, placeToBorrowRegChecked,
+      h_run, h_pval]
     exact ⟨_, rfl⟩
 /-! ## Regime L→L: `dstLocal := &srcLocal`, both bound -/
 
@@ -525,6 +528,7 @@ theorem compileStmt_ref_src_congr_local_run
       = CheckedCompilerM.run
           (compileStmtChecked
             (Stmt.assign (.local dstLoc) (.ref kind prot mask src2))) cs := by
+  rw [compileStmt_local_run, compileStmt_local_run]
   simp only [csCompile, csMonad, compileRExprToChecked]
   rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
   · simp only [h1, h2]; exact h_agr
@@ -546,9 +550,11 @@ theorem compileStmt_ref_src_congr_local_value
         (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src1))) cs
       = Except.ok so' := by
   intro so h_so
-  simp only [csCompile, csMonad, compileRExprToChecked] at h_so ⊢
+  obtain ⟨u, hu⟩ := (compileStmt_local_value_iff _ _ cs).mp ⟨so, h_so⟩
+  refine (compileStmt_local_value_iff _ _ cs).mpr ?_
+  simp only [csCompile, csMonad, compileRExprToChecked] at hu ⊢
   rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
-  · exfalso; rw [h2] at h_so; simp at h_so
+  · exfalso; rw [h2] at hu; simp at hu
   · simp only [h1]; exact ⟨_, rfl⟩
 
 

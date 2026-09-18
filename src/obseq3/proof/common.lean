@@ -2938,4 +2938,235 @@ theorem writeThroughPtr_sim
    lemma family; the read/die/ref members are stated there when their
    consumers close). -/
 
+/-! ## A lowering never touches `placeRegMap`; a local destination's lowering
+
+Only `ensureLocalRegE` writes the place map (`setPlaceInfo` has one
+caller, compile.lean). Place and rvalue lowerings are built from
+`freshReg`/`emit` alone, so their runs keep it. Used by the skipped arm
+of a guard (proof/assign_if.lean), and here by the LOCAL-destination
+bridge: since the `.assign (.local loc)` fast path was deleted
+(2026-09-18), a local destination goes through `compileAssignChecked`,
+whose `placeToRegChecked Mut (.local loc)` is a lookup at the post-rvalue
+state — which finds the register `ensureLocalRegE` recorded BECAUSE the
+rvalue lowering kept the map. `compileStmt_local_run` and
+`compileStmt_local_value_iff` restate the general path in the fast
+path's shape, so every local-destination compile fact is one rewrite. -/
+
+theorem placeToRegChecked_placeRegMap_any {Γ : Ctx} :
+    {τ : LayoutTy} → (p : Place Γ τ) → (kind : RefKind) → (cs : CompilerState) →
+    (CheckedCompilerM.run (placeToRegChecked kind p) cs).placeRegMap = cs.placeRegMap
+  | _, .local l, kind, cs => by
+      simp only [placeToRegChecked, CheckedCompilerM.run, CompilerM.run]
+      split <;> rfl
+  | _, .proj (.proj b q) path, kind, cs => by
+      have ih := placeToRegChecked_placeRegMap_any (.proj b (q.append path)) kind cs
+      rw [placeToRegChecked_proj_assoc_eq q path]
+      simp only [csMonad]
+      split <;> simp [ih]
+  | _, .proj (.local l) path, kind, cs => by
+      have ih := placeToRegChecked_placeRegMap_any (.local l) kind cs
+      rw [placeToRegChecked_proj_root_eq path (by intro _ bb qq h; cases h)]
+      simp only [csMonad]
+      split
+      · split
+        · simp [ih]
+        · simp [csMonad, csRun, emit_placeRegMap, ih]
+      · exact ih
+  | _, .proj (.deref pp) path, kind, cs => by
+      have ih := placeToRegChecked_placeRegMap_any (.deref pp) kind cs
+      rw [placeToRegChecked_proj_root_eq path (by intro _ bb qq h; cases h)]
+      simp only [csMonad]
+      split
+      · split
+        · simp [ih]
+        · simp [csMonad, csRun, emit_placeRegMap, ih]
+      · exact ih
+  | _, .deref pp, kind, cs => by
+      have ih := placeToRegChecked_placeRegMap_any pp RefKind.Shared cs
+      have h_b : placeToRegChecked (Γ := Γ) kind (.deref pp)
+          = (do
+              let ptrOut ← placeToRegChecked RefKind.Shared pp
+              let ptrRes := ptrOut.result
+              let loadedReg ← CheckedCompilerM.lift freshRegM
+              let _ ← CheckedCompilerM.lift
+                (emitM [Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy ptrRes.reg)])
+              let _ ← CheckedCompilerM.lift (emitM (cleanupInstrs ptrRes.cleanup))
+              pure {
+                result := { reg := loadedReg, cleanup := [] },
+                evidence := PlaceToRegEvidence.deref pp ptrRes loadedReg
+                  ptrOut.evidence
+              }) := by simp only [placeToRegChecked]
+      rw [h_b]
+      simp only [csMonad]
+      split
+      · simp [csMonad, csRun, emit_placeRegMap, ih]
+      · exact ih
+  termination_by _ p _ _ => p.depth
+  decreasing_by all_goals (simp [Place.depth]; try omega)
+
+theorem placeToBorrowRegChecked_placeRegMap_any {Γ : Ctx}
+    (kind : RefKind) (prot : Bool) (mask : List Bool) :
+    {τ : LayoutTy} → (p : Place Γ τ) → (cs : CompilerState) →
+    (CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask p) cs).placeRegMap
+      = cs.placeRegMap
+  | _, .local l, cs => by
+      have ih := placeToRegChecked_placeRegMap_any (.local l) kind cs
+      simp only [placeToBorrowRegChecked, csMonad]
+      split
+      · simp [csMonad, csRun, emit_placeRegMap, ih]
+      · exact ih
+  | _, .proj (.proj b q) path, cs => by
+      have ih := placeToBorrowRegChecked_placeRegMap_any kind prot mask
+        (.proj b (q.append path)) cs
+      simp only [placeToBorrowRegChecked, csMonad]
+      split <;> simp [ih]
+  | _, .proj (.local l) path, cs => by
+      have ih := placeToRegChecked_placeRegMap_any (.local l) kind cs
+      simp only [placeToBorrowRegChecked, csMonad]
+      split
+      · simp [csMonad, csRun, emit_placeRegMap, ih]
+      · exact ih
+  | _, .proj (.deref pp) path, cs => by
+      have ih := placeToRegChecked_placeRegMap_any (.deref pp) kind cs
+      simp only [placeToBorrowRegChecked, csMonad]
+      split
+      · simp [csMonad, csRun, emit_placeRegMap, ih]
+      · exact ih
+  | _, .deref pp, cs => by
+      have ih := placeToRegChecked_placeRegMap_any pp RefKind.Shared cs
+      simp only [placeToBorrowRegChecked, csMonad]
+      split
+      · simp [csMonad, csRun, emit_placeRegMap, ih]
+      · exact ih
+  termination_by _ p _ => p.depth
+  decreasing_by all_goals (simp [Place.depth]; try omega)
+
+theorem readRhsPre_placeRegMap_any {Γ : Ctx} {σ τ : LayoutTy} (rhs : RExpr Γ τ)
+    (src : Place Γ σ) (mk : Register → Rhs) (post : Register → List Instr)
+    (ev : (srcRes : PtrResult) → PlaceToRegEvidence RefKind.Shared src srcRes →
+      (dstPtr : Register) → RExprToEvidence dstPtr rhs)
+    (cs : CompilerState) :
+    (CheckedCompilerM.run (readRhsPre rhs src mk post ev) cs).placeRegMap = cs.placeRegMap := by
+  have ih := placeToRegChecked_placeRegMap_any src RefKind.Shared cs
+  simp only [readRhsPre, csMonad]
+  split
+  · simp [csMonad, csRun, emit_placeRegMap, ih]
+  · exact ih
+
+theorem compileRExprPreChecked_placeRegMap_any {Γ : Ctx} {τ : LayoutTy} (rhs : RExpr Γ τ)
+    (cs : CompilerState) :
+    (CheckedCompilerM.run (compileRExprPreChecked rhs) cs).placeRegMap = cs.placeRegMap := by
+  cases rhs with
+  | constInit v => simp only [compileRExprPreChecked, CheckedCompilerM.run_pure]
+  | uninit => simp only [compileRExprPreChecked, CheckedCompilerM.run_pure]
+  | copy src =>
+      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
+  | exposeAddr src =>
+      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
+  | fromExposed src =>
+      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
+  | ptrCast src =>
+      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
+  | ptrOffset src delta =>
+      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
+  | refSlice kind prot src =>
+      simp only [compileRExprPreChecked]; exact readRhsPre_placeRegMap_any _ _ _ _ _ cs
+  | ref kind prot mask src =>
+      have ih := placeToBorrowRegChecked_placeRegMap_any kind prot mask src cs
+      simp only [compileRExprPreChecked, csMonad]
+      split <;> simp [ih]
+
+/-- `ensureLocalRegE` leaves its local mapped at the register it returns. -/
+theorem ensureLocalRegE_maps {Γ : Ctx} {τ : LayoutTy} (loc : Local Γ τ) (cs : CompilerState) :
+    ∃ layout, getPlaceInfo (CompilerM.run (ensureLocalRegE loc) cs) loc.idx.1
+      = some ((CompilerM.value (ensureLocalRegE loc) cs).result.reg, layout) := by
+  cases h : getPlaceInfo cs loc.idx.1 with
+  | some info =>
+      obtain ⟨reg, layout⟩ := info
+      unfold CompilerM.run CompilerM.value ensureLocalRegE
+      split
+      · rename_i reg' layout' h'
+        exact ⟨layout', h'⟩
+      · rename_i h'
+        rw [h'] at h
+        cases h
+  | none =>
+      obtain ⟨h_run, h_val⟩ := ensureLocalRegE_fresh (loc := loc) h
+      rw [h_run, h_val]
+      exact ⟨τ, getPlaceInfo_setPlaceInfo_self _ _ _⟩
+
+/-- `placeToRegChecked` of a LOCAL: a lookup, no state change. -/
+theorem placeToRegChecked_local_run {Γ : Ctx} {τ : LayoutTy} (kind : RefKind)
+    (loc : Local Γ τ) (cs : CompilerState) :
+    CheckedCompilerM.run (placeToRegChecked kind (.local loc)) cs = cs := by
+  simp only [placeToRegChecked, CheckedCompilerM.run, CompilerM.run]
+  split <;> rfl
+
+theorem placeToRegChecked_local_value_of {Γ : Ctx} {τ layout : LayoutTy} (kind : RefKind)
+    {loc : Local Γ τ} {cs : CompilerState} {reg : Register}
+    (h : getPlaceInfo cs loc.idx.1 = some (reg, layout)) :
+    ∃ ev, CheckedCompilerM.value (placeToRegChecked kind (.local loc)) cs
+      = .ok { result := { reg := reg, cleanup := [] }, evidence := ev } := by
+  simp only [placeToRegChecked, CheckedCompilerM.value, CompilerM.value]
+  split
+  · rename_i reg' layout' h'
+    rw [h'] at h
+    cases h
+    exact ⟨_, rfl⟩
+  · rename_i h'
+    rw [h'] at h
+    cases h
+
+/-- A LOCAL destination's statement, in the shape the deleted fast path
+    had: root via `ensureLocalRegE`, then the rvalue lowered TO that
+    register. The general path's destination lookup returns the same
+    register and its final cleanup is empty. -/
+theorem compileStmt_local_run {Γ : Ctx} {τ : LayoutTy} (loc : Local Γ τ) (rhs : RExpr Γ τ)
+    (cs : CompilerState) :
+    CheckedCompilerM.run (compileStmtChecked (.assign (.local loc) rhs)) cs
+      = CheckedCompilerM.run
+          (compileRExprToChecked ((ensureLocalRegE loc).value cs).result.reg rhs)
+          ((ensureLocalRegE loc).run cs) := by
+  obtain ⟨layout, h_map⟩ := ensureLocalRegE_maps loc cs
+  have h_prm := compileRExprPreChecked_placeRegMap_any rhs (CompilerM.run (ensureLocalRegE loc) cs)
+  have h_map' : getPlaceInfo (CheckedCompilerM.run (compileRExprPreChecked rhs)
+      (CompilerM.run (ensureLocalRegE loc) cs)) loc.idx.1
+      = some ((CompilerM.value (ensureLocalRegE loc) cs).result.reg, layout) := by
+    show (CheckedCompilerM.run (compileRExprPreChecked rhs)
+      (CompilerM.run (ensureLocalRegE loc) cs)).placeRegMap.lookup _ = _
+    rw [h_prm]; exact h_map
+  obtain ⟨ev, h_pv⟩ := placeToRegChecked_local_value_of RefKind.Mut h_map'
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad,
+    ensurePlaceRoot, CompilerM.run_bind, CompilerM.run_pure]
+  split
+  · rename_i pre h_pre
+    simp only [h_pv, placeToRegChecked_local_run]
+    simp [csRun, cleanupInstrs, emit_nil]
+  · rfl
+
+theorem compileStmt_local_value_iff {Γ : Ctx} {τ : LayoutTy} (loc : Local Γ τ)
+    (rhs : RExpr Γ τ) (cs : CompilerState) :
+    (∃ so, CheckedCompilerM.value (compileStmtChecked (.assign (.local loc) rhs)) cs
+        = .ok so)
+      ↔ ∃ u, CheckedCompilerM.value
+          (compileRExprToChecked ((ensureLocalRegE loc).value cs).result.reg rhs)
+          ((ensureLocalRegE loc).run cs) = .ok u := by
+  obtain ⟨layout, h_map⟩ := ensureLocalRegE_maps loc cs
+  have h_prm := compileRExprPreChecked_placeRegMap_any rhs (CompilerM.run (ensureLocalRegE loc) cs)
+  have h_map' : getPlaceInfo (CheckedCompilerM.run (compileRExprPreChecked rhs)
+      (CompilerM.run (ensureLocalRegE loc) cs)) loc.idx.1
+      = some ((CompilerM.value (ensureLocalRegE loc) cs).result.reg, layout) := by
+    show (CheckedCompilerM.run (compileRExprPreChecked rhs)
+      (CompilerM.run (ensureLocalRegE loc) cs)).placeRegMap.lookup _ = _
+    rw [h_prm]; exact h_map
+  obtain ⟨ev, h_pv⟩ := placeToRegChecked_local_value_of RefKind.Mut h_map'
+  simp only [compileStmtChecked, compileAssignChecked, compileRExprToChecked, csMonad,
+    ensurePlaceRoot, CompilerM.run_bind, CompilerM.run_pure]
+  cases h_pre : CheckedCompilerM.value (compileRExprPreChecked rhs)
+      (CompilerM.run (ensureLocalRegE loc) cs) with
+  | error e => simp
+  | ok pre =>
+      simp only [h_pv, csMonad]
+      simp
+
 end obseq3.proof

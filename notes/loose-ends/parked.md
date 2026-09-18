@@ -679,7 +679,15 @@ grade — the strong `die` is already in, so nothing depends on this.
 die-is-permissive-when-not-on-top.md
 
 ## Delete `compileStmtChecked`'s `.assign (.local loc)` fast path
-**Status:** parked 2026-09-17
+**Status:** RESOLVED 2026-09-18 — deleted, with `StmtEvidence.assignLocal`.
+`compileStmtChecked (.assign dst rhs) = compileAssignChecked dst rhs` is
+now `rfl` for every destination. The ten local-destination compile
+lemmas were repaired by ONE rewrite each: `compileStmt_local_run` /
+`compileStmt_local_value_iff` (common.lean) restate the general path in
+the fast path's shape (root via `ensureLocalRegE`, rvalue lowered to its
+register), proved once from "a lowering never touches `placeRegMap`".
+Net −90 lines. Entry kept for the trail.
+**Status (original):** parked 2026-09-17
 **Context:** commit dc164ad made `compileStmtChecked (.assign dst rhs) =
 compileAssignChecked dst rhs` by `rfl` — for non-local `dst`. The
 `.assign (.local loc)` arm survived (it carries `StmtEvidence.assignLocal`),
