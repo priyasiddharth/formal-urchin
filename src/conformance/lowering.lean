@@ -354,16 +354,37 @@ def isUnitTy : UTy → Bool
   | .tup [] => true
   | _ => false
 
-/-- Bind one value into a fresh local at an inline seam, retagging if the
-    type contains references. -/
+/-- Bind one call argument into the callee's arg local, retagging if the
+    type contains references, then DEINIT a MOVED source (2026-09-19). Miri passes a `move` operand in place:
+    after filling the callee's local it reborrows the caller's place with
+    a fresh PROTECTED tag and writes uninit through it, then discards the
+    tag — so the caller's slot is inaccessible for the call and empty
+    afterwards, which is what licenses codegen to pass a pointer to the
+    slot instead of copying (see notes/durable/move-deinits-its-source-at-calls.md).
+    The seam COPIES the argument, so nothing aliases the caller's slot and
+    the protector has nothing to guard; what remains observable is the
+    deinit, which is one write through the source's OWNING tag:
+    `src := uninit`. It pops every borrow above the owner (Miri's retag
+    does the same) and leaves the cells undefined (Miri's write does the
+    same). The one thing it does not reject that Miri does: an access to
+    the moved-from slot DURING the call through its owning tag, which the
+    inlined callee can reach only via an exposed wildcard pointer. Shims
+    and intrinsics get no deinit, as in Miri (real MIR frames only). A
+    plain assignment `y = move x` is NOT deinit'd — Miri evaluates it as a
+    copy (`operand.rs`: `Copy(place) | Move(place) => eval_place_to_op`,
+    with a FIXME to someday invalidate the old location). -/
 def emitSeamBind (st : LowerSt) (line : Nat) (prot : Bool) (dstLocal : UPlace)
     (ty : UTy) (op : UOperand) : Except String LowerSt := do
-  if containsRef ty then
-    match op with
-    | .copy p | .move p => emitSeamCopy st line prot dstLocal ty p
-    | _ => .error s!"unsupported: reference-typed argument is not a place (line {line})"
-  else
-    emitAssign st line dstLocal (.use op)
+  let st ←
+    if containsRef ty then
+      match op with
+      | .copy p | .move p => emitSeamCopy st line prot dstLocal ty p
+      | _ => .error s!"unsupported: reference-typed argument is not a place (line {line})"
+    else
+      emitAssign st line dstLocal (.use op)
+  match op with
+  | .move p => emitAssign st line p .uninit
+  | _ => return st
 
 /-- Heap shims: bodyless std allocator entry points lowered to dedicated
     statements instead of inlining.
