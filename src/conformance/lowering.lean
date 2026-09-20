@@ -123,6 +123,7 @@ def rebaseOperand (off : Nat) : UOperand → UOperand
 
 def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .use op => .use (rebaseOperand off op)
+  | .move p => .move (rebasePlace off p)
   | .ref kind prot p => .ref kind prot (rebasePlace off p)
   | .aggregate v ops => .aggregate v (ops.map (rebaseOperand off))
   | .exposeAddr p => .exposeAddr (rebasePlace off p)
@@ -191,6 +192,7 @@ def foldBinOp (op : String) (a b : Int) : Option Int :=
 
 def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URvalue
   | .use op => do return .use (← resolveIdxOperand st line op)
+  | .move p => do return .move (← resolveIdxPlace st line p)
   | .ref kind prot p => do return .ref kind prot (← resolveIdxPlace st line p)
   | .aggregate v ops => do return .aggregate v (← ops.mapM (resolveIdxOperand st line))
   | .exposeAddr p => do return .exposeAddr (← resolveIdxPlace st line p)
@@ -243,8 +245,11 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
         st ← emitSeamCopy st line prot (fld dst i) tys[i] (fld src i)
       return st
   | .enum variants => do
-      -- discriminant is payload slot 0; variant v's field i lives at 1+i
-      let mut st := pushOut st (.assign (fld dst 0) (.use (.copy (fld src 0))) line)
+      -- discriminant is payload slot 0; variant v's field i lives at 1+i.
+      -- IN-PLACE retags (dst == src, a moved argument already bound):
+      -- no plain copies, only the guarded reborrows
+      let mut st := if dst == src then st
+        else pushOut st (.assign (fld dst 0) (.use (.copy (fld src 0))) line)
       for h : v in [0:variants.length] do
         let fields := variants[v]
         for h2 : i in [0:fields.length] do
@@ -258,10 +263,12 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
           | fty =>
               if containsRef fty then
                 throw s!"unsupported: nested references in enum payload (line {line})"
+              else if dst == src then
+                pure ()
               else
                 st := pushOut st (.assignIf (fld src 0) v dstF (.use (.copy srcF)) line)
       return st
-  | _ => return pushOut st (.assign dst (.use (.copy src)) line)
+  | _ => return if dst == src then st else pushOut st (.assign dst (.use (.copy src)) line)
 
 /-- Append one lowered assignment, desugaring aggregates, applying the
     reference-load retag rule, and rejecting unsupported payloads.
@@ -318,7 +325,7 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
   | .use op => do
       checkOperand line op
       return pushOut st (.assign dst rv line)
-  | .ref _ _ _ | .uninit | .exposeAddr _ | .fromExposed _ =>
+  | .ref _ _ _ | .move _ | .uninit | .exposeAddr _ | .fromExposed _ =>
       return pushOut st (.assign dst rv line)
   | .fnRef fid =>
       -- reified fn pointer: track statically, store a placeholder word
@@ -355,36 +362,32 @@ def isUnitTy : UTy → Bool
   | _ => false
 
 /-- Bind one call argument into the callee's arg local, retagging if the
-    type contains references, then DEINIT a MOVED source (2026-09-19). Miri passes a `move` operand in place:
-    after filling the callee's local it reborrows the caller's place with
-    a fresh PROTECTED tag and writes uninit through it, then discards the
-    tag — so the caller's slot is inaccessible for the call and empty
-    afterwards, which is what licenses codegen to pass a pointer to the
-    slot instead of copying (see notes/durable/move-deinits-its-source-at-calls.md).
-    The seam COPIES the argument, so nothing aliases the caller's slot and
-    the protector has nothing to guard; what remains observable is the
-    deinit, which is one write through the source's OWNING tag:
-    `src := uninit`. It pops every borrow above the owner (Miri's retag
-    does the same) and leaves the cells undefined (Miri's write does the
-    same). The one thing it does not reject that Miri does: an access to
-    the moved-from slot DURING the call through its owning tag, which the
-    inlined callee can reach only via an exposed wildcard pointer. Shims
-    and intrinsics get no deinit, as in Miri (real MIR frames only). A
-    plain assignment `y = move x` is NOT deinit'd — Miri evaluates it as a
-    copy (`operand.rs`: `Copy(place) | Move(place) => eval_place_to_op`,
-    with a FIXME to someday invalidate the old location). -/
+    type contains references. A MOVED argument is bound by mirlite's
+    `move` (2026-09-20): the callee local receives the value and the
+    caller's place has its borrow stacks cleared — Miri passes a `move`
+    operand in place, reborrowing the caller's slot with a fresh protected
+    tag, writing uninit through it and dropping the tag, which licenses
+    codegen to pass a pointer to the slot; the seam copies, so nothing
+    aliases the slot and only the clear is kept (the bytes stay:
+    notes/durable/move-deinits-its-source-at-calls.md). The fn-entry
+    retags then run on the callee local IN PLACE, as Miri's
+    `Retag(FnEntry)` does on the callee's own local after the copy. An
+    assignment `y = move x` stays a copy (rustc's interpreter, with a
+    FIXME). Shims get no move, as in Miri (real MIR frames only). -/
 def emitSeamBind (st : LowerSt) (line : Nat) (prot : Bool) (dstLocal : UPlace)
     (ty : UTy) (op : UOperand) : Except String LowerSt := do
-  let st ←
+  match op with
+  | .move p =>
+      let st ← emitAssign st line dstLocal (.move p)
+      if containsRef ty then emitSeamCopy st line prot dstLocal ty dstLocal
+      else pure st
+  | _ =>
     if containsRef ty then
       match op with
-      | .copy p | .move p => emitSeamCopy st line prot dstLocal ty p
+      | .copy p => emitSeamCopy st line prot dstLocal ty p
       | _ => .error s!"unsupported: reference-typed argument is not a place (line {line})"
     else
       emitAssign st line dstLocal (.use op)
-  match op with
-  | .move p => emitAssign st line p .uninit
-  | _ => return st
 
 /-- Heap shims: bodyless std allocator entry points lowered to dedicated
     statements instead of inlining.
@@ -770,6 +773,7 @@ def resolveGlobalsOp (gmap : List (Nat × Nat)) : UOperand → Except String UOp
 
 def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URvalue
   | .use op => do return .use (← resolveGlobalsOp gmap op)
+  | .move p => do return .move (← resolveGlobalRoot gmap p)
   | .ref kind prot p => do return .ref kind prot (← resolveGlobalRoot gmap p)
   | .aggregate v ops => do return .aggregate v (← ops.mapM (resolveGlobalsOp gmap))
   | .exposeAddr p => do return .exposeAddr (← resolveGlobalRoot gmap p)

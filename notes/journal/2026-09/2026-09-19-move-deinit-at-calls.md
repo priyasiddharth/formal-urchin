@@ -24,7 +24,9 @@ before, and the corpus had none.
 the three costed alternatives and why each loses are in the durable
 note. No mirlite or proof change; `uninit` is in `CoreRhs`.
 
-[OPEN 2026-09-19] No committed conformance test exercises the new
+[SUPERSEDED → 2026-09-20-move-rvalue.md] The prediction below (Miri: UB
+at the read) is wrong — rustc moves through a temporary; Miri says OK.
+[OPEN 2026-09-19, closed 2026-09-20] No committed conformance test exercises the new
 deinit (needs a Charon artifact: move a local into an inlined fn, then
 read it through a raw pointer taken before the call; Miri: UB at the
 read). Worth adding when a Charon toolchain is at hand — it would be the

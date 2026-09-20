@@ -51,6 +51,21 @@ access through a new child never pops the owner. The write goes through
 the new tag for convenience (it checks the place is real memory) and,
 for Tree Borrows, to activate the tag.
 
+[SUPERSEDED → move-is-a-temporary-unique-reborrow.md, 2026-09-20] The
+paragraph below and the 2026-09-19 journal entry predicted that a Rust
+program moving a local into a call and then reading it through an older
+raw pointer would be a pass-vs-Miri mismatch until the seam deinit'd
+the source. Real Miri says OK on exactly that program
+(local/move_arg_via_temp_spares_raw). Reason: rustc moves a NAMED place
+into a call through a TEMPORARY — `_4 = move _1; consume(move _4)` —
+and the assignment move is a copy, so Miri's in-place protection hits
+`_4`, which nothing else can observe; `_1` keeps its bytes and its
+stacks. Miri's own in-place tests use custom MIR for this reason. The
+seam's deinit (and now `move`) therefore acts on the temporary, and the
+corpus was verdict-neutral for a second reason, not the one I gave.
+*Why I was misled:* I reasoned from the interpreter's argument-passing
+code without looking at the MIR rustc emits for the call.
+
 [FACT, 2026-09-19] **The seam does the one-step version.** It COPIES the
 argument into a fresh callee local, so nothing aliases the caller's slot
 and the guard has nothing to guard. `emitSeamBind` therefore emits, after
@@ -76,6 +91,12 @@ uninit` needs the assign leaves to return `InvAt` at an intermediate
 state rather than `CompilerInv`, a refactor of every leaf's tail. The
 seam emission costs none of that and puts the semantics where Miri gives
 it meaning: the call site.
+
+[SUPERSEDED → move-is-a-temporary-unique-reborrow.md, 2026-09-20] The
+one-step version lasted a day. The user dropped the uninit write ("don't
+write uninit in memory for move; can we just clear sb") and asked for
+`move` as a mirlite rvalue; the deinit paragraph above describes the
+seam of 2026-09-19 only.
 
 ## Not modelled
 

@@ -2790,7 +2790,8 @@ theorem ref_chainsrc_borrow
           (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
           permsR.NextTag]
         [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase + pathOffset f)
-          resolved.allocSize s_mid.perms.NextTag] := by
+          resolved.allocSize s_mid.perms.NextTag] ∧
+      resolved.allocBase ≤ resolved.addr := by
   subst h_csD
   obtain ⟨dOut', n1, s_mid, tres, h_dval', h_dclean, h_drun, h_dpc, h_dmem,
     h_dpsim, h_dnt1, h_dnt2, h_dlbs, h_dentry, h_drt, h_dle, h_drange,
@@ -2833,7 +2834,7 @@ theorem ref_chainsrc_borrow
   refine ⟨_, s_mid, _, tgtPerms, rfl, rfl, h_incr_t, h_wf_t', h_tbd', h_psim',
     oseair_runN_trans h_drun h_run1, ?_, ?_, h_dprm, h_dregmono, h_dmem, h_dclean,
     h_rt_new,
-    ⟨⟨h_dbase, h_off_eq, rfl, h_rt_new, fun k hk => h_drange k hk⟩, trivial⟩⟩
+    ⟨⟨h_dbase, h_off_eq, rfl, h_rt_new, fun k hk => h_drange k hk⟩, trivial⟩, h_dle⟩
   · exact LocalBindingSim.placeRegMap_congr (by grind [emit])
       (LocalBindingSim.insert_fresh_reg
         (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_dlbs)

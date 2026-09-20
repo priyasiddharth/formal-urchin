@@ -275,6 +275,40 @@ def evalRExpr
                 values_len := readWordSeq_length state'.mem resolved.addr (blockSize τ)
                 state := state'
               }
+  | .move (τ := τ) src =>
+      -- `move` (2026-09-20): copy's value, and the source's borrow stacks
+      -- CLEARED — every item above the one the source resolves through is
+      -- gone — with the bytes left in place. Miri's in-place argument
+      -- passing (notes/durable/move-deinits-its-source-at-calls.md) is a
+      -- fresh PROTECTED `&mut` reborrow of the source, an uninit write
+      -- through it, and the tag thrown away; this is that minus the
+      -- protector (nothing aliases the source here) and minus the uninit
+      -- (the bytes stay — the user's call). What remains is a temporary
+      -- unique reborrow — the retag pops everything above the source's
+      -- own item — the read through it, and its retirement: three
+      -- permission events and no memory event, in lockstep with the
+      -- compiled `Borrow(Mut); Load; Die`.
+      match resolvePlaceAcc M state src with
+      | .error e => .err e
+      | .ok (resolved, permsR) =>
+          if resolved.addr + blockSize τ > resolved.allocBase + resolved.allocSize then
+            .err "move of an out-of-bounds range"
+          else
+          match M.ref permsR resolved.addr (blockSize τ) resolved.tag .Mut false [] with
+          | .error e => .err s!"move retag failed: {e}"
+          | .ok (permsM, tmpTag) =>
+          match M.read permsM resolved.addr (blockSize τ) tmpTag with
+          | .error e => .err s!"read access failed: {e}"
+          | .ok permsRd =>
+          match M.die permsRd resolved.addr (blockSize τ) tmpTag with
+          | .error e => .err s!"move retire failed: {e}"
+          | .ok perms' =>
+              let state' := { state with perms := perms' }
+              .ok {
+                values := readWordSeq state'.mem resolved.addr (blockSize τ)
+                values_len := readWordSeq_length state'.mem resolved.addr (blockSize τ)
+                state := state'
+              }
   | .uninit =>
       .ok { values := List.replicate (blockSize τ) MemValue.undef
             values_len := List.length_replicate

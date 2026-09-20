@@ -923,6 +923,84 @@ def g12_assign_if_roots_before_guard : IO Unit :=
      Instr.Halt]
     "g12 assignIf roots its destination before the guard"
 
+/-! ## `move` (2026-09-20): the value, and the source's stacks cleared -/
+
+/-- Golden: `y := move x` at a bare local is `Borrow(Mut); Load; Die` then
+    the store — the borrow lowering `&mut x` gets, read through, retired. -/
+def g13_move_local : IO Unit :=
+  expectCode ΓGR
+    [.assign dGR (.constInit 5),
+     .assign xGR (.move dGR),
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
+     Instr.CStore natTy [Val.Dat 5] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc natTy),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 0),
+     Instr.Assgn (Register.R 3) (Rhs.Load natTy (Register.R 2)),
+     Instr.Die (Register.R 2) 1,
+     Instr.RStore natTy (Register.R 3) (Register.R 1),
+     Instr.Halt]
+    "g13 move of a local"
+
+def ΓMV : Ctx := [natL, ptrNat, natL]
+def xMV : Place ΓMV natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pMV : Place ΓMV ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def yMV : Place ΓMV natL := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- Differential: a raw pointer into the source does not survive a move
+    of the source — the move's unique retag pops it — so the later read
+    through it is UB at the same statement on both machines. -/
+def d93_move_pops_raw_borrow : IO Unit :=
+  expectDiff ΓMV
+    [.assign xMV (.constInit 5),
+     .assign pMV (.ref (.Raw true) false [] xMV),
+     .assign yMV (.move xMV),
+     .assign yMV (.copy (.deref pMV))]
+    (.ub 3) "d93 move pops a raw borrow of its source"
+
+/-- Differential: the same through a `&mut`. -/
+def d94_move_pops_mut_borrow : IO Unit :=
+  expectDiff ΓMV
+    [.assign xMV (.constInit 5),
+     .assign pMV (.ref .Mut false [] xMV),
+     .assign yMV (.move xMV),
+     .assign (.deref pMV) (.constInit 1)]
+    (.ub 3) "d94 move pops a mut borrow of its source"
+
+/-- Differential: the bytes stay — a move does not deinit — so the owner
+    can still read the moved-from local, and the moved value arrived. -/
+def d95_move_keeps_bytes : IO Unit :=
+  expectDiff ΓMV
+    [.assign xMV (.constInit 5),
+     .assign yMV (.move xMV),
+     .assign yMV (.copy xMV),
+     .assign pMV (.ref .Mut false [] yMV),
+     .assign (.deref pMV) (.copy xMV),
+     .halt]
+    .ok "d95 move keeps the bytes, the owner still reads"
+
+/-- Differential: a move out of a PROJECTED place clears only that
+    field's stacks — a borrow of the sibling field survives. -/
+def d96_move_field_spares_sibling : IO Unit :=
+  expectDiff ΓB
+    [.assign fld0B (.constInit 1),
+     .assign fld1B (.constInit 2),
+     .assign pB (.ref .Mut false [] fld0B),
+     .assign tB (.move fld1B),
+     .assign (.deref pB) (.constInit 3),
+     .halt]
+    .ok "d96 move of a field spares the sibling's borrow"
+
+/-- Differential: ... and pops a borrow of the moved field itself. -/
+def d97_move_field_pops_own_borrow : IO Unit :=
+  expectDiff ΓB
+    [.assign fld0B (.constInit 1),
+     .assign fld1B (.constInit 2),
+     .assign pB (.ref .Mut false [] fld1B),
+     .assign tB (.move fld1B),
+     .assign (.deref pB) (.constInit 3)]
+    (.ub 4) "d97 move of a field pops the field's own borrow"
+
 /-- Differential: a write through a `ptrOffset`-derived raw pointer
     invalidates a shared borrow of the cell it lands on, and the later
     read through that borrow is UB — on BOTH machines, at the same
@@ -2216,6 +2294,55 @@ def d91_uninit_wide_and_through_ptr : IO Unit :=
      .assign wD91 (.copy s1D91)]
     .ok "d91 uninit at a wide layout and through a pointer"
 
+/-! ## The paper's running example
+
+`pldi27/mirlite-oseair-correctness.typ` executes this program in its stepwise
+tables (§2.2 source, §2.3 target, §2.4 compilation, §2.5 simulation).
+The golden pins the listing the paper prints; the differential pins the
+`ok` verdict. State dump: `notes/2026-09-18-paper-running-example.lean`.
+Change the paper in the same commit that changes either. -/
+def tripleTy := obseq.TyVal.TupTy [natTy, obseq.TyVal.TupTy [natTy, natTy]]
+
+def ΓP : Ctx :=
+  [obseq.LayoutTy.TupL [natL, obseq.LayoutTy.TupL [natL, natL]], ptrNat]
+def xP : Place ΓP (obseq.LayoutTy.TupL [natL, obseq.LayoutTy.TupL [natL, natL]]) :=
+  .local ⟨⟨0, by decide⟩, rfl⟩
+def yP : Place ΓP ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+/-- `x.0`. -/
+def x0P : Place ΓP natL := .proj xP (.field ⟨0, by decide⟩ .nil)
+/-- `x.1.0` as nested projections (the elaborator's shape). -/
+def x10P : Place ΓP natL :=
+  .proj (.proj xP (.field ⟨1, by decide⟩ .nil)) (.field ⟨0, by decide⟩ .nil)
+
+def paperProg : Prog ΓP :=
+  [.assign x0P (.constInit 5),
+   .assign x10P (.constInit 42),
+   .assign yP (.ref .Mut false [] x10P),
+   .assign (.deref yP) (.constInit 7),
+   .halt]
+
+/-- One root allocation, a zero-offset store through it, a route borrow
+    of the FINAL field width at the composed offset (`x.1.0`, not `x.1`),
+    an escaping borrow that is not died, and a loaded pointer that is not
+    died either. -/
+def g14_paper_running_example : IO Unit :=
+  expectCode ΓP paperProg
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc tripleTy),
+     Instr.CStore natTy [Val.Dat 5] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 1),
+     Instr.CStore natTy [Val.Dat 42] (Register.R 1),
+     Instr.Die (Register.R 1) 1,
+     Instr.Assgn (Register.R 2) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 3) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 1),
+     Instr.RStore pTy (Register.R 3) (Register.R 2),
+     Instr.Assgn (Register.R 4) (Rhs.Load pTy (Register.R 2)),
+     Instr.CStore natTy [Val.Dat 7] (Register.R 4),
+     Instr.Halt]
+    "g14 the paper's running example"
+
+def d92_paper_running_example : IO Unit :=
+  expectDiff ΓP paperProg .ok "d92 the paper's running example"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2230,6 +2357,7 @@ def allTests : List (IO Unit) := [
   g11_assign_if_skip,
   g12_ptr_offset_prescaled,
   g13_ref_slice,
+  g14_paper_running_example,
   d1_owner_read_pops_mut,
   d2_deref_roundtrip,
   d3_field_borrow,
@@ -2267,6 +2395,12 @@ def allTests : List (IO Unit) := [
   rs_mut_slice_retag_pops_projection_borrow,
   rs_guarded_fresh_root_then_write,
   g12_assign_if_roots_before_guard,
+  g13_move_local,
+  d93_move_pops_raw_borrow,
+  d94_move_pops_mut_borrow,
+  d95_move_keeps_bytes,
+  d96_move_field_spares_sibling,
+  d97_move_field_pops_own_borrow,
   d34_deref_dst_temp_killed_by_rhs_spine,
   d35_self_copy_is_ok,
   d36_field_copy_nonzero_offset,
@@ -2324,7 +2458,8 @@ def allTests : List (IO Unit) := [
   d88_ref_plain_deref_src_into_projdst,
   d89_ref_two_mothers,
   d90_ref_projderef_dst_two_mothers,
-  d91_uninit_wide_and_through_ptr]
+  d91_uninit_wide_and_through_ptr,
+  d92_paper_running_example]
 
 def runAll : IO Unit := do
   allTests.forM id

@@ -121,6 +121,7 @@ deriving Repr, BEq, Inhabited
     `fnRef` is a reified function pointer (tracked statically). -/
 inductive URvalue
 | use (op : UOperand)
+| move (p : UPlace)   -- mirlite `move`: the value, and the source's stacks cleared (seam-emitted at moved call args)
 | ref (kind : URefKind) (prot : Bool) (p : UPlace)
 | aggregate (variant? : Option Nat) (ops : List UOperand)
 | exposeAddr (p : UPlace)

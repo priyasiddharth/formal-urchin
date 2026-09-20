@@ -2002,4 +2002,216 @@ theorem sb_die_expose_comm {ap q : AccessPerms} {addr : Word} {len : Nat}
     rw [h_ex]
     exact sb_die_exposed_inert _ h
 
+
+/-! ## `sb_die` transport (2026-09-20)
+
+The first place mirlite kills a tag: `move` mints a temporary unique
+reborrow of its source, reads through it, and retires it — three events
+in lockstep with the compiled `Borrow(Mut); Load; Die`. Read and ref had
+transports; die gets one here. -/
+
+/-- The per-cell op of `sb_die`, in the content form the fold lemmas take. -/
+theorem die_content_form
+    {P : List (List Tag)} {E : List Tag}
+    (t : Tag) (ap : AccessPerms) (a : Word)
+    (h_pf : ap.protFrames = P) (_h_ex : ap.exposed = E) :
+    (match ap.StackMap.find? a with
+      | none => Except.error s!"sb-die: no borrow stack at address {a}"
+      | some stack =>
+          match dieCellContent ap.protFrames t stack with
+          | .error e => Except.error e
+          | .ok below => Except.ok { ap with StackMap := ap.StackMap.set a below }) =
+      match SB.find? ap.StackMap a with
+      | none => Except.error s!"sb-die: no borrow stack at address {a}"
+      | some stack =>
+        match dieCellContent P t stack with
+        | .error e => Except.error e
+        | .ok v => Except.ok { ap with StackMap := SB.set ap.StackMap a v } := by
+  subst h_pf
+  rfl
+
+/-- Inversion of a successful `dieCellContent`: the top item carries the
+    tag, is not the root, and is unprotected; the result is the rest. -/
+theorem dieCellContent_cons_inv {pf : List (List Tag)} {t : Tag} {item : Item}
+    {below w : BorrowStack}
+    (h : dieCellContent pf t (item :: below) = .ok w) :
+    item.tag = t ∧ (∀ t0, item ≠ .Own t0) ∧ isProtectedIn pf t = false ∧ w = below := by
+  simp only [dieCellContent] at h
+  by_cases h_eq : item.tag = t
+  · have h_beq : (item.tag == t) = true := beq_iff_eq.mpr h_eq
+    rw [if_pos h_beq] at h
+    cases item with
+    | Own t0 => simp at h
+    | MutRef t0 =>
+        simp only [Item.tag] at h_eq h ⊢
+        subst h_eq
+        by_cases h_np : isProtectedIn pf t0 = true
+        · rw [if_pos h_np] at h; simp at h
+        · rw [if_neg h_np] at h
+          cases h
+          exact ⟨rfl, (fun _ h => by cases h), (by simpa using h_np), rfl⟩
+    | Ref t0 =>
+        simp only [Item.tag] at h_eq h ⊢
+        subst h_eq
+        by_cases h_np : isProtectedIn pf t0 = true
+        · rw [if_pos h_np] at h; simp at h
+        · rw [if_neg h_np] at h
+          cases h
+          exact ⟨rfl, (fun _ h => by cases h), (by simpa using h_np), rfl⟩
+    | RawPtr m t0 =>
+        simp only [Item.tag] at h_eq h ⊢
+        subst h_eq
+        by_cases h_np : isProtectedIn pf t0 = true
+        · rw [if_pos h_np] at h; simp at h
+        · rw [if_neg h_np] at h
+          cases h
+          exact ⟨rfl, (fun _ h => by cases h), (by simpa using h_np), rfl⟩
+    | Disabled t0 =>
+        simp only [Item.tag] at h_eq h ⊢
+        subst h_eq
+        by_cases h_np : isProtectedIn pf t0 = true
+        · rw [if_pos h_np] at h; simp at h
+        · rw [if_neg h_np] at h
+          cases h
+          exact ⟨rfl, (fun _ h => by cases h), (by simpa using h_np), rfl⟩
+  · have h_beq : (item.tag == t) = false := by simpa using h_eq
+    rw [if_neg (by simp [h_beq])] at h
+    simp at h
+
+/-- The converse: a top item carrying the tag, not the root, unprotected,
+    dies to the rest. -/
+theorem dieCellContent_cons_eq (pf : List (List Tag)) (t : Tag) (item : Item)
+    (below : BorrowStack)
+    (h_t : item.tag = t) (h_no : ∀ t0, item ≠ .Own t0) (h_np : isProtectedIn pf t = false) :
+    dieCellContent pf t (item :: below) = .ok below := by
+  have h_beq : (item.tag == t) = true := beq_iff_eq.mpr h_t
+  simp only [dieCellContent]
+  rw [if_pos h_beq]
+  cases item with
+  | Own t0 => exact absurd rfl (h_no t0)
+  | MutRef t0 =>
+      simp only [Item.tag] at h_t ⊢; subst h_t
+      rw [if_neg (by simp [h_np])]
+  | Ref t0 =>
+      simp only [Item.tag] at h_t ⊢; subst h_t
+      rw [if_neg (by simp [h_np])]
+  | RawPtr m t0 =>
+      simp only [Item.tag] at h_t ⊢; subst h_t
+      rw [if_neg (by simp [h_np])]
+  | Disabled t0 =>
+      simp only [Item.tag] at h_t ⊢; subst h_t
+      rw [if_neg (by simp [h_np])]
+
+/-- `dieCellContent` transports along `StackSim`: the top item's tag and
+    constructor are preserved by `ItemSim`, and protection by the frame
+    relation. -/
+theorem dieCellContent_transport
+    {ρt : TagRenameMap} {pfS pfT : List (List Tag)}
+    {tagS tagT : Tag} {v v' : BorrowStack} {w : BorrowStack}
+    (h_wf : TagRenameWF ρt)
+    (h_pf : ListRel (TagListSim ρt) pfS pfT)
+    (h_t : ρt tagS = some tagT)
+    (h_v : StackSim ρt v v')
+    (h_ok : dieCellContent pfS tagS v = .ok w) :
+    ∃ w', dieCellContent pfT tagT v' = .ok w' ∧ StackSim ρt w w' := by
+  cases v with
+  | nil => simp [dieCellContent] at h_ok
+  | cons item below =>
+    cases v' with
+    | nil => exact absurd h_v (by simp [StackSim, ListRel])
+    | cons item' below' =>
+      obtain ⟨h_item, h_below⟩ := h_v
+      obtain ⟨h_eq, h_no, h_np, rfl⟩ := dieCellContent_cons_inv h_ok
+      have h_tag_rel : ρt item.tag = some item'.tag := ItemSim.tag_rel h_item
+      have h_tagT : item'.tag = tagT := by
+        rw [h_eq] at h_tag_rel
+        exact Option.some.inj (h_tag_rel.symm.trans h_t)
+      have h_prot := isProtectedIn_transport h_wf h_tag_rel h_pf
+      rw [h_eq, h_tagT] at h_prot
+      have h_no' : ∀ t0, item' ≠ .Own t0 := by
+        intro t0 h0
+        subst h0
+        cases item with
+        | Own t1 => exact absurd rfl (h_no t1)
+        | MutRef _ | Ref _ | RawPtr _ _ | Disabled _ => simp [ItemSim] at h_item
+      exact ⟨below', dieCellContent_cons_eq pfT tagT item' below' h_tagT h_no'
+        (h_prot.trans h_np), h_below⟩
+
+/-- `sb_die` transports along `PermSim`: the source killing a tag that is
+    on top of every cell of the range means the target can kill its image,
+    and the results are related. NextTag, frames and exposed set are
+    untouched on both sides. -/
+theorem sb_die_respects_PermSim
+    {ρt : TagRenameMap} {src tgt src' : AccessPerms}
+    {addr : Word} {len : Nat} {tagS tagT : Tag}
+    (h_sim : PermSim ρt src tgt)
+    (h_wf : TagRenameWF ρt)
+    (h_tag : ρt tagS = some tagT)
+    (h_src : sb_die src addr len tagS = .ok src') :
+    ∃ tgt', sb_die tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' ∧
+      src'.NextTag = src.NextTag ∧ tgt'.NextTag = tgt.NextTag := by
+  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
+  have h_src0 : foldCells
+      (fun ap a =>
+        match ap.StackMap.find? a with
+        | none => Except.error s!"sb-die: no borrow stack at address {a}"
+        | some stack =>
+            match dieCellContent ap.protFrames tagS stack with
+            | .error e => Except.error e
+            | .ok below => Except.ok { ap with StackMap := ap.StackMap.set a below })
+      src (addr + 0) len = .ok src' := h_src
+  obtain ⟨V, W, h_cells, h_src'⟩ :=
+    foldCells_ok_inv
+      (C := fun _ stack => dieCellContent src.protFrames tagS stack)
+      (msgNone := fun a => s!"sb-die: no borrow stack at address {a}")
+      (P := src.protFrames) (E := src.exposed) (N := src.NextTag)
+      (fun ap a h_pf h_ex _ => die_content_form tagS ap a h_pf h_ex)
+      len 0 src src' rfl rfl rfl h_src0
+  have h_pkg : ∀ j, ∃ vj, ∃ wj, j < len →
+      SB.find? tgt.StackMap (addr + j) = some vj ∧
+        dieCellContent tgt.protFrames tagT vj = .ok wj ∧
+        StackSim ρt (W j) wj := by
+    intro j
+    by_cases hj : j < len
+    · have hc := h_cells j (Nat.zero_le j) (by omega)
+      obtain ⟨s', h_find', h_ss⟩ := SB.find?_transport h_stacks hc.1
+      obtain ⟨w', h_w', h_ws⟩ :=
+        dieCellContent_transport h_wf h_prot h_tag h_ss hc.2
+      exact ⟨s', w', fun _ => ⟨h_find', h_w', h_ws⟩⟩
+    · exact ⟨[], [], fun h => absurd h hj⟩
+  have h_pkg' : ∀ j, j < len →
+      SB.find? tgt.StackMap (addr + j) = some ((h_pkg j).choose) ∧
+        dieCellContent tgt.protFrames tagT ((h_pkg j).choose)
+          = .ok ((h_pkg j).choose_spec.choose) ∧
+        StackSim ρt (W j) ((h_pkg j).choose_spec.choose) :=
+    fun j hj => (h_pkg j).choose_spec.choose_spec hj
+  have h_tgt : foldCells
+      (fun ap a =>
+        match ap.StackMap.find? a with
+        | none => Except.error s!"sb-die: no borrow stack at address {a}"
+        | some stack =>
+            match dieCellContent ap.protFrames tagT stack with
+            | .error e => Except.error e
+            | .ok below => Except.ok { ap with StackMap := ap.StackMap.set a below })
+      tgt (addr + 0) len =
+      .ok { tgt with StackMap := setChain tgt.StackMap (chain (fun j => (h_pkg j).choose_spec.choose) addr 0 (0 + len)) } :=
+    foldCells_ok_of_cells
+      (C := fun _ stack => dieCellContent tgt.protFrames tagT stack)
+      (msgNone := fun a => s!"sb-die: no borrow stack at address {a}")
+      (P := tgt.protFrames) (E := tgt.exposed) (N := tgt.NextTag)
+      (fun ap a h_pf h_ex _ => die_content_form tagT ap a h_pf h_ex)
+      len 0 tgt (fun j => (h_pkg j).choose)
+      (fun j => (h_pkg j).choose_spec.choose)
+      rfl rfl rfl
+      (fun j h1 h2 => (h_pkg' j (by omega)).1)
+      (fun j h1 h2 => (h_pkg' j (by omega)).2.1)
+  rw [show (0 : Nat) + len = len from Nat.zero_add len] at h_tgt
+  refine ⟨_, h_tgt, ?_, ?_, rfl⟩
+  · rw [h_src']
+    rw [show (0 : Nat) + len = len from Nat.zero_add len]
+    exact ⟨setChain_chain_respects h_stacks
+        (fun j h1 h2 => (h_pkg' j h2).2.2),
+      h_prot, h_exp, h_next⟩
+  · rw [h_src']
+
 end obseq3.proof

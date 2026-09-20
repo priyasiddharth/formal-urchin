@@ -76,6 +76,9 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
   | .use (.copy p) | .use (.move p) => do
       let ⟨τ, pl⟩ ← elabPlace Γ p
       return ⟨τ, .copy pl⟩
+  | .move p => do
+      let ⟨τ, pl⟩ ← elabPlace Γ p
+      return ⟨τ, .move pl⟩
   | .use (.unsupported d) => .error s!"unsupported: {d}"
   | .ref kind prot p => do
       let ⟨τ, pl⟩ ← elabPlace Γ p

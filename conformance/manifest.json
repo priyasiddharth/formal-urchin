@@ -1750,6 +1750,46 @@
       },
       "provenance": "local-model-reasoned; pending real-Miri verification",
       "notes": "Split borrows: all three fields of (u64,u64,u64) mutably borrowed simultaneously, writes interleaved. Falls out of per-cell stacks (disjoint ranges, disjoint stacks); no other suite coverage of borrow COEXISTENCE. Companion Lean-level scenarios pinned as compile_tests d27-d29 (parent-write cell-wise kill is not expressible in safe Rust -- borrowck rejects it, which is the point)."
+    },
+    {
+      "id": "local/move_arg_via_temp_spares_raw",
+      "artifact": "local/move_arg_via_temp_spares_raw.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-20",
+      "notes": "Moving a named local into a call does NOT invalidate borrows of it: rustc moves through a temporary (`_4 = move _1; consume(move _4)`), so Miri's in-place protection hits the temporary. The seam lowers the call-arg move as mirlite `move` of the temporary and the assignment move as a copy; the raw pointer into `s` survives on both machines. Corrects the 2026-09-19 note that predicted a mismatch here."
+    },
+    {
+      "id": "local/move_arg_ok",
+      "artifact": "local/move_arg_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-20",
+      "notes": "Positive `move`: a non-Copy value moved into a call arrives; a raw pointer into an unrelated local is untouched."
+    },
+    {
+      "id": "local/assign_move_keeps_borrows",
+      "artifact": "local/assign_move_keeps_borrows.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-20",
+      "notes": "An assignment `let t = s;` is `Operand::Move` evaluated as a copy (rustc interpreter, with a FIXME); the raw pointer into `s` survives."
+    },
+    {
+      "id": "local/move_arg_field_spares_sibling",
+      "artifact": "local/move_arg_field_spares_sibling.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-20",
+      "notes": "Moving one field into a call (through rustc's temporary) leaves a raw pointer into the sibling field valid."
     }
   ]
 }

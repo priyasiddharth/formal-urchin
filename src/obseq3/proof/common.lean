@@ -93,6 +93,7 @@ def compileProgFrom
 def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .constInit _ => True
   | .copy _ => True
+  | .move _ => True
   | .ref _ _ _ _ => True
   | .uninit => True
   | .exposeAddr _ => True
@@ -3075,6 +3076,12 @@ theorem compileRExprPreChecked_placeRegMap_any {Γ : Ctx} {τ : LayoutTy} (rhs :
       have ih := placeToBorrowRegChecked_placeRegMap_any kind prot mask src cs
       simp only [compileRExprPreChecked, csMonad]
       split <;> simp [ih]
+  | move src =>
+      have ih := placeToBorrowRegChecked_placeRegMap_any RefKind.Mut false [] src cs
+      simp only [compileRExprPreChecked, csMonad]
+      split
+      · simp [csMonad, csRun, emit_placeRegMap, ih]
+      · exact ih
 
 /-- `ensureLocalRegE` leaves its local mapped at the register it returns. -/
 theorem ensureLocalRegE_maps {Γ : Ctx} {τ : LayoutTy} (loc : Local Γ τ) (cs : CompilerState) :

@@ -4,6 +4,87 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-20 — `move` Is a Temporary Unique Reborrow
+
+Two days of `move`. The user asked for it as a mirlite rvalue doing
+three things: copy the value, deinit the source, clear its borrow
+stacks. Costed, the deinit was the expensive part — an rvalue whose
+pre-phase writes memory breaks the contract every destination leaf
+relies on, and the store that follows would need register preservation
+threaded through every leaf. Then the user dropped it: *don't write
+uninit; can we just clear sb.* With no memory event the rvalue fits the
+existing package shape exactly.
+
+What "clear" is, operationally, on both machines: mint a temporary
+unique reborrow of the source — the retag pops everything above the
+item the source resolves through — read through it, kill it. The
+compiled code is literally that: `Borrow(Mut); Load; Die`, the lowering
+`&mut src` already gets plus a load and its own cleanup. Because the
+two machines perform the same three permission events, the proof is
+three transports composed: the ref mother lemma for the mint, the read
+transport, and a new die transport — the first time mirlite kills a
+tag. A generic congruence fell out on the way: a statement's lowering
+depends on its rvalue only through the pre-phase's run, store and
+post-cleanup, so one lemma does what six per-destination lemmas did
+for copy and ref.
+
+The tests corrected me. Yesterday I claimed that a Rust program moving
+a local into a call and then reading it through an older raw pointer
+was a latent mismatch with Miri. With the pinned toolchain installed
+and real Miri run: OK, the read prints the old value. rustc moves a
+named place into a call through a temporary — `_4 = move _1;
+consume(move _4)` — and the assignment move is a copy, so Miri's
+in-place protection hits the temporary and nothing can observe it.
+Miri's own in-place tests are custom MIR for exactly this reason. Four
+local witnesses, all `ok`, Charon-generated and Miri-verified, now pin
+this; the seam's `move` acts on the temporary. Units 116/116, corpus
+86/0/41, differential 86 matched, audit unchanged.
+
+---
+
+## 2026-09-18 — The Paper Takes The OOPSLA Layout, And Its Example Is Executed
+
+The Typst paper moved to `pldi27/` and was restructured after
+`oopsla26/opsem.tex`: for Stacked Borrows, MIRLite, OSEA-IR and the
+compiler alike, syntax is one grammar | configuration | types figure,
+semantics is one Premises | Conclusion | Rule Name table whose rule names
+the prose cites, and the example is a stepwise post-state table. Stacked
+Borrows now comes first as its own subsection; the Notation table and the
+Overview section are gone; everything beyond const / copy / ref / assign /
+halt sits in an appendix in the same table format.
+
+The running example used to be one statement, `x.1.0 := 42`, against an
+*assumed* pre-state at address 100 with symbolic tags. It is now a
+five-statement program — `x.0 := 5; x.1.0 := 42; y := &mut x.1.0;
+*y := 7; halt` — run from the empty state on both machines by
+`notes/2026-09-18-paper-running-example.lean`, and pinned as witnesses
+`g14` (golden listing) and `d92` (differential). Statement 0 derives the
+pre-state the old text assumed; statement 1 is the old example; statement
+2 is where the renaming stops being decorative, because the route borrow
+of statement 1 advanced only the target counter, so the source mints tags
+2 and 3 where the target mints 3 and 4.
+
+Writing the tables from the code rather than from the old text turned up
+how far the paper had drifted. The theorem's scope was understated by a
+wide margin: `CoreRhs` is total and `CoreStmt` excludes only `alloc` and
+`dealloc`, where the paper still said const / copy / ref. The local
+destination fast path, `borrowRest`, the `memcpy` lowering of `ptrCast`,
+the dry-run guard and the pointer-reading `skipIf` were all described and
+all gone. And the address renaming is the total identity from the initial
+state on (`AllocLockstep`), not a partial map that grows block by block.
+
+At the user's direction the correctness section now defines only the
+machinery needed to state the theorems and states them; proof sketches
+and the two proof lemmas were removed, and the Mechanization section
+gives totals only (about 17.7k lines, 426 lemmas).
+
+One tooling trap: `lake build Core Obseq3 Obseq3Proof Conformance` does
+not relink `sb_conformance`, so `--unit` reported 108/108 with 110 tests
+in the file until `lake build sb_conformance`. CLAUDE.md now says so, and
+its stale 104 is corrected.
+
+---
+
 ## 2026-09-18 — One Assign Lowering, For Locals Too
 
 Yesterday's commit message claimed the statement compiler's assign arm

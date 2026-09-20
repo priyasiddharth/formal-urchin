@@ -95,6 +95,7 @@ def Place.depth : Place Γ τ → Nat
 inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | constInit : Word → RExpr Γ obseq.LayoutTy.NatL
 | copy : Place Γ τ → RExpr Γ τ
+| move : Place Γ τ → RExpr Γ τ
 | ref : RefKind → Bool → List Bool → Place Γ τ → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | ptrCast : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | ptrOffset : Place Γ (obseq.LayoutTy.PtrL σ) → Int → RExpr Γ (obseq.LayoutTy.PtrL τ)

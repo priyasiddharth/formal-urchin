@@ -47,7 +47,8 @@ all upstream and unverified — `compile_correct` starts from whatever
 **1. The `CoreProg` gate.** [As of 2026-09-17] `CoreStmt` admits
 `halt`, `assign dst rhs` and `assignIf discr val dst rhs` with
 `CoreRhs rhs`, `pushProtectors` and `popProtectors`; `CoreRhs` is
-TOTAL (every `RExpr` constructor; `refSlice` was the last, 2026-09-16).
+TOTAL (every `RExpr` constructor; `refSlice` joined 2026-09-16, and
+`move`, added to the language on 2026-09-20, joined the same day).
 Excluded: `alloc` and `dealloc` only. They are implemented and exercised
 by the conformance corpus; the theorem discharges them with `absurd
 h_stmt_core`.

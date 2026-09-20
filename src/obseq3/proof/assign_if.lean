@@ -359,6 +359,9 @@ theorem assignLeaf_core {τ : LayoutTy} (compProg : oseair.Prog)
   | copy src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_readrhs compProg (copy_readRhsFamily compProg) h_invAt hF h_step
+  | move src =>
+      intro _ _ _ _ _ _ _ _ h_invAt hF h_step
+      exact assignStep_move compProg h_invAt hF h_step
   | ref kind prot mask src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_ref kind prot mask compProg h_invAt hF h_step

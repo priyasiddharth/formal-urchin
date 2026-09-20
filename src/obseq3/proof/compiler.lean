@@ -430,6 +430,8 @@ theorem CompilerInv_step
             exact CompilerInv_step_constWrite compProg v h_comp h_inv h_get h_step
         | copy src =>
             exact CompilerInv_step_copy compProg h_comp h_inv h_get h_step
+        | move src =>
+            exact CompilerInv_step_move compProg h_comp h_inv h_get h_step
         | ref kind prot mask src =>
             exact CompilerInv_step_ref kind prot mask compProg h_comp h_inv h_get h_step
         | ptrCast src =>

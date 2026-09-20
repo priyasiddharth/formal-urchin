@@ -3968,3 +3968,115 @@ lines. parked.md entry marked RESOLVED; journal [HYP] confirmed by an
 - The statement gate is `alloc`/`dealloc` only.
 - loose-ends/parked.md — "Does `ptrOffset`'s deferred UB ever diverge
   from Miri?" (~1h, needs a Miri toolchain).
+
+## 2026-09-18 — the paper takes the OOPSLA layout; its example is executed
+
+**Theme:** the user pointed at `oopsla26/` and asked to move the Typst
+paper to that design — syntax; semantics; example. Then, mid-session:
+move the paper to `pldi27/`; make correctness follow the Lean; and, when
+asked how much proof to show, "just state the theorem, define the
+machinery needed to state it", no bug anecdote, size totals only.
+
+**Key outputs:** `pldi27/mirlite-oseair-correctness.{typ,pdf}` (moved
+with `git mv`; 22 pages). New Typst helpers `bnf`/`prod`/`grammarfig`,
+`ruletable`/`ir`/`rn` (rule names bound to identifiers), `statetable`,
+colour-boxed judgment arrows. Outline: Introduction; §2 Compiling (2.1
+Stacked Borrows, 2.2 MIRLite, 2.3 OSEA-IR, 2.4 Compiler, 2.5
+Correctness); §3 Mechanization and scope; Appendix A the full executable
+surface. `notes/2026-09-18-paper-running-example.lean` (state dump of
+the five-statement running program); witnesses `g14_paper_running_example`
+and `d92_paper_running_example`; CLAUDE.md (paper pointer, 110 count,
+relink trap); dev-log entry.
+
+**[OBS] Drift found between the old paper and HEAD**, all fixed in the
+text: theorem scope (`CoreRhs` total, `CoreStmt` minus `alloc`/`dealloc`);
+the deleted local fast path; `borrowRest` → `borrow(…,⊥,…)`; `ptrCast` is
+load+store, the compiler emits no `memcpy`; `skipIf` tests a register
+loaded by a real read; the guard reserves and patches its label and roots
+its destination first; ρa is the TOTAL identity (`AllocLockstep`,
+`initialAddrRename`); `LocalBindingSim` requires non-wildcard tags.
+
+**[OBS] Typst traps hit:** `rho_a(a)` parses as subscript `a(a)` — write
+`rho_a (a)`; `rho_a'` puts the prime in the subscript — write `rho'_a`;
+`arrow.b.double_p`, `tack_k`, `approx_(..)^(..)` stack their scripts —
+wrap in `scripts(...)`; `#name;` swallows the semicolon — write
+`#name\;`; a function parameter named `left` shadows the alignment.
+
+**Status:** complete, uncommitted. Four suites green after
+`lake build sb_conformance` (17/17, 110/110, 82/0/41, 82 matched); audit
+unchanged at propext / Classical.choice / Quot.sound, zero sorries. No
+proof file touched.
+
+**Next-session pickup candidates:**
+- The paper has no bibliography yet (Jung et al. is cited in prose only)
+  and no related-work or conclusion section; `oopsla26/` has both to
+  adapt.
+- The source-side rules for the appendix expressions are described in
+  one paragraph, not tabulated; a `tab:surface-mir` would complete the
+  symmetry.
+- The statement gate is `alloc`/`dealloc` only.
+
+## 2026-09-19 — `move`: Miri's in-place passing, and the seam's one-step version
+
+**Theme:** the user asked to add `move` to mirlite and whether a move
+should zero out the borrow stack. Investigated against rustc/Miri
+sources (fetched, quoted in the durable note): assignment move = copy;
+call-argument move = protected reborrow + uninit write, whose protector
+licenses pass-by-pointer codegen. The user pushed back on transcribing
+the protector ("why not copy and then write uninit through an owning
+pointer") — right for our model, which copies arguments: the seam now
+emits `src := uninit` after binding a moved argument at an inlined call.
+
+**Key outputs:** lowering.lean `emitSeamBind`;
+durable/move-deinits-its-source-at-calls.md (Miri facts, the
+optimisation rationale, the three rejected ways of making `move` a
+mirlite surface operation); journal/2026-09/2026-09-19-move-deinit-at-calls.md.
+
+**Decision:** `move` is not a mirlite surface operation (recorded with
+costs in the durable note).
+
+**Status:** complete. One commit (seam + notes only — the working tree
+also carried another session's paper/test changes, left uncommitted).
+Four suites green, verdict-neutral; audit untouched (no proof change).
+
+**Next-session pickup candidates:**
+- [OPEN] a Charon-backed corpus test for the move deinit (journal entry).
+- The statement gate is `alloc`/`dealloc` only.
+
+## 2026-09-20 — `move` as a mirlite rvalue (clear, no deinit); real Miri and Charon installed
+
+**Theme:** the user asked for `move` as an rvalue (copy, uninit through
+the owner, clear SB), then dropped the uninit. Landed: `RExpr.move`
+with mint/read/die semantics, lockstep compilation `Borrow(Mut); Load;
+Die`, full proof (`CoreRhs` admits it; `sb_die_respects_PermSim` new;
+`RefSrcShape` extended; `compileAssignChecked_congr_pre` generic), the
+seam binding moved call arguments with it, six unit tests, four
+Charon/Miri local witnesses.
+
+**Critical correction (by test, not by the user):** yesterday's durable
+claim that a moved-then-raw-read program was a pass-vs-Miri mismatch is
+false — rustc moves a named local into a call through a temporary, so
+the in-place protection is unobservable. Superseded in
+move-deinits-its-source-at-calls.md; the 2026-09-19 journal [OPEN]
+closed with the correction.
+
+**Toolchains:** nightly-2026-06-01 (+miri) installed via rustup; Charon
+nightly-2026.08.14 prebuilt in conformance/tools/ (gitignored). Miri runs
+from a scratch cargo crate; Charon per conformance/scripts/gen_charon.sh.
+
+**Key outputs:** syntax/mirlite_semantics/compile.lean; elab/lowering/
+ullbc_ast.lean (`URvalue.move`); proof/{permsim_transport, spine (one
+conjunct), ref, common, compiler, assign_if}.lean; compile_tests g13,
+d93–d97; conformance/local/*.rs ×4 + charon/local/*.json + manifest;
+durable/move-is-a-temporary-unique-reborrow.md; journal
+2026-09-20-move-rvalue.md; dev-log entry.
+
+**Status:** complete. One commit (my files + the two shared note files;
+the other session's paper/CLAUDE.md/test edits left uncommitted). Four
+suites green; audit unchanged.
+
+**Next-session pickup candidates:**
+- Retire copy's and ref's six per-destination flatten congruences
+  against `compileAssignChecked_congr_pre` (~1h, pure deletion).
+- The statement gate is `alloc`/`dealloc` only.
+

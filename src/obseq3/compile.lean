@@ -525,6 +525,10 @@ inductive RExprToEvidence {Γ : Ctx}
       (src : Place Γ σ) (srcRes : PtrResult)
       (srcEv : PlaceToBorrowRegEvidence kind src srcRes) :
       RExprToEvidence dstPtr (.ref kind prot mask src)
+  | move
+      {τ : LayoutTy} (src : Place Γ τ) (srcRes : PtrResult)
+      (srcEv : PlaceToBorrowRegEvidence RefKind.Mut src srcRes) :
+      RExprToEvidence dstPtr (.move src)
   | uninit {τ : LayoutTy} :
       RExprToEvidence dstPtr (.uninit (τ := τ))
   | exposeAddr
@@ -625,6 +629,23 @@ def compileRExprPreChecked
         store := fun dstPtr => [Instr.RStore obseq.TyVal.PTy srcRes.reg dstPtr],
         postCleanup := [],
         ev := fun _ => RExprToEvidence.ref kind prot mask src srcRes srcOut.evidence
+      }
+  | .move (τ := τ) src => do
+      -- the source borrowed UNIQUELY — the same lowering `&mut src` gets,
+      -- and the retag is the clear: every item above the source's own is
+      -- popped — the value loaded through the temporary, and the
+      -- temporary retired (the borrow lowering's own cleanup is the
+      -- `Die`). Memory untouched. Lockstep with mirlite's `.move`.
+      let srcOut ← placeToBorrowRegChecked RefKind.Mut false [] src
+      let srcRes := srcOut.result
+      let tmpReg ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM ([Instr.Assgn tmpReg (Rhs.Load (layoutToTyVal τ) srcRes.reg)]
+          ++ cleanupInstrs srcRes.cleanup))
+      pure {
+        store := fun dstPtr => [Instr.RStore (layoutToTyVal τ) tmpReg dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.move src srcRes srcOut.evidence
       }
   | .uninit =>
       -- mirlite fills the destination with `blockSize τ` undef cells via a
