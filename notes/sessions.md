@@ -4081,8 +4081,19 @@ decision; the congruence retirement (see the next entry if present).
 The other session's paper/CLAUDE.md edits left uncommitted. Four suites
 green; audit unchanged.
 
+**Later still (user):** the flatten congruences retired —
+`compileAssignChecked_congr_pre` moved to common.lean; copy's read
+family gets `readRhsShape_flatten_pre` (stated at any `X` the flattened
+source equals, so nothing is rewritten under evidence-indexed binders)
+and ref gets `compileRExprPreChecked_ref_flatten`; the two dispatchers
+take one congruence each; 28 lemmas deleted (copy 16, ref 12), net
+about −840 lines. Four suites green, audit unchanged.
+
+**Open question put to the user:** "make sure both Miri and mirlite
+agree" vs "every move clears" — real Miri says OK on the two raw-read
+witnesses (rustc's temporary), so the two cannot both hold; ead4d08 is
+the one-commit toggle.
+
 **Next-session pickup candidates:**
-- Retire copy's and ref's six per-destination flatten congruences
-  against `compileAssignChecked_congr_pre` (~1h, pure deletion).
 - The statement gate is `alloc`/`dealloc` only.
 

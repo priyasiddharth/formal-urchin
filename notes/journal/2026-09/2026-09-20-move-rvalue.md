@@ -23,10 +23,18 @@ verified by Miri, differential 86 matched, audit unchanged.
 arithmetic") — witnesses must avoid runtime arithmetic on non-constant
 words; `(v, w)` is fine.
 
-[FACT 2026-09-20] `compileAssignChecked_congr_pre` (ref.lean): one
-generic statement-level congruence over rvalue pre-phases; the six
-per-destination flatten congruences of copy and ref could be retired
-against it (not done — no churn without need).
+[FACT 2026-09-20] `compileAssignChecked_congr_pre` (now common.lean): one
+generic statement-level congruence over rvalue pre-phases. Retired
+against it the same day (user's request): copy's 16 flatten lemmas
+(`compileStmt_readrhs_*flatten*`, `compileRExprToChecked_readrhs_*`,
+the two bridges) and ref's 12 (`compileStmt_ref_src_congr_*`,
+`compileStmt_ref_srcflatten_*`); replaced by `readRhsShape_flatten_pre`
+(copy.lean) and `compileRExprPreChecked_ref_flatten` (ref.lean), one
+pre-phase fact each. The one subtlety: state the read-family lemma at
+any `X` with `flattenPlace src = X` and `subst`, because rewriting
+`flattenPlace src` under the `ResultWithEvidence … (StmtEvidence …)`
+binder of a value-ok hypothesis is a dependent rewrite `simp` skips.
+Net about −840 lines.
 
 [FACT 2026-09-20, later] **User decision: every Move operand clears.**
 "The sb for the src should be zero so the test should fail mirlite

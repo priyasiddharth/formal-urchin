@@ -3176,4 +3176,47 @@ theorem compileStmt_local_value_iff {Γ : Ctx} {τ : LayoutTy} (loc : Local Γ �
       simp only [h_pv, csMonad]
       simp
 
+/-! ## One congruence for every destination (2026-09-20)
+
+A statement's lowering depends on its rvalue only through the
+pre-phase's run, store and post-cleanup: `compileAssignChecked` runs
+`ensurePlaceRoot`, the pre-phase, the destination lowering at the
+pre-phase's state, the store and the cleanups, and reads nothing else of
+the rvalue. So two rvalues agreeing there give the same statement run,
+for ANY destination, and value-ok transfers. This retired the six
+per-destination flatten congruences copy and ref each carried. -/
+theorem compileAssignChecked_congr_pre {Γ : Ctx} {τ : LayoutTy} (dst : Place Γ τ)
+    (rhs1 rhs2 : RExpr Γ τ)
+    (h_run : ∀ cs, CheckedCompilerM.run (compileRExprPreChecked rhs1) cs
+      = CheckedCompilerM.run (compileRExprPreChecked rhs2) cs)
+    (h_val : ∀ cs, (CheckedCompilerM.value (compileRExprPreChecked rhs1) cs).map
+        (fun p => (p.store, p.postCleanup))
+      = (CheckedCompilerM.value (compileRExprPreChecked rhs2) cs).map
+        (fun p => (p.store, p.postCleanup))) :
+    (∀ cs, CheckedCompilerM.run (compileStmtChecked (.assign dst rhs1)) cs
+      = CheckedCompilerM.run (compileStmtChecked (.assign dst rhs2)) cs) ∧
+    (∀ cs so, CheckedCompilerM.value (compileStmtChecked (.assign dst rhs2)) cs = Except.ok so →
+      ∃ so', CheckedCompilerM.value (compileStmtChecked (.assign dst rhs1)) cs = Except.ok so') := by
+  constructor
+  · intro cs
+    simp only [compileStmtChecked, compileAssignChecked, csMonad]
+    rcases exceptMap_agree (h_val (CompilerM.run (ensurePlaceRoot dst) cs))
+      with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
+    · simp only [h1, h2]; exact h_run _
+    · obtain ⟨h_s, h_pc⟩ := Prod.mk.inj h_res
+      simp only [h1, h2, h_s, h_pc, h_run]
+  · intro cs so h_so
+    simp only [compileStmtChecked, compileAssignChecked, csMonad] at h_so ⊢
+    rcases exceptMap_agree (h_val (CompilerM.run (ensurePlaceRoot dst) cs))
+      with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
+    · exfalso; rw [h2] at h_so; simp at h_so
+    · obtain ⟨h_s, h_pc⟩ := Prod.mk.inj h_res
+      simp only [h2] at h_so
+      simp only [h1, h_s, h_pc, h_run]
+      cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Mut dst)
+          (CheckedCompilerM.run (compileRExprPreChecked rhs2)
+            (CompilerM.run (ensurePlaceRoot dst) cs)) with
+      | error eD => exfalso; simp only [hD] at h_so; simp at h_so
+      | ok oD => simp only [hD]; exact ⟨_, rfl⟩
+
 end obseq3.proof

@@ -726,278 +726,6 @@ lowering via the mother lemma's register-frame conjunct. -/
     whose result TYPE mentions the statement — such a rewrite is not
     type-correct. -/
 
-theorem compileStmt_ref_src_congr_local_run
-    {Γ : Ctx} {τ : LayoutTy}
-    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src1 src2 : Place Γ τ) (cs : CompilerState)
-    (h_agr : CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src1)
-        ((ensureLocalRegE dstLoc).run cs)
-      = CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
-        ((ensureLocalRegE dstLoc).run cs))
-    (h_agv : (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-        ((ensureLocalRegE dstLoc).run cs)).map (fun o => o.result)
-      = (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-        ((ensureLocalRegE dstLoc).run cs)).map (fun o => o.result)) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src1))) cs
-      = CheckedCompilerM.run
-          (compileStmtChecked
-            (Stmt.assign (.local dstLoc) (.ref kind prot mask src2))) cs := by
-  rw [compileStmt_local_run, compileStmt_local_run]
-  simp only [csCompile, csMonad, compileRExprToChecked]
-  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
-  · simp only [h1, h2]; exact h_agr
-  · simp only [h1, h2, h_res, h_agr]
-
-theorem compileStmt_ref_src_congr_local_value
-    {Γ : Ctx} {τ : LayoutTy}
-    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src1 src2 : Place Γ τ) (cs : CompilerState)
-    (h_agv : (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-        ((ensureLocalRegE dstLoc).run cs)).map (fun o => o.result)
-      = (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-        ((ensureLocalRegE dstLoc).run cs)).map (fun o => o.result)) :
-    ∀ so, CheckedCompilerM.value
-        (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src2))) cs
-      = Except.ok so →
-    ∃ so', CheckedCompilerM.value
-        (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src1))) cs
-      = Except.ok so' := by
-  intro so h_so
-  obtain ⟨u, hu⟩ := (compileStmt_local_value_iff _ _ cs).mp ⟨so, h_so⟩
-  refine (compileStmt_local_value_iff _ _ cs).mpr ?_
-  simp only [csCompile, csMonad, compileRExprToChecked] at hu ⊢
-  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
-  · exfalso; rw [h2] at hu; simp at hu
-  · simp only [h1]; exact ⟨_, rfl⟩
-
-
-
-
-
-
-/-- The general source-flattening transfer for a local destination,
-    the other instantiation of the congruence. -/
-theorem compileStmt_ref_srcflatten_local_run
-    {Γ : Ctx} {τ : LayoutTy}
-    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src : Place Γ τ) (cs : CompilerState) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src))) cs
-      = CheckedCompilerM.run
-          (compileStmtChecked
-            (Stmt.assign (.local dstLoc)
-              (.ref kind prot mask (flattenPlace src)))) cs :=
-  compileStmt_ref_src_congr_local_run (dstLoc := dstLoc) kind prot mask _ _ cs
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).1.symm
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
-
-theorem compileStmt_ref_srcflatten_local_value
-    {Γ : Ctx} {τ : LayoutTy}
-    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src : Place Γ τ) (cs : CompilerState) :
-    ∀ so, CheckedCompilerM.value
-        (compileStmtChecked
-          (Stmt.assign (.local dstLoc)
-            (.ref kind prot mask (flattenPlace src)))) cs
-      = Except.ok so →
-    ∃ so', CheckedCompilerM.value
-        (compileStmtChecked (Stmt.assign (.local dstLoc) (.ref kind prot mask src))) cs
-      = Except.ok so' :=
-  compileStmt_ref_src_congr_local_value (dstLoc := dstLoc) kind prot mask _ _ cs
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
-
-/-- The same congruence for a DEREF destination. The destination
-    lowering runs at the POST-rhs state, so run-agreement of the two
-    borrow lowerings is what makes it see the same state; the store
-    mentions the source only through `result.reg`, which agrees too. -/
-theorem compileStmt_ref_src_congr_deref_run
-    {Γ : Ctx} {τ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src1 src2 : Place Γ τ) (cs : CompilerState)
-    (h_agr : CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src1)
-        (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)
-      = CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
-        (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs))
-    (h_agv : (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-        (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)).map (fun o => o.result)
-      = (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-        (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)).map (fun o => o.result)) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.deref P) (.ref kind prot mask src1))) cs
-      = CheckedCompilerM.run
-          (compileStmtChecked (Stmt.assign (.deref P) (.ref kind prot mask src2))) cs := by
-  simp only [csCompile, csMonad]
-  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
-  · simp only [h1, h2]; exact h_agr
-  · simp only [h1, h2, h_res, h_agr]
-
-theorem compileStmt_ref_src_congr_deref_value
-    {Γ : Ctx} {τ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src1 src2 : Place Γ τ) (cs : CompilerState)
-    (h_agr : CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src1)
-        (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)
-      = CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
-        (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs))
-    (h_agv : (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-        (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)).map (fun o => o.result)
-      = (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-        (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)).map (fun o => o.result)) :
-    ∀ so, CheckedCompilerM.value
-        (compileStmtChecked (Stmt.assign (.deref P) (.ref kind prot mask src2))) cs
-      = Except.ok so →
-    ∃ so', CheckedCompilerM.value
-        (compileStmtChecked (Stmt.assign (.deref P) (.ref kind prot mask src1))) cs
-      = Except.ok so' := by
-  intro so h_so
-  simp only [csCompile, csMonad] at h_so ⊢
-  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
-  · exfalso; rw [h2] at h_so; simp at h_so
-  · simp only [h2] at h_so
-    simp only [h1, h_res, h_agr]
-    cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.deref P))
-        (CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
-          (CompilerM.run (ensurePlaceRoot (Place.deref P)) cs)) with
-    | error eD => exfalso; simp only [hD] at h_so; simp at h_so
-    | ok oD => simp only [hD]; exact ⟨_, rfl⟩
-
-
-
-/-- The source-flattening transfer for a DEREF destination, the third
-    instantiation of the deref-destination congruence. -/
-theorem compileStmt_ref_srcflatten_deref_run
-    {Γ : Ctx} {τ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src : Place Γ τ) (cs : CompilerState) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.deref P) (.ref kind prot mask src))) cs
-      = CheckedCompilerM.run
-          (compileStmtChecked
-            (Stmt.assign (.deref P) (.ref kind prot mask (flattenPlace src)))) cs :=
-  compileStmt_ref_src_congr_deref_run (P := P) kind prot mask _ _ cs
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).1.symm
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
-
-theorem compileStmt_ref_srcflatten_deref_value
-    {Γ : Ctx} {τ : LayoutTy}
-    {P : Place Γ (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL τ))}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src : Place Γ τ) (cs : CompilerState) :
-    ∀ so, CheckedCompilerM.value
-        (compileStmtChecked
-          (Stmt.assign (.deref P) (.ref kind prot mask (flattenPlace src)))) cs
-      = Except.ok so →
-    ∃ so', CheckedCompilerM.value
-        (compileStmtChecked (Stmt.assign (.deref P) (.ref kind prot mask src))) cs
-      = Except.ok so' :=
-  compileStmt_ref_src_congr_deref_value (P := P) kind prot mask _ _ cs
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).1.symm
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
-
-
-
-/-- The same congruence for a PROJECTED destination, general in the
-    base so both the local-base and deref-base spellings are covered. -/
-theorem compileStmt_ref_src_congr_proj_run
-    {Γ : Ctx} {τ : LayoutTy}
-    {σ : LayoutTy} {dbase : Place Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src1 src2 : Place Γ τ) (cs : CompilerState)
-    (h_agr : CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src1)
-        (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs)
-      = CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
-        (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs))
-    (h_agv : (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-        (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs)).map (fun o => o.result)
-      = (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-        (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs)).map (fun o => o.result)) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj dbase g) (.ref kind prot mask src1))) cs
-      = CheckedCompilerM.run
-          (compileStmtChecked (Stmt.assign (.proj dbase g) (.ref kind prot mask src2))) cs := by
-  simp only [csCompile, csMonad]
-  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
-  · simp only [h1, h2]; exact h_agr
-  · simp only [h1, h2, h_res, h_agr]
-
-theorem compileStmt_ref_src_congr_proj_value
-    {Γ : Ctx} {τ : LayoutTy}
-    {σ : LayoutTy} {dbase : Place Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src1 src2 : Place Γ τ) (cs : CompilerState)
-    (h_agr : CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src1)
-        (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs)
-      = CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
-        (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs))
-    (h_agv : (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src1)
-        (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs)).map (fun o => o.result)
-      = (CheckedCompilerM.value (placeToBorrowRegChecked kind prot mask src2)
-        (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs)).map (fun o => o.result)) :
-    ∀ so, CheckedCompilerM.value
-        (compileStmtChecked (Stmt.assign (.proj dbase g) (.ref kind prot mask src2))) cs
-      = Except.ok so →
-    ∃ so', CheckedCompilerM.value
-        (compileStmtChecked (Stmt.assign (.proj dbase g) (.ref kind prot mask src1))) cs
-      = Except.ok so' := by
-  intro so h_so
-  simp only [csCompile, csMonad] at h_so ⊢
-  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
-  · exfalso; rw [h2] at h_so; simp at h_so
-  · simp only [h2] at h_so
-    simp only [h1, h_res, h_agr]
-    cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.proj dbase g))
-        (CheckedCompilerM.run (placeToBorrowRegChecked kind prot mask src2)
-          (CompilerM.run (ensurePlaceRoot (Place.proj dbase g)) cs)) with
-    | error eD => exfalso; simp only [hD] at h_so; simp at h_so
-    | ok oD => simp only [hD]; exact ⟨_, rfl⟩
-
-/-- The source-flattening transfer for a PROJECTED destination, the
-    other instantiation of the projected-destination congruence. -/
-theorem compileStmt_ref_srcflatten_proj_run
-    {Γ : Ctx} {τ σ : LayoutTy}
-    {dbase : Place Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src : Place Γ τ) (cs : CompilerState) :
-    CheckedCompilerM.run
-        (compileStmtChecked (Stmt.assign (.proj dbase g) (.ref kind prot mask src))) cs
-      = CheckedCompilerM.run
-          (compileStmtChecked
-            (Stmt.assign (.proj dbase g)
-              (.ref kind prot mask (flattenPlace src)))) cs :=
-  compileStmt_ref_src_congr_proj_run (dbase := dbase) (g := g) kind prot mask _ _ cs
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).1.symm
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
-
-theorem compileStmt_ref_srcflatten_proj_value
-    {Γ : Ctx} {τ σ : LayoutTy}
-    {dbase : Place Γ σ} {g : PathTo σ (obseq.LayoutTy.PtrL τ)}
-    (kind : RefKind) (prot : Bool) (mask : List Bool)
-    (src : Place Γ τ) (cs : CompilerState) :
-    ∀ so, CheckedCompilerM.value
-        (compileStmtChecked
-          (Stmt.assign (.proj dbase g) (.ref kind prot mask (flattenPlace src)))) cs
-      = Except.ok so →
-    ∃ so', CheckedCompilerM.value
-        (compileStmtChecked (Stmt.assign (.proj dbase g) (.ref kind prot mask src))) cs
-      = Except.ok so' :=
-  compileStmt_ref_src_congr_proj_value (dbase := dbase) (g := g) kind prot mask _ _ cs
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).1.symm
-    (placeToBorrowRegChecked_flatten_agree kind prot mask src _).2.symm
-
-
-
-
-
-
-
 /-! ## Deref destination with a PROJ-TOPPED source over a bound local.
     `placeToBorrowRegChecked`'s proj arm differs from its local arm only
     in the borrow's OFFSET, so the fragment is the deref-dst pair with
@@ -1050,6 +778,30 @@ theorem compileStmt_ref_srcflatten_proj_value
 
 
 
+/-- The ref pre-phase sees its source only through the borrow lowering,
+    which agrees under flattening. -/
+theorem compileRExprPreChecked_ref_flatten {τ : LayoutTy}
+    (kind : RefKind) (prot : Bool) (mask : List Bool) (src : Place Γ τ)
+    (cs : CompilerState) :
+    CheckedCompilerM.run (compileRExprPreChecked (RExpr.ref kind prot mask (flattenPlace src))) cs
+      = CheckedCompilerM.run (compileRExprPreChecked (RExpr.ref kind prot mask src)) cs ∧
+    (CheckedCompilerM.value (compileRExprPreChecked (RExpr.ref kind prot mask (flattenPlace src))) cs).map
+        (fun p => (p.store, p.postCleanup))
+      = (CheckedCompilerM.value (compileRExprPreChecked (RExpr.ref kind prot mask src)) cs).map
+        (fun p => (p.store, p.postCleanup)) := by
+  obtain ⟨h_agr, h_agv⟩ := placeToBorrowRegChecked_flatten_agree kind prot mask src cs
+  simp only [compileRExprPreChecked, csMonad]
+  rcases exceptMap_agree h_agv with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
+  · have h_e : e1 = e2 := by
+      rw [h1, h2] at h_agv
+      simpa [Except.map] using h_agv
+    subst h_e
+    simp only [h1, h2]
+    exact ⟨h_agr, rfl⟩
+  · constructor
+    · simp only [h1, h2, h_res, h_agr]
+    · simp only [h1, h2, h_res, Except.map]
+
 /-- The per-statement simulation for `dst := &kind src`. Since
     2026-09-13 the source contributes ONLY a value package: flatten it
     once, read off which of the two package constructors applies, and
@@ -1080,40 +832,35 @@ theorem assignStep_ref
     · exact ref_valuePkg_of_chain kind prot mask compProg h_ch
     · rw [h_eq]
       exact ref_valuePkg_of_projchain sp kind prot mask compProg h_sb
+  obtain ⟨h_crun, h_cval⟩ := compileAssignChecked_congr_pre dst
+    (.ref kind prot mask src) (.ref kind prot mask (flattenPlace src))
+    (fun cs => (compileRExprPreChecked_ref_flatten kind prot mask src cs).1.symm)
+    (fun cs => (compileRExprPreChecked_ref_flatten kind prot mask src cs).2.symm)
   cases dst with
   | «local» dstLoc =>
       cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
       | some bD =>
           obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-            storereg_local_simulation compProg h_pkg h_invAt (StmtFrame.congr hF
-              (fun cs => compileStmt_ref_srcflatten_local_run kind prot mask src cs)
-              (fun cs so h => compileStmt_ref_srcflatten_local_value kind prot mask src cs so h))
-              h_envD h_step
+            storereg_local_simulation compProg h_pkg h_invAt
+              (StmtFrame.congr hF h_crun h_cval) h_envD h_step
           exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
       | none =>
-          exact storereg_localfresh_simulation compProg h_pkg h_invAt (StmtFrame.congr hF
-            (fun cs => compileStmt_ref_srcflatten_local_run kind prot mask src cs)
-            (fun cs so h => compileStmt_ref_srcflatten_local_value kind prot mask src cs so h))
-            h_envD h_step
+          exact storereg_localfresh_simulation compProg h_pkg h_invAt
+            (StmtFrame.congr hF h_crun h_cval) h_envD h_step
   | proj dbase g =>
-      exact storereg_projdst_recursion compProg h_pkg h_invAt (StmtFrame.congr hF
-        (fun cs => compileStmt_ref_srcflatten_proj_run kind prot mask src cs)
-        (fun cs so h =>
-          compileStmt_ref_srcflatten_proj_value kind prot mask src cs so h))
-        h_step
+      exact storereg_projdst_recursion compProg h_pkg h_invAt
+        (StmtFrame.congr hF h_crun h_cval) h_step
   | deref P =>
       rw [stepStmt_assign_dstderef_flatten] at h_step
       obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
         storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
           (PtrChain_flatten_deref P) h_invAt (StmtFrame.congr hF
-          (fun cs => (compileStmt_ref_srcflatten_deref_run kind prot mask src cs).trans
-            (compileStmt_assign_derefdst_flatten_run _ cs))
+          (fun cs => (h_crun cs).trans (compileStmt_assign_derefdst_flatten_run _ cs))
           (fun cs so h => by
             obtain ⟨so1, h1⟩ := compileStmt_assign_derefdst_flatten_value _ cs so h
-            exact compileStmt_ref_srcflatten_deref_value kind prot mask src cs so1 h1))
+            exact h_cval cs so1 h1))
           h_step
       exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
-
 
 theorem CompilerInv_step_ref
     {τ : LayoutTy}
@@ -1399,45 +1146,6 @@ theorem stepStmt_assign_movesrc_anyflatten
     fun st => resolvePlaceAcc_flatten src
   show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
   simp only [mirlite.doAssign, mirlite.evalRExpr, h1]
-
-/-- A statement's lowering depends on its rvalue only through the
-    pre-phase's run, store and post-cleanup: two rvalues agreeing there
-    give the same statement run, and value-ok transfers. Generic in the
-    destination — one lemma where the per-destination congruences of copy
-    and ref were six. -/
-theorem compileAssignChecked_congr_pre {τ : LayoutTy} (dst : Place Γ τ)
-    (rhs1 rhs2 : RExpr Γ τ)
-    (h_run : ∀ cs, CheckedCompilerM.run (compileRExprPreChecked rhs1) cs
-      = CheckedCompilerM.run (compileRExprPreChecked rhs2) cs)
-    (h_val : ∀ cs, (CheckedCompilerM.value (compileRExprPreChecked rhs1) cs).map
-        (fun p => (p.store, p.postCleanup))
-      = (CheckedCompilerM.value (compileRExprPreChecked rhs2) cs).map
-        (fun p => (p.store, p.postCleanup))) :
-    (∀ cs, CheckedCompilerM.run (compileStmtChecked (.assign dst rhs1)) cs
-      = CheckedCompilerM.run (compileStmtChecked (.assign dst rhs2)) cs) ∧
-    (∀ cs so, CheckedCompilerM.value (compileStmtChecked (.assign dst rhs2)) cs = Except.ok so →
-      ∃ so', CheckedCompilerM.value (compileStmtChecked (.assign dst rhs1)) cs = Except.ok so') := by
-  constructor
-  · intro cs
-    simp only [compileStmtChecked, compileAssignChecked, csMonad]
-    rcases exceptMap_agree (h_val (CompilerM.run (ensurePlaceRoot dst) cs))
-      with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
-    · simp only [h1, h2]; exact h_run _
-    · obtain ⟨h_s, h_pc⟩ := Prod.mk.inj h_res
-      simp only [h1, h2, h_s, h_pc, h_run]
-  · intro cs so h_so
-    simp only [compileStmtChecked, compileAssignChecked, csMonad] at h_so ⊢
-    rcases exceptMap_agree (h_val (CompilerM.run (ensurePlaceRoot dst) cs))
-      with ⟨e1, e2, h1, h2⟩ | ⟨o1, o2, h1, h2, h_res⟩
-    · exfalso; rw [h2] at h_so; simp at h_so
-    · obtain ⟨h_s, h_pc⟩ := Prod.mk.inj h_res
-      simp only [h2] at h_so
-      simp only [h1, h_s, h_pc, h_run]
-      cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Mut dst)
-          (CheckedCompilerM.run (compileRExprPreChecked rhs2)
-            (CompilerM.run (ensurePlaceRoot dst) cs)) with
-      | error eD => exfalso; simp only [hD] at h_so; simp at h_so
-      | ok oD => simp only [hD]; exact ⟨_, rfl⟩
 
 /-- The move pre-phase sees its source only through the borrow lowering,
     which agrees under flattening. -/
