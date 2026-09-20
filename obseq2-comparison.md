@@ -4,6 +4,23 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-20 (later) — Every Move Clears; Two Documented Divergences From Miri
+
+Seeing real Miri accept the program that reads a moved-from local
+through an older raw pointer, the user's call was the opposite of
+following Miri: *the borrow stack of the source should be zero, so the
+test should fail in mirlite too.* A move's intended semantics is that
+its source is dead; Miri has not implemented that, and rustc's temporary
+hides the one place where Miri does act. So the elaborator now maps
+every `Move` operand — assignment or call argument — to mirlite's
+`move`, and the two witnesses that read a moved-from local through a
+raw pointer are recorded as documented model divergences: UB on both of
+our machines, `ok` under Miri. The one carve-out is a moved pointer cast
+to another pointee type, which stays the tag-preserving reinterpret.
+Corpus 84 pass, 2 xfail, 41 unsupported; differential 86 matched.
+
+---
+
 ## 2026-09-20 — `move` Is a Temporary Unique Reborrow
 
 Two days of `move`. The user asked for it as a mirlite rvalue doing

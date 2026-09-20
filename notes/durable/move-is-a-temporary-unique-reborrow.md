@@ -46,7 +46,29 @@ lowering depends on its rvalue only through the pre-phase's run, store
 and post-cleanup, so one lemma replaces the six per-destination
 flatten congruences copy and ref each carry.
 
-[FACT, 2026-09-20] **Where the seam uses it: moved CALL arguments, on
+[SUPERSEDED → next paragraph, 2026-09-20 later] The seam paragraph
+below described the first landing (call arguments only). The user's
+decision the same day: EVERY `Move` operand clears — "the sb for the
+src should be zero so the test should fail mirlite also".
+
+[FACT, 2026-09-20] **Every `Move` operand is mirlite's `move`.** The
+elaborator maps `.use (.move p)` and `URvalue.move p` alike to
+`RExpr.move` (elab.lean), with one exception: a moved pointer cast to a
+different pointee layout (`p as *mut U`) stays the tag-preserving
+`ptrCast` — the value, not the variable, is what the program uses. So
+`_4 = move _1` clears `_1`'s stacks; a raw pointer into a moved-from
+local is dead on both machines. This is STRICTER than Miri, which
+evaluates an assignment move as a copy (rustc FIXME) and whose in-place
+call protection lands on rustc's temporary. Two local witnesses record
+the divergence as `xfail-model` (ours UB at the raw read, Miri ok):
+local/move_arg_pops_raw, local/assign_move_pops_raw. Corpus 84 pass /
+0 fail / 2 xfail / 41 unsupported; differential 86 matched (the two
+machines agree with each other, as forward simulation requires).
+Reasoning: a move's intended semantics is that the source is dead; Miri
+has not implemented it and rustc's temporary hides the one place Miri
+does act. → src/conformance/elab.lean `elabRvalue`, `elabStmt`
+
+[FACT, 2026-09-20, first landing] **Where the seam uses it: moved CALL arguments, on
 rustc's temporary.** `emitSeamBind` binds a `.move p` argument as
 `argLocal := move p` and then runs the fn-entry retags on `argLocal` in
 place (self-copies skipped). Since rustc moves a named place into a call

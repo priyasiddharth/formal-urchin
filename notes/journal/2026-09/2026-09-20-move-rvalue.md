@@ -28,6 +28,15 @@ generic statement-level congruence over rvalue pre-phases; the six
 per-destination flatten congruences of copy and ref could be retired
 against it (not done — no churn without need).
 
+[FACT 2026-09-20, later] **User decision: every Move operand clears.**
+"The sb for the src should be zero so the test should fail mirlite
+also." Elaborator maps assignment moves to `RExpr.move`; the two raw-read
+witnesses become `xfail-model` (ours UB, Miri ok); three corpus tests
+that cast a MOVED pointer to another pointee layout needed the
+`ptrCast` arm extended to `.move` (the clear of the pointer variable's
+own cell is dropped there). Corpus 84/0/2 xfail/41; differential 86
+matched. Verified against bb034ff+.
+
 ## See also
 
 - move-is-a-temporary-unique-reborrow.md

@@ -4071,9 +4071,15 @@ d93–d97; conformance/local/*.rs ×4 + charon/local/*.json + manifest;
 durable/move-is-a-temporary-unique-reborrow.md; journal
 2026-09-20-move-rvalue.md; dev-log entry.
 
-**Status:** complete. One commit (my files + the two shared note files;
-the other session's paper/CLAUDE.md/test edits left uncommitted). Four
-suites green; audit unchanged.
+**Later the same day (user):** every `Move` operand clears — elaborator
+maps assignment moves to `RExpr.move`; the two raw-read witnesses become
+`xfail-model` (ours UB, Miri ok: documented divergence); moved-pointer
+casts keep `ptrCast`. Corpus 84/0/2/41, differential 86 matched.
+
+**Status:** complete. Commits: the rvalue; the every-move-clears
+decision; the congruence retirement (see the next entry if present).
+The other session's paper/CLAUDE.md edits left uncommitted. Four suites
+green; audit unchanged.
 
 **Next-session pickup candidates:**
 - Retire copy's and ref's six per-destination flatten congruences
