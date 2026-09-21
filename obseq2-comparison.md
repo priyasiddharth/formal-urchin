@@ -4,6 +4,35 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-21 (later) — `alloc` Is an Rvalue, and a Value Package May Extend Memory
+
+`Box::new` and `std::alloc::alloc` are calls, so their destination is
+written after they run, the rvalue-first order every assignment has had
+since August. mirlite's allocation statement was the one construct with
+the other order: it resolved its destination first, then read the
+length and allocated. That asymmetry is gone. `alloc` is now an rvalue
+of pointer type, its runtime length is copy's read of the length place,
+and the statement form is simply an assignment. The elaborator emits
+that assignment, and the compiler's pre-phase is `AllocN` for a static
+length or the guard's exposed read followed by `AllocDyn` on the value
+register; `AllocDyn` no longer reads memory itself.
+
+Bringing it into the theorem cost one generalisation. A value package
+used to promise that the rvalue leaves both memories alone, which
+`alloc` cannot keep. The package now hands back a grown address renaming
+and the source memory the rvalue left, related to the target's under
+that renaming, and the destination leaves absorb this by instantiation:
+each write seam is applied at the memory the rvalue left, under the
+grown renaming, with no new proof about writes. Every existing package
+supplies the identity renaming and its own start memory. The alloc
+package itself is one shared closing, from any related pair of states
+and a one-step allocation on the target, plus two thin constructors.
+The proof-core gate now excludes exactly one statement, `dealloc`.
+Suites and audit unchanged: 93 pass, 43 unsupported, 93 matched, three
+axioms, no sorries.
+
+---
+
 ## 2026-09-21 — Following Miri: In-Place Protection at the Seam, and Uninit Reads Are UB
 
 Replicating Miri's own in-place-passing tests, all custom MIR, was the

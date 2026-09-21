@@ -4132,3 +4132,34 @@ differential 93 matched; audit unchanged.
 - A `divergence: stricter|laxer` field on `xfail-model` entries.
 - The statement gate is `alloc`/`dealloc` only.
 
+
+## 2026-09-21 (later) — `alloc` as an rvalue, in the theorem
+
+**Theme:** "What is not in the proof" (answer: `alloc` and `dealloc`
+statements; `Box::new`/`std::alloc::alloc` map to alloc, 7 supported
+tests use it, 1 uses dealloc), then "do alloc first". Three stages,
+three commits.
+
+**Key outputs:** (1) 9710054 — `RExpr.alloc len : RExpr Γ (PtrL τ)`
+replaces `Stmt.alloc` (rvalue-first order, as calls have); `evalAllocLen`
+/ `evalCopy` factored; `compileAllocLenChecked` (`AllocN`, or `guardRead`
+then `AllocDyn` on a VALUE register). (2) 3c69dda — `ValuePkg` hands
+back a grown `ρa'` and the memory the rvalue left; leaves absorb it by
+instantiation; chain and fresh-root seams restated against `sR.mem`;
+built first try. (3) this commit — proof/alloc.lean (`alloc_step_bundle`
++ two constructors), `CoreRhs` total, gate = `dealloc` only; four
+guard-read lemmas moved from assign_if to alloc. Notes: journal
+2026-09-21-alloc-rvalue; durable alloc-is-an-rvalue-the-package-extends-memory;
+what-compile-correct-actually-says gate paragraph superseded; dev log.
+
+**Critical corrections:** none from the user this session.
+
+**Status:** complete. Audit 3 axioms / 0 sorries; units 17/17 +
+116/116; corpus 93/0/43; differential 93 matched.
+
+**Next-session pickup candidates:**
+- `dealloc` (the last gated statement): a `Mem.removeRange` transport
+  for `SourceMemSim`/`AllocLockstep` and an `M.dealloc` PermSim
+  transport; see the durable note's last paragraph.
+- `box-cell-alias` loader typing gap; `divergence: stricter|laxer`
+  field on `xfail-model` entries (carried over).

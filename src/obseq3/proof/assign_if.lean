@@ -4,6 +4,7 @@ import obseq3.proof.ref
 import obseq3.proof.casts
 import obseq3.proof.ptrarith
 import obseq3.proof.protectors
+import obseq3.proof.alloc
 
 /-! # `assignIf`: a guarded assign
 
@@ -234,54 +235,10 @@ theorem compileAssignChecked_stmt_value {τ : LayoutTy} (dst : Place Γ τ) (rhs
     (h : CheckedCompilerM.value (compileStmtChecked (.assign dst rhs)) cs = .ok so) :
     ∃ so', CheckedCompilerM.value (compileAssignChecked dst rhs) cs = .ok so' := ⟨so, h⟩
 
-/-- The guard's discriminant read, evaluated: `copy` of the flattened
-    place is `copy` of the place (the read resolves for access, and
-    flattening is invisible to resolution). -/
-theorem evalRExpr_copy_flatten {τ : LayoutTy} {M : PermissionModel}
-    (s : mirlite.State M Γ) (p : Place Γ τ) :
-    mirlite.evalRExpr M s (.copy (flattenPlace p)) = mirlite.evalRExpr M s (.copy p) := by
-  simp only [mirlite.evalRExpr, mirlite.evalCopy, resolvePlaceAcc_flatten]
-
 /-- The compiler state after a guard's root step and discriminant read. -/
 def guardReadCS (discr : Place Γ obseq.LayoutTy.NatL) {τ : LayoutTy} (dst : Place Γ τ)
     (cs : CompilerState) : CompilerState :=
   CheckedCompilerM.run (guardRead discr) (CompilerM.run (ensurePlaceRoot dst) cs)
-
-/-- A read that compiled lowered its place. -/
-theorem guardRead_value_inv {discr : Place Γ obseq.LayoutTy.NatL} {cs : CompilerState}
-    {r : Register} (h : CheckedCompilerM.value (guardRead discr) cs = .ok r) :
-    ∃ discrOut, CheckedCompilerM.value (placeToRegChecked RefKind.Shared discr) cs
-      = .ok discrOut := by
-  simp only [guardRead, csMonad] at h
-  cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Shared discr) cs with
-  | error e => rw [hD] at h; simp at h
-  | ok discrOut => exact ⟨discrOut, rfl⟩
-
-/-- The guard's read IS copy's read of the FLATTENED discriminant — the
-    same run, and the value register is the read's temporary — so copy's
-    read package (`copy_readRegPkg_flat`) speaks about it verbatim. -/
-theorem guardRead_flat {discr : Place Γ obseq.LayoutTy.NatL} {cs : CompilerState}
-    {discrOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared discr)}
-    (hD : CheckedCompilerM.value (placeToRegChecked RefKind.Shared discr) cs = .ok discrOut) :
-    CheckedCompilerM.run (guardRead discr) cs
-      = CheckedCompilerM.run (compileRExprPreChecked (.copy (flattenPlace discr))) cs ∧
-    CheckedCompilerM.value (guardRead discr) cs
-      = .ok (Register.R (CheckedCompilerM.run
-          (placeToRegChecked RefKind.Shared (flattenPlace discr)) cs).nextReg) := by
-  obtain ⟨h_runF, h_valF⟩ := placeToRegChecked_flatten_agree discr RefKind.Shared cs
-  cases hF : CheckedCompilerM.value (placeToRegChecked RefKind.Shared (flattenPlace discr)) cs with
-  | error e =>
-      exfalso
-      rw [hF, hD] at h_valF
-      simp [Except.map] at h_valF
-  | ok flatOut =>
-  have h_res : flatOut.result = discrOut.result := by
-    rw [hF, hD] at h_valF
-    simpa [Except.map] using h_valF
-  constructor
-  · simp only [guardRead, compileRExprPreChecked, readRhsPre, csMonad, hF, hD, h_runF, h_res,
-      csRun, List.append_nil]
-  · simp only [guardRead, csMonad, hD, h_runF, csRun]
 
 /-- A guard that compiled: its read compiled, its body compiled from the
     reserved state after the read, and its run is the body's run with the
@@ -362,7 +319,9 @@ theorem assignLeaf_core {τ : LayoutTy} (compProg : oseair.Prog)
   | move src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_move compProg h_invAt hF h_step
-  | alloc len => exact absurd h_core (by simp [CoreRhs])
+  | alloc len =>
+      intro _ _ _ _ _ _ _ _ h_invAt hF h_step
+      exact assignStep_constStore compProg (alloc_valuePkg len compProg) h_invAt hF h_step
   | ref kind prot mask src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_ref kind prot mask compProg h_invAt hF h_step
@@ -381,20 +340,6 @@ theorem assignLeaf_core {τ : LayoutTy} (compProg : oseair.Prog)
   | fromExposed src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_readrhs compProg (fromExposed_readRhsFamily compProg) h_invAt hF h_step
-
-/-- A single-word value list related to `[.word v]` is `[Val.Dat v]`. -/
-theorem ListRel_word_inv {ρa : AddrRenameMap} {ρt : TagRenameMap} {v : Word} {vals : List Val}
-    (h : ListRel (MemValSim ρa ρt) [mirlite.MemValue.word v] vals) : vals = [Val.Dat v] := by
-  cases vals with
-  | nil => exact absurd h (by simp [ListRel])
-  | cons x xs =>
-      cases xs with
-      | cons y ys => exact absurd h.2 (by simp [ListRel])
-      | nil =>
-          cases x with
-          | Dat v' => obtain ⟨h1, -⟩ := h; simp only [MemValSim] at h1; rw [h1]
-          | Ptr b o s t => exact absurd h.1 (by simp [MemValSim])
-          | Undef => exact absurd h.1 (by simp [MemValSim])
 
 /-- The `assignIf` step. -/
 theorem CompilerInv_step_assignIf {τ : LayoutTy}

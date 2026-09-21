@@ -87,9 +87,9 @@ def compileProgFrom
     is what admits the `wildcardTag` pointer `fromExposed` mints.
 
     The predicate is kept rather than deleted: `CoreStmt`/`CoreProg`
-    still gate on statements (`alloc`, `dealloc`; `assignIf` and the
-    protector frames joined 2026-09-16/17), and a new rvalue should have
-    to be admitted here deliberately. -/
+    still gate on one statement (`dealloc`; `assignIf` and the protector
+    frames joined 2026-09-16/17, `alloc` as an rvalue 2026-09-21), and a
+    new rvalue should have to be admitted here deliberately. -/
 def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .constInit _ => True
   | .copy _ => True
@@ -101,7 +101,7 @@ def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .ptrOffset _ _ => True
   | .ptrCast _ => True
   | .refSlice _ _ _ => True
-  | .alloc _ => False
+  | .alloc _ => True
 
 /-- Statements in the proof-core fragment: `halt`, assignments — plain or
     guarded — with a core rvalue, and the protector frames. -/
@@ -2716,6 +2716,61 @@ theorem runN_Assgn_Alloc_step
           (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (obseq.typeSize ty) tag]),
         pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith,
+      oseair.bumpAllocator, oseair.allocate, h_own]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- `Assgn dst (AllocN ty n)` executes in one step: `n * typeSize ty` units
+    at the watermark, owned at a fresh tag, the pointer in `dst`. -/
+theorem runN_Assgn_AllocN_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst : Register) (ty : obseq.TyVal) (n : Nat)
+    {perms2 : AccessPerms} {tag : Tag}
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.AllocN ty n)))
+    (h_own : MSB.own s.perms s.mem.addrStart (n * obseq.typeSize ty)
+      = .ok (perms2, tag)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with
+        mem := (oseair.allocate s.mem (n * obseq.typeSize ty)).2,
+        perms := perms2,
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) tag]),
+        pc := s.pc + 1 } := by
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with
+        mem := (oseair.allocate s.mem (n * obseq.typeSize ty)).2,
+        perms := perms2,
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) tag]),
+        pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith,
+      oseair.bumpAllocator, oseair.allocate, h_own]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- `Assgn dst (AllocDyn ty lenReg)` executes in one step when `lenReg`
+    holds a concrete word `n`: the same allocation as `AllocN ty n`. -/
+theorem runN_Assgn_AllocDyn_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst lenReg : Register) (ty lty : obseq.TyVal) (n : Nat)
+    {perms2 : AccessPerms} {tag : Tag}
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.AllocDyn ty lenReg)))
+    (h_len : oseair.RegMap.lookup s.reg lenReg = some (lty, [Val.Dat n]))
+    (h_own : MSB.own s.perms s.mem.addrStart (n * obseq.typeSize ty)
+      = .ok (perms2, tag)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with
+        mem := (oseair.allocate s.mem (n * obseq.typeSize ty)).2,
+        perms := perms2,
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) tag]),
+        pc := s.pc + 1 } := by
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with
+        mem := (oseair.allocate s.mem (n * obseq.typeSize ty)).2,
+        perms := perms2,
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) tag]),
+        pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_len,
       oseair.bumpAllocator, oseair.allocate, h_own]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 

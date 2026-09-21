@@ -95,16 +95,20 @@ runs from `oseair.State.initial` to a `CompilerInv`-related state, with
 no invariant hypothesis to supply. BOTH are audited roots.
 
 What is NOT proven, and is not a gap in the proof but in its SCOPE:
-(a) the `CoreProg` gate — `assignIf`, `alloc` and `dealloc` are
-implemented and conformance-tested but excluded from the theorem.
-The protector-frame statements joined 2026-09-16 (proof/protectors.lean),
+(a) the `CoreProg` gate — `dealloc` is implemented and
+conformance-tested but excluded from the theorem; it is the ONLY
+statement left outside. `assignIf` joined 2026-09-17 (proof/assign_if.lean),
+the protector-frame statements 2026-09-16 (proof/protectors.lean),
 which is what makes every `prot = true` retag path NON-vacuous: a core
 program can now have a frame to register into. EVERY RVALUE IS IN: `uninit` was always; both
 integer-pointer casts joined 2026-09-13; `ptrOffset` and `ptrCast`
-2026-09-14; and `refSlice`, the last one, 2026-09-16, once the compiler
+2026-09-14; `refSlice` 2026-09-16, once the compiler
 stopped holding a projection's `Borrow` across its mint
-(`Rhs.Borrow` with `len = none`). `CoreRhs` is total; the gate is now purely about
-statements; (b) the direction — this is a forward
+(`Rhs.Borrow` with `len = none`); `move` 2026-09-20; and `alloc`,
+an rvalue since 2026-09-21 (proof/alloc.lean), the first whose value
+package EXTENDS memory — which is why `ValuePkg` hands back a grown
+address renaming and the memory the rvalue left. `CoreRhs` is total;
+the gate is now purely about one statement; (b) the direction — this is a forward
 simulation of SUCCESSFUL source runs, so it does not say the target
 goes wrong when the source has UB. That direction is probed only
 empirically, by the `expectDiff` corpus comparing VERDICTS, which is
@@ -432,7 +436,9 @@ theorem CompilerInv_step
             exact CompilerInv_step_copy compProg h_comp h_inv h_get h_step
         | move src =>
             exact CompilerInv_step_move compProg h_comp h_inv h_get h_step
-        | alloc len => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
+        | alloc len =>
+            exact CompilerInv_step_constStore compProg (alloc_valuePkg len compProg)
+              h_comp h_inv h_get h_step
         | ref kind prot mask src =>
             exact CompilerInv_step_ref kind prot mask compProg h_comp h_inv h_get h_step
         | ptrCast src =>

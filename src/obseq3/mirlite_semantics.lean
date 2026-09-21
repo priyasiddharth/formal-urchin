@@ -279,6 +279,19 @@ def evalCopy
             state := state'
           }
 
+/-- The length of an `alloc`: static, or copy's read of a `NatL` place
+    (`evalCopy`), which must yield a concrete word. -/
+def evalAllocLen (M : PermissionModel) (state : State M Γ) :
+    AllocLen Γ → Except String (Nat × State M Γ)
+  | .const n => .ok (n, state)
+  | .fromPlace p =>
+      match evalCopy M state p with
+      | .err e => .error e
+      | .ok out =>
+          match out.values with
+          | [.word n] => .ok (n, out.state)
+          | _ => .error "allocation size is not a concrete word"
+
 def evalRExpr
   (M : PermissionModel)
   (state : State M Γ)
@@ -331,27 +344,17 @@ def evalRExpr
       -- is the pointer to it. An rvalue since 2026-09-21: `Box::new` and
       -- `std::alloc::alloc` are calls, evaluated before the destination
       -- is written — the assign's rvalue-first order.
-      let lenRes : Except String (Nat × State M Γ) :=
-        match len with
-        | .const n => .ok (n, state)
-        | .fromPlace p =>
-            match evalCopy M state p with
-            | .err e => .error e
-            | .ok out =>
-                match out.values with
-                | [.word n] => .ok (n, out.state)
-                | _ => .error "allocation size is not a concrete word"
-      match lenRes with
+      match evalAllocLen M state len with
       | .error e => .err e
       | .ok (n, state) =>
           let units := n * blockSize τ
-          let (base, mem') := allocate state.mem units
-          match M.own state.perms base units with
+          match M.own state.perms state.mem.addrStart units with
           | .error e => .err s!"heap allocation failed: {e}"
           | .ok (perms', tag) =>
-              .ok { values := [MemValue.ptrVal base 0 units tag]
+              .ok { values := [MemValue.ptrVal state.mem.addrStart 0 units tag]
                     values_len := rfl
-                    state := { state with mem := mem', perms := perms' } }
+                    state := { state with mem := (allocate state.mem units).2,
+                                          perms := perms' } }
   | .uninit =>
       .ok { values := List.replicate (blockSize τ) MemValue.undef
             values_len := List.length_replicate
