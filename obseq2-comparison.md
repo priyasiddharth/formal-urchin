@@ -4,6 +4,37 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-21 — Following Miri: In-Place Protection at the Seam, and Uninit Reads Are UB
+
+Replicating Miri's own in-place-passing tests, all custom MIR, was the
+turning point: Charon lowers them, and our model missed every one of the
+seven that lower. They had escaped the corpus because it was scoped by
+directory, and Miri files them under call semantics although their
+revision lines and error texts say Stacked Borrows. A scan of the whole
+tree by that marker found nothing else of substance outside the four
+directories.
+
+The user's decision was to follow Miri rather than invent a stricter
+model. So the seam now does what `protect_in_place_function_argument`
+does: after binding a moved argument, a fresh protected `&mut` of the
+caller's slot registered in the callee's frame, and uninit written
+through it; the return place gets the same before the body. Both are
+existing core statements, so the theorem covers them at no cost.
+Assignment moves are copies again, as Miri evaluates them, and the two
+local witnesses that had been documented divergences are plain passes.
+
+The last piece is why a clear alone could never reproduce Miri's
+verdict on reading a moved-from slot: mirlite read undefined cells as
+values, and only observing them was an error. Now a typed read of
+uninitialized memory is UB on both machines, in copy, move and ptrCast
+on the source side and in every `Load` on the target, with a
+transport lemma carrying the fact across the memory simulation. One
+unit probe flipped with it, a whole-tuple copy with an undef field,
+which Miri also rejects. Corpus 93 pass, 43 unsupported, differential
+93 matched, audit unchanged.
+
+---
+
 ## 2026-09-20 (later) — Every Move Clears; Two Documented Divergences From Miri
 
 Seeing real Miri accept the program that reads a moved-from local

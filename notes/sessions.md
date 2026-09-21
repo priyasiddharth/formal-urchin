@@ -4097,3 +4097,38 @@ the one-commit toggle.
 **Next-session pickup candidates:**
 - The statement gate is `alloc`/`dealloc` only.
 
+## 2026-09-21 — the harness's divergence rule; Miri's in-place tests replicated; "follow Miri"
+
+**Theme:** the user asked how the framework marks divergence (answered
+from harness.lean: expected = Miri's verdict; `xfail-model` = expected
+mismatch, `xpass` = failure), whether a Miri-fail/mirlite-pass test is
+xfail (yes; the dangerous direction, none existed), then why the
+in-place mechanisms are unobservable, then to scan Miri's tree for
+`stack` revisions, then why not clear the whole stack / dealloc-realloc
+on move (answered: breaks reinitialisation; a moved flag is uninit
+memory), and finally: "let's follow what Miri does — add protector".
+
+**Key outputs:** seam `protectInPlace` at moved call args and the return
+place (lowering.lean); assignment moves back to copies (elab.lean);
+typed uninit reads UB (oseair `Load`, mirlite copy/move/ptrCast;
+`runN_Assgn_Load_ptr_step` side condition; `noUndef_transport`; seven
+sites); 8 new prep files + 9 manifest entries (7 supported, 2
+unsupported) from Miri's `function_calls` and `box-cell-alias`; the two
+local witnesses restored as passes; d9b flipped; README rule rows;
+durable note superseded/extended; journal 2026-09-21; dev-log entry.
+Toolchain: the shallow Miri checkout at the pinned commit is in the
+scratchpad only.
+
+**Critical corrections (by test):** the model missed all seven lowerable
+in-place tests; the "every move clears" decision of 2026-09-20 was
+reversed by the user once real Miri's verdicts were on the table.
+
+**Status:** complete. One commit. Units 17/17 + 116/116; corpus 93/0/43;
+differential 93 matched; audit unchanged.
+
+**Next-session pickup candidates:**
+- `box-cell-alias`: loader typing of `&*val` for `val: Box<Cell<u8>>`
+  (destination elaborated as one word) — a Cell-pointee fallback gap.
+- A `divergence: stricter|laxer` field on `xfail-model` entries.
+- The statement gate is `alloc`/`dealloc` only.
+

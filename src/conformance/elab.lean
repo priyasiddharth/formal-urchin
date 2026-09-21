@@ -73,19 +73,14 @@ def elabPlace (Γ : Ctx) (p : UPlace) : Except String ((τ : LayoutTy) × Place 
 def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr Γ τ)
   | .use (.const v) => .ok ⟨.NatL, .constInit v⟩
   | .use .constUnit => .error "unit constant not dropped by lowering"
-  | .use (.copy p) => do
+  | .use (.copy p) | .use (.move p) => do
+      -- an assignment `Move` operand is a COPY, as Miri evaluates it (rustc
+      -- FIXME: "do some more logic on `move` to invalidate the old
+      -- location"); the in-place protection Miri applies to a moved CALL
+      -- argument is emitted by the seam (`emitSeamBind`), 2026-09-21
       let ⟨τ, pl⟩ ← elabPlace Γ p
       return ⟨τ, .copy pl⟩
-  | .use (.move p) | .move p => do
-      -- EVERY `Move` operand clears its source's borrow stacks (2026-09-20,
-      -- the user's call): the value is read, and nothing above the item
-      -- the source resolves through survives. This is stricter than Miri,
-      -- which evaluates an assignment move as a copy (rustc FIXME: "do
-      -- some more logic on `move` to invalidate the old location") and
-      -- whose in-place call-argument protection lands on rustc's
-      -- temporary; the divergence is documented on the two local
-      -- witnesses it flips (xfail-model). See
-      -- notes/durable/move-is-a-temporary-unique-reborrow.md.
+  | .move p => do
       let ⟨τ, pl⟩ ← elabPlace Γ p
       return ⟨τ, .move pl⟩
   | .use (.unsupported d) => .error s!"unsupported: {d}"
@@ -149,12 +144,6 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           -- reinterprets (`p as *mut U`)
           match τd, pd, τr, er with
           | .PtrL _, pd, .PtrL _, .copy pl => return .assign pd (.ptrCast pl)
-          -- a MOVED pointer cast the same way: the cast is the one-cell
-          -- tag-preserving copy; the move's clear of the pointer
-          -- variable's own cell is dropped here (`p as *mut U` with `p`
-          -- moved — the value, not the variable, is what the program
-          -- goes on to use)
-          | .PtrL _, pd, .PtrL _, .move pl => return .assign pd (.ptrCast pl)
           | _, _, _, _ =>
             .error s!"type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
   | .assignIf discr val dst rv line => do

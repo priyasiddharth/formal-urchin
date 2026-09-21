@@ -167,7 +167,12 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
          | .ok perms2 =>
            let s2 := { state with perms := perms2 }
            let vals := readWordSeq s2.mem addr (typeSize ty)
-           RhsResult.Ok vals ty s2
+           -- a TYPED read of uninitialized memory is UB (2026-09-21, as
+           -- in Miri): every `Load` lands in a register at a scalar or
+           -- pointer type; an `Undef` cell among the values is an error,
+           -- not a value. mirlite's `copy`/`move`/`ptrCast` check the same.
+           if vals.any (fun v => v == Val.Undef) then RhsResult.Err "read of uninitialized memory"
+           else RhsResult.Ok vals ty s2
          | .error msg => RhsResult.Err msg
      | _ => RhsResult.Err "Load expects Ptr"
 

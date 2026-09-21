@@ -361,26 +361,43 @@ def isUnitTy : UTy → Bool
   | .tup [] => true
   | _ => false
 
+/-- Miri's in-place protection of a caller-side slot for the duration of
+    a call: a fresh protected `&mut` reborrow of the place, then uninit
+    written through it. The reborrow is registered in the innermost
+    (callee's) protector frame, so it is protected until `popProtectors`;
+    the temporary local is never used again. -/
+def protectInPlace (st : LowerSt) (line : Nat) (p : UPlace) (ty : UTy) :
+    Except String LowerSt := do
+  let tmpIdx := st.locals.length
+  let st := { st with locals := st.locals ++ [.ref true ty] }
+  let tmp : UPlace := { root := .local tmpIdx, projs := [], ty := .ref true ty }
+  let st ← emitAssign st line tmp (.ref .mut true { p with ty := ty })
+  emitAssign st line { pointee tmp with ty := ty } .uninit
+
 /-- Bind one call argument into the callee's arg local, retagging if the
-    type contains references. A MOVED argument is bound by mirlite's
-    `move` (2026-09-20): the callee local receives the value and the
-    caller's place has its borrow stacks cleared — Miri passes a `move`
-    operand in place, reborrowing the caller's slot with a fresh protected
-    tag, writing uninit through it and dropping the tag, which licenses
-    codegen to pass a pointer to the slot; the seam copies, so nothing
-    aliases the slot and only the clear is kept (the bytes stay:
-    notes/durable/move-deinits-its-source-at-calls.md). The fn-entry
-    retags then run on the callee local IN PLACE, as Miri's
-    `Retag(FnEntry)` does on the callee's own local after the copy. An
-    assignment `y = move x` stays a copy (rustc's interpreter, with a
-    FIXME). Shims get no move, as in Miri (real MIR frames only). -/
+    type contains references. A MOVED argument is passed IN PLACE, as Miri
+    does (2026-09-21, `protect_in_place_function_argument`): after the
+    callee's local is filled, the caller's place is reborrowed with a
+    fresh PROTECTED `&mut` — registered in the callee's frame, so any
+    access to the place through another tag during the call is UB — and
+    uninit is written through it, so the former contents cannot be
+    observed after the call either; the temporary is never used again.
+    That is what licenses codegen to pass a pointer to the slot instead of
+    copying (notes/durable/move-deinits-its-source-at-calls.md). Since
+    rustc moves a named place into a call through a temporary, this is
+    observable only from custom MIR — Miri's own `arg_inplace_*` tests,
+    now in the corpus. The copy step is mirlite's `move` (the temporary
+    unique reborrow it mints is subsumed by the protected one; the two
+    are the same final state), then the fn-entry retags on the callee
+    local in place. Shims get none of this (real MIR frames only). -/
 def emitSeamBind (st : LowerSt) (line : Nat) (prot : Bool) (dstLocal : UPlace)
     (ty : UTy) (op : UOperand) : Except String LowerSt := do
   match op with
   | .move p =>
       let st ← emitAssign st line dstLocal (.move p)
-      if containsRef ty then emitSeamCopy st line prot dstLocal ty dstLocal
-      else pure st
+      let st ← if containsRef ty then emitSeamCopy st line prot dstLocal ty dstLocal
+        else pure st
+      protectInPlace st line p ty
   | _ =>
     if containsRef ty then
       match op with
@@ -740,6 +757,16 @@ partial def inlineCall (crate : UCrate) (depth : Nat) (st : LowerSt)
         let argLocal : UPlace := { root := .local (offset + 1 + i), projs := [] }
         let ty := f.locals[1 + i]? |>.getD (.unsupported "missing arg local")
         st ← emitSeamBind st line true argLocal ty args[i]
+      -- the RETURN PLACE is passed in place too (Miri: "Protect return
+      -- place for in-place return value passing"): the caller's
+      -- destination is deinit'd and protected for the call, and receives
+      -- the value after the frame pops. A unit destination has nothing to
+      -- protect. `dest := uninit` first also roots an as-yet-unbound
+      -- destination, which Miri, having no lazy allocation, never sees.
+      let retTy := f.locals[0]? |>.getD (.unsupported "missing return local")
+      if !(isUnitTy retTy) then
+        st ← emitAssign st line dest .uninit
+        st ← protectInPlace st line dest retTy
       -- walk the body
       st ← walkBlock crate (depth - 1) st f offset 0 []
       -- leave the call: protectors end before the return value flows back

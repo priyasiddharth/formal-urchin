@@ -935,6 +935,12 @@ theorem move_valuePkg_chain
     | error e => rw [h_die_src] at h_eval; simp at h_eval
     | ok perms' =>
     rw [h_die_src] at h_eval
+    simp only at h_eval
+    split at h_eval
+    · simp at h_eval
+    rename_i h_init0
+    have h_init : (mirlite.readWordSeq sM.mem (resolved.addr + PathTo.offset f) (blockSize τ)).any
+        (fun v => v == mirlite.MemValue.undef) = false := by simpa using h_init0
     injection h_eval with h_out
     subst h_out
     -- §2 the compiled shape
@@ -1022,6 +1028,8 @@ theorem move_valuePkg_chain
       (Register.R ((CheckedCompilerM.run (placeToRegChecked kindL B) csA).nextReg + 1))
       (Register.R (CheckedCompilerM.run (placeToRegChecked kindL B) csA).nextReg)
       (layoutToTyVal τ) (by rw [h_pcB']; exact hFrag.instrAt 1 rfl rfl) h_entryB h_lt h_read'
+      (by rw [h_addr, h_sz, h_memB]
+          exact noUndef_transport (readWordSeq_sim h_id_a h_sms _ _) h_init)
     -- §6 the retirement
     obtain ⟨p3, h_die_tgt, h_psimD, h_ntS, h_ntT⟩ :=
       sb_die_respects_PermSim h_psimRd h_wf_t' h_rt_new h_die_src

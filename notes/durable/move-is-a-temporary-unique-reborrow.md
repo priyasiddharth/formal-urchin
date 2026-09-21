@@ -51,7 +51,42 @@ below described the first landing (call arguments only). The user's
 decision the same day: EVERY `Move` operand clears — "the sb for the
 src should be zero so the test should fail mirlite also".
 
-[FACT, 2026-09-20] **Every `Move` operand is mirlite's `move`.** The
+[SUPERSEDED → next paragraph, 2026-09-21] "Every `Move` operand
+clears" lasted a day. The user's final call, after seeing real Miri
+accept the raw-read programs: "let's follow what Miri does — add
+protector". Assignment moves are copies again.
+
+[FACT, 2026-09-21] **The seam transcribes Miri's in-place passing, and
+a typed read of uninitialized memory is UB.** Three pieces, all
+verdict-level, no proof cost for the first two:
+1. `emitSeamBind` (lowering.lean), for a `.move p` call argument: bind
+   (`argLocal := move p`, the fn-entry retags in place), then
+   `protectInPlace`: `tmp := &mut p` with `prot = true` — a fresh
+   PROTECTED unique reborrow registered in the callee's frame — and
+   `*tmp := uninit` through it; `tmp` is never used again. That is
+   `protect_in_place_function_argument` line for line.
+2. `inlineCall`: the RETURN PLACE gets the same (`dest := uninit`, which
+   also roots an unbound destination, then the protected reborrow),
+   before the body; the value is copied in after `popProtectors`. Unit
+   destinations are skipped.
+3. A TYPED read of uninitialized memory is UB on both machines:
+   mirlite's `copy`/`move`/`ptrCast` fail when any read cell is `undef`;
+   oseair's `Load` fails on an `Undef` value. `runN_Assgn_Load_ptr_step`
+   carries the side condition; `noUndef_transport` (common.lean) moves
+   it across `MemValSim`. Without this, Miri's deinit is invisible
+   (`arg_inplace_observe_after` read the uninit slot as a value).
+Evidence: Miri's own in-place tests, custom MIR, now in the corpus as
+`fail/function_calls/arg_inplace_{observe_after, observe_during, mutate,
+locals_alias, locals_alias_ret}` and `return_pointer_aliasing_{read,
+write}` — 7 pass (two verdict-only: Miri attributes the alias errors to
+the callee's entry, ours to the call statement); the tail-call one and
+`fail/box-cell-alias` are unsupported (loader). The two local raw-read
+witnesses are plain passes again (assignment move = copy; the argument
+protection lands on rustc's temporary). Unit probe d9b flipped: a
+whole-tuple copy with an undef field is UB, as in Miri. Corpus 93/0/43,
+differential 93 matched.
+
+[FACT, 2026-09-20, superseded 2026-09-21] **Every `Move` operand is mirlite's `move`.** The
 elaborator maps `.use (.move p)` and `URvalue.move p` alike to
 `RExpr.move` (elab.lean), with one exception: a moved pointer cast to a
 different pointee layout (`p as *mut U`) stays the tag-preserving

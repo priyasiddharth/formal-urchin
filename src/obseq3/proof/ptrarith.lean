@@ -518,6 +518,12 @@ theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
     | error e => rw [h_read_src] at h_eval; simp at h_eval
     | ok perms₂ =>
     rw [h_read_src] at h_eval
+    simp only at h_eval
+    split at h_eval
+    · simp at h_eval
+    rename_i h_init0
+    have h_init : (mirlite.readWordSeq sM.mem rs.addr (blockSize (obseq.LayoutTy.PtrL σ))).any
+        (fun v => v == mirlite.MemValue.undef) = false := by simpa using h_init0
     injection h_eval with h_out
     subst h_out
     refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
@@ -527,7 +533,7 @@ theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
     obtain ⟨h_sclean, n1, s_mid1, p2, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
       h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
       copy_chainsrc_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb
-        h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_instS h_instD
+        h_sms h_psim h_pc h_sres h_fit h_read_src h_init h_sval0 h_instS h_instD
     exact ⟨h_sclean, ρt, n1 + 1, _, perms₂, _, TagRenameIncr.refl ρt, h_wf_t, rfl,
       (by rw [oseair_readWordSeq_length]; rfl),
       h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
@@ -561,6 +567,13 @@ theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
     | error e => rw [h_read_src] at h_eval; simp at h_eval
     | ok perms₂ =>
     rw [h_read_src] at h_eval
+    simp only at h_eval
+    split at h_eval
+    · simp at h_eval
+    rename_i h_init0
+    have h_init : (mirlite.readWordSeq sM.mem (rs.addr + PathTo.offset spath)
+        (blockSize (obseq.LayoutTy.PtrL σ))).any
+        (fun v => v == mirlite.MemValue.undef) = false := by simpa using h_init0
     injection h_eval with h_out
     subst h_out
     refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
@@ -571,7 +584,7 @@ theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
     obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
       h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
       copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
-        h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_regP h_clP
+        h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_init h_sval0 h_regP h_clP
         h_instS h_instCS
     exact ⟨h_sclean, ρt, n1, _, perms₂, _, TagRenameIncr.refl ρt, h_wf_t, rfl,
       (by rw [oseair_readWordSeq_length]; rfl),
@@ -767,6 +780,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
               pc := s_mid1.pc + 1 } := by
           have h := runN_Assgn_Load_ptr_step compProg s_mid1 (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
             sOut.result.reg (layoutToTyVal (obseq.LayoutTy.PtrL σ)) h_code1 h_sentry h_lt1 h_read2t
+            (by rw [h_seq]; rfl)
           rwa [h_seq] at h
         -- the mint transports and EXTENDS the renaming
         have h_tbd_mid : TagRenameBounded ρt perms'.NextTag p2.NextTag := by
@@ -892,7 +906,11 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR,
           h_psimR, h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
           copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
-            h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_regP
+            h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src
+            (by show (mirlite.readWordSeq sM.mem _ 1).any _ = false
+                simp [mirlite.readWordSeq, h_cell]
+                rfl)
+            h_sval0 h_regP
             h_clP h_instS h_instCS3
         -- `csA.nextReg ≤ n`, from the source mother
         obtain ⟨-, -, -, -, -, -, -, -, -, -, -, -, -, -, -, -, -, -, -, h_sregmono,

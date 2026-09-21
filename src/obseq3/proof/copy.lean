@@ -180,6 +180,8 @@ theorem copy_chainsrc_read
     (h_sres : mirlite.resolvePlaceAcc MSB sM src = .ok (rs, permsS))
     (h_fit : ¬ (rs.addr + blockSize τ > rs.allocBase + rs.allocSize))
     (h_read_src : MSB.read permsS rs.addr (blockSize τ) rs.tag = .ok perms₂)
+    (h_init : (mirlite.readWordSeq sM.mem rs.addr (blockSize τ)).any
+      (fun v => v == mirlite.MemValue.undef) = false)
     {sOut0 : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared src)}
     (h_sval0 : CheckedCompilerM.value (placeToRegChecked RefKind.Shared src) csA
       = Except.ok sOut0)
@@ -302,6 +304,8 @@ theorem copy_chainsrc_read
   have h_run1 := runN_Assgn_Load_ptr_step compProg s_mid1
     (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) sOut.result.reg
     (layoutToTyVal τ) h_code1 h_sentry (by rw [h_ts]; grind) h_read2t
+    (by rw [h_ts, h_cancelS, h_smem]
+        exact noUndef_transport (readWordSeq_sim h_id_a h_sms _ _) h_init)
   rw [h_ts, h_cancelS] at h_run1
   refine ⟨p2, oseair_runN_trans h_srun h_run1,
     (by grind [emit]),
@@ -363,6 +367,8 @@ theorem copy_projsrc_offset_read
       > rs.allocBase + rs.allocSize))
     (h_read_src : MSB.read permsS (rs.addr + PathTo.offset spath)
       (blockSize τ) rs.tag = .ok perms₂)
+    (h_init : (mirlite.readWordSeq sM.mem (rs.addr + PathTo.offset spath) (blockSize τ)).any
+      (fun v => v == mirlite.MemValue.undef) = false)
     {sOut0 : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared B)}
     (h_sval0 : CheckedCompilerM.value (placeToRegChecked RefKind.Shared B) csA
       = Except.ok sOut0)
@@ -578,6 +584,10 @@ theorem copy_projsrc_offset_read
                 rs.allocSize s_mid1.perms.NextTag])), pc := s_mid1.pc + 1 }
     (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
     (layoutToTyVal τ) h_code2 h_bentry (by rw [h_ts]; grind) h_read2
+    (by rw [h_ts, ← Nat.add_assoc, h_cancelS]
+        show (oseair.readWordSeq s_mid1.mem _ _).any _ = false
+        rw [h_smem]
+        exact noUndef_transport (readWordSeq_sim h_id_a h_sms _ _) h_init)
   rw [h_ts, ← Nat.add_assoc, h_cancelS] at h_run2
   have h_regbv : (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
       ≠ (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) := by
@@ -726,6 +736,12 @@ theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
     | error e => rw [h_read_src] at h_eval; simp at h_eval
     | ok perms₂ =>
     rw [h_read_src] at h_eval
+    simp only at h_eval
+    split at h_eval
+    · simp at h_eval
+    rename_i h_init0
+    have h_init : (mirlite.readWordSeq sM.mem rs.addr (blockSize τ)).any
+        (fun v => v == mirlite.MemValue.undef) = false := by simpa using h_init0
     injection h_eval with h_out
     subst h_out
     refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
@@ -735,7 +751,7 @@ theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
     obtain ⟨h_sclean, n1, s_mid1, p2, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
       h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
       copy_chainsrc_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb
-        h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_instS h_instD
+        h_sms h_psim h_pc h_sres h_fit h_read_src h_init h_sval0 h_instS h_instD
     exact ⟨h_sclean, ρt, n1 + 1, _, perms₂, _, TagRenameIncr.refl ρt, h_wf_t, rfl,
       (by rw [oseair_readWordSeq_length]),
       h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
@@ -948,6 +964,12 @@ theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : 
     | error e => rw [h_read_src] at h_eval; simp at h_eval
     | ok perms₂ =>
     rw [h_read_src] at h_eval
+    simp only at h_eval
+    split at h_eval
+    · simp at h_eval
+    rename_i h_init0
+    have h_init : (mirlite.readWordSeq sM.mem (rs.addr + PathTo.offset spath) (blockSize τ)).any
+        (fun v => v == mirlite.MemValue.undef) = false := by simpa using h_init0
     injection h_eval with h_out
     subst h_out
     refine ⟨placeInputsMapped_of_localBindingSim_resolvePlace h_lbs
@@ -957,7 +979,7 @@ theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : 
     obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
       h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
       copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
-        h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_sval0 h_regP h_clP
+        h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_init h_sval0 h_regP h_clP
         h_instS h_instCS
     exact ⟨h_sclean, ρt, n1, _, perms₂, _, TagRenameIncr.refl ρt, h_wf_t, rfl,
       (by rw [oseair_readWordSeq_length]),

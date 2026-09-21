@@ -1973,7 +1973,9 @@ theorem runN_Assgn_Load_ptr_step
     (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.Load ty preg)))
     (h_entry : PtrRegisterEntry s.reg preg b o sz t)
     (h_lt : o + obseq.typeSize ty ≤ sz)
-    (h_read : MSB.read s.perms (b + o) (obseq.typeSize ty) t = .ok p2) :
+    (h_read : MSB.read s.perms (b + o) (obseq.typeSize ty) t = .ok p2)
+    (h_init : (oseair.readWordSeq s.mem (b + o) (obseq.typeSize ty)).any
+      (fun v => v == Val.Undef) = false) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
       { s with perms := p2,
                reg := oseair.RegMap.insert s.reg dst
@@ -1992,8 +1994,59 @@ theorem runN_Assgn_Load_ptr_step
                  (ty, oseair.readWordSeq s.mem (b + o) (obseq.typeSize ty)),
                pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
-      h_bounds, Bool.false_eq_true, if_false, h_read]
+      h_bounds, Bool.false_eq_true, if_false, h_read, h_init]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
+/-- A loaded pointer cell is initialized. -/
+theorem noUndef_singleton_ptr (b o s : Word) (t : Tag) :
+    ([Val.Ptr b o s t]).any (fun v => v == Val.Undef) = false := rfl
+
+/-- Initialization transports along `MemValSim`: a source value that is
+    not `undef` is a word or a pointer, and its image is a `Dat` or a
+    `Ptr`. -/
+theorem noUndef_transport {ρa : AddrRenameMap} {ρt : TagRenameMap} :
+    ∀ {vs : List mirlite.MemValue} {ws : List Val},
+      ListRel (MemValSim ρa ρt) vs ws →
+      vs.any (fun v => v == mirlite.MemValue.undef) = false →
+      ws.any (fun v => v == Val.Undef) = false := by
+  intro vs
+  induction vs with
+  | nil =>
+      intro ws h _
+      cases ws with
+      | nil => rfl
+      | cons w ws => exact absurd h (by simp [ListRel])
+  | cons v vs ih =>
+      intro ws h h_src
+      cases ws with
+      | nil => exact absurd h (by simp [ListRel])
+      | cons w ws =>
+        obtain ⟨h_vw, h_rest⟩ := h
+        have h_split : (v == mirlite.MemValue.undef) = false ∧
+            vs.any (fun v => v == mirlite.MemValue.undef) = false := by
+          have := h_src
+          simp only [List.any, Bool.or_eq_false_iff] at this
+          exact this
+        obtain ⟨hv, hvs⟩ := h_split
+        have h_w : (w == Val.Undef) = false := by
+          cases v with
+          | undef =>
+              have h_t : (mirlite.MemValue.undef == mirlite.MemValue.undef) = true := rfl
+              rw [h_t] at hv
+              cases hv
+          | word x =>
+              cases w with
+              | Undef => simp [MemValSim] at h_vw
+              | Dat _ => rfl
+              | Ptr _ _ _ _ => rfl
+          | ptrVal b o sz t =>
+              cases w with
+              | Undef => simp [MemValSim] at h_vw
+              | Dat _ => rfl
+              | Ptr _ _ _ _ => rfl
+        show (w == Val.Undef || ws.any (fun v => v == Val.Undef)) = false
+        rw [h_w, ih h_rest hvs]
+        rfl
 
 
 

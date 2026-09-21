@@ -377,8 +377,10 @@ def d8_pop_after_frame_ok : IO Unit :=
     .ok "d8 pop after frame ok"
 
 /-- Positive: the statics-hoisting shape — materialize uninit, overwrite,
-    read back; plus a whole-tuple uninit copied out with one field still
-    undef (undef cells flow through Memcpy without a verdict). -/
+    read back. And the whole-tuple copy with one field still undef: a
+    TYPED read of uninitialized memory is UB on both machines (2026-09-21,
+    as in Miri — before that undef cells flowed through the copy without a
+    verdict). -/
 def d9_uninit_materialize : IO Unit := do
   expectDiff ΓA
     [.assign xA .uninit,
@@ -389,7 +391,7 @@ def d9_uninit_materialize : IO Unit := do
     [.assign tupD .uninit,
      .assign fld0D (.constInit 1),
      .assign cpyD (.copy tupD)]
-    .ok "d9b uninit tuple partial init copy"
+    (.ub 2) "d9b uninit tuple partial init copy is UB"
 
 /-- Positive: Box-like lifecycle — alloc, write through the deref, read
     back, dealloc. -/

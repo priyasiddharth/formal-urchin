@@ -942,10 +942,6 @@ theorem ptrChain_lowering_sim
                       (Rhs.Load obseq.TyVal.PTy qOut.result.reg)]
                     (k := 0) (by simp)
                   simpa using h
-              -- execute the Load
-              have h_run1 := runN_Assgn_Load_ptr_step compProg s_mid
-                (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared q) cs).nextReg)
-                qOut.result.reg obseq.TyVal.PTy h_code1 h_qentry h_off h_read_tgt'
               have h_rws : oseair.readWordSeq s_mid.mem
                   (qRes.allocBase + (qRes.addr - qRes.allocBase))
                   (obseq.typeSize obseq.TyVal.PTy) = [Val.Ptr b2 o2 s2 t2] := by
@@ -953,6 +949,11 @@ theorem ptrChain_lowering_sim
                 show oseair.readWordSeq s_mid.mem qRes.addr 1 = _
                 rw [h_qmem]
                 simp [oseair.readWordSeq, h_find_tgt]
+              -- execute the Load (the loaded cell is a pointer: initialized)
+              have h_run1 := runN_Assgn_Load_ptr_step compProg s_mid
+                (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared q) cs).nextReg)
+                qOut.result.reg obseq.TyVal.PTy h_code1 h_qentry h_off h_read_tgt'
+                (by rw [h_rws]; rfl)
               refine ⟨_, n1 + 1, _,  t2, h_valD, rfl,
                 (oseair_runN_add n1 1 s_osea compProg s_mid h_qrun).trans h_run1,
                 ?_, ?_, h_psim2, ?_, ?_, ?_, ?_, h_t, Nat.le_add_right b2 o2, ?_,
@@ -1145,9 +1146,6 @@ theorem ptrChain_lowering_sim
                         (Rhs.Load obseq.TyVal.PTy bOut.result.reg)]
                       (k := 0) (by simp)
                     simpa using h
-                have h_run1 := runN_Assgn_Load_ptr_step compProg s_mid
-                  (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
-                  bOut.result.reg obseq.TyVal.PTy h_code1 h_bentry h_offP h_read_tgt'
                 have h_rws : oseair.readWordSeq s_mid.mem
                     (bRes.allocBase + (bRes.addr - bRes.allocBase))
                     (obseq.typeSize obseq.TyVal.PTy) = [Val.Ptr vb2 vo2 vs2 vt2] := by
@@ -1155,6 +1153,10 @@ theorem ptrChain_lowering_sim
                   show oseair.readWordSeq s_mid.mem bRes.addr 1 = _
                   rw [h_bmem]
                   simp [oseair.readWordSeq, h_find_tgt]
+                have h_run1 := runN_Assgn_Load_ptr_step compProg s_mid
+                  (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
+                  bOut.result.reg obseq.TyVal.PTy h_code1 h_bentry h_offP h_read_tgt'
+                  (by rw [h_rws]; rfl)
                 refine ⟨_, n1 + 1, _, vt2, h_valD, rfl,
                   (oseair_runN_add n1 1 s_osea compProg s_mid h_brun).trans h_run1,
                   ?_, ?_, h_psim2, ?_, ?_, ?_, ?_, h_t, Nat.le_add_right vb2 vo2, ?_,
@@ -1324,18 +1326,6 @@ theorem ptrChain_lowering_sim
                         (Rhs.Load obseq.TyVal.PTy (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg))]
                       (k := 0) (by simp)
                     simpa [emit] using h
-                have h_run2 := runN_Assgn_Load_ptr_step compProg
-                  { s_mid with
-                      perms := q1,
-                      reg := oseair.RegMap.insert s_mid.reg
-                        (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
-                        (obseq.TyVal.PTy, [Val.Ptr bRes.allocBase
-                          ((bRes.addr - bRes.allocBase) + pathOffset f)
-                          bRes.allocSize s_mid.perms.NextTag]),
-                      pc := s_mid.pc + 1 }
-                  (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1))
-                  (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
-                  obseq.TyVal.PTy h_code2 h_entry_tmp h_offlt h_rd1'
                 -- the loaded cell holds the ρ-renamed stored pointer
                 obtain ⟨addr', value', h_ra', h_find_tgt, h_mvs⟩ := h_sms _ _ h_qfind
                 have h_addr' : addr' = bRes.addr + PathTo.offset f := (h_id_a _ _ h_ra').symm
@@ -1356,6 +1346,19 @@ theorem ptrChain_lowering_sim
                   show oseair.readWordSeq s_mid.mem (bRes.addr + PathTo.offset f) 1 = _
                   rw [h_bmem]
                   simp [oseair.readWordSeq, h_find_tgt]
+                have h_run2 := runN_Assgn_Load_ptr_step compProg
+                  { s_mid with
+                      perms := q1,
+                      reg := oseair.RegMap.insert s_mid.reg
+                        (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
+                        (obseq.TyVal.PTy, [Val.Ptr bRes.allocBase
+                          ((bRes.addr - bRes.allocBase) + pathOffset f)
+                          bRes.allocSize s_mid.perms.NextTag]),
+                      pc := s_mid.pc + 1 }
+                  (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1))
+                  (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
+                  obseq.TyVal.PTy h_code2 h_entry_tmp h_offlt h_rd1'
+                  (by rw [h_rws]; rfl)
                 -- §execute the Die (BRIDGE 1S phase 3) on the temp
                 have h_die1' : MSB.die q2
                     (bRes.allocBase + ((bRes.addr - bRes.allocBase) + pathOffset f))

@@ -1752,15 +1752,14 @@
       "notes": "Split borrows: all three fields of (u64,u64,u64) mutably borrowed simultaneously, writes interleaved. Falls out of per-cell stacks (disjoint ranges, disjoint stacks); no other suite coverage of borrow COEXISTENCE. Companion Lean-level scenarios pinned as compile_tests d27-d29 (parent-write cell-wise kill is not expressible in safe Rust -- borrowck rejects it, which is the point)."
     },
     {
-      "id": "local/move_arg_pops_raw",
-      "artifact": "local/move_arg_pops_raw.ullbc.json",
-      "status": "xfail-model",
+      "id": "local/move_arg_via_temp_spares_raw",
+      "artifact": "local/move_arg_via_temp_spares_raw.ullbc.json",
+      "status": "supported",
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-20",
-      "notes": "Moving a local into a call: rustc emits `_4 = move _1; consume(move _4)`. Our model clears `_1`'s stacks at the assignment move, so `*p` is UB on both machines (differential matched); Miri's in-place protection hits `_4` and `*p` reads 5. Documented divergence, user's decision 2026-09-20.",
-      "reason": "mirlite's `move` clears the moved-from place's borrow stacks on EVERY Move operand (intended move semantics); Miri evaluates the assignment move `_4 = move _1` as a copy and protects only rustc's temporary `_4`. Ours: UB at the raw read (line 20); Miri: ok."
+      "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-21",
+      "notes": "Moving a named local into a call: rustc emits `_4 = move _1; consume(move _4)`; the seam's in-place protection (protected reborrow + uninit) hits `_4`, so the raw pointer into `s` survives on both machines and in Miri."
     },
     {
       "id": "local/move_arg_ok",
@@ -1773,15 +1772,14 @@
       "notes": "Positive `move`: a non-Copy value moved into a call arrives; a raw pointer into an unrelated local is untouched."
     },
     {
-      "id": "local/assign_move_pops_raw",
-      "artifact": "local/assign_move_pops_raw.ullbc.json",
-      "status": "xfail-model",
+      "id": "local/assign_move_keeps_borrows",
+      "artifact": "local/assign_move_keeps_borrows.ullbc.json",
+      "status": "supported",
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-20",
-      "notes": "`let t = s;` is `Operand::Move`; our model pops the raw pointer into `s`, Miri keeps it. Documented divergence, user's decision 2026-09-20.",
-      "reason": "mirlite's `move` clears the moved-from place's stacks on an assignment move; Miri evaluates `Move` as `Copy` (rustc FIXME). Ours: UB at the raw read (line 12); Miri: ok."
+      "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-21",
+      "notes": "`let t = s;` is `Operand::Move`, evaluated as a copy (rustc interpreter, with a FIXME); the raw pointer into `s` survives."
     },
     {
       "id": "local/move_arg_field_spares_sibling",
@@ -1792,6 +1790,165 @@
       },
       "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-20",
       "notes": "Moving one field into a call clears that field's stacks only (through rustc's temporary in MIR; our model clears at the assignment move); a raw pointer into the sibling field survives on both machines and in Miri."
+    },
+    {
+      "id": "fail/function_calls/arg_inplace_observe_after",
+      "source": "corpus/tests/fail/function_calls/arg_inplace_observe_after.rs",
+      "prep": "prep/arg_inplace_observe_after.rs",
+      "artifact": "arg_inplace_observe_after.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 21
+      },
+      "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
+      "rewrites": [
+        "dropped //@revisions and //~ ERROR annotations",
+        "ptr.read()/ptr.write(v) -> derefs",
+        "assert_eq! -> plain read"
+      ],
+      "notes": "Reads the moved-from local after the call: UB on uninit bytes. Needs the seam's uninit write AND a typed read of uninitialised memory being UB."
+    },
+    {
+      "id": "fail/function_calls/arg_inplace_observe_during",
+      "source": "corpus/tests/fail/function_calls/arg_inplace_observe_during.rs",
+      "prep": "prep/arg_inplace_observe_during.rs",
+      "artifact": "arg_inplace_observe_during.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 28
+      },
+      "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
+      "rewrites": [
+        "dropped //@revisions and //~ ERROR annotations",
+        "ptr.read()/ptr.write(v) -> derefs",
+        "assert_eq! -> plain read"
+      ],
+      "notes": "Reads the caller's slot through a raw pointer DURING the call: pops the protected in-place reborrow."
+    },
+    {
+      "id": "fail/function_calls/arg_inplace_mutate",
+      "source": "corpus/tests/fail/function_calls/arg_inplace_mutate.rs",
+      "prep": "prep/arg_inplace_mutate.rs",
+      "artifact": "arg_inplace_mutate.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 26
+      },
+      "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
+      "rewrites": [
+        "dropped //@revisions and //~ ERROR annotations",
+        "ptr.read()/ptr.write(v) -> derefs",
+        "assert_eq! -> plain read"
+      ],
+      "notes": "Writes the caller's slot through a raw pointer during the call: pops the protected in-place reborrow."
+    },
+    {
+      "id": "fail/function_calls/arg_inplace_locals_alias",
+      "source": "corpus/tests/fail/function_calls/arg_inplace_locals_alias.rs",
+      "prep": "prep/arg_inplace_locals_alias.rs",
+      "artifact": "arg_inplace_locals_alias.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub"
+      },
+      "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
+      "rewrites": [
+        "dropped //@revisions and //~ ERROR annotations",
+        "ptr.read()/ptr.write(v) -> derefs",
+        "assert_eq! -> plain read"
+      ],
+      "notes": "The same local moved twice into one call: the second in-place protection hits the first protector. Verdict-only: Miri attributes the error to the callee's entry (prep line 26, the second in-place protection at frame init); ours fires at the call statement (line 18), where the second argument's move retag meets the first argument's protector."
+    },
+    {
+      "id": "fail/function_calls/arg_inplace_locals_alias_ret",
+      "source": "corpus/tests/fail/function_calls/arg_inplace_locals_alias_ret.rs",
+      "prep": "prep/arg_inplace_locals_alias_ret.rs",
+      "artifact": "arg_inplace_locals_alias_ret.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub"
+      },
+      "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
+      "rewrites": [
+        "dropped //@revisions and //~ ERROR annotations",
+        "ptr.read()/ptr.write(v) -> derefs",
+        "assert_eq! -> plain read"
+      ],
+      "notes": "A local moved in place that is also the call's destination: the return-place protection hits the argument's protector. Verdict-only: Miri attributes the error to the callee's entry (prep line 25, the second in-place protection at frame init); ours fires at the call statement (line 18), where the second argument's move retag meets the first argument's protector."
+    },
+    {
+      "id": "fail/function_calls/return_pointer_aliasing_read",
+      "source": "corpus/tests/fail/function_calls/return_pointer_aliasing_read.rs",
+      "prep": "prep/return_pointer_aliasing_read.rs",
+      "artifact": "return_pointer_aliasing_read.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 25
+      },
+      "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
+      "rewrites": [
+        "dropped //@revisions and //~ ERROR annotations",
+        "ptr.read()/ptr.write(v) -> derefs",
+        "assert_eq! -> plain read"
+      ],
+      "notes": "Reads the call's destination through a raw pointer inside the callee: the return place is protected for the call."
+    },
+    {
+      "id": "fail/function_calls/return_pointer_aliasing_write",
+      "source": "corpus/tests/fail/function_calls/return_pointer_aliasing_write.rs",
+      "prep": "prep/return_pointer_aliasing_write.rs",
+      "artifact": "return_pointer_aliasing_write.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ub",
+        "line": 25
+      },
+      "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
+      "rewrites": [
+        "dropped //@revisions and //~ ERROR annotations",
+        "ptr.read()/ptr.write(v) -> derefs",
+        "assert_eq! -> plain read"
+      ],
+      "notes": "Writes the call's destination through a raw pointer inside the callee: the return place is protected for the call."
+    },
+    {
+      "id": "fail/box-cell-alias",
+      "source": "corpus/tests/fail/box-cell-alias.rs",
+      "prep": "prep/box_cell_alias.rs",
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "loader: `*const Cell<u8>` from `&*val` with `val: Box<Cell<u8>>` elaborates the destination as one word (Cell pointee fallback) against a pointer rvalue",
+      "expected": {
+        "verdict": "ub",
+        "line": 9
+      },
+      "miri_error": "trying to retag from .* but that tag does not exist",
+      "rewrites": [
+        "dropped //@compile-flags and //~ ERROR annotation",
+        "assert_eq! -> plain read"
+      ],
+      "notes": "A Box<Cell<u8>> moved into a call while a raw pointer to the cell survives; the callee's write through the raw pointer conflicts with the box's protected fn-entry retag."
+    },
+    {
+      "id": "fail/function_calls/return_pointer_aliasing_write_tail_call",
+      "source": "corpus/tests/fail/function_calls/return_pointer_aliasing_write_tail_call.rs",
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "`become` (tail call) is not modelled",
+      "expected": {
+        "verdict": "ub"
+      }
     }
   ]
 }

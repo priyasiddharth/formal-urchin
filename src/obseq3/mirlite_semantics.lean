@@ -270,6 +270,15 @@ def evalRExpr
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               let state' := { state with perms := perms' }
+              -- a TYPED read of uninitialized memory is UB (2026-09-21, as
+              -- in Miri, whose in-place argument passing relies on it: the
+              -- moved-from slot is deinit'd, and reading it afterwards
+              -- must fail). `undef` is what an unwritten cell holds; it
+              -- may be moved around by nothing here — every read into a
+              -- value is a typed read.
+              if (readWordSeq state'.mem resolved.addr (blockSize τ)).any (fun v => v == .undef) then
+                .err "read of uninitialized memory"
+              else
               .ok {
                 values := readWordSeq state'.mem resolved.addr (blockSize τ)
                 values_len := readWordSeq_length state'.mem resolved.addr (blockSize τ)
@@ -304,6 +313,9 @@ def evalRExpr
           | .error e => .err s!"move retire failed: {e}"
           | .ok perms' =>
               let state' := { state with perms := perms' }
+              if (readWordSeq state'.mem resolved.addr (blockSize τ)).any (fun v => v == .undef) then
+                .err "read of uninitialized memory"
+              else
               .ok {
                 values := readWordSeq state'.mem resolved.addr (blockSize τ)
                 values_len := readWordSeq_length state'.mem resolved.addr (blockSize τ)
@@ -328,6 +340,9 @@ def evalRExpr
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               let state' := { state with perms := perms' }
+              if (readWordSeq state'.mem resolved.addr 1).any (fun v => v == .undef) then
+                .err "read of uninitialized memory"
+              else
               .ok {
                 values := readWordSeq state'.mem resolved.addr 1
                 values_len := readWordSeq_length state'.mem resolved.addr 1

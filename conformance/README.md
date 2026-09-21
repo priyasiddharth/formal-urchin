@@ -57,6 +57,8 @@ un-modeled SB rules. Rule → witness map:
 | protectors (strong) | aliasing_mut1-4, invalidate_against_protector1/2/3, illegal_write6 |
 | protectors (weak on SRW) | unsafe_cell_invalidate, ref_protector |
 | fn-entry retags: args/returns, tuple fields yes, struct fields no | pass/return_invalid_* family, fnentry_invalidation2 |
+| in-place argument/return-place protection (Miri's `protect_in_place_function_argument`) | fail/function_calls/arg_inplace_*, return_pointer_aliasing_read/write |
+| typed read of uninitialized memory is UB | fail/function_calls/arg_inplace_observe_after; compile_tests d9b |
 | retag on reference loads | load_invalid_mut/shr |
 | UnsafeCell freeze masks | interior_mut1, mixed_mutability_static, cell_inside_struct |
 | deallocation (grant + protector + stack removal) | illegal_dealloc1, invalidate_against_protector3 |
