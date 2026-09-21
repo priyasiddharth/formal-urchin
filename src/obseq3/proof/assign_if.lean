@@ -240,7 +240,7 @@ theorem compileAssignChecked_stmt_value {τ : LayoutTy} (dst : Place Γ τ) (rhs
 theorem evalRExpr_copy_flatten {τ : LayoutTy} {M : PermissionModel}
     (s : mirlite.State M Γ) (p : Place Γ τ) :
     mirlite.evalRExpr M s (.copy (flattenPlace p)) = mirlite.evalRExpr M s (.copy p) := by
-  simp only [mirlite.evalRExpr, resolvePlaceAcc_flatten]
+  simp only [mirlite.evalRExpr, mirlite.evalCopy, resolvePlaceAcc_flatten]
 
 /-- The compiler state after a guard's root step and discriminant read. -/
 def guardReadCS (discr : Place Γ obseq.LayoutTy.NatL) {τ : LayoutTy} (dst : Place Γ τ)
@@ -362,6 +362,7 @@ theorem assignLeaf_core {τ : LayoutTy} (compProg : oseair.Prog)
   | move src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_move compProg h_invAt hF h_step
+  | alloc len => exact absurd h_core (by simp [CoreRhs])
   | ref kind prot mask src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_ref kind prot mask compProg h_invAt hF h_step

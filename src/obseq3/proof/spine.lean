@@ -1577,7 +1577,7 @@ theorem stepStmt_assign_copysrc_anyflatten
         = mirlite.resolvePlace? (M := M) st src :=
     fun st => resolvePlace?_flatten src
   show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
-  simp only [mirlite.doAssign, mirlite.evalRExpr, h1, h2]
+  simp only [mirlite.doAssign, mirlite.evalRExpr, mirlite.evalCopy, h1, h2]
 
 
 /-- The ref rhs, like the copy rhs, sees a place only through
@@ -1596,7 +1596,7 @@ theorem stepStmt_assign_refsrc_anyflatten
         = mirlite.resolvePlaceAcc M st src :=
     fun st => resolvePlaceAcc_flatten src
   show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
-  simp only [mirlite.doAssign, mirlite.evalRExpr, h1]
+  simp only [mirlite.doAssign, mirlite.evalRExpr, mirlite.evalCopy, h1]
 
 /-! ## The NIL-projection eta: `*P` and `(*P).nil` are the same place
 

@@ -432,6 +432,7 @@ theorem CompilerInv_step
             exact CompilerInv_step_copy compProg h_comp h_inv h_get h_step
         | move src =>
             exact CompilerInv_step_move compProg h_comp h_inv h_get h_step
+        | alloc len => exact absurd h_stmt_core (by simp [CoreStmt, CoreRhs])
         | ref kind prot mask src =>
             exact CompilerInv_step_ref kind prot mask compProg h_comp h_inv h_get h_step
         | ptrCast src =>
@@ -450,7 +451,6 @@ theorem CompilerInv_step
         exact CompilerInv_step_assignIf compProg
           (assignLeaf_core compProg dst rhs (by simpa [CoreStmt] using h_stmt_core))
           h_comp h_inv h_get h_step
-    | alloc dst len => exact absurd h_stmt_core (by simp [CoreStmt])
     | dealloc p => exact absurd h_stmt_core (by simp [CoreStmt])
     | pushProtectors =>
         exact CompilerInv_step_pushProtectors compProg h_comp h_inv h_get h_step
@@ -509,7 +509,6 @@ theorem compile_correct
             | halt => exact (h_ne rfl).elim
             | assign dst rhs => exact h_step_eq
             | assignIf a b c d => exact h_step_eq
-            | alloc a b => exact h_step_eq
             | dealloc a => exact h_step_eq
             | pushProtectors => exact h_step_eq
             | popProtectors => exact h_step_eq

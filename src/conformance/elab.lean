@@ -162,9 +162,9 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
             | none => pure (AllocLen.const 1)
             | some (.const v) => pure (AllocLen.const v)
             | some (.copy p) | some (.move p) =>
-                return .alloc pd (AllocLen.fromPlace (← elabNatPlace Γ p "allocation size"))
+                pure (AllocLen.fromPlace (← elabNatPlace Γ p "allocation size"))
             | some _ => .error "unsupported allocation size operand"
-          return .alloc pd len
+          return .assign pd (.alloc len)
       | _, _ => .error "alloc destination is not pointer-typed"
   | .dealloc ptr _line => do
       let ⟨τp, pp⟩ ← elabPlace Γ ptr

@@ -54,7 +54,7 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
     ReadPkgLowered compProg (.exposeAddr src) src Rhs.ExposeAddr (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM src with
   | error e => rw [h_sres] at h_eval; simp at h_eval
   | ok pr =>
@@ -196,7 +196,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
       Rhs.ExposeAddr (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM B with
   | error e =>
       rw [resolvePlaceAcc_proj_base_err h_sres] at h_eval
@@ -449,7 +449,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
       Rhs.FromExposed (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM B with
   | error e =>
       rw [resolvePlaceAcc_proj_base_err h_sres] at h_eval
@@ -712,7 +712,7 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
     ReadPkgLowered compProg (.fromExposed (τ := τ) src) src Rhs.FromExposed (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM src with
   | error e => rw [h_sres] at h_eval; simp at h_eval
   | ok pr =>

@@ -244,6 +244,41 @@ def ensureRoot
   | .proj base _ => ensureRoot M state base
   | .deref ptrPlace => ensureRoot M state ptrPlace
 
+/-- `copy` of a place: resolve for access, the whole-range bounds check,
+    the SB read, the values — a TYPED read, so an `undef` cell is UB
+    (2026-09-21). Its own definition so the `alloc` rvalue's runtime
+    length is literally this read (as the guard's discriminant is). -/
+def evalCopy
+  (M : PermissionModel)
+  (state : State M Γ)
+  {τ : LayoutTy}
+  (src : Place Γ τ) : EvalResult M Γ τ :=
+  match resolvePlaceAcc M state src with
+  | .error e => .err e
+  | .ok (resolved, permsR) =>
+      -- Miri requires a typed access's WHOLE RANGE to be
+      -- dereferenceable; through a LOADED pointer the SB read alone
+      -- checks only per-cell stacks. The read-side mirror of the
+      -- retag event fix (2026-08-28); for local/proj sources the
+      -- check is discharged by construction/typing. What makes the
+      -- copy-through-a-pointer regime provable: the target Memcpy
+      -- checks the same bound against the loaded pointer's extent.
+      if resolved.addr + blockSize τ > resolved.allocBase + resolved.allocSize then
+        .err "copy of an out-of-bounds range"
+      else
+      match M.read permsR resolved.addr (blockSize τ) resolved.tag with
+      | .error e => .err s!"read access failed: {e}"
+      | .ok perms' =>
+          let state' := { state with perms := perms' }
+          if (readWordSeq state'.mem resolved.addr (blockSize τ)).any (fun v => v == .undef) then
+            .err "read of uninitialized memory"
+          else
+          .ok {
+            values := readWordSeq state'.mem resolved.addr (blockSize τ)
+            values_len := readWordSeq_length state'.mem resolved.addr (blockSize τ)
+            state := state'
+          }
+
 def evalRExpr
   (M : PermissionModel)
   (state : State M Γ)
@@ -252,38 +287,7 @@ def evalRExpr
   match expr with
   | .constInit value =>
       .ok { values := [MemValue.word value], values_len := rfl, state := state }
-  | .copy (τ := τ) src =>
-      match resolvePlaceAcc M state src with
-      | .error e => .err e
-      | .ok (resolved, permsR) =>
-          -- Miri requires a typed access's WHOLE RANGE to be
-          -- dereferenceable; through a LOADED pointer the SB read alone
-          -- checks only per-cell stacks. The read-side mirror of the
-          -- retag event fix (2026-08-28); for local/proj sources the
-          -- check is discharged by construction/typing. What makes the
-          -- copy-through-a-pointer regime provable: the target Memcpy
-          -- checks the same bound against the loaded pointer's extent.
-          if resolved.addr + blockSize τ > resolved.allocBase + resolved.allocSize then
-            .err "copy of an out-of-bounds range"
-          else
-          match M.read permsR resolved.addr (blockSize τ) resolved.tag with
-          | .error e => .err s!"read access failed: {e}"
-          | .ok perms' =>
-              let state' := { state with perms := perms' }
-              -- a TYPED read of uninitialized memory is UB (2026-09-21, as
-              -- in Miri, whose in-place argument passing relies on it: the
-              -- moved-from slot is deinit'd, and reading it afterwards
-              -- must fail). `undef` is what an unwritten cell holds; it
-              -- may be moved around by nothing here — every read into a
-              -- value is a typed read.
-              if (readWordSeq state'.mem resolved.addr (blockSize τ)).any (fun v => v == .undef) then
-                .err "read of uninitialized memory"
-              else
-              .ok {
-                values := readWordSeq state'.mem resolved.addr (blockSize τ)
-                values_len := readWordSeq_length state'.mem resolved.addr (blockSize τ)
-                state := state'
-              }
+  | .copy (τ := τ) src => evalCopy M state src
   | .move (τ := τ) src =>
       -- `move` (2026-09-20): copy's value, and the source's borrow stacks
       -- CLEARED — every item above the one the source resolves through is
@@ -321,6 +325,33 @@ def evalRExpr
                 values_len := readWordSeq_length state'.mem resolved.addr (blockSize τ)
                 state := state'
               }
+  | .alloc (τ := τ) len =>
+      -- a heap block of `n` pointees, `n` static or READ from a place
+      -- (copy's read of a `NatL` place), owned at a fresh tag; the value
+      -- is the pointer to it. An rvalue since 2026-09-21: `Box::new` and
+      -- `std::alloc::alloc` are calls, evaluated before the destination
+      -- is written — the assign's rvalue-first order.
+      let lenRes : Except String (Nat × State M Γ) :=
+        match len with
+        | .const n => .ok (n, state)
+        | .fromPlace p =>
+            match evalCopy M state p with
+            | .err e => .error e
+            | .ok out =>
+                match out.values with
+                | [.word n] => .ok (n, out.state)
+                | _ => .error "allocation size is not a concrete word"
+      match lenRes with
+      | .error e => .err e
+      | .ok (n, state) =>
+          let units := n * blockSize τ
+          let (base, mem') := allocate state.mem units
+          match M.own state.perms base units with
+          | .error e => .err s!"heap allocation failed: {e}"
+          | .ok (perms', tag) =>
+              .ok { values := [MemValue.ptrVal base 0 units tag]
+                    values_len := rfl
+                    state := { state with mem := mem', perms := perms' } }
   | .uninit =>
       .ok { values := List.replicate (blockSize τ) MemValue.undef
             values_len := List.length_replicate
@@ -516,21 +547,6 @@ def doAssign
 
 /-- Read a runtime word for an `AllocLen`. A `fromPlace` read is a real
     SB read access through the place's tag. -/
-def readAllocLen
-  (M : PermissionModel)
-  (state : State M Γ) : AllocLen Γ → Except String (Nat × State M Γ)
-  | .const n => .ok (n, state)
-  | .fromPlace p =>
-      match resolvePlaceAcc M state p with
-      | .error e => .error e
-      | .ok (res, permsR) =>
-          match M.read permsR res.addr 1 res.tag with
-          | .error e => .error s!"allocation size read failed: {e}"
-          | .ok perms' =>
-              match state.mem.find? res.addr with
-              | some (.word n) => .ok (n, { state with perms := perms' })
-              | _ => .error "allocation size is not a concrete word"
-
 def stepStmt
   (M : PermissionModel)
   (state : State M Γ) :
@@ -565,24 +581,6 @@ def stepStmt
               if v == val then doAssign M output.state dst rhs
               else .ok { output.state with pc := output.state.pc + 1 }
           | _ => .err "assignIf discriminant is not a concrete word"
-  | .alloc (τ := τ) dst len =>
-      match preparePlaceAssign M state dst with
-      | .err msg => .err msg
-      | .ok s1 =>
-      match resolvePlaceAcc M s1 dst with
-      | .error e => .err e
-      | .ok (resolved, permsD) =>
-      match readAllocLen M { s1 with perms := permsD } len with
-      | .error e => .err e
-      | .ok (n, state) =>
-          let units := n * blockSize τ
-          let (base, mem') := allocate state.mem units
-          match M.own state.perms base units with
-          | .error e => .err s!"heap allocation failed: {e}"
-          | .ok (perms', tag) =>
-              let state := { state with mem := mem', perms := perms' }
-              writeResolvedPlace (τ := obseq.LayoutTy.PtrL τ) M state resolved
-                [MemValue.ptrVal base 0 units tag] rfl
   | .dealloc dst =>
       match resolvePlaceAcc M state dst with
       | .error e => .err e

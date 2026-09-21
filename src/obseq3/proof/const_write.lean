@@ -306,7 +306,7 @@ theorem constInit_valuePkg {Γ : Ctx} (v : Word) (compProg : oseair.Prog) :
     ValuePkg compProg (RExpr.constInit (Γ := Γ) v) :=
   ValuePkg.of_pureCStore compProg (constInit_pureCStore v) rfl rfl
     (fun _ _ _ _ h => by
-      simp only [mirlite.evalRExpr] at h
+      simp only [mirlite.evalRExpr, mirlite.evalCopy] at h
       injection h with h
       subst h
       exact ⟨rfl, ⟨rfl, trivial⟩⟩)
@@ -317,7 +317,7 @@ theorem uninit_valuePkg {Γ : Ctx} (τ : LayoutTy) (compProg : oseair.Prog) :
     (by rw [List.length_replicate, blockSize_eq_typeSize])
     (List.length_replicate)
     (fun ρa ρt _ _ h => by
-      simp only [mirlite.evalRExpr] at h
+      simp only [mirlite.evalRExpr, mirlite.evalCopy] at h
       injection h with h
       subst h
       exact ⟨rfl, ListRel_replicate_undef ρa ρt _ _⟩)

@@ -273,7 +273,7 @@ theorem ref_valuePkg_chain
     output h_eval
   -- §1 invert the retag: the chain resolves, the range fits, the mint
   -- succeeds
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_dres : mirlite.resolvePlaceAcc MSB sM B with
   | error e =>
       rw [h_shape.resolveErr _ _ h_dres] at h_eval; simp at h_eval
@@ -905,7 +905,7 @@ theorem move_valuePkg_chain
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   -- §1 invert the move: resolve, fit, mint, read, retire
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_dres : mirlite.resolvePlaceAcc MSB sM B with
   | error e =>
       rw [h_shape.resolveErr _ _ h_dres] at h_eval; simp at h_eval
@@ -1153,7 +1153,7 @@ theorem stepStmt_assign_movesrc_anyflatten
         = mirlite.resolvePlaceAcc M st src :=
     fun st => resolvePlaceAcc_flatten src
   show mirlite.doAssign M s dst _ = mirlite.doAssign M s dst _
-  simp only [mirlite.doAssign, mirlite.evalRExpr, h1]
+  simp only [mirlite.doAssign, mirlite.evalRExpr, mirlite.evalCopy, h1]
 
 /-- The move pre-phase sees its source only through the borrow lowering,
     which agrees under flattening. -/

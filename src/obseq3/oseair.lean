@@ -255,28 +255,19 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
        RhsResult.Ok [Val.Ptr base 0 units tag] obseq.TyVal.PTy s2
      | .error msg => RhsResult.Err msg
 
-  | Rhs.AllocDyn ty lenPtr =>
-     -- runtime length: a real SB read of the length cell, then allocate —
-     -- the same event order as mirlite's readAllocLen + heap own
-     match state.reg.lookup lenPtr with
-     | some (_, [Val.Ptr base offset size tag]) =>
-       let addr := base + offset
-       if addr < base || addr >= base + size then RhsResult.Err "OOB"
-       else
-         match M.read state.perms addr 1 tag with
+  | Rhs.AllocDyn ty lenReg =>
+     -- runtime length from a VALUE register (copy's read of the length
+     -- cell precedes it, `compileAllocLenChecked`); then allocate + own
+     match state.reg.lookup lenReg with
+     | some (_, [Val.Dat n]) =>
+         let units := n * typeSize ty
+         let (heapBase, mem2) := A.alloc state.mem units
+         match M.own state.perms heapBase units with
+         | .ok (perms2, heapTag) =>
+           let s2 := { state with mem := mem2, perms := perms2 }
+           RhsResult.Ok [Val.Ptr heapBase 0 units heapTag] obseq.TyVal.PTy s2
          | .error msg => RhsResult.Err msg
-         | .ok perms2 =>
-           match state.mem.find? addr with
-           | some (Val.Dat n) =>
-             let units := n * typeSize ty
-             let (heapBase, mem2) := A.alloc state.mem units
-             match M.own perms2 heapBase units with
-             | .ok (perms3, heapTag) =>
-               let s2 := { state with mem := mem2, perms := perms3 }
-               RhsResult.Ok [Val.Ptr heapBase 0 units heapTag] obseq.TyVal.PTy s2
-             | .error msg => RhsResult.Err msg
-           | _ => RhsResult.Err "allocation size is not a concrete word"
-     | _ => RhsResult.Err "AllocDyn expects Ptr"
+     | _ => RhsResult.Err "AllocDyn expects a concrete word"
 
   | Rhs.Borrow kind prot mask len baseReg offset =>
      match state.reg.lookup baseReg with

@@ -101,6 +101,7 @@ def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .ptrOffset _ _ => True
   | .ptrCast _ => True
   | .refSlice _ _ _ => True
+  | .alloc _ => False
 
 /-- Statements in the proof-core fragment: `halt`, assignments — plain or
     guarded — with a core rvalue, and the protector frames. -/
@@ -3107,6 +3108,27 @@ theorem readRhsPre_placeRegMap_any {Γ : Ctx} {σ τ : LayoutTy} (rhs : RExpr Γ
   · simp [csMonad, csRun, emit_placeRegMap, ih]
   · exact ih
 
+theorem guardRead_placeRegMap_any {Γ : Ctx} (p : Place Γ obseq.LayoutTy.NatL)
+    (cs : CompilerState) :
+    (CheckedCompilerM.run (guardRead p) cs).placeRegMap = cs.placeRegMap := by
+  have ih := placeToRegChecked_placeRegMap_any p RefKind.Shared cs
+  simp only [guardRead, csMonad]
+  split
+  · simp [csMonad, csRun, emit_placeRegMap, ih]
+  · exact ih
+
+theorem compileAllocLenChecked_placeRegMap_any {Γ : Ctx} (ty : obseq.TyVal) (len : AllocLen Γ)
+    (cs : CompilerState) :
+    (CheckedCompilerM.run (compileAllocLenChecked ty len) cs).placeRegMap = cs.placeRegMap := by
+  cases len with
+  | const n => simp [compileAllocLenChecked, csMonad, csRun, emit_placeRegMap]
+  | fromPlace p =>
+      have ih := guardRead_placeRegMap_any p cs
+      simp only [compileAllocLenChecked, csMonad]
+      split
+      · simp [csMonad, csRun, emit_placeRegMap, ih]
+      · exact ih
+
 theorem compileRExprPreChecked_placeRegMap_any {Γ : Ctx} {τ : LayoutTy} (rhs : RExpr Γ τ)
     (cs : CompilerState) :
     (CheckedCompilerM.run (compileRExprPreChecked rhs) cs).placeRegMap = cs.placeRegMap := by
@@ -3134,6 +3156,13 @@ theorem compileRExprPreChecked_placeRegMap_any {Γ : Ctx} {τ : LayoutTy} (rhs :
       simp only [compileRExprPreChecked, csMonad]
       split
       · simp [csMonad, csRun, emit_placeRegMap, ih]
+      · exact ih
+  | alloc len =>
+      rename_i τ'
+      have ih := compileAllocLenChecked_placeRegMap_any (layoutToTyVal τ') len cs
+      simp only [compileRExprPreChecked, csMonad]
+      split
+      · simp [ih]
       · exact ih
 
 /-- `ensureLocalRegE` leaves its local mapped at the register it returns. -/

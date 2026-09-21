@@ -721,7 +721,7 @@ theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
     ReadPkgLowered compProg (.copy src) src (Rhs.Load (layoutToTyVal τ)) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM src with
   | error e => rw [h_sres] at h_eval; simp at h_eval
   | ok pr =>
@@ -947,7 +947,7 @@ theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : 
     ReadPkgProjOffset compProg (.copy (.proj B spath)) B spath (Rhs.Load (layoutToTyVal τ)) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM B with
   | error e =>
       rw [resolvePlaceAcc_proj_base_err h_sres] at h_eval

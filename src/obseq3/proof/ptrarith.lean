@@ -64,7 +64,7 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
       (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM src with
   | error e => rw [h_sres] at h_eval; simp at h_eval
   | ok pr =>
@@ -210,7 +210,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
       (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM B with
   | error e =>
       rw [resolvePlaceAcc_proj_base_err h_sres] at h_eval
@@ -503,7 +503,7 @@ theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
       (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM src with
   | error e => rw [h_sres] at h_eval; simp at h_eval
   | ok pr =>
@@ -550,7 +550,7 @@ theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
       (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM B with
   | error e =>
       rw [resolvePlaceAcc_proj_base_err h_sres] at h_eval
@@ -667,7 +667,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
       (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)]) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM src with
   | error e => rw [h_sres] at h_eval; simp at h_eval
   | ok pr =>
@@ -860,7 +860,7 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
       (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)]) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
-  simp only [mirlite.evalRExpr] at h_eval
+  simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
   cases h_sres : mirlite.resolvePlaceAcc MSB sM B with
   | error e =>
       rw [resolvePlaceAcc_proj_base_err h_sres] at h_eval

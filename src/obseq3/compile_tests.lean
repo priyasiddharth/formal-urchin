@@ -155,10 +155,10 @@ def g7_uninit_undef_store : IO Unit :=
      Instr.Halt]
     "g7 uninit undef store"
 
-/-- Heap allocation: dst-root Alloc first (mirlite's prepare order), then
-    `AllocN`, then the pointer RStore. -/
+/-- Heap allocation is an RVALUE (2026-09-21): the assign's dst-root
+    Alloc, then `AllocN` into a register, then the pointer RStore. -/
 def g8_heap_alloc : IO Unit :=
-  expectCode Γ2 [.alloc p2 (.const 1), .halt]
+  expectCode Γ2 [.assign p2 (.alloc (.const 1)), .halt]
     [Instr.Assgn (Register.R 0) (Rhs.Alloc pTy),
      Instr.Assgn (Register.R 1) (Rhs.AllocN natTy 1),
      Instr.RStore pTy (Register.R 1) (Register.R 0),
@@ -167,7 +167,7 @@ def g8_heap_alloc : IO Unit :=
 
 /-- Deallocation: Load of the pointer cell (mirlite's read), then Dealloc. -/
 def g9_dealloc : IO Unit :=
-  expectCode Γ2 [.alloc p2 (.const 1), .dealloc p2, .halt]
+  expectCode Γ2 [.assign p2 (.alloc (.const 1)), .dealloc p2, .halt]
     [Instr.Assgn (Register.R 0) (Rhs.Alloc pTy),
      Instr.Assgn (Register.R 1) (Rhs.AllocN natTy 1),
      Instr.RStore pTy (Register.R 1) (Register.R 0),
@@ -397,7 +397,7 @@ def d9_uninit_materialize : IO Unit := do
     back, dealloc. -/
 def d10_heap_lifecycle : IO Unit :=
   expectDiff ΓA
-    [.alloc pA (.const 1),
+    [.assign pA (.alloc (.const 1)),
      .assign (.deref pA) (.constInit 5),
      .assign tA (.copy (.deref pA)),
      .dealloc pA]
@@ -406,7 +406,7 @@ def d10_heap_lifecycle : IO Unit :=
 /-- Negative: use-after-free is UB at the same statement on both machines. -/
 def d11_use_after_free : IO Unit :=
   expectDiff ΓA
-    [.alloc pA (.const 1),
+    [.assign pA (.alloc (.const 1)),
      .assign (.deref pA) (.constInit 5),
      .dealloc pA,
      .assign tA (.copy (.deref pA))]
@@ -415,7 +415,7 @@ def d11_use_after_free : IO Unit :=
 /-- Negative: double free is UB at the second dealloc. -/
 def d12_double_free : IO Unit :=
   expectDiff ΓA
-    [.alloc pA (.const 1),
+    [.assign pA (.alloc (.const 1)),
      .dealloc pA,
      .dealloc pA]
     (.ub 2) "d12 double free"
@@ -425,7 +425,7 @@ def d12_double_free : IO Unit :=
 def d13_dynamic_alloc_len : IO Unit :=
   expectDiff ΓA
     [.assign xA (.constInit 3),
-     .alloc pA (.fromPlace xA),
+     .assign pA (.alloc (.fromPlace xA)),
      .assign (.deref pA) (.constInit 7),
      .dealloc pA]
     .ok "d13 dynamic alloc len"

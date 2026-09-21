@@ -87,6 +87,13 @@ def Place.depth : Place Γ τ → Nat
   | .proj b _ => b.depth + 1
   | .deref p => p.depth + 1
 
+/-- Allocation length for the `alloc` rvalue: a static count or a runtime
+    word read from a place (e.g. a `Layout` size). The allocation covers
+    `n * blockSize τ` cells for a `PtrL τ` result. -/
+inductive AllocLen (Γ : Ctx) : Type where
+| const : Nat → AllocLen Γ
+| fromPlace : Place Γ obseq.LayoutTy.NatL → AllocLen Γ
+
 /-- A right-hand-side expression of layout type `τ` in context `Γ`.
     `ref`'s `Bool` marks a *protected* (function-entry) retag and its
     `List Bool` is the UnsafeCell freeze mask (true = interior-mutable
@@ -103,24 +110,19 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | exposeAddr : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ obseq.LayoutTy.NatL
 | fromExposed : Place Γ obseq.LayoutTy.NatL → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | uninit : RExpr Γ τ
-
-/-- Allocation length for `Stmt.alloc`: a static count or a runtime word
-    read from a place (e.g. a `Layout` size). The allocation covers
-    `n * blockSize τ` cells for a `PtrL τ` destination. -/
-inductive AllocLen (Γ : Ctx) : Type where
-| const : Nat → AllocLen Γ
-| fromPlace : Place Γ obseq.LayoutTy.NatL → AllocLen Γ
+| alloc : AllocLen Γ → RExpr Γ (obseq.LayoutTy.PtrL τ)
 
 /-- A statement in context `Γ`.
     - `pushProtectors`/`popProtectors` bracket an inlined call's protector
       frame (Miri's fn-entry protectors).
-    - `alloc`/`dealloc` model heap allocation (`Box::new`, `std::alloc`).
+    - `dealloc` frees a heap block (`std::alloc::dealloc`); allocation is
+      the `alloc` RVALUE (`Box::new`, `std::alloc::alloc` — a call, so its
+      destination is written after it, 2026-09-21).
     - `assignIf` runs the assignment only when the word at `discr` equals
       `val` — used for variant-conditional seam retags of enum payloads. -/
 inductive Stmt (Γ : Ctx) : Type where
 | assign : Place Γ τ → RExpr Γ τ → Stmt Γ
 | assignIf : Place Γ obseq.LayoutTy.NatL → Word → Place Γ τ → RExpr Γ τ → Stmt Γ
-| alloc : Place Γ (obseq.LayoutTy.PtrL τ) → AllocLen Γ → Stmt Γ
 | dealloc : Place Γ (obseq.LayoutTy.PtrL τ) → Stmt Γ
 | pushProtectors : Stmt Γ
 | popProtectors : Stmt Γ
