@@ -1788,8 +1788,6 @@ theorem copy_chainwrite_after_read
     (F : StmtFrame compProg cs0 prog s_mir.pc csStmt)
     (h_dchain : PtrChain dbase)
     (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
-    (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
-    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csStart)
     (h_prb : PlaceRegMapBound csStart)
     {rd : mirlite.PlaceRes} {permsD : MSB.State} {perms₂ : MSB.State}
@@ -1801,12 +1799,14 @@ theorem copy_chainwrite_after_read
     {csR : CompilerState} {sR : oseair.State MSB} {mkStore : Register → Instr}
     {vals : List Val} {nR : Nat}
     (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
+    -- the memories the rvalue LEFT, related under the caller's renaming
+    (h_sms : SourceMemSim ρa ρt s_mir.mem sR.mem)
+    (h_alloc : AllocLockstep ρa s_mir.mem sR.mem)
     (h_prmR : csR.placeRegMap = csStart.placeRegMap)
     (h_regmonoR : csStart.nextReg ≤ csR.nextReg)
     (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
     (h_psimR : PermSim ρt perms₂ sR.perms)
     (h_tbdR : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag)
-    (h_memR : sR.mem = s_osea.mem)
     (h_pcR : sR.pc = csR.nextLabel)
     (h_exec : StoreStep compProg sR csR.nextReg mkStore vals)
     (h_vlen : vals.length = blockSize τ)
@@ -1844,7 +1844,7 @@ theorem copy_chainwrite_after_read
       ptrChain_lowering_sim (s_mir := { s_mir with perms := perms₂ })
         (compProg := compProg) h_id_a h_wf_t h_dchain RefKind.Mut csR
         sR rd permsD h_dres h_tbd1 h_lbs1 h_prb1
-        (by rw [show sR.mem = s_osea.mem from h_memR]; exact h_sms)
+        h_sms
         h_psimR h_pcR h_instR
     -- §8 the WRITE: transport, then execute the `RStore`
     have h_stmtRun := h_frag dOut h_dval h_dclean
@@ -1894,9 +1894,7 @@ theorem copy_chainwrite_after_read
     have h_runB := (oseair_runN_trans h_runR h_drun)
     have h_run := (oseair_runN_trans h_runB h_run2)
     -- §9 memory: the same values land at the same addresses
-    have h_memchain : s_mid2.mem = s_osea.mem := by
-      rw [h_dmem]
-      exact h_memR
+    have h_memchain : s_mid2.mem = sR.mem := h_dmem
     have h_rel : ListRel (MemValSim ρa ρt) mvals vals := h_valsRel
     have h_dom : ∀ k,
         k < mvals.length →
@@ -1987,7 +1985,6 @@ theorem copy_freshroot_write_after_read
     (compProg : oseair.Prog)
     {csStart csStmt : CompilerState}
     (F : StmtFrame compProg cs0 prog s_mir.pc csStmt)
-    (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csStart)
     -- the allocation, on the mirlite side: the post-`own` state `s1`
     {s1 : mirlite.State MSB Γ}
@@ -1996,14 +1993,8 @@ theorem copy_freshroot_write_after_read
     (h_env1 : s1.env = mirlite.Env.set s_mir.env dstLoc
       { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })
     (h_pc1 : s1.pc = s_mir.pc)
-    (h_memstart1 : s1.mem.addrStart = s_mir.mem.addrStart + blockSize σ)
-    (h_allocs1 : s1.mem.allocs = (s_mir.mem.addrStart, blockSize σ) :: s_mir.mem.allocs)
-    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
-    (h_find1 : ∀ a, mirlite.Mem.find? s1.mem a = mirlite.Mem.find? s_mir.mem a)
     -- ... and on the oseair side: the `Alloc` runs, and the two memories
     -- start together
-    (h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart)
-    (h_sz : obseq.typeSize (layoutToTyVal σ) = blockSize σ)
     {tgtPerms : MSB.State} {n0 : Nat}
     (h_run0' : oseair.runN MSB n0 s_osea compProg = oseair.Result.Ok
       { s_osea with
@@ -2044,14 +2035,10 @@ theorem copy_freshroot_write_after_read
     (h_lbsR : LocalBindingSim ρa' ρt' s1.env sR csR)
     (h_psimR : PermSim ρt' perms₂ sR.perms)
     (h_tbdR : TagRenameBounded ρt' perms₂.NextTag sR.perms.NextTag)
-    (h_smem : sR.mem
-      = ({ s_osea with
-      mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2,
-      perms := tgtPerms,
-      reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
-        (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
-      pc := s_osea.pc + 1 }).mem)
+    -- the memories the rvalue LEFT, related under the grown renaming
+    {memO : mirlite.Mem}
+    (h_sms1 : SourceMemSim ρa' ρt' memO sR.mem)
+    (h_alloc1 : AllocLockstep ρa' memO sR.mem)
     (h_pcR : sR.pc = csR.nextLabel)
     (h_exec : StoreStep compProg sR csR.nextReg mkStore vals)
     (h_vlen : vals.length = blockSize τ)
@@ -2065,7 +2052,7 @@ theorem copy_freshroot_write_after_read
     (h_rdtag : rd.tag = s_mir.perms.NextTag)
     (h_valsRel : ListRel (MemValSim ρa' ρt') mvals vals)
     (h_step : mirlite.writeResolvedPlace (τ := τ) MSB
-      { s1 with perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
+      { s1 with mem := memO, perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
     ∃ (ρa'' : AddrRenameMap) (ρt'' : TagRenameMap) (s_osea' : oseair.State MSB)
       (n : Nat),
       AddrRenameIncr ρa ρa'' ∧
@@ -2141,11 +2128,6 @@ theorem copy_freshroot_write_after_read
     (fun _ _ => rfl) h_code2 h_wtp
   have h_run := oseair_runN_trans (oseair_runN_trans h_run0' h_runR) h_run2
   -- memory: the source's write lands at the same address on both sides
-  have h_sms1 : SourceMemSim ρa' ρt' s1.mem sR.mem := by
-    intro a v h_find
-    rw [h_find1] at h_find
-    rw [h_smem]
-    exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find
   have h_dom : ∀ k, k < mvals.length →
       ρa' (s_mir.mem.addrStart + k) = some (s_mir.mem.addrStart + k) := by
     intro k hk
@@ -2169,19 +2151,11 @@ theorem copy_freshroot_write_after_read
   · show TagRenameBounded _ perms₃.NextTag p3w.NextTag
     rw [sb_write_NextTag h_useMut_src', sb_write_NextTag h_useMut_tgt]
     exact h_tbdR
-  · refine ⟨?_, ?_, fun a => h_incr_a a a (h_alloc.2.2 a)⟩
-    · simp only [mirlite_writeWordSeq_addrStart, oseair_writeWordSeq_addrStart,
-        h_smem, h_memstart1]
-      show (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2.addrStart
-        = _
-      simp only [oseair.allocate]
-      rw [h_addr_eq, h_sz]
-    · simp only [mirlite_writeWordSeq_allocs, oseair_writeWordSeq_allocs,
-        h_smem, h_allocs1]
-      show (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2.allocs
-        = _
-      simp only [oseair.allocate]
-      rw [h_addr_eq, h_sz, h_alloc.2.1]
+  · refine ⟨?_, ?_, h_alloc1.2.2⟩
+    · simp only [mirlite_writeWordSeq_addrStart, oseair_writeWordSeq_addrStart]
+      exact h_alloc1.1
+    · simp only [mirlite_writeWordSeq_allocs, oseair_writeWordSeq_allocs]
+      exact h_alloc1.2.1
   · intro σ' loc' h_none
     have h_none1 : mirlite.Env.lookup s1.env loc' = none := h_none
     rw [h_env1] at h_none1
@@ -2403,7 +2377,6 @@ theorem copy_freshproj_write_after_read
     (compProg : oseair.Prog)
     {csStart csStmt : CompilerState}
     (F : StmtFrame compProg cs0 prog s_mir.pc csStmt)
-    (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csStart)
     {s1 : mirlite.State MSB Γ}
     (h_lookup_set : mirlite.Env.lookup s1.env dstLoc
@@ -2411,12 +2384,6 @@ theorem copy_freshproj_write_after_read
     (h_env1 : s1.env = mirlite.Env.set s_mir.env dstLoc
       { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })
     (h_pc1 : s1.pc = s_mir.pc)
-    (h_memstart1 : s1.mem.addrStart = s_mir.mem.addrStart + blockSize σ)
-    (h_allocs1 : s1.mem.allocs = (s_mir.mem.addrStart, blockSize σ) :: s_mir.mem.allocs)
-    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
-    (h_find1 : ∀ a, mirlite.Mem.find? s1.mem a = mirlite.Mem.find? s_mir.mem a)
-    (h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart)
-    (h_sz : obseq.typeSize (layoutToTyVal σ) = blockSize σ)
     {tgtPerms : MSB.State} {n0 : Nat}
     (h_run0' : oseair.runN MSB n0 s_osea compProg = oseair.Result.Ok
       { s_osea with
@@ -2458,14 +2425,10 @@ theorem copy_freshproj_write_after_read
     (h_lbsR : LocalBindingSim ρa' ρt' s1.env sR csR)
     (h_psimR : PermSim ρt' perms₂ sR.perms)
     (h_tbdR : TagRenameBounded ρt' perms₂.NextTag sR.perms.NextTag)
-    (h_smem : sR.mem
-      = ({ s_osea with
-      mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2,
-      perms := tgtPerms,
-      reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
-        (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
-      pc := s_osea.pc + 1 }).mem)
+    -- the memories the rvalue LEFT, related under the grown renaming
+    {memO : mirlite.Mem}
+    (h_sms1 : SourceMemSim ρa' ρt' memO sR.mem)
+    (h_alloc1 : AllocLockstep ρa' memO sR.mem)
     (h_exec : StoreStep compProg sR csR.nextReg mkStore vals)
     (h_vlen : vals.length = blockSize τ)
     -- the three instructions the destination costs, and the two facts the
@@ -2494,7 +2457,7 @@ theorem copy_freshproj_write_after_read
     (h_rdsize : rd.allocSize = blockSize σ)
     (h_valsRel : ListRel (MemValSim ρa' ρt') mvals vals)
     (h_step : mirlite.writeResolvedPlace (τ := τ) MSB
-      { s1 with perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
+      { s1 with mem := memO, perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
     ∃ (ρa'' : AddrRenameMap) (ρt'' : TagRenameMap) (s_osea' : oseair.State MSB)
       (n : Nat),
       AddrRenameIncr ρa ρa'' ∧
@@ -2579,14 +2542,12 @@ theorem copy_freshproj_write_after_read
       = .ok q2 := by
     rw [h_sBperms, h_vlen, h_rdaddr]
     exact h_wr1
-  have h_smsB : SourceMemSim ρa' ρt' { s1 with perms := perms₂ }.mem sB.mem := by
-    intro a v h_find
-    rw [h_find1] at h_find
-    rw [h_sBmem, h_smem]
-    exact SourceMemSim.rename_mono h_incr_a h_incr_t h_sms a v h_find
+  have h_smsB : SourceMemSim ρa' ρt' { s1 with mem := memO, perms := perms₂ }.mem sB.mem := by
+    rw [h_sBmem]
+    exact h_sms1
   obtain ⟨h_wtp, h_sms'⟩ :=
     writeThroughPtr_sim (τ := τ) (s_osea := sB) (resolved := rd)
-      (s_pre := { s1 with perms := perms₂ })
+      (s_pre := { s1 with mem := memO, perms := perms₂ })
       "store" mvals vals h_mlen h_valsRel h_id_a'
       h_entry_tmp h_wr1' h_smsB
       (by rw [h_rdaddr, h_rdbase]; exact Nat.le_add_right _ _)
@@ -2659,19 +2620,11 @@ theorem copy_freshproj_write_after_read
     rw [sb_write_NextTag h_useMut_src']
     exact TagRenameBounded.mono h_tbdR (Nat.le_refl _)
       (by rw [← sb_write_NextTag h_useMut_tgt]; exact h_ntle)
-  · refine ⟨?_, ?_, fun a => h_incr_a a a (h_alloc.2.2 a)⟩
-    · simp only [mirlite_writeWordSeq_addrStart, oseair_writeWordSeq_addrStart,
-        h_sBmem, h_smem, h_memstart1]
-      show (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2.addrStart
-        = _
-      simp only [oseair.allocate]
-      rw [h_addr_eq, h_sz]
-    · simp only [mirlite_writeWordSeq_allocs, oseair_writeWordSeq_allocs,
-        h_sBmem, h_smem, h_allocs1]
-      show (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2.allocs
-        = _
-      simp only [oseair.allocate]
-      rw [h_addr_eq, h_sz, h_alloc.2.1]
+  · refine ⟨?_, ?_, h_alloc1.2.2⟩
+    · simp only [mirlite_writeWordSeq_addrStart, oseair_writeWordSeq_addrStart, h_sBmem]
+      exact h_alloc1.1
+    · simp only [mirlite_writeWordSeq_allocs, oseair_writeWordSeq_allocs, h_sBmem]
+      exact h_alloc1.2.1
   · intro τ' loc' h_none
     have h_none1 : mirlite.Env.lookup s1.env loc' = none := h_none
     rw [h_env1] at h_none1
@@ -3297,7 +3250,6 @@ theorem copy_fresh_write_after_read
     (compProg : oseair.Prog)
     {csStart csStmt : CompilerState}
     (F : StmtFrame compProg cs0 prog s_mir.pc csStmt)
-    (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csStart)
     {s1 : mirlite.State MSB Γ}
     (h_lookup_set : mirlite.Env.lookup s1.env dstLoc
@@ -3305,12 +3257,6 @@ theorem copy_fresh_write_after_read
     (h_env1 : s1.env = mirlite.Env.set s_mir.env dstLoc
       { addr := s_mir.mem.addrStart, tag := s_mir.perms.NextTag })
     (h_pc1 : s1.pc = s_mir.pc)
-    (h_memstart1 : s1.mem.addrStart = s_mir.mem.addrStart + blockSize σ)
-    (h_allocs1 : s1.mem.allocs = (s_mir.mem.addrStart, blockSize σ) :: s_mir.mem.allocs)
-    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
-    (h_find1 : ∀ a, mirlite.Mem.find? s1.mem a = mirlite.Mem.find? s_mir.mem a)
-    (h_addr_eq : s_osea.mem.addrStart = s_mir.mem.addrStart)
-    (h_sz : obseq.typeSize (layoutToTyVal σ) = blockSize σ)
     {tgtPerms : MSB.State} {n0 : Nat}
     (h_run0' : oseair.runN MSB n0 s_osea compProg = oseair.Result.Ok
       { s_osea with
@@ -3352,14 +3298,10 @@ theorem copy_fresh_write_after_read
     (h_lbsR : LocalBindingSim ρa' ρt' s1.env sR csR)
     (h_psimR : PermSim ρt' perms₂ sR.perms)
     (h_tbdR : TagRenameBounded ρt' perms₂.NextTag sR.perms.NextTag)
-    (h_smem : sR.mem
-      = ({ s_osea with
-      mem := (oseair.allocate s_osea.mem (obseq.typeSize (layoutToTyVal σ))).2,
-      perms := tgtPerms,
-      reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
-        (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
-      pc := s_osea.pc + 1 }).mem)
+    -- the memories the rvalue LEFT, related under the grown renaming
+    {memO : mirlite.Mem}
+    (h_sms1 : SourceMemSim ρa' ρt' memO sR.mem)
+    (h_alloc1 : AllocLockstep ρa' memO sR.mem)
     (h_pcR : sR.pc = csR.nextLabel)
     (h_exec : StoreStep compProg sR csR.nextReg mkStore vals)
     (h_vlen : vals.length = blockSize τ)
@@ -3376,7 +3318,7 @@ theorem copy_fresh_write_after_read
     (h_rdsize : rd.allocSize = blockSize σ)
     (h_valsRel : ListRel (MemValSim ρa' ρt') mvals vals)
     (h_step : mirlite.writeResolvedPlace (τ := τ) MSB
-      { s1 with perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
+      { s1 with mem := memO, perms := perms₂ } rd mvals h_mlen = mirlite.Result.ok s_mir') :
     ∃ (ρa'' : AddrRenameMap) (ρt'' : TagRenameMap) (s_osea' : oseair.State MSB)
       (n : Nat),
       AddrRenameIncr ρa ρa'' ∧
@@ -3387,19 +3329,17 @@ theorem copy_fresh_write_after_read
   · subst h_off
     rw [projDstTail_zero] at h_stmtRun
     exact copy_freshroot_write_after_read compProg F
-      h_sms h_unmap h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
-      h_find1 h_addr_eq h_sz
+      h_unmap h_lookup_set h_env1 h_pc1
       h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 h_runR h_prmR
-      h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR h_exec h_vlen h_stmtRun h_mlen
+      h_regmonoR h_lbsR h_psimR h_tbdR h_sms1 h_alloc1 h_pcR h_exec h_vlen h_stmtRun h_mlen
       (by simpa using h_fit) (by rw [h_rdaddr, Nat.add_zero]) h_rdtag h_valsRel h_step
   · rw [projDstTail_pos _ h_off] at h_stmtRun
     have hFrag := (F.code).fragmentOf
       (base := csR.nextLabel) h_stmtRun rfl
     exact copy_freshproj_write_after_read compProg F
-      h_sms h_unmap h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc
-      h_find1 h_addr_eq h_sz
+      h_unmap h_lookup_set h_env1 h_pc1
       h_run0' h_incr_a h_incr_t h_id_a' h_wf_t' h_ra_dom h_prb1 off h_fit h_runR
-      h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_exec h_vlen
+      h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_sms1 h_alloc1 h_exec h_vlen
       (by rw [h_pcR]; exact hFrag.instrAt 0 rfl rfl)
       (by rw [h_pcR]; exact hFrag.instrAt 1 rfl rfl)
       (by rw [h_pcR]; exact hFrag.instrAt 2 rfl rfl)
@@ -3426,8 +3366,6 @@ theorem copy_chain_write_after_read
     (F : StmtFrame compProg cs0 prog s_mir.pc csStmt)
     (h_dchain : PtrChain dbase)
     (h_id_a : IdentityOnDomain ρa) (h_wf_t : TagRenameWF ρt)
-    (h_sms : SourceMemSim ρa ρt s_mir.mem s_osea.mem)
-    (h_alloc : AllocLockstep ρa s_mir.mem s_osea.mem)
     (h_unmap : UnboundLocalsUnmapped s_mir.env csStart)
     (h_prb : PlaceRegMapBound csStart)
     {rd : mirlite.PlaceRes} {permsD perms₂ : MSB.State}
@@ -3440,12 +3378,14 @@ theorem copy_chain_write_after_read
     {csR : CompilerState} {sR : oseair.State MSB} {mkStore : Register → Instr}
     {vals : List Val} {nR : Nat}
     (h_runR : oseair.runN MSB nR s_osea compProg = oseair.Result.Ok sR)
+    -- the memories the rvalue LEFT, related under the caller's renaming
+    (h_sms : SourceMemSim ρa ρt s_mir.mem sR.mem)
+    (h_alloc : AllocLockstep ρa s_mir.mem sR.mem)
     (h_prmR : csR.placeRegMap = csStart.placeRegMap)
     (h_regmonoR : csStart.nextReg ≤ csR.nextReg)
     (h_lbsR : LocalBindingSim ρa ρt s_mir.env sR csR)
     (h_psimR : PermSim ρt perms₂ sR.perms)
     (h_tbdR : TagRenameBounded ρt perms₂.NextTag sR.perms.NextTag)
-    (h_memR : sR.mem = s_osea.mem)
     (h_pcR : sR.pc = csR.nextLabel)
     (h_exec : StoreStep compProg sR csR.nextReg mkStore vals)
     (h_vlen : vals.length = blockSize τ)
@@ -3480,7 +3420,7 @@ theorem copy_chain_write_after_read
     ptrChain_lowering_sim (s_mir := { s_mir with perms := perms₂ })
       (compProg := compProg) h_id_a h_wf_t h_dchain RefKind.Mut csR
       sR rd permsD h_dres h_tbdR h_lbsR h_prb1
-      (by rw [show sR.mem = s_osea.mem from h_memR]; exact h_sms)
+      h_sms
       h_psimR h_pcR h_instR
   -- the destination place is in bounds for a τ-sized write
   obtain ⟨h_nb, -, -, -⟩ := writeResolvedPlace_ok_inv h_step
@@ -3498,8 +3438,8 @@ theorem copy_chain_write_after_read
     (dstReg := dOut.result.reg) (boff := rd.addr - rd.allocBase)
     h_drt h_drange off h_fit
     (oseair_runN_trans h_runR h_drun) h_dentry
-    (by rw [h_dmem, h_memR]; exact h_sms)
-    (by rw [h_dmem, h_memR]; exact h_alloc)
+    (by rw [h_dmem]; exact h_sms)
+    (by rw [h_dmem]; exact h_alloc)
     (h_dprm.trans h_prmR) (Nat.le_trans h_regmonoR h_dregmono)
     (LocalBindingSim.placeRegMap_congr (cs := csR) h_dprm
       (fun loc binding h => h_dlbs loc binding h)) h_dpsim
@@ -3522,7 +3462,11 @@ about an rvalue: given the invariant at `(sM, sA, csA)` and a SUCCESSFUL
 mirlite evaluation, the rvalue lowers to code that stores ONE register,
 and once that code is included in the program the target reaches a state
 where the register holds values related to the ones mirlite produced —
-with the tag renaming allowed to grow, since `ref` mints a tag.
+with BOTH renamings allowed to grow: `ref` mints a tag, and `alloc`
+extends memory on both sides, so the package hands back the source
+memory the rvalue left (`memO`; env and pc are untouched) related to
+the target's under the grown address renaming, in place of the older
+"the rvalue leaves memory alone".
 
 Nothing here mentions a source place, an emitted instruction, or even
 whether there IS a source place: the rvalue's whole compiled
@@ -3553,27 +3497,30 @@ def ValuePkg {Γ : Ctx} {τ : LayoutTy} (compProg : oseair.Prog)
       (CheckedCompilerM.run (compileRExprPreChecked rhs) csA).placeRegMap
         = csA.placeRegMap ∧
       (CodeIncluded compProg (CheckedCompilerM.run (compileRExprPreChecked rhs) csA) →
-        ∃ (ρt' : TagRenameMap) (nR : Nat) (sR : oseair.State MSB)
-          (perms₂ : MSB.State) (vals : List Val),
+        ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (nR : Nat) (sR : oseair.State MSB)
+          (memO : mirlite.Mem) (perms₂ : MSB.State) (vals : List Val),
+          AddrRenameIncr ρa ρa' ∧
+          IdentityOnDomain ρa' ∧
           TagRenameIncr ρt ρt' ∧
           TagRenameWF ρt' ∧
-          output.state = { sM with perms := perms₂ } ∧
+          output.state = { sM with mem := memO, perms := perms₂ } ∧
           vals.length = blockSize τ ∧
           oseair.runN MSB nR sA compProg = oseair.Result.Ok sR ∧
           (CheckedCompilerM.run (compileRExprPreChecked rhs) csA).placeRegMap
             = csA.placeRegMap ∧
           csA.nextReg
             ≤ (CheckedCompilerM.run (compileRExprPreChecked rhs) csA).nextReg ∧
-          LocalBindingSim ρa ρt' sM.env sR
+          LocalBindingSim ρa' ρt' sM.env sR
             (CheckedCompilerM.run (compileRExprPreChecked rhs) csA) ∧
           PermSim ρt' perms₂ sR.perms ∧
           TagRenameBounded ρt' perms₂.NextTag sR.perms.NextTag ∧
-          sR.mem = sA.mem ∧
+          SourceMemSim ρa' ρt' memO sR.mem ∧
+          AllocLockstep ρa' memO sR.mem ∧
           sR.pc = (CheckedCompilerM.run (compileRExprPreChecked rhs) csA).nextLabel ∧
           StoreStep compProg sR
             (CheckedCompilerM.run (compileRExprPreChecked rhs) csA).nextReg
             mkStore vals ∧
-          ListRel (MemValSim ρa ρt') output.values vals)
+          ListRel (MemValSim ρa' ρt') output.values vals)
 
 /-- The compiled fragment of `loc := rhs` for ANY rvalue whose pre-phase
     leaves its value in one register: the pre-phase's own code, then the
@@ -3763,13 +3710,14 @@ theorem storereg_local_simulation
     (h_envD : mirlite.Env.lookup s_mir.env dstLoc = some bD)
     (h_step : mirlite.stepStmt MSB s_mir
       (.assign (.local dstLoc) rhs) = .ok s_mir') :
-    ∃ (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
       TagRenameIncr ρt ρt' ∧
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa ρt' s_mir' s_osea' := by
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   obtain ⟨h_pc, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
     h_alloc, h_unmap, h_prb⟩ := h_inv
-  obtain ⟨dstReg, baseD, tagD, h_piD, h_entryD, h_raD, h_rtD, h_nwD, h_domD⟩ :=
+  obtain ⟨dstReg, baseD, tagD, h_piD, h_entryD, h_raD, h_rtD, h_nwD, -⟩ :=
     h_lbs dstLoc bD h_envD
   have h_baseD : baseD = bD.addr := (h_id_a _ _ h_raD).symm
   subst h_baseD
@@ -3805,39 +3753,38 @@ theorem storereg_local_simulation
     have h_instPre :=
       (F.code).mono h_incr
     -- §4 the rvalue's own run
-    obtain ⟨ρt', nR, sR, perms₂, vals, h_incr_t, h_wf_t', h_ost, h_vlen,
-      h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
-      h_execR, h_valsRel⟩ := h_pkg' h_instPre
+    obtain ⟨ρa', ρt', nR, sR, memO, perms₂, vals, h_incr_a, h_id_a', h_incr_t,
+      h_wf_t', h_ost, h_vlen, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR,
+      h_smsR, h_allocR, h_pcR, h_execR, h_valsRel⟩ := h_pkg' h_instPre
     rw [h_ost] at h_step
     simp only [mirlite.resolvePlaceAcc, h_envD] at h_step
     -- the destination register still holds the root at the post-rvalue state
     obtain ⟨dstReg2, baseD2, tagD2, h_piD2, h_entryD2, h_raD2, h_rtD2,
-      h_nwD2, -⟩ := h_lbsR dstLoc bD h_envD
+      h_nwD2, h_domD2⟩ := h_lbsR dstLoc bD h_envD
     have h_piD2' : getPlaceInfo csStart dstLoc.idx.1 = some (dstReg2, τ) := by
       show csStart.placeRegMap.lookup _ = _
       rw [← h_prmR]
       exact h_piD2
     have h_dr2 : dstReg2 = dstReg := by grind
-    have h_baseD2 : baseD2 = bD.addr := (h_id_a _ _ h_raD2).symm
+    have h_baseD2 : baseD2 = bD.addr := (h_id_a' _ _ h_raD2).symm
     have h_tag2 : tagD2 = tagD :=
       Option.some.inj (h_rtD2.symm.trans (h_incr_t _ _ h_rtD))
     rw [h_dr2, h_baseD2, h_tag2] at h_entryD2
-    -- §5 the BOUND-root write seam at offset zero
+    -- §5 the BOUND-root write seam at offset zero, on the memory the
+    -- rvalue LEFT and under its grown renaming
     obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
       copy_bound_write_after_read (τ := τ) (dbase := bD.addr) (dtag := bD.tag)
-        (dsize := blockSize τ) compProg F h_id_a
+        (dsize := blockSize τ) (s_mir := { s_mir with mem := memO }) compProg F h_id_a'
         h_wf_t' h_unmap h_prb (dstReg := dstReg) 0 (h_incr_t _ _ h_rtD)
-        (h_domD) 0 (by simp) h_runR h_entryD2
-        (by rw [h_smem]
-            exact SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
-        (by rw [h_smem]; exact h_alloc) h_prmR h_regmonoR h_lbsR h_psimR h_tbdR
+        (h_domD2) 0 (by simp) h_runR h_entryD2
+        h_smsR h_allocR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR
         h_pcR h_execR h_vlen
         (by
           rw [projDstTail_zero]
           exact (compileStmt_storereg_local_run h_piD h_pval rfl
               (h_store := h_storeR) (h_post := h_postR)))
         output.values_len (by simp) rfl rfl rfl h_valsRel h_step
-    exact ⟨ρt', s_osea', n, h_incr_t, h_run, h_inv'⟩
+    exact ⟨ρa', ρt', s_osea', n, h_incr_a, h_incr_t, h_run, h_inv'⟩
 
 
 /-- The compiler state after the root `Alloc` that an UNMAPPED local
@@ -4006,18 +3953,20 @@ theorem storereg_localfresh_simulation
     have h_run0' := runN_Assgn_Alloc_step compProg s_osea
       (Register.R csStart.nextReg) (layoutToTyVal τ) h_code0 h_own_tgt'
     -- §6 the rvalue's own run
-    obtain ⟨ρt'', nR, s_mid, perms₂, vals, h_incr_t2, h_wf_t2, h_ost, h_vlen,
-      h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
-      h_execR, h_rel⟩ := h_pkg' h_instPre
+    obtain ⟨ρa'', ρt'', nR, s_mid, memO, perms₂, vals, h_incr_a2, h_id_a'', h_incr_t2,
+      h_wf_t2, h_ost, h_vlen, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR,
+      h_smsR, h_allocR, h_pcR, h_execR, h_rel⟩ := h_pkg' h_instPre
     rw [h_ost] at h_step
     simp only [mirlite.resolvePlaceAcc, h_lookup_set] at h_step
     -- §7 the fresh-root WRITE seam
     exact copy_freshroot_write_after_read compProg F
-      h_sms h_unmap h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1 h_alloc h_find1
-      h_addr_eq h_sz h_run0' h_incr_a (TagRenameIncr.trans h_incr_t h_incr_t2)
-      h_id_a' h_wf_t2 h_ra_dom h_prb1
+      h_unmap h_lookup_set h_env1 h_pc1
+      h_run0' (AddrRenameIncr.trans h_incr_a h_incr_a2)
+      (TagRenameIncr.trans h_incr_t h_incr_t2)
+      h_id_a'' h_wf_t2 (fun k hk => h_incr_a2 _ _ (h_ra_dom k hk)) h_prb1
       h_runR (by simpa only [freshRootCS] using h_prmR)
-      (by simpa only [freshRootCS] using h_regmonoR) h_lbsR h_psimR h_tbdR h_smem
+      (by simpa only [freshRootCS] using h_regmonoR) h_lbsR h_psimR h_tbdR
+      h_smsR h_allocR
       (by simpa only [freshRootCS] using h_pcR) h_execR h_vlen
       h_frag
       output.values_len (Nat.le_refl _) rfl rfl h_rel h_step
@@ -4039,10 +3988,11 @@ theorem storereg_chaindst_simulation
         (CheckedCompilerM.run (compileStmtChecked (Stmt.assign (.deref P) rhs)) csStart))
     (h_step : mirlite.stepStmt MSB s_mir
       (.assign (.deref P) rhs) = .ok s_mir') :
-    ∃ (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
       TagRenameIncr ρt ρt' ∧
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa ρt' s_mir' s_osea' := by
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   obtain ⟨h_pc, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
     h_alloc, h_unmap, h_prb⟩ := h_inv
   have h_nl : ∀ (loc : Local Γ τ), (Place.deref P) ≠ Place.local loc := by
@@ -4087,32 +4037,33 @@ theorem storereg_chaindst_simulation
     obtain ⟨h_incrPre, h_incrDst⟩ :=
       storereg_place_incrs csStart h_nl h_pval h_root rfl
     -- §4 the rvalue's run
-    obtain ⟨ρt', nR, sR, perms₂, vals, h_incr_t, h_wf_t', h_ost, h_vlen,
-      h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
-      h_execR, h_valsRel⟩ :=
+    obtain ⟨ρa', ρt', nR, sR, memO, perms₂, vals, h_incr_a, h_id_a', h_incr_t,
+      h_wf_t', h_ost, h_vlen, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR,
+      h_smsR, h_allocR, h_pcR, h_execR, h_valsRel⟩ :=
       h_pkg' ((F.code).mono h_incrPre)
     rw [h_ost] at h_step
     simp only at h_step
     -- §5 mirlite resolves the destination at the POST-RVALUE permissions
     cases h_dres : mirlite.resolvePlaceAcc MSB
-        { s_mir with perms := perms₂ } (Place.deref P) with
+        { s_mir with mem := memO, perms := perms₂ } (Place.deref P) with
     | error e => rw [h_dres] at h_step; simp at h_step
     | ok pr2 =>
     obtain ⟨rd, permsD⟩ := pr2
     rw [h_dres] at h_step
     simp only at h_step
-    -- §6 the chain-write seam, at the EXTENDED renaming
+    -- §6 the chain-write seam, at the EXTENDED renamings and on the
+    -- memory the rvalue LEFT
     obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
-      copy_chainwrite_after_read compProg F h_dchain h_id_a h_wf_t'
-        (SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
-        h_alloc h_unmap h_prb
+      copy_chainwrite_after_read (s_mir := { s_mir with mem := memO })
+        compProg F h_dchain h_id_a' h_wf_t'
+        h_unmap h_prb
         h_dres output.values_len h_step
-        h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
+        h_runR h_smsR h_allocR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_pcR
         h_execR h_vlen h_valsRel
         ((F.code).mono h_incrDst)
         (fun dOut h_dval h_dclean => (compileStmt_storereg_place_run h_nl h_root h_pval h_storeR h_postR
             h_dval h_dclean))
-    exact ⟨ρt', s_osea', n, h_incr_t, h_run, h_inv'⟩
+    exact ⟨ρa', ρt', s_osea', n, h_incr_a, h_incr_t, h_run, h_inv'⟩
 
 
 /-- The base's lowering sits inside the projection's: at offset zero
@@ -4221,10 +4172,11 @@ theorem storereg_projdst_simulation
         (CheckedCompilerM.run (compileStmtChecked (Stmt.assign (.proj dbase path) rhs)) csStart))
     (h_step : mirlite.stepStmt MSB s_mir
       (.assign (.proj dbase path) rhs) = .ok s_mir') :
-    ∃ (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+    ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (s_osea' : oseair.State MSB) (n : Nat),
+      AddrRenameIncr ρa ρa' ∧
       TagRenameIncr ρt ρt' ∧
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
-      CompilerInv cs0 prog ρa ρt' s_mir' s_osea' := by
+      CompilerInv cs0 prog ρa' ρt' s_mir' s_osea' := by
   obtain ⟨h_pc, h_lbs, h_sms, h_psim, h_id_a, h_wf_t, h_tbd,
     h_alloc, h_unmap, h_prb⟩ := h_inv
   have h_nl : ∀ (loc : Local Γ τ), (Place.proj dbase path) ≠ Place.local loc := by
@@ -4265,32 +4217,33 @@ theorem storereg_projdst_simulation
         (CheckedCompilerM.run (compileRExprPreChecked rhs) csStart))
       h_incrDst
     -- §4 the rvalue's run
-    obtain ⟨ρt', nR, sR, perms₂, vals, h_incr_t, h_wf_t', h_ost, h_vlen,
-      h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
-      h_execR, h_valsRel⟩ :=
+    obtain ⟨ρa', ρt', nR, sR, memO, perms₂, vals, h_incr_a, h_id_a', h_incr_t,
+      h_wf_t', h_ost, h_vlen, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR,
+      h_smsR, h_allocR, h_pcR, h_execR, h_valsRel⟩ :=
       h_pkg' ((F.code).mono h_incrPre)
     rw [h_ost] at h_step
     simp only at h_step
     -- §5 mirlite resolves the destination BASE and shifts by the path
     cases h_dres : mirlite.resolvePlaceAcc MSB
-        { s_mir with perms := perms₂ } dbase with
+        { s_mir with mem := memO, perms := perms₂ } dbase with
     | error e => rw [resolvePlaceAcc_proj_base_err h_dres] at h_step; simp at h_step
     | ok pr2 =>
     obtain ⟨rd, permsD⟩ := pr2
     rw [resolvePlaceAcc_proj_base_ok h_dres] at h_step
     simp only at h_step
-    -- §6 the chain write seam at the path's offset
+    -- §6 the chain write seam at the path's offset, on the memory the
+    -- rvalue LEFT
     obtain ⟨s_osea', n, h_run, h_inv'⟩ :=
-      copy_chain_write_after_read compProg F h_dchain h_id_a h_wf_t'
-        (SourceMemSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_sms)
-        h_alloc h_unmap h_prb
+      copy_chain_write_after_read (s_mir := { s_mir with mem := memO })
+        compProg F h_dchain h_id_a' h_wf_t'
+        h_unmap h_prb
         h_dres (pathOffset path) output.values_len h_step
-        h_runR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_smem h_pcR
+        h_runR h_smsR h_allocR h_prmR h_regmonoR h_lbsR h_psimR h_tbdR h_pcR
         h_execR h_vlen h_valsRel
         ((F.code).mono h_incrBase)
         (fun dOut h_dval h_dclean => (compileStmt_storereg_projdst_run h_dchain.not_proj h_root
             h_pval h_storeR h_postR h_dval h_dclean))
-    exact ⟨ρt', s_osea', n, h_incr_t, h_run, h_inv'⟩
+    exact ⟨ρa', ρt', s_osea', n, h_incr_a, h_incr_t, h_run, h_inv'⟩
 
 /-- The compiled fragment of `loc.f := rhs` for an UNMAPPED root and ANY
     rvalue that stores one register: the σ-sized root `Alloc`, the
@@ -4501,18 +4454,20 @@ theorem storereg_projlocalfresh_simulation
     have h_runAlloc := runN_Assgn_Alloc_step compProg s_osea
       (Register.R csStart.nextReg) (layoutToTyVal σ) h_code0 h_own_tgt'
     -- §7 the rvalue's own run
-    obtain ⟨ρt'', nR, s_mid, perms₂, vals, h_incr_t2, h_wf_t2, h_ost, h_vlen,
-      h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
-      h_execR, h_rel⟩ := h_pkg' h_instPre
+    obtain ⟨ρa'', ρt'', nR, s_mid, memO, perms₂, vals, h_incr_a2, h_id_a'', h_incr_t2,
+      h_wf_t2, h_ost, h_vlen, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR,
+      h_smsR, h_allocR, h_pcR, h_execR, h_rel⟩ := h_pkg' h_instPre
     rw [h_ost] at h_step
     simp only [mirlite.resolvePlaceAcc, h_lookup_set] at h_step
     -- §8 the fresh WRITE seam at the field's offset
-    exact copy_fresh_write_after_read (τ := τ) compProg F h_sms h_unmap h_lookup_set h_env1 h_pc1 h_memstart1 h_allocs1
-      h_alloc h_find1 h_addr_eq h_sz h_runAlloc h_incr_a
-      (TagRenameIncr.trans h_incr_t h_incr_t2) h_id_a' h_wf_t2 h_ra_dom h_prb1
+    exact copy_fresh_write_after_read (τ := τ) compProg F h_unmap h_lookup_set h_env1 h_pc1
+      h_runAlloc (AddrRenameIncr.trans h_incr_a h_incr_a2)
+      (TagRenameIncr.trans h_incr_t h_incr_t2) h_id_a'' h_wf_t2
+      (fun k hk => h_incr_a2 _ _ (h_ra_dom k hk)) h_prb1
       (pathOffset path) (PathTo.offset_add_size_le path)
       h_runR (by simpa only [freshRootCS] using h_prmR)
-      (by simpa only [freshRootCS] using h_regmonoR) h_lbsR h_psimR h_tbdR h_smem
+      (by simpa only [freshRootCS] using h_regmonoR) h_lbsR h_psimR h_tbdR
+      h_smsR h_allocR
       h_pcR h_execR h_vlen
       h_frag
       output.values_len rfl rfl rfl rfl h_rel h_step
@@ -4752,10 +4707,8 @@ theorem storereg_projdst_recursion
             simp only [mirlite.preparePlaceAssign, hr0] at h_prep
             injection h_prep with h_eq
             exact ⟨h_eq.symm, r0, hr0⟩
-          obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
-            storereg_projdst_simulation compProg h_pkg (PtrChain.base loc) h_bound
-              h_inv hF h_step
-          exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa, h_incr_t, h_run, h_inv'⟩
+          exact storereg_projdst_simulation compProg h_pkg (PtrChain.base loc) h_bound
+            h_inv hF h_step
       | none =>
           exact storereg_projlocalfresh_simulation compProg h_pkg h_inv hF
             h_envD h_step
@@ -4776,8 +4729,7 @@ theorem storereg_projdst_recursion
       rw [stepStmt_assign_dstflatten] at h_step
       rw [show flattenPlace (Place.proj (Place.deref pp) path)
           = Place.proj (Place.deref (flattenPlace pp)) path from rfl] at h_step
-      obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
-        storereg_projdst_simulation (dbase := Place.deref (flattenPlace pp))
+      exact storereg_projdst_simulation (dbase := Place.deref (flattenPlace pp))
           compProg h_pkg (PtrChain_flatten_deref pp)
           (fun s h_prep => by
             simp only [mirlite.preparePlaceAssign] at h_prep
@@ -4793,7 +4745,6 @@ theorem storereg_projdst_recursion
             rw [compileStmt_assign_projderefdst_flatten_run pp path rhs csStart] at F
             exact F)
           h_step
-      exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa, h_incr_t, h_run, h_inv'⟩
 end
 
 

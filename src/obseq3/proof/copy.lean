@@ -711,8 +711,11 @@ theorem ValuePkg.of_readPkgLowered
   simp only [csCleanup, h_sclean, List.append_nil]
   have h_execR := StoreStep.rstore compProg sR _ (layoutToTyVal τ) _ vals
     h_vregR h_vbelow
-  exact ⟨ρt', nR, sR, perms₂, vals, h_incrT, h_wfT, h_ost, h_vlen,
-    h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_execR,
+  exact ⟨ρa, ρt', nR, sR, sM.mem, perms₂, vals, AddrRenameIncr.refl ρa, h_id_a,
+    h_incrT, h_wfT, h_ost, h_vlen,
+    h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR,
+    SourceMemSim.of_mem_eq (AddrRenameIncr.refl ρa) h_incrT h_sms h_smem,
+    AllocLockstep.of_mem_eq h_alloc h_smem, h_pcR, h_execR,
     h_valsRel⟩
 
 /-- copy's chain-class read package, as an instance of the generic one. -/
@@ -812,8 +815,11 @@ theorem ValuePkg.of_readPkgProjOffset
   csnorm at h_vregR h_vbelow h_prmR h_regmonoR h_lbsR h_pcR ⊢
   have h_execR := StoreStep.rstore compProg sR _ (layoutToTyVal τ) _ vals
     h_vregR h_vbelow
-  exact ⟨ρt', nR, sR, perms₂, vals, h_incrT, h_wfT, h_ost, h_vlen,
-    h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_execR,
+  exact ⟨ρa, ρt', nR, sR, sM.mem, perms₂, vals, AddrRenameIncr.refl ρa, h_id_a,
+    h_incrT, h_wfT, h_ost, h_vlen,
+    h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR,
+    SourceMemSim.of_mem_eq (AddrRenameIncr.refl ρa) h_incrT h_sms h_smem,
+    AllocLockstep.of_mem_eq h_alloc h_smem, h_pcR, h_execR,
     h_valsRel⟩
 
 /-! ## The read package with its REGISTER exposed
@@ -1185,16 +1191,13 @@ theorem assignStep_readrhs
           | some bD =>
               -- CLOSED: a bound local source is the base case of the
               -- chain grammar, so the chain-src leaf owns L→L too
-              obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
-                storereg_local_simulation compProg
+              exact storereg_local_simulation compProg
                   (ValuePkg.of_readPkgLowered compProg (F.shape _)
                     ((PtrChain.base srcLoc).placeToRegChecked_placeRegMap _)
                     (F.pkgLowered _ (PtrChain.base srcLoc).loweringSimAny))
                   h_invAt (StmtFrame.congr hF
                   (fun _ => rfl) (fun _ so h => ⟨so, h⟩))
                   h_envD h_step
-              exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa,
-                h_incr_t, h_run, h_inv'⟩
           | none =>
               -- CLOSED: fresh destination, chain source (regime B for copy)
               exact storereg_localfresh_simulation compProg
@@ -1213,8 +1216,7 @@ theorem assignStep_readrhs
           cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
           | some bD =>
               by_cases h_off : pathOffset path' = 0
-              · obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
-                  storereg_local_simulation compProg
+              · exact storereg_local_simulation compProg
                     (ValuePkg.of_readPkgLowered compProg (F.shape _)
                       (projZero_placeRegMap h_chain.not_proj h_off
                         (h_chain.placeToRegChecked_placeRegMap _))
@@ -1222,18 +1224,13 @@ theorem assignStep_readrhs
                         (LoweringSimAny.projZero h_chain.not_proj h_off
                           h_chain.loweringSimAny)))
                     h_invAt (StmtFrame.congr hF h_run0 h_val0) h_envD h_step
-                exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa,
-                  h_incr_t, h_run, h_inv'⟩
-              · obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
-                  storereg_local_simulation compProg
+              · exact storereg_local_simulation compProg
                     (ValuePkg.of_readPkgProjOffset compProg (F.shape _)
                       h_chain.not_proj h_off
                       (h_chain.placeToRegChecked_placeRegMap _)
                       (F.pkgProjOffset _ _ h_chain.loweringSimAny
                         h_chain.not_proj h_off))
                     h_invAt (StmtFrame.congr hF h_run0 h_val0) h_envD h_step
-                exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa,
-                  h_incr_t, h_run, h_inv'⟩
           | none =>
               -- CLOSED: fresh destination, proj-topped source (regime B)
               by_cases h_off : pathOffset path' = 0
@@ -1257,15 +1254,12 @@ theorem assignStep_readrhs
           | some bD =>
               -- CLOSED: `dst := copy *chain` — flatten-normalized, TOTAL
               rw [F.stepFlat] at h_step
-              obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
-                storereg_local_simulation compProg
+              exact storereg_local_simulation compProg
                   (ValuePkg.of_readPkgLowered compProg (F.shape _)
                     ((PtrChain_flatten_deref pp).placeToRegChecked_placeRegMap _)
                     (F.pkgLowered _ (PtrChain_flatten_deref pp).loweringSimAny))
                   h_invAt (StmtFrame.congr hF (h_cong rfl _).1 (h_cong rfl _).2)
                   h_envD h_step
-              exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa,
-                h_incr_t, h_run, h_inv'⟩
           | none =>
               -- CLOSED: fresh destination, deref-chain source
               rw [F.stepFlat] at h_step
@@ -1313,8 +1307,7 @@ theorem assignStep_readrhs
       · rw [stepStmt_assign_dstflatten, F.stepFlat] at h_step
         rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl]
           at h_step
-        obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
-          storereg_chaindst_simulation (P := flattenPlace pp) compProg
+        exact storereg_chaindst_simulation (P := flattenPlace pp) compProg
             (ValuePkg.of_readPkgLowered compProg (F.shape _)
               (h_sch.placeToRegChecked_placeRegMap _)
               (F.pkgLowered _ h_sch.loweringSimAny))
@@ -1325,15 +1318,12 @@ theorem assignStep_readrhs
               obtain ⟨so1, h1⟩ := compileStmt_assign_derefdst_flatten_value _ cs so h
               exact (h_cong rfl _).2 cs so1 h1))
             h_step
-        exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa, h_incr_t,
-          h_run, h_inv'⟩
       · -- the flattened source is PROJ-topped over a chain
         by_cases h_o : pathOffset spath = 0
         · rw [stepStmt_assign_dstflatten, F.stepFlat] at h_step
           rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl,
             h_seq] at h_step
-          obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
-            storereg_chaindst_simulation (P := flattenPlace pp) compProg
+          exact storereg_chaindst_simulation (P := flattenPlace pp) compProg
               (ValuePkg.of_readPkgLowered compProg (F.shape _)
                 (projZero_placeRegMap h_B.not_proj h_o
                   (h_B.placeToRegChecked_placeRegMap _))
@@ -1347,13 +1337,10 @@ theorem assignStep_readrhs
                 obtain ⟨so1, h1⟩ := compileStmt_assign_derefdst_flatten_value _ cs so h
                 exact (h_cong h_seq _).2 cs so1 h1))
               h_step
-          exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa, h_incr_t,
-            h_run, h_inv'⟩
         · rw [stepStmt_assign_dstflatten, F.stepFlat] at h_step
           rw [show flattenPlace (Place.deref pp) = Place.deref (flattenPlace pp) from rfl,
             h_seq] at h_step
-          obtain ⟨_, s_osea', n, h_incr_t, h_run, h_inv'⟩ :=
-            storereg_chaindst_simulation (P := flattenPlace pp) compProg
+          exact storereg_chaindst_simulation (P := flattenPlace pp) compProg
               (ValuePkg.of_readPkgProjOffset compProg (F.shape _)
                 h_B.not_proj h_o (h_B.placeToRegChecked_placeRegMap _)
                 (F.pkgProjOffset _ _ h_B.loweringSimAny h_B.not_proj h_o))
@@ -1365,8 +1352,6 @@ theorem assignStep_readrhs
                 obtain ⟨so1, h1⟩ := compileStmt_assign_derefdst_flatten_value _ cs so h
                 exact (h_cong h_seq _).2 cs so1 h1))
               h_step
-          exact ⟨ρa, _, s_osea', n, AddrRenameIncr.refl ρa, h_incr_t,
-            h_run, h_inv'⟩
 
 /-- `copy` is a read-then-store family: its source place carries its own
     layout, and the instruction it emits is the `Load`. -/

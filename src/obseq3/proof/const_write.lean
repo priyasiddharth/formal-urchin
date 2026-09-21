@@ -294,11 +294,12 @@ theorem ValuePkg.of_pureCStore {τ : LayoutTy} {rhs : RExpr Γ τ}
   refine ⟨fun d => Instr.CStore ty vs' d, pre, h_pval, h_store, h_post,
     by rw [h_run], ?_⟩
   intro _
-  exact ⟨ρt, 0, sA, sM.perms, vs', TagRenameIncr.refl ρt, h_wf_t,
+  exact ⟨ρa, ρt, 0, sA, sM.mem, sM.perms, vs', AddrRenameIncr.refl ρa, h_id_a,
+    TagRenameIncr.refl ρt, h_wf_t,
     by rw [h_ost], h_len, rfl,
     by rw [h_run], by rw [h_run]; exact Nat.le_refl _,
     by rw [h_run]; exact h_lbs,
-    h_psim, h_tbd, rfl, by rw [h_run]; exact h_pc,
+    h_psim, h_tbd, h_sms, h_alloc, by rw [h_run]; exact h_pc,
     by rw [h_run]; exact StoreStep.cstore compProg sA _ ty vs' h_size,
     h_rel⟩
 
@@ -387,10 +388,8 @@ theorem assignStep_constStore
   | «local» loc =>
       cases h_envD : mirlite.Env.lookup s_mir.env loc with
       | some bD =>
-          obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-            storereg_local_simulation compProg h_pkg h_invAt (StmtFrame.congr hF
-              (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_envD h_step
-          exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+          exact storereg_local_simulation compProg h_pkg h_invAt (StmtFrame.congr hF
+            (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_envD h_step
       | none =>
           exact storereg_localfresh_simulation compProg h_pkg h_invAt (StmtFrame.congr hF
             (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_envD h_step
@@ -399,13 +398,11 @@ theorem assignStep_constStore
         (fun _ => rfl) (fun _ so h => ⟨so, h⟩)) h_step
   | deref P =>
       rw [stepStmt_assign_dstderef_flatten] at h_step
-      obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-        storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
-          (PtrChain_flatten_deref P) h_invAt (StmtFrame.congr hF
-          (fun cs => compileStmt_assign_derefdst_flatten_run _ cs)
-          (fun cs so h => compileStmt_assign_derefdst_flatten_value _ cs so h))
-          h_step
-      exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+      exact storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
+        (PtrChain_flatten_deref P) h_invAt (StmtFrame.congr hF
+        (fun cs => compileStmt_assign_derefdst_flatten_run _ cs)
+        (fun cs so h => compileStmt_assign_derefdst_flatten_value _ cs so h))
+        h_step
 
 /-- The `constInit` instance of the constant-store step. -/
 

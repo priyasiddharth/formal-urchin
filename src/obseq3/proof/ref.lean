@@ -327,12 +327,15 @@ theorem ref_valuePkg_chain
       ref_chainsrc_borrow h_shape.chain f kindL kind prot mask compProg
         sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_psim h_pc h_dres h_fit
         h_ref_src h_dval _ rfl h_instS (hFrag.instrAt 0 rfl rfl)
-    refine ⟨_, nB, sB, perms', _, h_incr_t, h_wf_t', rfl,
+    refine ⟨ρa, _, nB, sB, sM.mem, perms', _, AddrRenameIncr.refl ρa, h_id_a,
+      h_incr_t, h_wf_t', rfl,
       by simp [blockSize, obseq.layoutSize], h_runB,
       by grind [emit],
       by rw [h_pre]; grind [emit],
       by rw [h_pre]; exact h_lbsB,
-      by rw [hsB]; exact h_psim', by rw [hsB]; exact h_tbd', h_memB,
+      by rw [hsB]; exact h_psim', by rw [hsB]; exact h_tbd',
+      SourceMemSim.of_mem_eq (AddrRenameIncr.refl ρa) h_incr_t h_sms h_memB,
+      AllocLockstep.of_mem_eq h_alloc h_memB,
       by rw [h_pre]; exact h_pcB,
       StoreStep.rstore compProg sB _ obseq.TyVal.PTy _ _
         (by rw [hsB]; exact RegMap.lookup_insert_self _ _ _)
@@ -840,10 +843,8 @@ theorem assignStep_ref
   | «local» dstLoc =>
       cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
       | some bD =>
-          obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-            storereg_local_simulation compProg h_pkg h_invAt
-              (StmtFrame.congr hF h_crun h_cval) h_envD h_step
-          exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+          exact storereg_local_simulation compProg h_pkg h_invAt
+            (StmtFrame.congr hF h_crun h_cval) h_envD h_step
       | none =>
           exact storereg_localfresh_simulation compProg h_pkg h_invAt
             (StmtFrame.congr hF h_crun h_cval) h_envD h_step
@@ -852,15 +853,13 @@ theorem assignStep_ref
         (StmtFrame.congr hF h_crun h_cval) h_step
   | deref P =>
       rw [stepStmt_assign_dstderef_flatten] at h_step
-      obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-        storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
-          (PtrChain_flatten_deref P) h_invAt (StmtFrame.congr hF
-          (fun cs => (h_crun cs).trans (compileStmt_assign_derefdst_flatten_run _ cs))
-          (fun cs so h => by
-            obtain ⟨so1, h1⟩ := compileStmt_assign_derefdst_flatten_value _ cs so h
-            exact h_cval cs so1 h1))
-          h_step
-      exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+      exact storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
+        (PtrChain_flatten_deref P) h_invAt (StmtFrame.congr hF
+        (fun cs => (h_crun cs).trans (compileStmt_assign_derefdst_flatten_run _ cs))
+        (fun cs so h => by
+          obtain ⟨so1, h1⟩ := compileStmt_assign_derefdst_flatten_value _ cs so h
+          exact h_cval cs so1 h1))
+        h_step
 
 theorem CompilerInv_step_ref
     {τ : LayoutTy}
@@ -1088,16 +1087,18 @@ theorem move_valuePkg_chain
           [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked kindL B) csA).nextReg)
             (Rhs.Borrow RefKind.Mut false [] (some (blockSize τ)) dOut.result.reg (pathOffset f))]) :=
       LocalBindingSim.insert_fresh_reg h_lbsB h_prb1 (by simp only [emit]; exact Nat.le_refl _) rfl
-    refine ⟨_, nB + 1 + 1, _, perms',
+    refine ⟨ρa, _, nB + 1 + 1, _, sM.mem, perms',
       oseair.readWordSeq sB.mem
         (resolved.allocBase + (resolved.addr - resolved.allocBase + pathOffset f))
         (obseq.typeSize (layoutToTyVal τ)),
-      h_incr_t, h_wf_t', rfl,
+      AddrRenameIncr.refl ρa, h_id_a, h_incr_t, h_wf_t', rfl,
       by rw [oseair_readWordSeq_length, h_sz],
       oseair_runN_trans (oseair_runN_trans h_runB h_runL) h_runD,
       by rw [h_pre]; exact h_prmTail,
       by rw [h_pre]; simp only [moveTail, emit]; omega,
-      ?_, h_psimD, ?_, h_memB, ?_, ?_, ?_⟩
+      ?_, h_psimD, ?_,
+      SourceMemSim.of_mem_eq (AddrRenameIncr.refl ρa) h_incr_t h_sms h_memB,
+      AllocLockstep.of_mem_eq h_alloc h_memB, ?_, ?_, ?_⟩
     · rw [h_pre]
       exact LocalBindingSim.placeRegMap_congr (by simp only [moveTail, emit]) h_lbsL
     · show TagRenameBounded _ perms'.NextTag p3.NextTag
@@ -1207,10 +1208,8 @@ theorem assignStep_move
   | «local» dstLoc =>
       cases h_envD : mirlite.Env.lookup s_mir.env dstLoc with
       | some bD =>
-          obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-            storereg_local_simulation compProg h_pkg h_invAt
-              (StmtFrame.congr hF h_crun h_cval) h_envD h_step
-          exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+          exact storereg_local_simulation compProg h_pkg h_invAt
+            (StmtFrame.congr hF h_crun h_cval) h_envD h_step
       | none =>
           exact storereg_localfresh_simulation compProg h_pkg h_invAt
             (StmtFrame.congr hF h_crun h_cval) h_envD h_step
@@ -1219,15 +1218,13 @@ theorem assignStep_move
         (StmtFrame.congr hF h_crun h_cval) h_step
   | deref P =>
       rw [stepStmt_assign_dstderef_flatten] at h_step
-      obtain ⟨ρt', s_osea', n, h_incr, h_run, h_inv'⟩ :=
-        storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
-          (PtrChain_flatten_deref P) h_invAt (StmtFrame.congr hF
-          (fun cs => (h_crun cs).trans (compileStmt_assign_derefdst_flatten_run _ cs))
-          (fun cs so h => by
-            obtain ⟨so1, h1⟩ := compileStmt_assign_derefdst_flatten_value _ cs so h
-            exact h_cval cs so1 h1))
-          h_step
-      exact ⟨ρa, ρt', s_osea', n, AddrRenameIncr.refl ρa, h_incr, h_run, h_inv'⟩
+      exact storereg_chaindst_simulation (P := flattenPlace P) compProg h_pkg
+        (PtrChain_flatten_deref P) h_invAt (StmtFrame.congr hF
+        (fun cs => (h_crun cs).trans (compileStmt_assign_derefdst_flatten_run _ cs))
+        (fun cs so h => by
+          obtain ⟨so1, h1⟩ := compileStmt_assign_derefdst_flatten_value _ cs so h
+          exact h_cval cs so1 h1))
+        h_step
 
 theorem CompilerInv_step_move
     {τ : LayoutTy} {dst : Place Γ τ} {src : Place Γ τ}

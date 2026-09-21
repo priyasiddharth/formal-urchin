@@ -1095,6 +1095,22 @@ theorem SourceMemSim.rename_mono
   obtain ⟨addr', value', h_ra, h_find', h_mvs⟩ := h addr value h_find
   exact ⟨addr', value', h_a _ _ h_ra, h_find', MemValSim.rename_mono h_a h_t h_mvs⟩
 
+/-- `SourceMemSim` under rename growth AND a target-memory equality, in
+    the form a value package's constructor has: the target memory it
+    reached is the one it started from. -/
+theorem SourceMemSim.of_mem_eq
+    {ρa ρa' : AddrRenameMap} {ρt ρt' : TagRenameMap}
+    {m : mirlite.Mem} {m1 m2 : oseair.Mem}
+    (h_a : AddrRenameIncr ρa ρa') (h_t : TagRenameIncr ρt ρt')
+    (h : SourceMemSim ρa ρt m m1) (h_eq : m2 = m1) : SourceMemSim ρa' ρt' m m2 :=
+  h_eq ▸ SourceMemSim.rename_mono h_a h_t h
+
+/-- `AllocLockstep` under a target-memory equality. -/
+theorem AllocLockstep.of_mem_eq {ρa : AddrRenameMap}
+    {m : mirlite.Mem} {m1 m2 : oseair.Mem}
+    (h : AllocLockstep ρa m m1) (h_eq : m2 = m1) : AllocLockstep ρa m m2 :=
+  h_eq ▸ h
+
 /-- Reading the same range on both sides yields `MemValSim`-related
     value lists: found source cells transport through `SourceMemSim`
     (landing at the SAME address, ρa being the identity), and source
