@@ -7,7 +7,6 @@ is to keep "obseq3 is proven" from being read wider than it is.
 
 `obseq3.proof.compile_correct_from_initial` (proof/compiler.lean §Z):
 
-    CoreProg prog →
     compileProg prog = ok compProg →
     mirlite.runN MSB n (mirlite.State.initial MSB Γ) prog = ok s_mir' →
     ∃ ρa' ρt' s_osea' m,
@@ -44,16 +43,22 @@ all upstream and unverified — `compile_correct` starts from whatever
 `Prog` the loader produces. See
 [[protectors-and-the-charon-inlining-seam]].
 
-**1. The `CoreProg` gate.** [As of 2026-09-22] EMPTY. `CoreStmt` and
-`CoreRhs` are both TOTAL (`CoreProg.total`, common.lean): every
+**1. The `CoreProg` gate.** [As of 2026-09-22] GONE. The predicates
+`CoreRhs`/`CoreStmt`/`CoreProg` and the roots' `CoreProg prog`
+hypothesis were deleted the day the last construct joined: every
 statement — `halt`, `assign`, `assignIf`, the protector frames,
-`dealloc` (joined 2026-09-22, see
-[[dealloc-is-copys-read-then-a-free]]) — and every rvalue (`refSlice`
-joined 2026-09-16, `move` 2026-09-20, `alloc` as an RVALUE 2026-09-21,
-the first whose value package extends memory, see
-[[alloc-is-an-rvalue-the-package-extends-memory]]). The predicate is
-kept so that a new construct has to be admitted deliberately; the
-theorems' `CoreProg` hypothesis is discharged by `CoreProg.total`.
+`dealloc` (2026-09-22, see [[dealloc-is-copys-read-then-a-free]]) — and
+every rvalue (`refSlice` 2026-09-16, `move` 2026-09-20, `alloc` as an
+RVALUE 2026-09-21, the first whose value package extends memory, see
+[[alloc-is-an-rvalue-the-package-extends-memory]]) has its leaf, and the
+roots quantify over every `Prog Γ`. A future construct is admitted by
+adding its arm to `CompilerInv_step`'s `cases`, which fails to compile
+until the leaf exists.
+[SUPERSEDED → this paragraph, 2026-09-22 (later)] "EMPTY ... kept so
+that a new construct has to be admitted deliberately; discharged by
+`CoreProg.total`" — deleted the same day at the user's request: a gate
+nobody checks is dead code, and the exhaustive `cases` is the real
+admission point.
 [SUPERSEDED → this paragraph, 2026-09-22] "Excluded: `dealloc` only"
 (2026-09-21).
 [SUPERSEDED → this paragraph, 2026-09-21] "Excluded: `alloc` and

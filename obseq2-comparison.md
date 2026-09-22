@@ -27,9 +27,10 @@ same address, so it survives too. The allocation table and the
 watermark do not move, and neither do env, registers or the renamings.
 
 Every statement and every rvalue of the language is now in the
-theorem; the gate predicate stays, satisfied by a totality lemma, so
-that the next construct still has to be admitted on purpose. Suites and
-audit unchanged.
+theorem. The gate predicate went the same day, at the user's request:
+the two roots no longer take a scope hypothesis at all, and the
+exhaustive case split in the step lemma is where a future construct
+has to be admitted. Suites and audit unchanged.
 
 ---
 

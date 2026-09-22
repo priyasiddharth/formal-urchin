@@ -73,61 +73,10 @@ def compileProgFrom
   (prog : obseq3.Prog Γ) : Except CompilerError obseq3.oseair.Prog :=
   compileProgFromChecked cs0 prog
 
-/-- Rvalues in the proof-core fragment. The v3 compiler is TOTAL, so this
-    predicate scopes the correctness THEOREMS (obseq2's proof scope), not
-    the compiler.
-
-    As of 2026-09-16 it is TOTAL TOO: every `RExpr` constructor is in.
-    The last to join was `refSlice`, once the compiler stopped holding a
-    projection's `Borrow` across its mint (a second `Rhs.Borrow` with
-    `len = none`,
-    compile.lean). Before that, the casts joined when the read-then-store
-    family (proof/copy.lean) made copy's leaves rvalue-generic and
-    wildcard accesses transported (`resolveWildcardIn_transport`), which
-    is what admits the `wildcardTag` pointer `fromExposed` mints.
-
-    The predicate is kept rather than deleted: `CoreStmt`/`CoreProg` are
-    TOTAL too since 2026-09-22 (`assignIf` and the protector frames joined
-    2026-09-16/17, `alloc` as an rvalue 2026-09-21, `dealloc` 2026-09-22),
-    and a new construct should have to be admitted here deliberately. -/
-def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
-  | .constInit _ => True
-  | .copy _ => True
-  | .move _ => True
-  | .ref _ _ _ _ => True
-  | .uninit => True
-  | .exposeAddr _ => True
-  | .fromExposed _ => True
-  | .ptrOffset _ _ => True
-  | .ptrCast _ => True
-  | .refSlice _ _ _ => True
-  | .alloc _ => True
-
-/-- Statements in the proof-core fragment: `halt`, assignments — plain or
-    guarded — with a core rvalue, and the protector frames. -/
-def CoreStmt {Γ : Ctx} : Stmt Γ → Prop
-  | .halt => True
-  | .assign _ rhs => CoreRhs rhs
-  | .assignIf _ _ _ rhs => CoreRhs rhs
-  | .pushProtectors => True
-  | .popProtectors => True
-  | .dealloc _ => True
-
-/-- Every statement of the program is in the proof-core fragment. -/
-def CoreProg {Γ : Ctx} (prog : obseq3.Prog Γ) : Prop :=
-  ∀ i stmt, prog.get? i = some stmt → CoreStmt stmt
-
-theorem CoreRhs.total {Γ : Ctx} {τ : LayoutTy} (rhs : RExpr Γ τ) : CoreRhs rhs := by
-  cases rhs <;> trivial
-
-theorem CoreStmt.total {Γ : Ctx} (stmt : Stmt Γ) : CoreStmt stmt := by
-  cases stmt <;> first | trivial | exact CoreRhs.total _
-
-/-- The gate is EMPTY (2026-09-22): every program of the language is in
-    the proof core, so the top-level theorems' `CoreProg` hypothesis is
-    discharged for free. -/
-theorem CoreProg.total {Γ : Ctx} (prog : obseq3.Prog Γ) : CoreProg prog :=
-  fun _ stmt _ => CoreStmt.total stmt
+/-! The proof-core gate (`CoreRhs`/`CoreStmt`/`CoreProg`, 2026-08 to
+2026-09-22) is GONE: it scoped the correctness theorems to the constructs
+whose leaves existed, and the last construct (`dealloc`) joined on
+2026-09-22. The roots quantify over every `Prog Γ`. -/
 
 /-- One source step at the current pc, mirroring the inner match of
     `mirlite.runN` (v3 has no standalone `step`). -/

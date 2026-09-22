@@ -286,7 +286,7 @@ theorem compileStmt_assignIf_shape {τ : LayoutTy}
 /-- What an assign leaf provides, abstracted over the rvalue: from the
     invariant at the state its code starts from and a frame conditional
     on it compiling there, the simulation. Every `assignStep_*` is an
-    instance; `assignLeaf_core` collects them by rvalue. -/
+    instance; `assignLeaf_all` collects them by rvalue. -/
 def AssignLeaf (compProg : oseair.Prog) {τ : LayoutTy} (dst : Place Γ τ) (rhs : RExpr Γ τ) :
     Prop :=
   ∀ {cs0 : CompilerState} {prog : obseq3.Prog Γ} {ρa : AddrRenameMap} {ρt : TagRenameMap}
@@ -303,8 +303,8 @@ def AssignLeaf (compProg : oseair.Prog) {τ : LayoutTy} (dst : Place Γ τ) (rhs
       oseair.runN MSB n s_osea compProg = oseair.Result.Ok s_osea' ∧
       CompilerInv cs0 prog ρa' ρt' s_mir' s_osea'
 
-theorem assignLeaf_core {τ : LayoutTy} (compProg : oseair.Prog)
-    (dst : Place Γ τ) (rhs : RExpr Γ τ) (h_core : CoreRhs rhs) :
+theorem assignLeaf_all {τ : LayoutTy} (compProg : oseair.Prog)
+    (dst : Place Γ τ) (rhs : RExpr Γ τ) :
     AssignLeaf compProg dst rhs := by
   cases rhs with
   | constInit v =>

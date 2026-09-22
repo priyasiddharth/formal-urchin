@@ -28,6 +28,6 @@ the length with the per-cell op named (`deallocCellOp`,
 Dispatch: `CompilerInv_step_dealloc`, a statement leaf in the shape of
 the protector frames'.
 
-[FACT] The gate is EMPTY: `CoreRhs.total`, `CoreStmt.total`,
-`CoreProg.total` (common.lean). See
+[FACT] The gate is GONE (same day, later): `CoreRhs`/`CoreStmt`/
+`CoreProg` deleted, the roots take no scope hypothesis. See
 [[what-compile-correct-actually-says]].

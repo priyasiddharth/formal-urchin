@@ -24,7 +24,10 @@ find its own pattern. `List.lookup` through a key filter is the one
 memory lemma both `removeRange`s need. `split at h` then `case h_2 =>`
 handles a match on a constructor without `swap` (not in core).
 
-[FACT 2026-09-22] `CoreProg.total` discharges the top-level theorems'
-gate hypothesis; the predicate is kept as the deliberate admission
-point for a future construct. Audit 3 axioms / 0 sorries; units 17/17 +
+[FACT 2026-09-22] The gate is GONE, at the user's request the same
+day: `CoreRhs`/`CoreStmt`/`CoreProg` deleted, the roots take no
+`CoreProg prog`; `assignLeaf_core` is `assignLeaf_all`. (Superseded the
+same-day plan of keeping it behind `CoreProg.total`: a gate nobody
+checks is dead code; the exhaustive `cases` in `CompilerInv_step` is
+the real admission point.) Audit 3 axioms / 0 sorries; units 17/17 +
 116/116; corpus 93/0/43; differential 93 matched.

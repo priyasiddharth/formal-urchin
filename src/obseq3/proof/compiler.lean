@@ -8,10 +8,10 @@ import obseq3.proof.assign_if
 import obseq3.proof.dealloc
 
 /-!
-Top-level compiler-correctness theorems for the proof-core fragment
-(`CoreProg` — the WHOLE language since 2026-09-22, `CoreProg.total`),
-port of `obseq2/proof/compiler.lean`. Both theorems are complete modulo
-the audited sorries below.
+Top-level compiler-correctness theorems for EVERY program of the
+language (the proof-core gate `CoreProg` that scoped them until
+2026-09-22 is gone), port of `obseq2/proof/compiler.lean`. Both theorems
+are complete modulo the audited sorries below.
 
 ## SORRY AUDIT (the skeleton's obligation graph)
 
@@ -90,15 +90,16 @@ reappearance is a REGRESSION, not a drift.
 
 The base case is discharged too: `CompilerInv_initial` (§Z below)
 establishes the invariant at the real entry states, so
-`compile_correct_from_initial` is unconditional — compile a proof-core
+`compile_correct_from_initial` is unconditional — compile ANY
 program, run it from `mirlite.State.initial`, and the compiled program
 runs from `oseair.State.initial` to a `CompilerInv`-related state, with
 no invariant hypothesis to supply. BOTH are audited roots.
 
 What is NOT proven, and is not a gap in the proof but in its SCOPE:
-(a) the `CoreProg` gate — EMPTY since 2026-09-22: every statement and
-every rvalue of the language is in. The predicate is kept so that a new
-construct has to be admitted deliberately. `dealloc` was the last
+(a) nothing of the LANGUAGE — the `CoreProg` gate that scoped the
+theorems is gone (2026-09-22, the same day its last construct joined),
+so the roots quantify over every `Prog Γ`. For the record of how the
+scope filled: `dealloc` was the last
 statement (proof/dealloc.lean, 2026-09-22: copy's read of the pointer
 with its register exposed, one `Dealloc`, and the `sb_dealloc` and
 `removeRange` transports); `assignIf` joined 2026-09-17 (proof/assign_if.lean),
@@ -111,8 +112,7 @@ stopped holding a projection's `Borrow` across its mint
 (`Rhs.Borrow` with `len = none`); `move` 2026-09-20; and `alloc`,
 an rvalue since 2026-09-21 (proof/alloc.lean), the first whose value
 package EXTENDS memory — which is why `ValuePkg` hands back a grown
-address renaming and the memory the rvalue left. `CoreRhs` and
-`CoreStmt` are both total; (b) the direction — this is a forward
+address renaming and the memory the rvalue left; (b) the direction — this is a forward
 simulation of SUCCESSFUL source runs, so it does not say the target
 goes wrong when the source has UB. That direction is probed only
 empirically, by the `expectDiff` corpus comparing VERDICTS, which is
@@ -392,8 +392,7 @@ open obseq3.compile
 open obseq3.oseair (Instr Register Rhs Val)
 
 /-- One source step is simulated by finitely many target steps and
-    `CompilerInv` is re-established, for programs in the proof-core
-    fragment. -/
+    `CompilerInv` is re-established. -/
 theorem CompilerInv_step
     {Γ : Ctx}
     {cs0 : CompilerState}
@@ -402,7 +401,6 @@ theorem CompilerInv_step
     {s_mir s_mir' : mirlite.State MSB Γ}
     {s_osea : oseair.State MSB}
     (compProg : oseair.Prog)
-    (h_core : CoreProg prog)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
     (h_step : srcStep s_mir prog = .ok s_mir') :
@@ -424,7 +422,6 @@ theorem CompilerInv_step
       AddrRenameIncr.refl ρa, TagRenameIncr.refl ρt,
       by simp [oseair.runN], h_inv⟩
   · rename_i stmt h_ne h_get
-    have h_stmt_core : CoreStmt stmt := h_core _ _ h_get
     cases stmt with
     | halt =>
         simp only [mirlite.stepStmt] at h_step
@@ -458,8 +455,7 @@ theorem CompilerInv_step
         | uninit =>
             exact CompilerInv_step_uninit compProg h_comp h_inv h_get h_step
     | assignIf discr val dst rhs =>
-        exact CompilerInv_step_assignIf compProg
-          (assignLeaf_core compProg dst rhs (by simpa [CoreStmt] using h_stmt_core))
+        exact CompilerInv_step_assignIf compProg (assignLeaf_all compProg dst rhs)
           h_comp h_inv h_get h_step
     | dealloc p => exact CompilerInv_step_dealloc compProg h_comp h_inv h_get h_step
     | pushProtectors =>
@@ -468,7 +464,7 @@ theorem CompilerInv_step
         exact CompilerInv_step_popProtectors compProg h_comp h_inv h_get h_step
 
 /-- Main compiler-correctness theorem (forward simulation of successful
-    source runs): every n-step source execution of a proof-core program is
+    source runs): every n-step source execution of a program is
     matched by a finite target execution, and `CompilerInv` relates the
     final states. The observable consequence lives in the invariant:
     `SourceMemSim` at renamed addresses and `PermSim` at renamed tags. -/
@@ -480,7 +476,6 @@ theorem compile_correct
     {s_osea : oseair.State MSB}
     (compProg : oseair.Prog)
     (n : Nat)
-    (h_core : CoreProg prog)
     (h_comp : compileProg prog = Except.ok compProg)
     (h_run : mirlite.runN MSB n s_mir prog = mirlite.Result.ok s_mir')
     (h_inv : CompilerInv (initialState Γ) prog ρa ρt s_mir s_osea) :
@@ -524,7 +519,7 @@ theorem compile_correct
             | popProtectors => exact h_step_eq
           obtain ⟨ρa_mid, ρt_mid, s_osea_mid, k,
             hρa_step, hρt_step, h_target_k, h_inv_mid⟩ :=
-            CompilerInv_step compProg h_core (by simpa [compileProg] using h_comp) h_inv h_step
+            CompilerInv_step compProg (by simpa [compileProg] using h_comp) h_inv h_step
           obtain ⟨ρa', ρt', s_osea', m,
             hρa_tail, hρt_tail, h_target_m, h_inv'⟩ :=
             ih h_run h_inv_mid
@@ -604,7 +599,7 @@ theorem CompilerInv_initial {Γ : Ctx} (prog : obseq3.Prog Γ) :
     simp [getPlaceInfo, initialState] at h
 
 /-- Compiler correctness FROM THE ENTRY STATE: no invariant hypothesis.
-    Every successful `n`-step run of a proof-core program from
+    Every successful `n`-step run of a program from
     `mirlite.State.initial` is matched by a finite run of the compiled
     program from `oseair.State.initial`, with `CompilerInv` — hence
     `SourceMemSim` at renamed addresses and `PermSim` at renamed tags —
@@ -615,7 +610,6 @@ theorem compile_correct_from_initial
     {s_mir' : mirlite.State MSB Γ}
     (compProg : oseair.Prog)
     (n : Nat)
-    (h_core : CoreProg prog)
     (h_comp : compileProg prog = Except.ok compProg)
     (h_run : mirlite.runN MSB n (mirlite.State.initial MSB Γ) prog
       = mirlite.Result.ok s_mir') :
@@ -624,7 +618,7 @@ theorem compile_correct_from_initial
         = oseair.Result.Ok s_osea' ∧
       CompilerInv (initialState Γ) prog ρa' ρt' s_mir' s_osea' := by
   obtain ⟨ρa', ρt', s_osea', m, -, -, h_target, h_inv'⟩ :=
-    compile_correct compProg n h_core h_comp h_run (CompilerInv_initial prog)
+    compile_correct compProg n h_comp h_run (CompilerInv_initial prog)
   exact ⟨ρa', ρt', s_osea', m, h_target, h_inv'⟩
 
 end obseq3.proof

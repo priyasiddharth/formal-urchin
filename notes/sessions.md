@@ -4186,8 +4186,12 @@ journal; dev log.
 the theorem. Audit 3 axioms / 0 sorries; units 17/17 + 116/116; corpus
 93/0/43; differential 93 matched.
 
+**Later (user):** the `CoreProg` hypothesis dropped from both roots and
+the three gate predicates deleted (`assignLeaf_core` → `assignLeaf_all`);
+the roots now quantify over every `Prog Γ`. Audit unchanged.
+
 **Next-session pickup candidates:**
-- Drop the `CoreProg` hypothesis from the two roots (now discharged by
-  `CoreProg.total`) if the paper wants the unconditional statement.
 - `box-cell-alias` loader typing gap; `divergence: stricter|laxer`
   field on `xfail-model` entries (carried over).
+- The paper's "core fragment" table row (pldi27, the other session's
+  file) names `CoreRhs`/`CoreStmt`/`CoreProg`, which no longer exist.
