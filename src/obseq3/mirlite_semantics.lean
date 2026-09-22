@@ -585,23 +585,25 @@ def stepStmt
               else .ok { output.state with pc := output.state.pc + 1 }
           | _ => .err "assignIf discriminant is not a concrete word"
   | .dealloc dst =>
-      match resolvePlaceAcc M state dst with
-      | .error e => .err e
-      | .ok (res, permsR) =>
-          match M.read permsR res.addr 1 res.tag with
-          | .error e => .err s!"dealloc pointer read failed: {e}"
-          | .ok perms' =>
-              match state.mem.find? res.addr with
-              | some (.ptrVal base offset size tag) =>
-                  if offset != 0 then
-                    .err "deallocation of a pointer that is not the beginning of its allocation"
-                  else
-                    match M.dealloc perms' base size tag with
-                    | .error e => .err s!"deallocation failed: {e}"
-                    | .ok permsD =>
-                        let mem' := state.mem.removeRange base size
-                        .ok { state with perms := permsD, mem := mem', pc := state.pc + 1 }
-              | _ => .err "dealloc argument is not a pointer value"
+      -- the pointer is READ as `copy` reads it (bounds, SB read, init),
+      -- then the block it names is freed: permissions through the
+      -- pointer's own tag, cells removed. Since 2026-09-22 the read is
+      -- `evalCopy` — one read discipline for every typed access.
+      match evalCopy M state dst with
+      | .err e => .err s!"dealloc pointer read failed: {e}"
+      | .ok out =>
+          match out.values with
+          | [.ptrVal base offset size tag] =>
+              if offset != 0 then
+                .err "deallocation of a pointer that is not the beginning of its allocation"
+              else
+                match M.dealloc out.state.perms base size tag with
+                | .error e => .err s!"deallocation failed: {e}"
+                | .ok permsD =>
+                    .ok { out.state with perms := permsD,
+                                         mem := out.state.mem.removeRange base size,
+                                         pc := out.state.pc + 1 }
+          | _ => .err "dealloc argument is not a pointer value"
 
 def runN
   (M : PermissionModel) : Nat → State M Γ → Prog Γ → Result M Γ

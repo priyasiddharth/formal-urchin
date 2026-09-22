@@ -602,20 +602,28 @@ def readRhsPre {Γ : Ctx} {σ τ : LayoutTy} (rhs : RExpr Γ τ) (src : Place Γ
     ev := fun dstPtr => ev srcRes srcOut.evidence dstPtr
   }
 
+/-- Copy's read of a place with its VALUE register exposed: the place's
+    lowering, a `Load` into a fresh register, the lowering's cleanup. The
+    run is `compileRExprPreChecked (.copy p)`'s (`readToReg_flat`); what
+    differs is that the register is returned rather than hidden behind a
+    store. The guard's discriminant, `alloc`'s runtime length and
+    `dealloc`'s pointer are all read this way. -/
+def readToReg {Γ : Ctx} {τ : LayoutTy} (p : Place Γ τ) :
+    CheckedCompilerM Register := do
+  let pOut ← placeToRegChecked RefKind.Shared p
+  let reg ← CheckedCompilerM.lift freshRegM
+  let _ ← CheckedCompilerM.lift
+    (emitM ([Instr.Assgn reg (Rhs.Load (layoutToTyVal τ) pOut.result.reg)]
+      ++ cleanupInstrs pOut.result.cleanup))
+  pure reg
+
 /-- A guard's discriminant read: copy's read of a `NatL` place — lower it
     shared, `Load` through the result, retire any temporary BEFORE the
     guard so it is dead on both paths — returning the VALUE register the
-    `SkipIf` compares. Its own computation so the proof can name the state
-    it leaves and relate it to `readRhsPre` once (proof/assign_if.lean). -/
+    `SkipIf` compares. `readToReg` at `NatL`. -/
 def guardRead {Γ : Ctx} (discr : Place Γ obseq.LayoutTy.NatL) :
-    CheckedCompilerM Register := do
-  let discrOut ← placeToRegChecked RefKind.Shared discr
-  let discrReg ← CheckedCompilerM.lift freshRegM
-  let _ ← CheckedCompilerM.lift
-    (emitM ([Instr.Assgn discrReg
-        (Rhs.Load (layoutToTyVal obseq.LayoutTy.NatL) discrOut.result.reg)]
-      ++ cleanupInstrs discrOut.result.cleanup))
-  pure discrReg
+    CheckedCompilerM Register :=
+  readToReg discr
 
 /-- Lower an `AllocLen` to a register holding the fresh heap pointer.
     `const n` → `AllocN`; `fromPlace p` → copy's read of `p` into a value
@@ -891,15 +899,11 @@ def compileStmtChecked {Γ : Ctx} :
       let _ ← CheckedCompilerM.lift (emitM [Instr.PopProt])
       pure { result := (), evidence := StmtEvidence.popProtectors }
   | .dealloc dst => do
-      -- Load performs the pointer-cell read mirlite's dealloc does;
-      -- Dealloc checks offset 0 against the stored value and retires
-      -- the allocation
-      let pOut ← placeToRegChecked RefKind.Shared dst
-      let loadedReg ← CheckedCompilerM.lift freshRegM
-      let _ ← CheckedCompilerM.lift
-        (emitM ([Instr.Assgn loadedReg (Rhs.Load obseq.TyVal.PTy pOut.result.reg)]
-          ++ cleanupInstrs pOut.result.cleanup
-          ++ [Instr.Dealloc loadedReg]))
+      -- copy's read of the pointer place (`readToReg`, the same code
+      -- `dst := copy dst` would emit before its store), then `Dealloc`
+      -- checks offset 0 against the loaded value and retires the block
+      let loadedReg ← readToReg dst
+      let _ ← CheckedCompilerM.lift (emitM [Instr.Dealloc loadedReg])
       pure { result := (), evidence := StmtEvidence.dealloc dst }
   | .assignIf discr val dst rhs => do
       -- the destination's ROOT is allocated before the guard, on both

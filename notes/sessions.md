@@ -4163,3 +4163,31 @@ what-compile-correct-actually-says gate paragraph superseded; dev log.
   transport; see the durable note's last paragraph.
 - `box-cell-alias` loader typing gap; `divergence: stricter|laxer`
   field on `xfail-model` entries (carried over).
+
+## 2026-09-22 — `dealloc` joins; the proof-core gate is empty
+
+**Theme:** "now do dealloc". One commit.
+
+**Key outputs:** mirlite's `dealloc` reads its pointer via `evalCopy`
+(bounds + SB read + init, as every typed read); compiler `readToReg`
+(copy's read with its register exposed, generalising `guardRead`) then
+`Dealloc`; proof/dealloc.lean: `runN_Dealloc_step`,
+`sb_dealloc_respects_PermSim` (named per-cell op, induction on length,
+`StackMapSim.filter_cell`), `SourceMemSim.removeRange`
+(`List.lookup_filter_key`), `ListRel_ptr_inv`, `CompilerInv_step_dealloc`;
+`CoreStmt` total, `CoreProg.total`. The three exposed-read lemmas are
+now `readToReg_*` with `guardRead_*` as aliases. Notes: durable
+dealloc-is-copys-read-then-a-free; gate paragraph superseded again;
+journal; dev log.
+
+**Critical corrections:** none.
+
+**Status:** complete. Every statement and rvalue of the language is in
+the theorem. Audit 3 axioms / 0 sorries; units 17/17 + 116/116; corpus
+93/0/43; differential 93 matched.
+
+**Next-session pickup candidates:**
+- Drop the `CoreProg` hypothesis from the two roots (now discharged by
+  `CoreProg.total`) if the paper wants the unconditional statement.
+- `box-cell-alias` loader typing gap; `divergence: stricter|laxer`
+  field on `xfail-model` entries (carried over).

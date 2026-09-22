@@ -44,16 +44,18 @@ all upstream and unverified — `compile_correct` starts from whatever
 `Prog` the loader produces. See
 [[protectors-and-the-charon-inlining-seam]].
 
-**1. The `CoreProg` gate.** [As of 2026-09-21] `CoreStmt` admits
-`halt`, `assign dst rhs` and `assignIf discr val dst rhs` with
-`CoreRhs rhs`, `pushProtectors` and `popProtectors`; `CoreRhs` is
-TOTAL (every `RExpr` constructor; `refSlice` joined 2026-09-16,
-`move`, added to the language on 2026-09-20, joined the same day, and
-`alloc`, an RVALUE since 2026-09-21, joined the same day — the first
-whose value package extends memory, see
-[[alloc-is-an-rvalue-the-package-extends-memory]]).
-Excluded: `dealloc` only. It is implemented and exercised by the
-conformance corpus; the theorem discharges it with `absurd h_stmt_core`.
+**1. The `CoreProg` gate.** [As of 2026-09-22] EMPTY. `CoreStmt` and
+`CoreRhs` are both TOTAL (`CoreProg.total`, common.lean): every
+statement — `halt`, `assign`, `assignIf`, the protector frames,
+`dealloc` (joined 2026-09-22, see
+[[dealloc-is-copys-read-then-a-free]]) — and every rvalue (`refSlice`
+joined 2026-09-16, `move` 2026-09-20, `alloc` as an RVALUE 2026-09-21,
+the first whose value package extends memory, see
+[[alloc-is-an-rvalue-the-package-extends-memory]]). The predicate is
+kept so that a new construct has to be admitted deliberately; the
+theorems' `CoreProg` hypothesis is discharged by `CoreProg.total`.
+[SUPERSEDED → this paragraph, 2026-09-22] "Excluded: `dealloc` only"
+(2026-09-21).
 [SUPERSEDED → this paragraph, 2026-09-21] "Excluded: `alloc` and
 `dealloc`" (2026-09-17) — `alloc` was a statement then.
 [SUPERSEDED → this paragraph, 2026-09-17] The 2026-08-31 text — "admits

@@ -86,10 +86,10 @@ def compileProgFrom
     wildcard accesses transported (`resolveWildcardIn_transport`), which
     is what admits the `wildcardTag` pointer `fromExposed` mints.
 
-    The predicate is kept rather than deleted: `CoreStmt`/`CoreProg`
-    still gate on one statement (`dealloc`; `assignIf` and the protector
-    frames joined 2026-09-16/17, `alloc` as an rvalue 2026-09-21), and a
-    new rvalue should have to be admitted here deliberately. -/
+    The predicate is kept rather than deleted: `CoreStmt`/`CoreProg` are
+    TOTAL too since 2026-09-22 (`assignIf` and the protector frames joined
+    2026-09-16/17, `alloc` as an rvalue 2026-09-21, `dealloc` 2026-09-22),
+    and a new construct should have to be admitted here deliberately. -/
 def CoreRhs {Γ : Ctx} {τ : LayoutTy} : RExpr Γ τ → Prop
   | .constInit _ => True
   | .copy _ => True
@@ -111,11 +111,23 @@ def CoreStmt {Γ : Ctx} : Stmt Γ → Prop
   | .assignIf _ _ _ rhs => CoreRhs rhs
   | .pushProtectors => True
   | .popProtectors => True
-  | _ => False
+  | .dealloc _ => True
 
 /-- Every statement of the program is in the proof-core fragment. -/
 def CoreProg {Γ : Ctx} (prog : obseq3.Prog Γ) : Prop :=
   ∀ i stmt, prog.get? i = some stmt → CoreStmt stmt
+
+theorem CoreRhs.total {Γ : Ctx} {τ : LayoutTy} (rhs : RExpr Γ τ) : CoreRhs rhs := by
+  cases rhs <;> trivial
+
+theorem CoreStmt.total {Γ : Ctx} (stmt : Stmt Γ) : CoreStmt stmt := by
+  cases stmt <;> first | trivial | exact CoreRhs.total _
+
+/-- The gate is EMPTY (2026-09-22): every program of the language is in
+    the proof core, so the top-level theorems' `CoreProg` hypothesis is
+    discharged for free. -/
+theorem CoreProg.total {Γ : Ctx} (prog : obseq3.Prog Γ) : CoreProg prog :=
+  fun _ stmt _ => CoreStmt.total stmt
 
 /-- One source step at the current pc, mirroring the inner match of
     `mirlite.runN` (v3 has no standalone `step`). -/
@@ -3179,14 +3191,19 @@ theorem readRhsPre_placeRegMap_any {Γ : Ctx} {σ τ : LayoutTy} (rhs : RExpr Γ
   · simp [csMonad, csRun, emit_placeRegMap, ih]
   · exact ih
 
-theorem guardRead_placeRegMap_any {Γ : Ctx} (p : Place Γ obseq.LayoutTy.NatL)
+theorem readToReg_placeRegMap_any {Γ : Ctx} {τ : LayoutTy} (p : Place Γ τ)
     (cs : CompilerState) :
-    (CheckedCompilerM.run (guardRead p) cs).placeRegMap = cs.placeRegMap := by
+    (CheckedCompilerM.run (readToReg p) cs).placeRegMap = cs.placeRegMap := by
   have ih := placeToRegChecked_placeRegMap_any p RefKind.Shared cs
-  simp only [guardRead, csMonad]
+  simp only [readToReg, csMonad]
   split
   · simp [csMonad, csRun, emit_placeRegMap, ih]
   · exact ih
+
+theorem guardRead_placeRegMap_any {Γ : Ctx} (p : Place Γ obseq.LayoutTy.NatL)
+    (cs : CompilerState) :
+    (CheckedCompilerM.run (guardRead p) cs).placeRegMap = cs.placeRegMap :=
+  readToReg_placeRegMap_any p cs
 
 theorem compileAllocLenChecked_placeRegMap_any {Γ : Ctx} (ty : obseq.TyVal) (len : AllocLen Γ)
     (cs : CompilerState) :

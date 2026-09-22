@@ -46,18 +46,47 @@ theorem evalRExpr_copy_flatten {τ : LayoutTy} {M : PermissionModel}
   simp only [mirlite.evalRExpr, mirlite.evalCopy, resolvePlaceAcc_flatten]
 
 /-- A read that compiled lowered its place. -/
+theorem readToReg_value_inv {τ : LayoutTy} {p : Place Γ τ} {cs : CompilerState}
+    {r : Register} (h : CheckedCompilerM.value (readToReg p) cs = .ok r) :
+    ∃ pOut, CheckedCompilerM.value (placeToRegChecked RefKind.Shared p) cs
+      = .ok pOut := by
+  simp only [readToReg, csMonad] at h
+  cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Shared p) cs with
+  | error e => rw [hD] at h; simp at h
+  | ok pOut => exact ⟨pOut, rfl⟩
+
 theorem guardRead_value_inv {discr : Place Γ obseq.LayoutTy.NatL} {cs : CompilerState}
     {r : Register} (h : CheckedCompilerM.value (guardRead discr) cs = .ok r) :
     ∃ discrOut, CheckedCompilerM.value (placeToRegChecked RefKind.Shared discr) cs
-      = .ok discrOut := by
-  simp only [guardRead, csMonad] at h
-  cases hD : CheckedCompilerM.value (placeToRegChecked RefKind.Shared discr) cs with
-  | error e => rw [hD] at h; simp at h
-  | ok discrOut => exact ⟨discrOut, rfl⟩
+      = .ok discrOut :=
+  readToReg_value_inv h
 
-/-- The guard's read IS copy's read of the FLATTENED discriminant — the
-    same run, and the value register is the read's temporary — so copy's
-    read package (`copy_readRegPkg_flat`) speaks about it verbatim. -/
+/-- The exposed read IS copy's read of the FLATTENED place — the same
+    run, and the value register is the read's temporary — so copy's read
+    package (`copy_readRegPkg_flat`) speaks about it verbatim. -/
+theorem readToReg_flat {τ : LayoutTy} {p : Place Γ τ} {cs : CompilerState}
+    {pOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared p)}
+    (hD : CheckedCompilerM.value (placeToRegChecked RefKind.Shared p) cs = .ok pOut) :
+    CheckedCompilerM.run (readToReg p) cs
+      = CheckedCompilerM.run (compileRExprPreChecked (.copy (flattenPlace p))) cs ∧
+    CheckedCompilerM.value (readToReg p) cs
+      = .ok (Register.R (CheckedCompilerM.run
+          (placeToRegChecked RefKind.Shared (flattenPlace p)) cs).nextReg) := by
+  obtain ⟨h_runF, h_valF⟩ := placeToRegChecked_flatten_agree p RefKind.Shared cs
+  cases hF : CheckedCompilerM.value (placeToRegChecked RefKind.Shared (flattenPlace p)) cs with
+  | error e =>
+      exfalso
+      rw [hF, hD] at h_valF
+      simp [Except.map] at h_valF
+  | ok flatOut =>
+  have h_res : flatOut.result = pOut.result := by
+    rw [hF, hD] at h_valF
+    simpa [Except.map] using h_valF
+  constructor
+  · simp only [readToReg, compileRExprPreChecked, readRhsPre, csMonad, hF, hD, h_runF, h_res,
+      csRun, List.append_nil]
+  · simp only [readToReg, csMonad, hD, h_runF, csRun]
+
 theorem guardRead_flat {discr : Place Γ obseq.LayoutTy.NatL} {cs : CompilerState}
     {discrOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared discr)}
     (hD : CheckedCompilerM.value (placeToRegChecked RefKind.Shared discr) cs = .ok discrOut) :
@@ -65,21 +94,8 @@ theorem guardRead_flat {discr : Place Γ obseq.LayoutTy.NatL} {cs : CompilerStat
       = CheckedCompilerM.run (compileRExprPreChecked (.copy (flattenPlace discr))) cs ∧
     CheckedCompilerM.value (guardRead discr) cs
       = .ok (Register.R (CheckedCompilerM.run
-          (placeToRegChecked RefKind.Shared (flattenPlace discr)) cs).nextReg) := by
-  obtain ⟨h_runF, h_valF⟩ := placeToRegChecked_flatten_agree discr RefKind.Shared cs
-  cases hF : CheckedCompilerM.value (placeToRegChecked RefKind.Shared (flattenPlace discr)) cs with
-  | error e =>
-      exfalso
-      rw [hF, hD] at h_valF
-      simp [Except.map] at h_valF
-  | ok flatOut =>
-  have h_res : flatOut.result = discrOut.result := by
-    rw [hF, hD] at h_valF
-    simpa [Except.map] using h_valF
-  constructor
-  · simp only [guardRead, compileRExprPreChecked, readRhsPre, csMonad, hF, hD, h_runF, h_res,
-      csRun, List.append_nil]
-  · simp only [guardRead, csMonad, hD, h_runF, csRun]
+          (placeToRegChecked RefKind.Shared (flattenPlace discr)) cs).nextReg) :=
+  readToReg_flat hD
 
 /-- A single-word value list related to `[.word v]` is `[Val.Dat v]`. -/
 theorem ListRel_word_inv {ρa : AddrRenameMap} {ρt : TagRenameMap} {v : Word} {vals : List Val}

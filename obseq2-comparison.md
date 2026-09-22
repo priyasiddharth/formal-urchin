@@ -4,6 +4,35 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-22 — `dealloc` Joins; the Proof-Core Gate Is Empty
+
+The last statement outside the theorem was `dealloc`. What made it
+cheap was one alignment on the source side: mirlite's free read its
+pointer with a bespoke one-cell read, no bounds check, while `copy` had
+carried the typed-access discipline since August (the whole range
+dereferenceable, the SB read, and since last week initialisation). Now
+`dealloc` reads its pointer as `copy` reads any place, and the compiler
+emits exactly copy's read with its register exposed, the same shape the
+guard's discriminant and `alloc`'s runtime length already use, followed
+by one `Dealloc`. Miri treats the pointer read as a typed access too,
+so nothing diverges; the corpus verdicts did not move.
+
+With the read behind copy's package, the statement's own content is
+two transports. Freeing along the permission simulation is per cell:
+the tag splits the stack at a write-granting item on both sides,
+protection transports, and removing the cell on both sides keeps the
+maps related. Removing the range along the memory simulation is the
+identity renaming at work: a surviving source cell's image is at the
+same address, so it survives too. The allocation table and the
+watermark do not move, and neither do env, registers or the renamings.
+
+Every statement and every rvalue of the language is now in the
+theorem; the gate predicate stays, satisfied by a totality lemma, so
+that the next construct still has to be admitted on purpose. Suites and
+audit unchanged.
+
+---
+
 ## 2026-09-21 (later) — `alloc` Is an Rvalue, and a Value Package May Extend Memory
 
 `Box::new` and `std::alloc::alloc` are calls, so their destination is

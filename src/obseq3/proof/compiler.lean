@@ -5,12 +5,13 @@ import obseq3.proof.casts
 import obseq3.proof.ptrarith
 import obseq3.proof.protectors
 import obseq3.proof.assign_if
+import obseq3.proof.dealloc
 
 /-!
 Top-level compiler-correctness theorems for the proof-core fragment
-(`CoreProg`: halt / assign with constInit/copy/ref), port of
-`obseq2/proof/compiler.lean`. Both theorems are complete modulo the audited
-sorries below.
+(`CoreProg` — the WHOLE language since 2026-09-22, `CoreProg.total`),
+port of `obseq2/proof/compiler.lean`. Both theorems are complete modulo
+the audited sorries below.
 
 ## SORRY AUDIT (the skeleton's obligation graph)
 
@@ -95,9 +96,12 @@ runs from `oseair.State.initial` to a `CompilerInv`-related state, with
 no invariant hypothesis to supply. BOTH are audited roots.
 
 What is NOT proven, and is not a gap in the proof but in its SCOPE:
-(a) the `CoreProg` gate — `dealloc` is implemented and
-conformance-tested but excluded from the theorem; it is the ONLY
-statement left outside. `assignIf` joined 2026-09-17 (proof/assign_if.lean),
+(a) the `CoreProg` gate — EMPTY since 2026-09-22: every statement and
+every rvalue of the language is in. The predicate is kept so that a new
+construct has to be admitted deliberately. `dealloc` was the last
+statement (proof/dealloc.lean, 2026-09-22: copy's read of the pointer
+with its register exposed, one `Dealloc`, and the `sb_dealloc` and
+`removeRange` transports); `assignIf` joined 2026-09-17 (proof/assign_if.lean),
 the protector-frame statements 2026-09-16 (proof/protectors.lean),
 which is what makes every `prot = true` retag path NON-vacuous: a core
 program can now have a frame to register into. EVERY RVALUE IS IN: `uninit` was always; both
@@ -107,8 +111,8 @@ stopped holding a projection's `Borrow` across its mint
 (`Rhs.Borrow` with `len = none`); `move` 2026-09-20; and `alloc`,
 an rvalue since 2026-09-21 (proof/alloc.lean), the first whose value
 package EXTENDS memory — which is why `ValuePkg` hands back a grown
-address renaming and the memory the rvalue left. `CoreRhs` is total;
-the gate is now purely about one statement; (b) the direction — this is a forward
+address renaming and the memory the rvalue left. `CoreRhs` and
+`CoreStmt` are both total; (b) the direction — this is a forward
 simulation of SUCCESSFUL source runs, so it does not say the target
 goes wrong when the source has UB. That direction is probed only
 empirically, by the `expectDiff` corpus comparing VERDICTS, which is
@@ -457,7 +461,7 @@ theorem CompilerInv_step
         exact CompilerInv_step_assignIf compProg
           (assignLeaf_core compProg dst rhs (by simpa [CoreStmt] using h_stmt_core))
           h_comp h_inv h_get h_step
-    | dealloc p => exact absurd h_stmt_core (by simp [CoreStmt])
+    | dealloc p => exact CompilerInv_step_dealloc compProg h_comp h_inv h_get h_step
     | pushProtectors =>
         exact CompilerInv_step_pushProtectors compProg h_comp h_inv h_get h_step
     | popProtectors =>
