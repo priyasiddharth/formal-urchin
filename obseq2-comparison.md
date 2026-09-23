@@ -4,6 +4,42 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-23 (later) — Certificates: Dynamic Branches and Loops Without a CFG
+
+The seam, not the model, was what kept forty-three corpus tests out, and
+a survey showed only a handful of them were blocked purely by control
+flow. The user's question was whether a certificate of pre-computed
+runtime checks could support dynamic ifs and loops with the current
+instruction set, without adding a control-flow graph to mirlite. It
+can, because every conformance program is closed and deterministic and
+therefore has exactly one execution. A certificate records that
+execution's branch outcomes as Miri saw them, per function frame in
+entry order, extracted from Miri's own step log on the pinned toolchain.
+The lowering follows it: loops unroll along the trace, dynamic branches
+take the recorded arm, and each branch is checked. Where the lowering
+can compute the discriminant itself, Miri's arm must agree. Where the
+discriminant is a word Miri also read, a runtime check built from
+`uninit`, `assignIf` and `copy` is undefined behaviour exactly when the
+pin is wrong, and the harness reports that as a rejected certificate,
+never as a verdict. Where the branch depends on a comparison of words
+Miri did not log, the arm is taken on trust, the result is quarantined
+as a placeholder, and the pin is counted and printed. No statement, no
+instruction and no proof changed.
+
+The checks earned their keep twice before the first commit landed: a
+field assignment had un-tainted a placeholder tuple, and an in-place
+seam retag had made a reference point at itself, so a method's field
+read became a placeholder that flowed into a checked `assert_eq!`. Both
+surfaced as rejected certificates. Three previously unsupported tests
+now pass, twenty supported tests run their upstream asserts, `+=` and
+`match` instead of hand-rewritten reads, and the corpus stands at 96
+supported with the differential matching on all of them. Fourteen
+branches across three tests remain unchecked pins, all arithmetic on
+values loaded through RefCell guards or exposed addresses; a word
+`binOp` rvalue would make them checkable and is the recorded follow-up.
+
+---
+
 ## 2026-09-23 — Pointers Carry an Extent
 
 A pointer value on both machines now has five fields: the allocation it

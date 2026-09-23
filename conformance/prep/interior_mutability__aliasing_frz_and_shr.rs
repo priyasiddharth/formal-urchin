@@ -2,7 +2,8 @@
 // scenario: aliasing_frz_and_shr — raw escapes and shared reborrows of the
 // RefCell must not unfreeze the aliasing & into its interior.
 // expected: ok
-// rewrites: scenario extracted; assert_eq! -> plain read
+// rewrites: scenario extracted
+//           [2026-09-23] restored upstream form under a certificate
 
 use std::cell::RefCell;
 
@@ -18,5 +19,5 @@ fn main() {
     let rc = RefCell::new(23);
     let bshr = rc.borrow();
     inner(&rc, &*bshr);
-    let _v = *rc.borrow();
+    assert_eq!(*rc.borrow(), 23);
 }

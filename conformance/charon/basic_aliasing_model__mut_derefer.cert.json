@@ -1,0 +1,38 @@
+{
+ "version": 1,
+ "source": "prep/basic_aliasing_model__mut_derefer.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_5.1: bool)",
+     "success": 1,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_5.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_4), const 1_i32) -> [success: bb1, unwind continue]",
+     "next": 1,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_7.1: bool)",
+     "success": 2,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_7.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_4), const 1_i32) -> [success: bb2, unwind continue]",
+     "next": 2,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

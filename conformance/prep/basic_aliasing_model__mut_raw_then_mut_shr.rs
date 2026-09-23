@@ -3,16 +3,17 @@
 // same mut and use the share, then write through the raw. Must be OK
 // (raw-mut items survive read accesses).
 // expected: ok
-// rewrites: extracted scenario into its own main; assert_eq! -> plain reads
+// rewrites: extracted scenario into its own main
+//           [2026-09-23] restored upstream form under a certificate
 
 fn main() {
     let mut x = 2;
     let xref = &mut x;
     let xraw = &mut *xref as *mut i32;
     let xshr = &*xref;
-    let _v = *xshr;
+    assert_eq!(*xshr, 2);
     unsafe {
         *xraw = 4;
     }
-    let _w = x;
+    assert_eq!(x, 4);
 }

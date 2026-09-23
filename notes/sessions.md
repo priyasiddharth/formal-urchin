@@ -4227,3 +4227,38 @@ open. Audit 3 axioms / 0 sorries; units 17/17 + 116/116; corpus
   field on `xfail-model` entries (carried over).
 - The paper's fragment table row (other session's file) names the
   deleted `CoreRhs`/`CoreStmt`/`CoreProg`.
+
+## 2026-09-23 (later) — certificate-guided lowering
+
+**Theme:** the user asked for a certificate design so dynamic ifs and
+loops lower with the current instruction set and no CFG in mirlite.
+Plan mode: two Explore agents (seam control flow; the 43 unsupported
+tests — only 4 blocked purely by dynamic values) and one Plan agent;
+user chose: scope = branches/arithmetic/asserts (not slice lengths);
+checks from existing instructions; Miri as the source; count T3 pins
+now, `binOp` rvalue later; revert the prep rewrites.
+
+**Key outputs:** src/conformance/certificate.lean; `UTerm.switch`,
+`URvalue.discriminant`; `walkBlock` tiers T1/T2/T3, `inlineCall` frame
+open/close, `emitCheckEq`/`emitCheckNotIn`/`emitPoison`; trackers keyed
+by (local, field path) with `refOf`/`resolveKey` and taint;
+`Verdict.certRejected/certExhausted`; report/summary pin counts;
+`scripts/gen_cert.sh` + `scripts/miri_cert.py`; 23 certificates; 20
+preps reverted; 3 tests flipped; docs (README "Certificates", lowering
+header, durable certificate-guided-lowering, parked.md supersession +
+`binOp` entry, journal, dev log). Two commits (3dd7ff0 mechanism; this
+one corpus).
+
+**Critical corrections:** none from the user; two self-caught bugs via
+the checks (field un-taint; self-referential in-place retag).
+
+**Status:** complete. 96 pass / 0 fail / 40 unsupported; 23 certified,
+27 checked, 14 unchecked; differential 96; units 17/17 + 116/116; audit
+3 axioms / 0 sorries.
+
+**Next-session pickup candidates:**
+- Roadmap (plan file): slice length + sub-slicing (`sliceLen`,
+  `subSlice`), unions, Box completions, Vec/String shims, closures, drop
+  glue.
+- Word `binOp` rvalue (parked.md) to make the 14 pins checkable.
+- CLAUDE.md test counts are stale (other session's file).

@@ -2,7 +2,8 @@
 // scenario: mut_shr_then_mut_raw — share a mut, then create a raw from
 // it and write through the raw. Must be OK.
 // expected: ok
-// rewrites: extracted scenario into its own main; assert_eq! -> plain read
+// rewrites: extracted scenario into its own main
+//           [2026-09-23] restored upstream form under a certificate
 
 fn main() {
     let xref = &mut 2;
@@ -11,5 +12,5 @@ fn main() {
     unsafe {
         *xraw = 3;
     }
-    let _v = *xref;
+    assert_eq!(*xref, 3);
 }

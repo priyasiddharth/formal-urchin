@@ -1,0 +1,36 @@
+{
+ "version": 1,
+ "source": "prep/basic_aliasing_model__array_casts.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _22",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _22) -> [0: bb4, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    }
+   ]
+  }
+ ]
+}

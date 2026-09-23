@@ -1,0 +1,190 @@
+{
+ "version": 1,
+ "source": "prep/int_to_ptr.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0",
+   "-Zmiri-permissive-provenance"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "example",
+  "main",
+  "not_so_innocent",
+  "ref_raw_int_raw",
+  "test"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "ref_raw_int_raw",
+   "miri_path": "ref_raw_int_raw",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _14",
+     "cases": [
+      [
+       0,
+       2
+      ]
+     ],
+     "otherwise": 1,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _14) -> [0: bb2, otherwise: bb1]",
+     "next": 1,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "example",
+   "miri_path": "example",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _16",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _16) -> [0: bb4, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    },
+    {
+     "k": "switch",
+     "discr": "move _30",
+     "cases": [
+      [
+       0,
+       7
+      ]
+     ],
+     "otherwise": 6,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _30) -> [0: bb7, otherwise: bb6]",
+     "next": 7,
+     "arm": "0"
+    }
+   ]
+  },
+  {
+   "fn": "not_so_innocent",
+   "miri_path": "example::not_so_innocent",
+   "events": []
+  },
+  {
+   "fn": "example",
+   "miri_path": "example",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _16",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _16) -> [0: bb4, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    },
+    {
+     "k": "switch",
+     "discr": "move _30",
+     "cases": [
+      [
+       0,
+       7
+      ]
+     ],
+     "otherwise": 6,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _30) -> [0: bb7, otherwise: bb6]",
+     "next": 6,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "not_so_innocent",
+   "miri_path": "example::not_so_innocent",
+   "events": []
+  },
+  {
+   "fn": "test",
+   "miri_path": "test",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _16",
+     "cases": [
+      [
+       0,
+       2
+      ]
+     ],
+     "otherwise": 1,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _16) -> [0: bb2, otherwise: bb1]",
+     "next": 1,
+     "arm": "otherwise"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_30.1: bool)",
+     "success": 3,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_30.1: bool), \"attempt to compute `{} - {}`, which would overflow\", copy (*_28), const 2_i32) -> [success: bb3, unwind continue]",
+     "next": 3,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_31.1: bool)",
+     "success": 4,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_31.1: bool), \"attempt to compute `{} - {}`, which would overflow\", copy (*_6), const 2_i32) -> [success: bb4, unwind continue]",
+     "next": 4,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_34.1: bool)",
+     "success": 5,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_34.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_32), const 2_i32) -> [success: bb5, unwind continue]",
+     "next": 5,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_35.1: bool)",
+     "success": 6,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_35.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_1), const 2_i32) -> [success: bb6, unwind continue]",
+     "next": 6,
+     "outcome": "success"
+    },
+    {
+     "k": "switch",
+     "discr": "move _43",
+     "cases": [
+      [
+       0,
+       8
+      ]
+     ],
+     "otherwise": 7,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _43) -> [0: bb8, otherwise: bb7]",
+     "next": 7,
+     "arm": "otherwise"
+    }
+   ]
+  }
+ ]
+}

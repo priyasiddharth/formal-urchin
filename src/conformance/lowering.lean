@@ -48,16 +48,24 @@ Covered (interpreted):
 - statics: hoisted to locals, materialized `uninit` (initializers NOT
   run — documented divergence);
 - constant-foldable arithmetic and statically-true asserts (bounds
-  checks).
+  checks);
+- **certificate-guided control flow** (2026-09-23, `certificate.lean`):
+  with a `<name>.cert.json` recording Miri's branch outcomes, `switch`
+  terminators follow the recorded arm (loops unroll), asserts follow
+  the recorded outcome, and each is cross-checked (T1, folded),
+  runtime-checked (T2, with `uninit`/`assignIf`/`copy`) or pinned and
+  counted (T3, comparisons on words Miri did not log). Runtime
+  arithmetic whose operands are not folded yields a tainted
+  PLACEHOLDER word that never re-enters as an index/offset/size.
 
 Not covered (rejected as `unsupported`), with the reason:
-- **loops / `switchInt` / real branches** — the target has only
-  forward-only `SkipIf`; general CFGs are language complexity, and no SB
-  rule needs them;
-- **unwind paths / `abort`** — exception machinery, no SB content;
-- **dynamic asserts / non-constant arithmetic / runtime array indices /
-  runtime pointer offsets** — the model has no dynamic value analysis;
-  indices/offsets must be static to compute layouts;
+- **loops / `switchInt` / real branches WITHOUT a certificate** — the
+  target has only forward-only `SkipIf`; general CFGs are language
+  complexity, and no SB rule needs them;
+- **unwind paths / `abort` / certified panic paths** — exception
+  machinery, no SB content;
+- **runtime array indices / pointer offsets / allocation sizes whose
+  VALUE the lowering cannot fold** — Miri's trace has no values;
 - **recursion & deep (>8) call chains, unknown/bodyless callees,
   unresolved indirect calls** — inlining must terminate statically;
 - **drop glue, closures, containers, threads, unions** (as they arise in
@@ -111,7 +119,7 @@ structure LowerSt where
   out : List LStmt   -- reversed
   fnPtrs : List (Nat × Nat) := []   -- rebased local ↦ fun defId (reified fn ptrs)
   constVals : List (ConstKey × Nat) := []  -- known constant words (index resolution, T1 folding)
-  refOf : List (Nat × Nat) := []    -- bare local `r` ↦ local `l` after `r := &l` / `&mut l`
+  refOf : List (ConstKey × UPlace) := []   -- a pointer-holding place ↦ the place it was taken from
   -- certificate-guided lowering (none = the straight-line-only seam)
   cert : Option CertCursor := none
   certBad : Nat := 0     -- scratch NatL local the checks poison
@@ -142,17 +150,39 @@ def killConst (st : LowerSt) (k : ConstKey) : LowerSt :=
   { st with constVals := st.constVals.filter fun (k', _) =>
       !(k'.1 == k.1 && (k.2.isPrefixOf k'.2 || k'.2.isPrefixOf k.2)) }
 
-def killLocalConsts (st : LowerSt) (l : Nat) : LowerSt :=
-  { st with constVals := st.constVals.filter (·.1.1 != l), refOf := st.refOf.filter (·.1 != l) }
+/-- Forget the constants AND the tracked references an assignment to
+    `(l, path)` may change. -/
+def killKey (st : LowerSt) (k : ConstKey) : LowerSt :=
+  let rel : ConstKey → Bool := fun k' => k'.1 == k.1 && (k.2.isPrefixOf k'.2 || k'.2.isPrefixOf k.2)
+  { st with constVals := st.constVals.filter (fun (k', _) => !rel k'),
+            refOf := st.refOf.filter (fun (k', _) => !rel k') }
+
+def killAllConsts (st : LowerSt) : LowerSt :=
+  { st with constVals := [], refOf := [] }
+
+/-- The root-local key a place denotes, following tracked references
+    through its derefs (`*r` where `r := &p` denotes `p`). `none` when a
+    deref goes through an untracked pointer. -/
+partial def resolveKey (st : LowerSt) (fuel : Nat) (p : UPlace) : Option ConstKey :=
+  match fuel, p.root with
+  | 0, _ => none
+  | _, .global _ => none
+  | fuel + 1, .local l =>
+      let rec go (k : ConstKey) : List UProj → Option ConstKey
+        | [] => some k
+        | .field i :: rest => go (k.1, k.2 ++ [i]) rest
+        | .deref :: rest =>
+            match st.refOf.lookup k with
+            | some target =>
+                match resolveKey st fuel target with
+                | some k' => go k' rest
+                | none => none
+            | none => none
+        | .index _ :: _ => none
+      go (l, []) p.projs
 
 def isTainted (st : LowerSt) (l : Nat) : Bool := st.tainted.contains l
 
-/-- A place whose runtime word the lowering trusts to be what Miri saw:
-    not a placeholder, and not loaded from memory a placeholder reached. -/
-def faithfulPlace (st : LowerSt) (p : UPlace) : Bool :=
-  match p.root with
-  | .global _ => !st.memTainted
-  | .local l => !isTainted st l && (!(p.projs.contains .deref) || !st.memTainted)
 
 def rebaseProj (off : Nat) : UProj → UProj
   | .index (.fromLocal n) => .index (.fromLocal (n + off))
@@ -220,19 +250,24 @@ def resolveIdxOperand (st : LowerSt) (line : Nat) : UOperand → Except String U
   | .move p => do return .move (← resolveIdxPlace st line p)
   | op => pure op
 
+/-- A place whose runtime word the lowering trusts to be what Miri saw:
+    the local it resolves to (through tracked references) holds no
+    placeholder, and, when it goes through an UNTRACKED pointer, no
+    placeholder was ever stored to memory. Defined after `resolveKey`. -/
+def faithfulPlace (st : LowerSt) (p : UPlace) : Bool :=
+  match resolveKey st 8 p with
+  | some (l, _) => !isTainted st l
+  | none =>
+      match p.root with
+      | .global _ => !st.memTainted
+      | .local l => !isTainted st l && (!(p.projs.contains .deref) || !st.memTainted)
+
 /-- Statically-known integer value of an operand (consts, or const-tracked
     plain locals). -/
 def constOfPlace (st : LowerSt) (p : UPlace) : Option Int :=
-  match fieldPath? p with
+  match resolveKey st 8 p with
   | some k => (constLookup st k).map Int.ofNat
-  | none =>
-      -- through a tracked reference to a local: `*r` where `r := &l`
-      match p.root, p.projs with
-      | .local r, [.deref] =>
-          match st.refOf.lookup r with
-          | some l => (constLookup st (l, [])).map Int.ofNat
-          | none => none
-      | _, _ => none
+  | none => none
 
 def constOf (st : LowerSt) : UOperand → Option Int
   | .const n => some (Int.ofNat n)
@@ -287,6 +322,71 @@ partial def containsRef : UTy → Bool
   | .cell _ => false
   | _ => false
 
+/-- The static trackers, updated for one assignment `dst := rv` (already
+    rebased and index-resolved): constants and tracked references per
+    (local, field path), and the placeholder taint. A write through a
+    pointer resolves to the place it names when the pointer is tracked
+    (`*r` for `r := &p`), and forgets everything otherwise. Sound only
+    because the lowering walks the ONE path that executes; under a
+    certificate that path is Miri's. -/
+def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
+  let srcTainted : Bool := match rv with
+    | .use (.copy sp) | .use (.move sp) | .move sp => !faithfulPlace st sp
+    | .aggregate _ ops => ops.any fun op => match op with
+        | .copy sp | .move sp => !faithfulPlace st sp
+        | _ => false
+    | _ => false
+  -- where the write lands, as a root-local key
+  let key? : Option ConstKey :=
+    if dst.projs.contains .deref then resolveKey st 8 dst else fieldPath? dst
+  match key? with
+  | none =>
+      let st := killAllConsts st
+      if dst.projs.contains .deref && srcTainted then { st with memTainted := true } else st
+  | some (d, path) =>
+      let st := killKey st (d, path)
+      let st := if path.isEmpty then { st with symVals := st.symVals.filter (·.1 != d) } else st
+      -- taint: a whole-local assignment from an exact source clears it; a
+      -- FIELD assignment never does (the other fields keep their words).
+      -- Through a pointer the taint lands on memory, not on the root local.
+      let st :=
+        if dst.projs.contains .deref then
+          (if srcTainted then { st with memTainted := true } else st)
+        else { st with tainted :=
+          if srcTainted then d :: st.tainted
+          else if path.isEmpty then st.tainted.filter (· != d) else st.tainted }
+      let copyUnder (sk : ConstKey) : LowerSt :=
+        -- every constant and reference known under the source lands under
+        -- the destination
+        let cs := st.constVals.filterMap fun (k, v) =>
+          if k.1 == sk.1 && sk.2.isPrefixOf k.2 then some ((d, path ++ k.2.drop sk.2.length), v) else none
+        let rs := st.refOf.filterMap fun (k, tgt) =>
+          if k.1 == sk.1 && sk.2.isPrefixOf k.2 then some ((d, path ++ k.2.drop sk.2.length), tgt) else none
+        { st with constVals := cs ++ st.constVals, refOf := rs ++ st.refOf }
+      match rv with
+      | .use (.const n) => { st with constVals := ((d, path), n) :: st.constVals }
+      | .use (.copy sp) | .use (.move sp) | .move sp =>
+          match resolveKey st 8 sp with
+          | some sk => copyUnder sk
+          | none => st
+      | .aggregate none ops =>
+          ops.zipIdx.foldl (fun st (op, i) =>
+            match op with
+            | .const v => { st with constVals := ((d, path ++ [i]), v) :: st.constVals }
+            | .copy sp | .move sp =>
+                match resolveKey st 8 sp with
+                | some sk =>
+                    let cs := st.constVals.filterMap fun (k, v) =>
+                      if k.1 == sk.1 && sk.2.isPrefixOf k.2 then some ((d, path ++ [i] ++ k.2.drop sk.2.length), v) else none
+                    let rs := st.refOf.filterMap fun (k, tgt) =>
+                      if k.1 == sk.1 && sk.2.isPrefixOf k.2 then some ((d, path ++ [i] ++ k.2.drop sk.2.length), tgt) else none
+                    { st with constVals := cs ++ st.constVals, refOf := rs ++ st.refOf }
+                | none => st
+            | _ => st) st
+      | .aggregate (some v) _ => { st with constVals := ((d, path ++ [0]), v) :: st.constVals }
+      | .ref _ _ p => { st with refOf := ((d, path), p) :: st.refOf }
+      | _ => st
+
 /-- Retag/copy `src` into `dst` at a retag point (inline seam or a
     reference-typed load through a deref): every reference — including
     refs inside tuples and enum payloads — is retagged; enum payload
@@ -296,16 +396,17 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
     (ty : UTy) (src : UPlace) : Except String LowerSt := do
   match ty with
   | .ref mutbl inner =>
-      -- pointee ty drives the UnsafeCell freeze mask at elaboration
-      return pushOut st (.assign dst
-        (.ref (if mutbl then .mut else .shared) prot
-          { pointee src with ty := inner }) line)
+      -- pointee ty drives the UnsafeCell freeze mask at elaboration. An
+      -- IN-PLACE retag (dst == src) points where the old pointer pointed:
+      -- the tracker keeps that target instead of a self-reference.
+      let rv : URvalue := .ref (if mutbl then .mut else .shared) prot { pointee src with ty := inner }
+      return pushOut (if dst == src then st else trackAssign st dst rv) (.assign dst rv line)
   | .boxT inner =>
       -- miri's box retag: a Unique reborrow of the pointee. Protection is
       -- weak in miri (dealloc allowed during the call) — our protector
       -- blocks pops identically; the dealloc difference is unexercised.
-      return pushOut st (.assign dst
-        (.ref .mut prot { pointee src with ty := inner }) line)
+      let rv : URvalue := .ref .mut prot { pointee src with ty := inner }
+      return pushOut (if dst == src then st else trackAssign st dst rv) (.assign dst rv line)
   | .slice false mutbl _ =>
       -- reference-to-slice: runtime-length retag via the fat value
       return pushOut st (.assign dst
@@ -340,61 +441,6 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
                 st := pushOut st (.assignIf (fld src 0) v dstF (.use (.copy srcF)) line)
       return st
   | _ => return if dst == src then st else pushOut st (.assign dst (.use (.copy src)) line)
-
-/-- The static trackers, updated for one assignment `dst := rv` (already
-    rebased and index-resolved): constants per (local, field path), tracked
-    references to locals, and the placeholder taint. Sound only because the
-    lowering walks the ONE path that executes; under a certificate that path
-    is Miri's. -/
-def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
-  let srcRoot? : Option Nat := match rv with
-    | .use (.copy { root := .local s, .. }) | .use (.move { root := .local s, .. })
-    | .move { root := .local s, .. } => some s
-    | _ => none
-  let srcTainted : Bool := match rv with
-    | .use (.copy sp) | .use (.move sp) | .move sp => !faithfulPlace st sp
-    | .aggregate _ ops => ops.any fun op => match op with
-        | .copy sp | .move sp => !faithfulPlace st sp
-        | _ => false
-    | _ => false
-  if dst.projs.contains .deref then
-    -- a write through a pointer: forget what it may have overwritten
-    let st := match dst.root, dst.projs, st.refOf.lookup (match dst.root with | .local r => r | _ => 0) with
-      | .local _, [.deref], some l => killLocalConsts st l
-      | _, _, _ => { st with constVals := [], refOf := [] }
-    let _ := srcRoot?
-    if srcTainted then { st with memTainted := true } else st
-  else
-    match fieldPath? dst with
-    | none => { st with constVals := [], refOf := [] }
-    | some (d, path) =>
-      let st := killConst st (d, path)
-      let st := if path.isEmpty then { st with refOf := st.refOf.filter (·.1 != d),
-                                                 symVals := st.symVals.filter (·.1 != d) } else st
-      let st := { st with tainted := if srcTainted then d :: st.tainted else st.tainted.filter (· != d) }
-      match rv with
-      | .use (.const n) => { st with constVals := ((d, path), n) :: st.constVals }
-      | .use (.copy sp) | .use (.move sp) | .move sp =>
-          match fieldPath? sp with
-          | some (s, spath) =>
-              -- copy every known constant under the source to the destination
-              let moved := st.constVals.filterMap fun (k, v) =>
-                if k.1 == s && spath.isPrefixOf k.2 then some ((d, path ++ k.2.drop spath.length), v) else none
-              { st with constVals := moved ++ st.constVals }
-          | none =>
-              match constOfPlace st sp with
-              | some v => if v < 0 then st else { st with constVals := ((d, path), v.toNat) :: st.constVals }
-              | none => st
-      | .aggregate none ops =>
-          let consts := ops.zipIdx.filterMap fun (op, i) =>
-            match constOf st op with
-            | some v => if v < 0 then none else some (((d, path ++ [i]), v.toNat))
-            | none => none
-          { st with constVals := consts ++ st.constVals }
-      | .aggregate (some v) _ => { st with constVals := ((d, path ++ [0]), v) :: st.constVals }
-      | .ref _ _ { root := .local l, projs := [], .. } =>
-          if path.isEmpty then { st with refOf := (d, l) :: st.refOf } else st
-      | _ => st
 
 /-- Append one lowered assignment, desugaring aggregates, applying the
     reference-load retag rule, and rejecting unsupported payloads.

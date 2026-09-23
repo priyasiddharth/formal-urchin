@@ -1,0 +1,27 @@
+{
+ "version": 1,
+ "source": "prep/return_invalid_mut_option.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ub",
+ "user_fns": [
+  "foo",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "foo",
+   "miri_path": "foo",
+   "events": []
+  }
+ ]
+}

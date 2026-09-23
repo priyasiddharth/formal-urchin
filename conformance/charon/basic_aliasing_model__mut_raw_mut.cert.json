@@ -1,0 +1,92 @@
+{
+ "version": 1,
+ "source": "prep/basic_aliasing_model__mut_raw_mut.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _16",
+     "cases": [
+      [
+       0,
+       2
+      ]
+     ],
+     "otherwise": 1,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _16) -> [0: bb2, otherwise: bb1]",
+     "next": 1,
+     "arm": "otherwise"
+    },
+    {
+     "k": "switch",
+     "discr": "move _36",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _36) -> [0: bb4, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    },
+    {
+     "k": "switch",
+     "discr": "move _55",
+     "cases": [
+      [
+       0,
+       6
+      ]
+     ],
+     "otherwise": 5,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _55) -> [0: bb6, otherwise: bb5]",
+     "next": 5,
+     "arm": "otherwise"
+    },
+    {
+     "k": "switch",
+     "discr": "move _75",
+     "cases": [
+      [
+       0,
+       8
+      ]
+     ],
+     "otherwise": 7,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _75) -> [0: bb8, otherwise: bb7]",
+     "next": 7,
+     "arm": "otherwise"
+    },
+    {
+     "k": "switch",
+     "discr": "move _94",
+     "cases": [
+      [
+       0,
+       10
+      ]
+     ],
+     "otherwise": 9,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _94) -> [0: bb10, otherwise: bb9]",
+     "next": 9,
+     "arm": "otherwise"
+    }
+   ]
+  }
+ ]
+}

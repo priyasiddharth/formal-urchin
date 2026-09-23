@@ -2,7 +2,8 @@
 // scenario: read_does_not_invalidate1 — reading from &mut does not
 // invalidate raw-derived reborrows.
 // expected: ok
-// rewrites: scenario extracted; assert_eq!(*foo(..), 2) -> plain deref read; explicit binding for the temp
+// rewrites: scenario extracted
+//           [2026-09-23] restored upstream form under a certificate
 
 fn foo(x: &mut (i32, i32)) -> &i32 {
     let xraw = x as *mut (i32, i32);
@@ -12,7 +13,5 @@ fn foo(x: &mut (i32, i32)) -> &i32 {
 }
 
 fn main() {
-    let mut pair = (1, 2);
-    let r = foo(&mut pair);
-    let _v = *r;
+    assert_eq!(*foo(&mut (1, 2)), 2);
 }

@@ -1,0 +1,38 @@
+{
+ "version": 1,
+ "source": "prep/basic_aliasing_model__partially_invalidate_mut.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_7.1: bool)",
+     "success": 1,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_7.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy ((*_1).1: u8), const 1_u8) -> [success: bb1, unwind continue]",
+     "next": 1,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_8.1: bool)",
+     "success": 2,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_8.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_5), const 1_u8) -> [success: bb2, unwind continue]",
+     "next": 2,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

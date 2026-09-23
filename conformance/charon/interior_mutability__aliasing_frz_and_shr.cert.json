@@ -1,0 +1,42 @@
+{
+ "version": 1,
+ "source": "prep/interior_mutability__aliasing_frz_and_shr.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "inner",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _22",
+     "cases": [
+      [
+       0,
+       8
+      ]
+     ],
+     "otherwise": 7,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _22) -> [0: bb8, otherwise: bb7]",
+     "next": 7,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "inner",
+   "miri_path": "inner",
+   "events": []
+  }
+ ]
+}

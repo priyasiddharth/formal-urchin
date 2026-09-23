@@ -1,0 +1,36 @@
+{
+ "version": 1,
+ "source": "prep/interior_mutability__unsafe_cell_invalidate.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "f",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "f",
+   "miri_path": "f",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_3.1: bool)",
+     "success": 1,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_3.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_2), const 1_i32) -> [success: bb1, unwind continue]",
+     "next": 1,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

@@ -5,15 +5,14 @@
 // expected: ok
 // rewrites: scenario extracted; mem::transmute(raw2) ->
 //           &*(raw2 as *const UnsafeCell<i32>) (an SRW reborrow instead
-//           of a tag-preserving transmute; same pass verdict);
-//           *y += 1 -> read then write
+//           of a tag-preserving transmute; same pass verdict)
+//           [2026-09-23] restored upstream form under a certificate
 
 use std::cell::UnsafeCell;
 
 fn f(_x: &UnsafeCell<i32>, y: *mut i32) {
     unsafe {
-        let _t = *y;
-        *y = 1;
+        *y += 1;
     }
 }
 

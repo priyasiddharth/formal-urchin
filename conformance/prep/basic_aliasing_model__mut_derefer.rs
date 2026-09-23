@@ -2,14 +2,13 @@
 // scenario: mut_derefer — nested derefs adjusted by the derefer pass;
 // disjoint field borrows through them stay usable.
 // expected: ok
-// rewrites: scenario extracted; `*l += 1` -> read then write
+// rewrites: scenario extracted
+//           [2026-09-23] restored upstream form under a certificate
 
 fn main() {
     let x = &mut &mut (1, 2);
     let l = &mut x.0;
-    let _t = *l;
-    *l = 2;
+    *l += 1;
     let _r = &mut x.1;
-    let _t2 = *l;
-    *l = 3;
+    *l += 1;
 }

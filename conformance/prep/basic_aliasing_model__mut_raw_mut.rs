@@ -2,7 +2,8 @@
 // scenario: mut_raw_mut — mut -> raw -> mut chain; reading through the
 // original mut keeps the raw usable.
 // expected: ok
-// rewrites: scenario extracted; assert_eq! -> plain reads
+// rewrites: scenario extracted
+//           [2026-09-23] restored upstream form under a certificate
 
 fn main() {
     let mut x = 2;
@@ -14,10 +15,10 @@ fn main() {
         unsafe {
             *xraw = 4;
         }
-        let _v1 = *xref1;
-        let _v2 = unsafe { *xraw };
-        let _v3 = *xref1;
-        let _v4 = unsafe { *xraw };
+        assert_eq!(*xref1, 4);
+        assert_eq!(unsafe { *xraw }, 4);
+        assert_eq!(*xref1, 4);
+        assert_eq!(unsafe { *xraw }, 4);
     }
-    let _v5 = x;
+    assert_eq!(x, 4);
 }

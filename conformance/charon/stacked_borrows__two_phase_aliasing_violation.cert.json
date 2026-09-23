@@ -1,0 +1,51 @@
+{
+ "version": 1,
+ "source": "prep/stacked_borrows__two_phase_aliasing_violation.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "add",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _14",
+     "cases": [
+      [
+       0,
+       3
+      ]
+     ],
+     "otherwise": 2,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _14) -> [0: bb3, otherwise: bb2]",
+     "next": 2,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "add",
+   "miri_path": "main::Foo::add",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_5.1: bool)",
+     "success": 1,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_5.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _3, move _4) -> [success: bb1, unwind continue]",
+     "next": 1,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

@@ -3,8 +3,8 @@
 // protected reborrow of the caller's slot for the call, uninit written
 // through it). Custom MIR is the only way to name the in-place slot.
 // rewrites: dropped //@revisions and //~ ERROR annotations; `ptr.read()`/
-//           `ptr.write(v)` -> `(*ptr).0` / `(*ptr).0 = v` derefs; assert_eq! ->
-//           a plain read
+//           `ptr.write(v)` -> `(*ptr).0` / `(*ptr).0 = v` derefs
+//           [2026-09-23] restored upstream form under a certificate
 #![feature(custom_mir, core_intrinsics)]
 use std::intrinsics::mir::*;
 pub struct S(i32);
@@ -25,5 +25,5 @@ fn main() {
 #[expect(unused_variables, unused_assignments)]
 fn callee(x: S, mut y: S) {
     y.0 = 0;
-    let _v = x.0;
+    assert_eq!(x.0, 42);
 }

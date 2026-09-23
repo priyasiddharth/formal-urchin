@@ -40,7 +40,7 @@ TOML
   cp "$f" "$crate/src/main.rs"
   extra="$(grep -h '^// miri-flags:' "$f" | sed 's|^// miri-flags:||' | tr '\n' ' ' || true)"
   flagargs=()
-  for fl in $extra; do flagargs+=(--flag "$fl"); done
+  for fl in $extra; do flagargs+=("--flag=$fl"); done
   set +e
   ( cd "$crate" && \
     MIRIFLAGS="-Zmir-opt-level=0 $extra" \
@@ -50,5 +50,5 @@ TOML
   set -e
   python3 "$HERE/scripts/miri_cert.py" --log "$crate/miri.log" --ullbc "$ullbc" \
     --source "prep/$name.rs" --out "$CHARON_DIR/$name.cert.json" \
-    --exit-status "$status" --toolchain "$TOOLCHAIN" "${flagargs[@]}"
+    --exit-status "$status" --toolchain "$TOOLCHAIN" ${flagargs[@]+"${flagargs[@]}"}
 done

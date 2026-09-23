@@ -1,0 +1,27 @@
+{
+ "version": 1,
+ "source": "prep/arg_inplace_locals_alias.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ub",
+ "user_fns": [
+  "callee",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "callee",
+   "miri_path": "callee",
+   "events": []
+  }
+ ]
+}

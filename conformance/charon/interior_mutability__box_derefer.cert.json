@@ -1,0 +1,38 @@
+{
+ "version": 1,
+ "source": "prep/interior_mutability__box_derefer.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_8.1: bool)",
+     "success": 5,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_8.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_6), const 1_i32) -> [success: bb5, unwind: bb10]",
+     "next": 5,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_12.1: bool)",
+     "success": 7,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_12.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_10), const 1_i32) -> [success: bb7, unwind: bb10]",
+     "next": 7,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

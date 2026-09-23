@@ -99,7 +99,11 @@ at inline returns; statics = lowering.lean pass only.
 journal/2026-08/2026-08-14-obseq3-conformance-landed.md
 
 ## SwitchInt execution (runtime control flow in obseq3)
-**Status:** parked 2026-08-15
+**Status:** [SUPERSEDED → durable/certificate-guided-lowering.md, 2026-09-23]
+— control flow is lowered along a Miri-derived certificate WITHOUT a CFG
+in mirlite; the plan below (Stmt.switch/goto, block→pc layout) was not
+taken. Kept as the record of the rejected alternative.
+**Original status:** parked 2026-08-15
 **Context:** The executed obseq3 program is a straight-line statement
 list; all control flow is discharged at LOWERING time (goto followed,
 calls inlined, asserts const-folded, loops rejected). SwitchInt is the
@@ -232,16 +236,20 @@ live in conformance/manifest.json (`reason`/`note` fields); this is the
 feature-level view.
 
 ### A. Language/std features not implemented (block the 19 unsupported fail tests + pass files)
-1. **SwitchInt / runtime control flow** — parked with a resume plan
-   (own entry below). Blocks: zst_slice, buggy_split_at_mut,
-   fnentry_invalidation, the Option-match mains (currently rewritten),
-   RefCell's real borrow-flag checks, Result/unwrap paths.
+1. ~~**SwitchInt / runtime control flow**~~ **DONE 2026-09-23** by
+   certificate-guided lowering (durable/certificate-guided-lowering.md):
+   branches/loops/asserts follow Miri's recorded outcomes with runtime
+   checks; fnentry_invalidation, int-to-ptr, two_phase_aliasing_violation
+   flipped; the Option-match mains and the assert/`+=` rewrites reverted.
 2. **Runtime integer arithmetic** (BinaryOp with non-const operands) —
-   only const-foldable arithmetic exists (bounds checks). Collapses
-   into #1 when unparked. Blocks split_at_mut's len math.
+   folded when the operands are tracked (now per field path and through
+   references); otherwise a tainted PLACEHOLDER whose branches are T3
+   unchecked pins (14 in the corpus). A word `binOp` rvalue in
+   mirlite+oseair (+ proof leaf) would make them checkable — own entry.
 3. **Runtime array indexing / subslicing** — Index projections resolve
-   only through tracked constants; range indexing (`&a[0..0]`) needs
-   the std Index chain (#1).
+   only through tracked constants (Miri's trace has no values); range
+   indexing (`&a[0..0]`) needs the std Index chain + `sliceLen`/`subSlice`
+   rvalues (roadmap step 1 in the 2026-09-23 plan).
 4. **Std containers**: Vec/String/vec! (buggy_as_mut_slice,
    box-custom-alloc-aliasing), Rc (illegal_read5), NonNull
    (mut_exclusive_violation2).
@@ -308,10 +316,30 @@ feature-level view.
 
 ### C. Prep rewrites
 Recorded per-test in conformance/manifest.json `rewrites` and in each
-prep header: asserts → plain reads, `+=` → read-then-write, post-UB
-`match` → `let _`, method/intrinsic avoidance (ptr1.write → *ptr1,
-transmute → cast chains where noted). Tier-3 arithmetic rewrites and
-the match rewrites revert if SwitchInt is unparked.
+prep header. The assert/`+=`/`match` rewrites were REVERTED 2026-09-23
+(20 entries now run upstream code under a certificate); what remains is
+method/intrinsic avoidance (ptr1.write → *ptr1, transmute → cast chains
+where noted), `println!`, RefCell's flag probe, and one tuple
+`assert_eq!` (the tuple's `PartialEq::eq` is an opaque std body).
+
+## A word `binOp` rvalue (makes every certificate pin checkable)
+**Status:** parked 2026-09-23
+**Context:** Miri's trace records branch ARMS, not operand values, so a
+`Lt/Le/Gt/Ge` (or `Eq/Ne` of two runtime words) on operands the lowering
+cannot fold is taken on Miri's word alone — a counted "unchecked pin"
+(T3). 14 in the corpus, all `+=` on values loaded through RefCell guards
+or exposed-address arithmetic. With runtime word arithmetic in mirlite
+(`RExpr.binOp op a b` on `NatL` places) and oseair (`Rhs.BinOp`), the
+comparison is COMPUTED and the branch becomes a T2 runtime check on its
+result; `+=` stores the real sum instead of a placeholder.
+**Why parked:** the user chose existing instructions only for the
+certificate step; this is the one model addition that finishes it.
+**To resume:** rvalue + `Rhs`, a two-source read-then-store proof leaf
+(`ReadPkg` over two places), elab for `.binOp`, then drop the placeholder
+path in `emitAssign` and the taint machinery it needed.
+**Effort estimate:** ~2 days (the two-source package dominates)
+**References:** durable/certificate-guided-lowering.md, lowering.lean
+`emitAssign` `.binOp` arm
 
 **References:** conformance/README.md (claim + rule→witness table),
 durable/sb-conformance-claim.md, manifest.json (per-test ground truth).

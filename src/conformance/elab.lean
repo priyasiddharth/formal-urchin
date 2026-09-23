@@ -181,8 +181,44 @@ structure Loaded where
   lines : List Nat
   stats : CertStats := {}
 
+/-- The places a lowered statement mentions (for the opaque-local check). -/
+def operandPlaces : UOperand → List UPlace
+  | .copy p | .move p => [p]
+  | _ => []
+
+def rvaluePlaces : URvalue → List UPlace
+  | .use op => operandPlaces op
+  | .move p | .ref _ _ p | .exposeAddr p | .fromExposed p | .ptrOffset p _
+  | .refSlice _ _ p | .discriminant p => [p]
+  | .aggregate _ ops => ops.flatMap operandPlaces
+  | .binOp _ a b => operandPlaces a ++ operandPlaces b
+  | .fnRef _ | .uninit | .unsupported _ => []
+
+def stmtPlaces : LStmt → List UPlace
+  | .assign dst rv _ => dst :: rvaluePlaces rv
+  | .assignIf discr _ dst rv _ => discr :: dst :: rvaluePlaces rv
+  | .alloc dst sz _ => dst :: (sz.map operandPlaces).getD []
+  | .dealloc p _ => [p]
+  | .pushProt _ | .popProt _ => []
+
 def elabProg (lp : LProg) : Except String Loaded := do
-  let Γ ← lp.locals.mapM toLayout
+  -- a local of a type the loader cannot lay out is tolerated as long as no
+  -- statement touches it: `assert_eq!`'s never-walked panic arm declares
+  -- `core::fmt::Arguments` locals in the same function body. Such a local
+  -- gets a placeholder word layout; a USE of it is still an error.
+  let layouts := lp.locals.map fun ty =>
+    match toLayout ty with
+    | .ok l => (l, none)
+    | .error e => (obseq.LayoutTy.NatL, some e)
+  let Γ := layouts.map (·.1)
+  for s in lp.stmts do
+    for p in stmtPlaces s do
+      match p.root with
+      | .local n =>
+          match layouts[n]? with
+          | some (_, some e) => throw s!"{e} (local _{n} used at line {s.line})"
+          | _ => pure ()
+      | .global _ => pure ()
   let stmts ← lp.stmts.mapM (elabStmt Γ)
   return { Γ, prog := stmts ++ [.halt], lines := lp.stmts.map (·.line) ++ [0], stats := lp.stats }
 

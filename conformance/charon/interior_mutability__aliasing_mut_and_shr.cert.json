@@ -1,0 +1,75 @@
+{
+ "version": 1,
+ "source": "prep/interior_mutability__aliasing_mut_and_shr.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "inner",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_22.1: bool)",
+     "success": 8,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_22.1: bool), \"attempt to compute `{} + {}`, which would overflow\", const 23_i32, const 12_i32) -> [success: bb8, unwind: bb12]",
+     "next": 8,
+     "outcome": "success"
+    },
+    {
+     "k": "switch",
+     "discr": "move _25",
+     "cases": [
+      [
+       0,
+       10
+      ]
+     ],
+     "otherwise": 9,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _25) -> [0: bb10, otherwise: bb9]",
+     "next": 9,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "inner",
+   "miri_path": "inner",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_3.1: bool)",
+     "success": 1,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_3.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_2), const 4_i32) -> [success: bb1, unwind continue]",
+     "next": 1,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_5.1: bool)",
+     "success": 2,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_5.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_2), const 4_i32) -> [success: bb2, unwind continue]",
+     "next": 2,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_7.1: bool)",
+     "success": 3,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_7.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_2), const 4_i32) -> [success: bb3, unwind continue]",
+     "next": 3,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

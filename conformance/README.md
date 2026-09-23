@@ -40,9 +40,11 @@ unsupported-marked test now loads — update the manifest).
 **obseq3 implements the complete Stacked Borrows rule set.** Every
 mechanism of the aliasing model is implemented and witnessed by
 conformant tests; the remaining unsupported tests exercise those same
-rules through unimplemented *language/std* features (control flow,
+rules through unimplemented *language/std* features (slice lengths,
 containers, threads, drop glue, closures, unions), not through
-un-modeled SB rules. Rule → witness map:
+un-modeled SB rules. Control flow is no longer a blocker: dynamic
+branches and loops are lowered along a Miri-derived CERTIFICATE (see
+"Certificates" below). Rule → witness map:
 
 | SB mechanism | witnessed by (examples) |
 |---|---|
@@ -81,14 +83,45 @@ The single consolidated inventory of everything unimplemented or
 approximated lives in `notes/loose-ends/parked.md` (MASTER INVENTORY);
 per-test blockers are in `manifest.json`.
 
+## Certificates (2026-09-23)
+
+A conformance program is closed and deterministic, so it has exactly one
+execution. `<name>.cert.json` (beside the artifact; named by the entry's
+`certificate` field) records that execution's branch outcomes as Miri
+saw them — per user-function frame instance in entry order, the arm every
+`switch` took and whether every `assert` passed — extracted by
+`scripts/gen_cert.sh` from a `MIRI_LOG` trace on the pinned toolchain
+(`scripts/miri_cert.py`). The lowering follows it: loops unroll, dynamic
+`if`/`match` take the recorded arm, and every branch is one of
+
+- **T1 checked statically** — the lowering folds the discriminant and
+  Miri's arm must agree ("certificate disagrees with lowering" otherwise);
+- **T2 checked at runtime** — the discriminant is a word Miri also read
+  (a load, an enum's discriminant, `x == const`), and the check is built
+  from existing statements only: `bad := uninit; assignIf d v (bad := 0);
+  tmp := copy bad` is UB exactly when the pin is wrong, reported as
+  `certificate rejected at line L`, never as a program verdict;
+- **T3 unchecked pin** — a comparison on words Miri did not log (its
+  trace has no values): the arm is taken on Miri's word, the result is a
+  tainted placeholder that can never re-enter as an index, offset, size
+  or checkable discriminant, and the pin is COUNTED — the report prints
+  `[certified: k checked, m unchecked]` per entry and lists every entry
+  with unchecked pins. A word `binOp` rvalue would make T3 checkable
+  (parked).
+
+No mirlite/oseair/proof change: the checks are ordinary statements, and
+`--osea` attributes their UB like any other. Regenerate with
+`scripts/gen_charon.sh <prep>` then `scripts/gen_cert.sh <prep>`; a prep
+may carry `// miri-flags: -Zmiri-…` for extra Miri flags.
+
 ## Current score (miri @ PIN)
 
-- fail tests: 56/75 verdict-conformant (line-accurate on 48), 0 xfail,
-  19 fail tests unsupported with per-test blockers (40 unsupported
-  entries overall incl. pass files/scenarios).
-- pass scenarios: 20 supported and clean.
-- Every test that loads agrees with Miri's verdict; there are no
-  xfail-model divergences.
+- 96 supported / 40 unsupported of 136 entries; every supported entry
+  agrees with Miri's verdict (and line, where specified); `--osea`
+  differential 96 matched. 23 entries run under a certificate; 14 of
+  their branches are unchecked pins (all `+=` on values loaded through
+  RefCell guards or exposed-address arithmetic), listed by the harness.
+- No xfail-model divergences.
 
 Modeled beyond the core: protectors (call-frame protector sets,
 fn-entry retags at inline seams, pop-guards in read/write/die/dealloc),
@@ -139,10 +172,11 @@ value's tag), unsize coercions are value copies, and
 `as_ptr`/`as_mut_ptr` shims reproduce the receiver's fn-entry retag
 before the raw data retag (the invalidation fnentry_invalidation2
 tests). Named-struct fields are NOT retagged at seams (miri's behavior,
-also per that test) — tuples are. Remaining exclusions: slice
-indexing/subslicing (runtime bounds), Vec/String, threads, general
-closures, drop glue, unions, MaybeUninit, Rc, enums needing control
-flow, dynamic arithmetic.
+also per that test) — tuples are. Since 2026-09-23 a pointer value
+carries its EXTENT (the slice's length in cells), so a slice retag covers
+exactly its slice. Remaining exclusions: slice lengths (`.len()`/metadata)
+and range sub-slicing, Vec/String, threads, general closures, drop glue,
+unions, MaybeUninit, Rc, runtime VALUES for indices/offsets/sizes.
 
 ## Local witnesses (`local/`)
 

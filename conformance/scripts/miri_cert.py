@@ -19,9 +19,11 @@ import re
 import sys
 
 RE_FRAME = re.compile(r"stack::frame frame=(.*)$")
-# a frame ends when its `return` terminator executes (the `popping stack
-# frame` line lives in a module the MIRI_LOG filter does not select)
-RE_POP = re.compile(r"popping stack frame|interpret::step return\s*$")
+# a frame ends at `popping stack frame` (module `interpret::call`, selected
+# by gen_cert.sh's MIRI_LOG); when that module is absent from a log, the
+# executed `return` terminator stands in (one per frame in every probe)
+RE_POP = re.compile(r"popping stack frame")
+RE_RETURN = re.compile(r"interpret::step return\s*$")
 RE_EXEC = re.compile(r"// executing bb(\d+)\s*$")
 RE_SWITCH = re.compile(r"\bswitchInt\((.*?)\) -> \[(.*)\]\s*$")
 RE_ASSERT = re.compile(r"\bassert\((.*)\) -> \[success: bb(\d+)")
@@ -55,7 +57,10 @@ def user_fns_of(ullbc):
         decls = decls.get("vector") or next(iter(decls.values()))
     names = set()
     for fd in decls:
-        if not fd or not fd.get("body"):
+        body = fd.get("body") if fd else None
+        # only functions charon translated with a body (`Unstructured`);
+        # opaque std items (e.g. a tuple's `PartialEq::eq`) are not user frames
+        if not isinstance(body, dict) or "Unstructured" not in body:
             continue
         idents = [e["Ident"][0] for e in fd.get("item_meta", {}).get("name", []) if "Ident" in e]
         if idents:
@@ -130,6 +135,8 @@ class Frame:
 def parse_log(lines, user_fns):
     stack = []
     frames = []          # user frame instances in entry order
+    have_pop = any("popping stack frame" in l for l in lines)
+    pop_re = RE_POP if have_pop else RE_RETURN
     for raw in lines:
         line = raw.rstrip("\n")
         m = RE_FRAME.search(line)
@@ -144,7 +151,7 @@ def parse_log(lines, user_fns):
             if fr.user:
                 frames.append(fr)
             continue
-        if RE_POP.search(line):
+        if pop_re.search(line):
             if stack:
                 fr = stack.pop()
                 fr.abandon("frame popped")

@@ -1,0 +1,30 @@
+{
+ "version": 1,
+ "source": "prep/illegal_read8.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ub",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_8.1: bool)",
+     "success": 1,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_8.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_5), const 1_i32) -> [success: bb1, unwind continue]",
+     "next": 1,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

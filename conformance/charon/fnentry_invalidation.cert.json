@@ -1,0 +1,27 @@
+{
+ "version": 1,
+ "source": "prep/fnentry_invalidation.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ub",
+ "user_fns": [
+  "do_bad",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "do_bad",
+   "miri_path": "<i32 as Bad>::do_bad",
+   "events": []
+  }
+ ]
+}
