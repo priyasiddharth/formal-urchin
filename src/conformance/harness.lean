@@ -32,6 +32,11 @@ inductive Verdict
 | ub (stmtIdx : Nat) (line : Nat) (msg : String)
 | loadError (msg : String)
 | fuelExhausted
+-- a certificate CHECK failed: the branch Miri recorded was not the one
+-- mirlite's state selects at this source line — never a program verdict
+| certRejected (stmtIdx : Nat) (line : Nat)
+-- mirlite ran past the point where Miri's execution ended in UB/panic
+| certExhausted (stmtIdx : Nat) (line : Nat)
 deriving Repr, BEq
 
 def Verdict.render : Verdict → String
@@ -39,6 +44,8 @@ def Verdict.render : Verdict → String
   | .ub _ line msg => s!"ub@line {line}: {msg}"
   | .loadError msg => s!"load error: {msg}"
   | .fuelExhausted => "fuel exhausted"
+  | .certRejected _ line => s!"certificate rejected at line {line} (Miri's recorded branch was not taken)"
+  | .certExhausted _ line => s!"ran past Miri's UB point (line {line})"
 
 def runLoaded (l : Loaded) : Verdict :=
   go (l.prog.length + 2) (State.initial M l.Γ)
@@ -52,7 +59,11 @@ where
         | some stmt =>
             match stepStmt M st stmt with
             | .ok st' => go fuel st'
-            | .err msg => .ub st.pc (l.lines[st.pc]?.getD 0) msg
+            | .err msg =>
+                let line := l.lines[st.pc]?.getD 0
+                if line ≥ 2 * certLineBase then .certExhausted st.pc (line - 2 * certLineBase)
+                else if line ≥ certLineBase then .certRejected st.pc (line - certLineBase)
+                else .ub st.pc line msg
 
 /-! ## Differential mode (`--osea`)
 
@@ -95,18 +106,25 @@ def oseaStatus (l : Loaded) (src : Verdict) : OseaStatus :=
   | .ok tprog =>
       let ranges := compile.stmtLabelRanges l.prog
       let fuel := compile.emittedLabels l.prog + 2
-      match runOseaProg tprog fuel, src with
-      | .ok, .ok => .matched
-      | .ub label msg, .ub srcIdx _ _ =>
+      -- a certificate check that failed is UB at its statement on both
+      -- machines (the `copy` of an uninitialised cell), attributed alike
+      let srcErr? : Option Nat := match src with
+        | .ub i _ _ => some i
+        | .certRejected i _ => some i
+        | .certExhausted i _ => some i
+        | _ => none
+      match runOseaProg tprog fuel, src, srcErr? with
+      | .ok, .ok, _ => .matched
+      | .ub label msg, _, some srcIdx =>
           match ranges.findIdx? (fun r => r.1 ≤ label && label < r.2) with
           | some i =>
               if i == srcIdx then .matched
               else .mismatch
                 s!"target UB at stmt {i} (label {label}: {msg}), source UB at stmt {srcIdx}"
           | none => .mismatch s!"target UB at unattributable label {label}: {msg}"
-      | .ok, v => .mismatch s!"target ok, source {v.render}"
-      | .ub label msg, v => .mismatch s!"target UB (label {label}: {msg}), source {v.render}"
-      | .fuelExhausted, _ => .mismatch "target fuel exhausted"
+      | .ok, v, _ => .mismatch s!"target ok, source {v.render}"
+      | .ub label msg, v, _ => .mismatch s!"target UB (label {label}: {msg}), source {v.render}"
+      | .fuelExhausted, _, _ => .mismatch "target fuel exhausted"
 
 /-! ## Manifest -/
 
@@ -122,6 +140,7 @@ structure TestEntry where
   status : TestStatus
   expectUB : Bool
   expectLine : Option Nat
+  certificate : Option String := none   -- `<name>.cert.json` beside the artifact
 deriving Repr
 
 structure Manifest where
@@ -148,7 +167,8 @@ def parseManifest (j : Json) : Except String Manifest := do
     let expected := getK t "expected"
     let expectUB := (expected >>= (getK · "verdict") >>= asStr) == some "ub"
     let expectLine := expected >>= (getK · "line") >>= asNat
-    pure { id, artifact, status, expectUB, expectLine : TestEntry }
+    let certificate := getK t "certificate" >>= asStr
+    pure { id, artifact, status, expectUB, expectLine, certificate : TestEntry }
   return { tests }
 
 /-! ## Outcomes -/
@@ -176,6 +196,8 @@ def judge (e : TestEntry) (v : Verdict) : Outcome :=
       match v with
       | .loadError msg => .fail s!"loader rejected a supported test: {msg}"
       | .fuelExhausted => .fail "fuel exhausted"
+      | .certRejected _ line => .fail s!"certificate rejected at line {line}: mirlite did not take Miri's recorded branch"
+      | .certExhausted _ line => .fail s!"missed UB: ran past Miri's UB point (line {line})"
       | v =>
           if verdictMatches e v then .pass
           else if e.expectUB then .fail s!"missed UB: expected ub, got {v.render}"
@@ -192,23 +214,43 @@ structure TestResult where
   verdict : Verdict
   outcome : Outcome
   osea : Option OseaStatus := none
+  stats : CertStats := {}
+
+/-- Read and parse an entry's certificate, if it names one. -/
+def loadCert (charonDir : String) (e : TestEntry) : IO (Except String (Option Cert)) := do
+  match e.certificate with
+  | none => return .ok none
+  | some name =>
+      try
+        let content ← IO.FS.readFile s!"{charonDir}/{name}"
+        match Json.parse content with
+        | .error err => return .error s!"certificate json parse: {err}"
+        | .ok json =>
+            match parseCert json with
+            | .error err => return .error err
+            | .ok c => return .ok (some c)
+      catch ex =>
+        return .error s!"certificate io: {ex}"
 
 def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) : IO TestResult := do
   let path := s!"{charonDir}/{e.artifact}"
-  let (verdict, oseaSt) ←
+  let (verdict, oseaSt, stats) ←
     try
       let content ← IO.FS.readFile path
       match Json.parse content with
-      | .error err => pure (Verdict.loadError s!"json parse: {err}", none)
+      | .error err => pure (Verdict.loadError s!"json parse: {err}", none, {})
       | .ok json =>
-          match loadCrate json with
-          | .error err => pure (Verdict.loadError err, none)
-          | .ok loaded =>
-              let v := runLoaded loaded
-              pure (v, if osea then some (oseaStatus loaded v) else none)
+          match ← loadCert charonDir e with
+          | .error err => pure (Verdict.loadError err, none, {})
+          | .ok cert? =>
+            match loadCrate json cert? with
+            | .error err => pure (Verdict.loadError err, none, {})
+            | .ok loaded =>
+                let v := runLoaded loaded
+                pure (v, if osea then some (oseaStatus loaded v) else none, loaded.stats)
     catch ex =>
-      pure (Verdict.loadError s!"io: {ex}", none)
-  return { entry := e, verdict, outcome := judge e verdict, osea := oseaSt }
+      pure (Verdict.loadError s!"io: {ex}", none, {})
+  return { entry := e, verdict, outcome := judge e verdict, osea := oseaSt, stats }
 
 def outcomeLabel : Outcome → String
   | .pass => "PASS"
@@ -226,6 +268,8 @@ def reportResult (r : TestResult) (record : Bool) : IO Unit := do
   | _ =>
       if record then IO.println s!"{base}  [observed: {r.verdict.render}]"
       else IO.println base
+  if r.stats.used && (record || r.stats.pinned > 0) then
+    IO.println s!"        [certified: {r.stats.checked} checked, {r.stats.pinned} unchecked]"
   match r.osea with
   | some .matched => IO.println s!"        [osea: matched]"
   | some (.mismatch why) => IO.println s!"        OSEA MISMATCH: {why}"
@@ -243,6 +287,14 @@ def summarize (rs : List TestResult) : IO UInt32 := do
   let promotes := count (· == .promote)
   IO.println ""
   IO.println s!"pass {passes} | fail {fails} | xfail {xfails} | xpass {xpasses} | unsupported {unsup} | promote {promotes} | total {rs.length}"
+  let certified := rs.filter (·.stats.used)
+  if !certified.isEmpty then
+    let checked := certified.foldl (· + ·.stats.checked) 0
+    let pinned := certified.foldl (· + ·.stats.pinned) 0
+    IO.println s!"certificates: {certified.length} entries | checked {checked} | unchecked {pinned}"
+    for r in certified do
+      if r.stats.pinned > 0 then
+        IO.println s!"  unchecked pins: {r.entry.id} ({r.stats.pinned})"
   let oseaSts := rs.filterMap (·.osea)
   let oseaMismatches ←
     if oseaSts.isEmpty then pure 0

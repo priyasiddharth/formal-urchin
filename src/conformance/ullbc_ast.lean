@@ -129,6 +129,7 @@ inductive URvalue
 | ptrOffset (p : UPlace) (delta : Int)
 | refSlice (kind : URefKind) (prot : Bool) (p : UPlace)  -- retag of slice data, runtime length
 | binOp (op : String) (a b : UOperand)
+| discriminant (p : UPlace)   -- an enum's variant index (payload slot 0)
 | fnRef (funId : Nat)
 | uninit
 | unsupported (desc : String)
@@ -148,7 +149,10 @@ deriving Repr, BEq, Inhabited
 inductive UTerm
 | call (funIdx : Nat) (args : List UOperand) (dest : UPlace) (target : Nat)
 | callDyn (func : UPlace) (args : List UOperand) (dest : UPlace) (target : Nat)
-| assert (cond : UOperand) (expected : Bool) (target : Nat)
+| assert (cond : UOperand) (expected : Bool) (target : Nat) (kind : String)
+-- `switch discr cases otherwise`: charon's `If [then, else]` is
+-- `cases := [(0, else)], otherwise := then`; `SwitchInt` keeps its cases
+| switch (discr : UOperand) (cases : List (Nat × Nat)) (otherwise : Nat)
 | goto (target : Nat)
 | ret
 | unwindResume
@@ -690,6 +694,14 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
           | some op => .binOp op (parseOperand ctx aJ) (parseOperand ctx bJ)
           | none => .unsupported "malformed binary op"
       | _ => .unsupported "malformed BinaryOp"
+  | some ("Discriminant", payload) =>
+      -- charon 0.1.232: `Discriminant(place)`; older releases: `[place, tyId]`
+      let placeJ := match asArr payload with
+        | pj :: _ => pj
+        | [] => payload
+      match parsePlace ctx placeJ with
+      | .ok pl => .discriminant pl
+      | .error e => .unsupported e
   | some ("Repeat", payload) =>
       -- [v; N] desugars to a homogeneous aggregate
       match asArr payload with
@@ -781,9 +793,36 @@ def parseTerm (ctx : ParseCtx) (j : Json) : UTerm :=
     | some ("Assert", payload) =>
         let condOp? := (getK payload "assert" >>= (getK · "cond")).map (parseOperand ctx)
         let expected := ((getK payload "assert" >>= (getK · "expected")) == some (Json.bool true))
+        let kind := ((getK payload "assert" >>= (getK · "check_kind") >>= sumKey).map (·.1)).getD "?"
         match condOp?, getK payload "target" >>= asNat with
-        | some cond, some t => .assert cond expected t
+        | some cond, some t => .assert cond expected t kind
         | _, _ => .unsupported "malformed Assert"
+    | some ("Switch", payload) =>
+        let discr := parseOperand ctx ((getK payload "discr").getD Json.null)
+        match getK payload "targets" >>= sumKey with
+        | some ("If", tj) =>
+            match asArr tj with
+            | [t, e] =>
+                match asNat t, asNat e with
+                | some t, some e => .switch discr [(0, e)] t
+                | _, _ => .unsupported "malformed If targets"
+            | _ => .unsupported "malformed If targets"
+        | some ("SwitchInt", sj) =>
+            match asArr sj with
+            | [_intTy, casesJ, otherJ] =>
+                let cases? : Option (List (Nat × Nat)) :=
+                  (asArr casesJ).mapM fun c =>
+                    match asArr c with
+                    | [vJ, bJ] =>
+                        match (getK vJ "Scalar").bind parseScalarInt, asNat bJ with
+                        | some v, some b => if v < 0 then none else some (v.toNat, b)
+                        | _, _ => none
+                    | _ => none
+                match cases?, asNat otherJ with
+                | some cases, some o => .switch discr cases o
+                | _, _ => .unsupported "malformed SwitchInt targets (negative or non-scalar case?)"
+            | _ => .unsupported "malformed SwitchInt"
+        | _ => .unsupported "malformed Switch targets"
     | some ("Drop", payload) =>
         -- drops are no-ops for SB verdicts (heap frees go through the
         -- dealloc shim; leaks are not checked)

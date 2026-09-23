@@ -1,4 +1,5 @@
 import conformance.ullbc_ast
+import conformance.certificate
 
 /-!
 ULLBC → flat statement list, in the obseq3-expressible fragment.
@@ -98,13 +99,60 @@ def LStmt.line : LStmt → Nat
 structure LProg where
   locals : List UTy
   stmts : List LStmt
+  stats : CertStats := {}
 deriving Repr, Inhabited
+
+/-- A constant-tracking key: a rebased local and a path of tuple fields
+    into it (`[]` = the whole local, which is then a word). -/
+abbrev ConstKey := Nat × List Nat
 
 structure LowerSt where
   locals : List UTy
   out : List LStmt   -- reversed
   fnPtrs : List (Nat × Nat) := []   -- rebased local ↦ fun defId (reified fn ptrs)
-  constVals : List (Nat × Nat) := []  -- rebased local ↦ known constant word (index resolution)
+  constVals : List (ConstKey × Nat) := []  -- known constant words (index resolution, T1 folding)
+  refOf : List (Nat × Nat) := []    -- bare local `r` ↦ local `l` after `r := &l` / `&mut l`
+  -- certificate-guided lowering (none = the straight-line-only seam)
+  cert : Option CertCursor := none
+  certBad : Nat := 0     -- scratch NatL local the checks poison
+  certTmp : Nat := 0     -- scratch NatL local the checks read into
+  halted : Bool := false -- the certificate's UB/panic prefix ended here
+  -- runtime words the lowering could not compute (placeholders)
+  symVals : List (Nat × (String × UOperand × UOperand)) := []  -- placeholder local ↦ its comparison
+  tainted : List Nat := []   -- locals holding a placeholder word
+  memTainted : Bool := false -- a placeholder word was stored through a pointer
+
+/-- The local and tuple-field path of a projection-free-of-deref place. -/
+def fieldPath? (p : UPlace) : Option ConstKey :=
+  match p.root with
+  | .global _ => none
+  | .local l =>
+      let path? : Option (List Nat) := p.projs.mapM fun pr =>
+        match pr with
+        | .field i => some i
+        | _ => none
+      path?.map (l, ·)
+
+def constLookup (st : LowerSt) (k : ConstKey) : Option Nat :=
+  st.constVals.lookup k
+
+/-- Forget every constant that an assignment to `(l, path)` may change:
+    the key itself, its sub-fields, and the aggregates containing it. -/
+def killConst (st : LowerSt) (k : ConstKey) : LowerSt :=
+  { st with constVals := st.constVals.filter fun (k', _) =>
+      !(k'.1 == k.1 && (k.2.isPrefixOf k'.2 || k'.2.isPrefixOf k.2)) }
+
+def killLocalConsts (st : LowerSt) (l : Nat) : LowerSt :=
+  { st with constVals := st.constVals.filter (·.1.1 != l), refOf := st.refOf.filter (·.1 != l) }
+
+def isTainted (st : LowerSt) (l : Nat) : Bool := st.tainted.contains l
+
+/-- A place whose runtime word the lowering trusts to be what Miri saw:
+    not a placeholder, and not loaded from memory a placeholder reached. -/
+def faithfulPlace (st : LowerSt) (p : UPlace) : Bool :=
+  match p.root with
+  | .global _ => !st.memTainted
+  | .local l => !isTainted st l && (!(p.projs.contains .deref) || !st.memTainted)
 
 def rebaseProj (off : Nat) : UProj → UProj
   | .index (.fromLocal n) => .index (.fromLocal (n + off))
@@ -131,6 +179,7 @@ def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .ptrOffset p d => .ptrOffset (rebasePlace off p) d
   | .refSlice kind prot p => .refSlice kind prot (rebasePlace off p)
   | .binOp op a b => .binOp op (rebaseOperand off a) (rebaseOperand off b)
+  | .discriminant p => .discriminant (rebasePlace off p)
   | .fnRef fid => .fnRef fid
   | .uninit => .uninit
   | .unsupported d => .unsupported d
@@ -156,9 +205,12 @@ def resolveIdxPlace (st : LowerSt) (line : Nat) (p : UPlace) : Except String UPl
     match pr with
     | .index (.const n) => pure (UProj.field n)
     | .index (.fromLocal l) =>
-        match st.constVals.lookup l with
+        match constLookup st (l, []) with
         | some n => pure (UProj.field n)
-        | none => throw s!"unsupported: runtime array index (line {line})"
+        | none =>
+            if isTainted st l then
+              throw s!"unsupported: runtime array index (value not in certificate) (line {line})"
+            else throw s!"unsupported: runtime array index (line {line})"
     | .index (.unsupported d) => throw s!"unsupported: array index: {d} (line {line})"
     | pr => pure pr
   return { p with projs }
@@ -170,12 +222,30 @@ def resolveIdxOperand (st : LowerSt) (line : Nat) : UOperand → Except String U
 
 /-- Statically-known integer value of an operand (consts, or const-tracked
     plain locals). -/
+def constOfPlace (st : LowerSt) (p : UPlace) : Option Int :=
+  match fieldPath? p with
+  | some k => (constLookup st k).map Int.ofNat
+  | none =>
+      -- through a tracked reference to a local: `*r` where `r := &l`
+      match p.root, p.projs with
+      | .local r, [.deref] =>
+          match st.refOf.lookup r with
+          | some l => (constLookup st (l, [])).map Int.ofNat
+          | none => none
+      | _, _ => none
+
 def constOf (st : LowerSt) : UOperand → Option Int
   | .const n => some (Int.ofNat n)
   | .constNeg n => some (-(Int.ofNat n))
-  | .copy { root := .local l, projs := [], .. } => (st.constVals.lookup l).map Int.ofNat
-  | .move { root := .local l, projs := [], .. } => (st.constVals.lookup l).map Int.ofNat
+  | .copy p => constOfPlace st p
+  | .move p => constOfPlace st p
   | _ => none
+
+def isCheckedOp (op : String) : Bool :=
+  op == "AddChecked" || op == "SubChecked" || op == "MulChecked"
+
+def isComparisonOp (op : String) : Bool :=
+  op == "Lt" || op == "Le" || op == "Gt" || op == "Ge" || op == "Eq" || op == "Ne"
 
 def foldBinOp (op : String) (a b : Int) : Option Int :=
   match op with
@@ -199,6 +269,7 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
   | .fromExposed p => do return .fromExposed (← resolveIdxPlace st line p)
   | .ptrOffset p d => do return .ptrOffset (← resolveIdxPlace st line p) d
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveIdxPlace st line p)
+  | .discriminant p => do return .discriminant (← resolveIdxPlace st line p)
   | rv => pure rv
 
 /-- Does this type contain a reference (transitively through tuples and
@@ -270,6 +341,61 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
       return st
   | _ => return if dst == src then st else pushOut st (.assign dst (.use (.copy src)) line)
 
+/-- The static trackers, updated for one assignment `dst := rv` (already
+    rebased and index-resolved): constants per (local, field path), tracked
+    references to locals, and the placeholder taint. Sound only because the
+    lowering walks the ONE path that executes; under a certificate that path
+    is Miri's. -/
+def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
+  let srcRoot? : Option Nat := match rv with
+    | .use (.copy { root := .local s, .. }) | .use (.move { root := .local s, .. })
+    | .move { root := .local s, .. } => some s
+    | _ => none
+  let srcTainted : Bool := match rv with
+    | .use (.copy sp) | .use (.move sp) | .move sp => !faithfulPlace st sp
+    | .aggregate _ ops => ops.any fun op => match op with
+        | .copy sp | .move sp => !faithfulPlace st sp
+        | _ => false
+    | _ => false
+  if dst.projs.contains .deref then
+    -- a write through a pointer: forget what it may have overwritten
+    let st := match dst.root, dst.projs, st.refOf.lookup (match dst.root with | .local r => r | _ => 0) with
+      | .local _, [.deref], some l => killLocalConsts st l
+      | _, _, _ => { st with constVals := [], refOf := [] }
+    let _ := srcRoot?
+    if srcTainted then { st with memTainted := true } else st
+  else
+    match fieldPath? dst with
+    | none => { st with constVals := [], refOf := [] }
+    | some (d, path) =>
+      let st := killConst st (d, path)
+      let st := if path.isEmpty then { st with refOf := st.refOf.filter (·.1 != d),
+                                                 symVals := st.symVals.filter (·.1 != d) } else st
+      let st := { st with tainted := if srcTainted then d :: st.tainted else st.tainted.filter (· != d) }
+      match rv with
+      | .use (.const n) => { st with constVals := ((d, path), n) :: st.constVals }
+      | .use (.copy sp) | .use (.move sp) | .move sp =>
+          match fieldPath? sp with
+          | some (s, spath) =>
+              -- copy every known constant under the source to the destination
+              let moved := st.constVals.filterMap fun (k, v) =>
+                if k.1 == s && spath.isPrefixOf k.2 then some ((d, path ++ k.2.drop spath.length), v) else none
+              { st with constVals := moved ++ st.constVals }
+          | none =>
+              match constOfPlace st sp with
+              | some v => if v < 0 then st else { st with constVals := ((d, path), v.toNat) :: st.constVals }
+              | none => st
+      | .aggregate none ops =>
+          let consts := ops.zipIdx.filterMap fun (op, i) =>
+            match constOf st op with
+            | some v => if v < 0 then none else some (((d, path ++ [i]), v.toNat))
+            | none => none
+          { st with constVals := consts ++ st.constVals }
+      | .aggregate (some v) _ => { st with constVals := ((d, path ++ [0]), v) :: st.constVals }
+      | .ref _ _ { root := .local l, projs := [], .. } =>
+          if path.isEmpty then { st with refOf := (d, l) :: st.refOf } else st
+      | _ => st
+
 /-- Append one lowered assignment, desugaring aggregates, applying the
     reference-load retag rule, and rejecting unsupported payloads.
     Places/rvalues must already be rebased. -/
@@ -277,14 +403,7 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
     Except String LowerSt := do
   let dst ← resolveIdxPlace st line dst
   let rv ← resolveIdxRvalue st line rv
-  -- track constant-valued plain locals (array-index resolution)
-  let st :=
-    match dst, rv with
-    | { root := .local d, projs := [], .. }, .use (.const n) =>
-        { st with constVals := (d, n) :: st.constVals }
-    | { root := .local d, projs := [], .. }, _ =>
-        { st with constVals := st.constVals.filter (·.1 != d) }
-    | _, _ => st
+  let st := trackAssign st dst rv
   match rv with
   | .unsupported d => .error s!"unsupported: {d} (line {line})"
   | .use .constUnit =>
@@ -295,18 +414,40 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
   | .ptrOffset _ _ | .refSlice _ _ _ =>
       return pushOut st (.assign dst rv line)
   | .binOp op a b =>
-      -- arithmetic exists only in statically-foldable positions (array
-      -- bounds checks and the like); dynamic arithmetic is unsupported
+      -- arithmetic is FOLDED when both operands are known (T1). Otherwise,
+      -- under a certificate, the result is a PLACEHOLDER word: Miri logged
+      -- which arm the comparison led to, not the operands, so nothing exact
+      -- can be computed or checked; the local is tainted so the word never
+      -- re-enters as an index, offset, size or checkable discriminant.
       match constOf st a, constOf st b with
       | some x, some y =>
           match foldBinOp op x y with
           | some v =>
               if v < 0 then
                 .error s!"unsupported: negative arithmetic result (line {line})"
+              else if isCheckedOp op then
+                -- `(value, overflowed)`: mirlite words are unbounded, so the
+                -- flag is 0; a Miri overflow panic surfaces as a certificate
+                -- disagreement at the following assert
+                emitAssign st line dst (.aggregate none [.const v.toNat, .const 0])
               else
                 emitAssign st line dst (.use (.const v.toNat))
           | none => .error s!"unsupported: binary op {op} (line {line})"
-      | _, _ => .error s!"unsupported: non-constant arithmetic (line {line})"
+      | _, _ =>
+          if st.cert.isNone then
+            .error s!"unsupported: non-constant arithmetic (line {line})"
+          else
+            match dst with
+            | { root := .local d, projs := [], .. } =>
+                let st := { st with tainted := d :: st.tainted,
+                                    symVals := if isComparisonOp op then (d, (op, a, b)) :: st.symVals
+                                               else st.symVals.filter (·.1 != d) }
+                if isCheckedOp op then
+                  return pushOut (pushOut st (.assign (fld dst 0) (.use (.const 0)) line))
+                    (.assign (fld dst 1) (.use (.const 0)) line)
+                else
+                  return pushOut st (.assign dst (.use (.const 0)) line)
+            | _ => .error s!"unsupported: runtime arithmetic into a projection (line {line})"
   | .use (.copy p) | .use (.move p) =>
       -- Miri retags reference-typed values loaded through a pointer
       -- indirection (see load_invalid_mut/shr)
@@ -327,6 +468,9 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
       return pushOut st (.assign dst rv line)
   | .ref _ _ _ | .move _ | .uninit | .exposeAddr _ | .fromExposed _ =>
       return pushOut st (.assign dst rv line)
+  | .discriminant p =>
+      -- the variant index lives in payload slot 0 and is always exact
+      return pushOut st (.assign dst (.use (.copy (fld p 0))) line)
   | .fnRef fid =>
       -- reified fn pointer: track statically, store a placeholder word
       match dst with
@@ -665,6 +809,77 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
   else
     none
 
+/-! ## Certificate checks, from existing statements only
+
+A pinned branch outcome is CHECKED at runtime with `uninit`/`assignIf`/
+`copy` alone: "UB unless `d == v`" is `bad := uninit; assignIf d v (bad :=
+0); tmp := copy bad` — the copy reads an uninitialised cell exactly when
+the pin is wrong. The check statements carry a SENTINEL line so the
+harness reports a failure as "certificate rejected", not as a program
+verdict. -/
+
+/-- Lines ≥ this mark certificate checks; ≥ 2× mark the poison at the end
+    of a UB/panic prefix. -/
+def certLineBase : Nat := 1000000
+
+def natLocal (i : Nat) : UPlace := { root := .local i, projs := [], ty := .nat }
+
+def certBump (st : LowerSt) (checked pinned : Nat) : LowerSt :=
+  { st with cert := st.cert.map fun c => { c with checked := c.checked + checked, pinned := c.pinned + pinned } }
+
+/-- UB unless `discr == v`. -/
+def emitCheckEq (st : LowerSt) (line : Nat) (discr : UPlace) (v : Nat) : LowerSt :=
+  let bad := natLocal st.certBad
+  let tmp := natLocal st.certTmp
+  let l := certLineBase + line
+  let st := pushOut st (.assign bad .uninit l)
+  let st := pushOut st (.assignIf discr v bad (.use (.const 0)) l)
+  certBump (pushOut st (.assign tmp (.use (.copy bad)) l)) 1 0
+
+/-- UB unless `discr ∉ vs` (the `otherwise` arm of a switch). -/
+def emitCheckNotIn (st : LowerSt) (line : Nat) (discr : UPlace) (vs : List Nat) : LowerSt :=
+  if vs.isEmpty then certBump st 1 0 else
+  let bad := natLocal st.certBad
+  let tmp := natLocal st.certTmp
+  let l := certLineBase + line
+  let st := pushOut st (.assign bad .uninit l)
+  let st := vs.foldl (fun st v => pushOut st (.assignIf discr v tmp (.use (.copy bad)) l)) st
+  certBump st 1 0
+
+/-- The end of a UB/panic certificate prefix: mirlite must have failed
+    before reaching this; reaching it is the distinct verdict
+    `certExhausted`. -/
+def emitPoison (st : LowerSt) (line : Nat) : LowerSt :=
+  let bad := natLocal st.certBad
+  let tmp := natLocal st.certTmp
+  let l := 2 * certLineBase + line
+  let st := pushOut st (.assign bad .uninit l)
+  { pushOut st (.assign tmp (.use (.copy bad)) l) with halted := true }
+
+/-- Take the next recorded event. `none` with `halted` set means the
+    certificate's UB/panic prefix ended here. -/
+def consumeEvent (st : LowerSt) (line : Nat) : Except String (Option CertEvent × LowerSt) :=
+  match st.cert with
+  | none => .ok (none, st)
+  | some c =>
+      match c.nextEvent with
+      | some (e, c') => .ok (some e, { st with cert := some c' })
+      | none =>
+          match c.cert.outcome with
+          | .ok => .error s!"certificate exhausted at line {line}: the lowering needs more branch events than Miri recorded"
+          | _ => .ok (none, emitPoison st line)
+
+/-- The block a recorded switch arm selects among charon's targets. -/
+def switchTarget (cases : List (Nat × Nat)) (otherwise : Nat) : Option Nat → Nat
+  | some v => (cases.lookup v).getD otherwise
+  | none => otherwise
+
+/-- The bare local a discriminant operand names, if it is one. -/
+def operandPlace? : UOperand → Option UPlace
+  | .copy p => some p
+  | .move p => some p
+  | _ => none
+
 mutual
 
 /-- Walk fn body blocks from `bb`, appending lowered statements.
@@ -672,10 +887,16 @@ mutual
 partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
     (f : UFun) (offset : Nat) (bb : Nat) (visited : List Nat) :
     Except String LowerSt := do
-  -- a revisited block = a loop: the fragment is straight-line only
-  -- (no SB rule needs general control flow)
-  if visited.contains bb then
+  if st.halted then return st else
+  -- without a certificate a revisited block is a loop and the fragment
+  -- is straight-line only; with one, loops UNROLL along the recorded
+  -- branches, and only a branch-free cycle (which Miri would not have
+  -- finished either) is rejected, by a visit budget
+  if st.cert.isNone && visited.contains bb then
     .error s!"unsupported: control-flow loop in {f.name}"
+  else if st.cert.isSome &&
+      visited.length > ((st.cert.map (·.remaining)).getD 0 + 2) * (f.blocks.length + 1) then
+    .error s!"unsupported: loop without a certified branch in {f.name}"
   else
   match f.blocks[bb]? with
   | none => .error s!"unsupported: dangling block bb{bb} in {f.name}"
@@ -687,19 +908,125 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
       | .unsupported d => throw s!"unsupported: {d} (line {s.line})"
       | .assign dst rv =>
           st ← emitAssign st s.line (rebasePlace offset dst) (rebaseRvalue offset rv)
+    let line := blk.termLine
     match blk.term with
     | .ret => return st
     | .goto t => walkBlock crate depth st f offset t (bb :: visited)
-    | .assert cond expected t =>
-        -- asserts must be statically satisfied (bounds checks on
-        -- constant indices); a failing or dynamic assert is unsupported
-        match constOf st (rebaseOperand offset cond) with
-        | some v =>
-            if (v != 0) == expected then
-              walkBlock crate depth st f offset t (bb :: visited)
-            else
-              .error s!"unsupported: statically failing assert (line {blk.termLine})"
-        | none => .error s!"unsupported: dynamic assert condition (line {blk.termLine})"
+    | .assert cond expected t kind =>
+        let c := rebaseOperand offset cond
+        let expectedW : Nat := if expected then 1 else 0
+        match st.cert with
+        | none =>
+            -- no certificate: asserts must be statically satisfied
+            match constOf st c with
+            | some v =>
+                if (v != 0) == expected then
+                  walkBlock crate depth st f offset t (bb :: visited)
+                else
+                  .error s!"unsupported: statically failing assert (line {line})"
+            | none => .error s!"unsupported: dynamic assert condition (line {line})"
+        | some _ => do
+            let (ev?, stE) ← consumeEvent st line
+            st := stE
+            match ev? with
+            | none => return st   -- the certificate's UB prefix ended here
+            | some ev =>
+              match ev.kind with
+              | .switch _ =>
+                  .error s!"certificate: expected an assert ({kind}) at line {line}, Miri recorded a switch — event order mismatch ({ev.descr})"
+              | .assert success =>
+                if !success then
+                  .error s!"unsupported: certified panic path ({kind}) at line {line}"
+                else
+                  match constOf st c with
+                  | some v =>
+                      -- T1: the lowering knows the condition; Miri must agree
+                      if (v != 0) == expected then
+                        walkBlock crate depth (certBump st 1 0) f offset t (bb :: visited)
+                      else
+                        .error s!"certificate disagrees with lowering at line {line}: assert ({kind}) condition folds to {v}, Miri passed it"
+                  | none =>
+                      match operandPlace? c with
+                      | none => .error s!"certificate: assert condition is not a place (line {line})"
+                      | some cp =>
+                          if faithfulPlace st cp then
+                            -- T2: a runtime word Miri also read — check it
+                            walkBlock crate depth (emitCheckEq st line cp expectedW) f offset t (bb :: visited)
+                          else do
+                            -- T3: a placeholder word — pin Miri's outcome
+                            st ← emitAssign st line cp (.use (.const expectedW))
+                            walkBlock crate depth (certBump st 0 1) f offset t (bb :: visited)
+    | .switch discr cases otherwise =>
+        let d := rebaseOperand offset discr
+        match st.cert with
+        | none => .error s!"unsupported: dynamic branch without a certificate (line {line})"
+        | some _ => do
+            let (ev?, stE) ← consumeEvent st line
+            st := stE
+            match ev? with
+            | none => return st
+            | some ev =>
+              match ev.kind with
+              | .assert _ =>
+                  .error s!"certificate: expected a switch at line {line}, Miri recorded an assert — event order mismatch ({ev.descr})"
+              | .switch arm =>
+                let target := switchTarget cases otherwise arm
+                match constOf st d with
+                | some v =>
+                    -- T1: cross-check the folded discriminant against Miri's arm
+                    let mine := switchTarget cases otherwise (if v < 0 then none else some v.toNat)
+                    if mine == target then
+                      walkBlock crate depth (certBump st 1 0) f offset target (bb :: visited)
+                    else
+                      .error s!"certificate disagrees with lowering at line {line}: discriminant folds to {v}, Miri took arm {reprStr arm}"
+                | none =>
+                    match operandPlace? d with
+                    | none => .error s!"certificate: switch on a non-place operand (line {line})"
+                    | some dp =>
+                      if faithfulPlace st dp then
+                        -- T2: check the word Miri branched on
+                        st := match arm with
+                          | some v => emitCheckEq st line dp v
+                          | none => emitCheckNotIn st line dp (cases.map (·.1))
+                        walkBlock crate depth st f offset target (bb :: visited)
+                      else
+                        -- the discriminant is a placeholder comparison; an
+                        -- `Eq`/`Ne` against a constant is still checkable on
+                        -- the compared place (T2), anything else is a pin (T3)
+                        let eqShape : Option (UPlace × Nat × Bool) :=
+                          match dp with
+                          | { root := .local l, projs := [], .. } =>
+                              match st.symVals.lookup l with
+                              | some (op, a, b) =>
+                                  let pick : UOperand → UOperand → Option (UPlace × Nat) := fun x y =>
+                                    match operandPlace? x, constOf st y with
+                                    | some q, some c => if c < 0 || !faithfulPlace st q then none else some (q, c.toNat)
+                                    | _, _ => none
+                                  match (pick a b).orElse (fun _ => pick b a) with
+                                  | some (q, c) =>
+                                      if op == "Eq" then some (q, c, true)
+                                      else if op == "Ne" then some (q, c, false)
+                                      else none
+                                  | none => none
+                              | none => none
+                          | _ => none
+                        -- the truth of the comparison on Miri's path: a
+                        -- value arm is its word; `otherwise` on a bool switch
+                        -- (whose one case is 0) means nonzero, i.e. true
+                        let truth : Bool := match arm with
+                          | some v => v != 0
+                          | none => cases.any (·.1 == 0)
+                        match eqShape with
+                        | some (q, c, isEq) =>
+                            let wantEq := (truth == isEq)
+                            st := if wantEq then emitCheckEq st line q c else emitCheckNotIn st line q [c]
+                            st ← emitAssign st line dp (.use (.const (if truth then 1 else 0)))
+                            walkBlock crate depth st f offset target (bb :: visited)
+                        | none => do
+                            st ← match arm with
+                              | some v => emitAssign st line dp (.use (.const v))
+                              | none => pure st
+                            walkBlock crate depth (certBump st 0 1) f offset target (bb :: visited)
     -- unwinding and aborts are exception machinery with no SB content
     | .unwindResume => .error s!"unsupported: reached unwind path in {f.name}"
     | .abort => .error s!"unsupported: reached abort in {f.name}"
@@ -767,8 +1094,21 @@ partial def inlineCall (crate : UCrate) (depth : Nat) (st : LowerSt)
       if !(isUnitTy retTy) then
         st ← emitAssign st line dest .uninit
         st ← protectInPlace st line dest retTy
+      -- open the callee's certificate frame (shims never do: they are
+      -- std frames on Miri's side, which the extractor drops)
+      match st.cert with
+      | some c =>
+          let c ← c.openFrame f.name
+          st := { st with cert := some c }
+      | none => pure ()
       -- walk the body
       st ← walkBlock crate (depth - 1) st f offset 0 []
+      if st.halted then return st
+      match st.cert with
+      | some c =>
+          let c ← c.closeFrame f.name
+          st := { st with cert := some c }
+      | none => pure ()
       -- leave the call: protectors end before the return value flows back
       st := { st with out := .popProt line :: st.out }
       -- bind the return value (callee local 0) into dest
@@ -807,6 +1147,7 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
   | .fromExposed p => do return .fromExposed (← resolveGlobalRoot gmap p)
   | .ptrOffset p d => do return .ptrOffset (← resolveGlobalRoot gmap p) d
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveGlobalRoot gmap p)
+  | .discriminant p => do return .discriminant (← resolveGlobalRoot gmap p)
   | rv => .ok rv
 
 def resolveGlobalsStmt (gmap : List (Nat × Nat)) : LStmt → Except String LStmt
@@ -832,7 +1173,7 @@ def resolveGlobalsStmt (gmap : List (Nat × Nat)) : LStmt → Except String LStm
     statics start undef, which is fine for SB purposes as long as the
     program writes them before any value-dependent use (documented
     divergence: real statics have interned, initialized allocations). -/
-def lowerCrate (crate : UCrate) : Except String LProg := do
+def lowerCrate (crate : UCrate) (cert? : Option Cert := none) : Except String LProg := do
   match crate.funs.find? (·.name == "main") with
   | none => .error "no main function in crate"
   | some main =>
@@ -843,10 +1184,26 @@ def lowerCrate (crate : UCrate) : Except String LProg := do
       let hoistInit : List LStmt :=
         (crate.globals.zipIdx.map (fun (_, i) =>
           LStmt.assign { root := .local (base + i), projs := [] } .uninit 0)).reverse
-      let st0 : LowerSt :=
-        { locals := main.locals ++ crate.globals.map (·.ty), out := hoistInit }
+      -- with a certificate: two scratch words for the checks, and main's
+      -- frame opened
+      let nGlob := crate.globals.length
+      let st0 : LowerSt ← match cert? with
+        | none => pure { locals := main.locals ++ crate.globals.map (·.ty), out := hoistInit }
+        | some cert => do
+            let c ← ({ cert } : CertCursor).openFrame main.name
+            pure { locals := main.locals ++ crate.globals.map (·.ty) ++ [.nat, .nat],
+                   out := hoistInit, cert := some c,
+                   certBad := base + nGlob, certTmp := base + nGlob + 1 }
       let st ← walkBlock crate 8 st0 main 0 0 []
+      let st ← match st.cert with
+        | some c => if st.halted then pure st else do
+            let c ← c.closeFrame main.name
+            pure { st with cert := some c }
+        | none => pure st
       let stmts ← st.out.reverse.mapM (resolveGlobalsStmt gmap)
-      return { locals := st.locals, stmts }
+      let stats : CertStats := match st.cert with
+        | some c => { used := true, checked := c.checked, pinned := c.pinned }
+        | none => {}
+      return { locals := st.locals, stmts, stats }
 
 end conformance

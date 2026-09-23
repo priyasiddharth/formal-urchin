@@ -100,6 +100,7 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
   | .fnRef _ => .error "fn reference not consumed by lowering"
   | .uninit => .error "uninit is elaborated against the destination type"
   | .aggregate _ _ => .error "aggregate not desugared by lowering"
+  | .discriminant _ => .error "discriminant not desugared by lowering"
   | .unsupported d => .error s!"unsupported: {d}"
 
 /-- Elaborate a place that must have layout `NatL` (discriminants,
@@ -178,16 +179,18 @@ structure Loaded where
   Γ : Ctx
   prog : Prog Γ
   lines : List Nat
+  stats : CertStats := {}
 
 def elabProg (lp : LProg) : Except String Loaded := do
   let Γ ← lp.locals.mapM toLayout
   let stmts ← lp.stmts.mapM (elabStmt Γ)
-  return { Γ, prog := stmts ++ [.halt], lines := lp.stmts.map (·.line) ++ [0] }
+  return { Γ, prog := stmts ++ [.halt], lines := lp.stmts.map (·.line) ++ [0], stats := lp.stats }
 
-/-- Full pipeline: ULLBC JSON → parsed crate → lowered → elaborated. -/
-def loadCrate (json : Lean.Json) : Except String Loaded := do
+/-- Full pipeline: ULLBC JSON → parsed crate → lowered (along the
+    certificate, if any) → elaborated. -/
+def loadCrate (json : Lean.Json) (cert? : Option Cert := none) : Except String Loaded := do
   let crate ← parseCrate json
-  let lp ← lowerCrate crate
+  let lp ← lowerCrate crate cert?
   elabProg lp
 
 end conformance

@@ -54,19 +54,28 @@ def dumpTest (charonDir : String) (m : Manifest) (id : String) : IO UInt32 := do
           match parseCrate json with
           | .error err => IO.eprintln s!"parse: {err}"; return 1
           | .ok crate =>
-              match lowerCrate crate with
+              let cert? ← match ← loadCert charonDir e with
+                | .ok c => pure c
+                | .error err => IO.eprintln s!"certificate: {err}"; pure none
+              match lowerCrate crate cert? with
               | .error err => IO.eprintln s!"lowering: {err}"; return 1
               | .ok lp => do
+                  if lp.stats.used then
+                    IO.println s!"certificate: {lp.stats.checked} checked, {lp.stats.pinned} unchecked"
                   IO.println s!"locals ({lp.locals.length}):"
                   for (i, ty) in lp.locals.zipIdx.map (fun (a, b) => (b, a)) do
                     IO.println s!"  _{i}: {reprStr ty}"
                   IO.println s!"statements ({lp.stmts.length}):"
                   for s in lp.stmts do
+                    let tag (line : Nat) : String :=
+                      if line ≥ 2 * certLineBase then s!"[poison {line - 2 * certLineBase}]"
+                      else if line ≥ certLineBase then s!"[cert {line - certLineBase}]"
+                      else s!"[line {line}]"
                     match s with
                     | .assign dst rv line =>
-                        IO.println s!"  [line {line}] {reprStr dst} := {reprStr rv}"
+                        IO.println s!"  {tag line} {reprStr dst} := {reprStr rv}"
                     | .assignIf discr v dst rv line =>
-                        IO.println s!"  [line {line}] if {reprStr discr} == {v}: {reprStr dst} := {reprStr rv}"
+                        IO.println s!"  {tag line} if {reprStr discr} == {v}: {reprStr dst} := {reprStr rv}"
                     | .alloc dst sz line =>
                         IO.println s!"  [line {line}] {reprStr dst} := alloc {reprStr sz}"
                     | .dealloc p line =>
