@@ -45,8 +45,7 @@ theorem runN_Dealloc_step
     (h_dealloc : MSB.dealloc s.perms b sz t = .ok p2) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
       { s with perms := p2, mem := s.mem.removeRange b sz, pc := s.pc + 1 } := by
-  have h_lookup : oseair.RegMap.lookup s.reg r
-      = some (obseq.TyVal.PTy, [Val.Ptr b 0 sz t]) := h_entry
+  obtain ⟨e, h_lookup⟩ := h_entry
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with perms := p2, mem := s.mem.removeRange b sz, pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, h_lookup, bne_self_eq_false,
@@ -246,11 +245,11 @@ theorem SourceMemSim.removeRange
     exact h_find'
   · simp at h_find
 
-/-- A single pointer cell related to `[.ptrVal b o s t]` is a target
+/-- A single pointer cell related to `[.ptrVal b o e s t]` is a target
     pointer at the renamed base and tag, same offset and size. -/
-theorem ListRel_ptr_inv {b o s : Word} {t : Tag} {vals : List Val}
-    (h : ListRel (MemValSim ρa ρt) [mirlite.MemValue.ptrVal b o s t] vals) :
-    ∃ b' t', vals = [Val.Ptr b' o s t'] ∧ ρa b = some b' ∧ ρt t = some t' := by
+theorem ListRel_ptr_inv {b o e s : Word} {t : Tag} {vals : List Val}
+    (h : ListRel (MemValSim ρa ρt) [mirlite.MemValue.ptrVal b o e s t] vals) :
+    ∃ b' t', vals = [Val.Ptr b' o e s t'] ∧ ρa b = some b' ∧ ρt t = some t' := by
   cases vals with
   | nil => exact absurd h (by simp [ListRel])
   | cons x xs =>
@@ -258,9 +257,9 @@ theorem ListRel_ptr_inv {b o s : Word} {t : Tag} {vals : List Val}
       | cons y ys => exact absurd h.2 (by simp [ListRel])
       | nil =>
           cases x with
-          | Ptr b' o' s' t' =>
-              obtain ⟨⟨h_b, h_o, h_s, h_t, -⟩, -⟩ := h
-              subst h_o h_s
+          | Ptr b' o' e' s' t' =>
+              obtain ⟨⟨h_b, h_o, h_e, h_s, h_t, -⟩, -⟩ := h
+              subst h_o h_e h_s
               exact ⟨b', t', rfl, h_b, h_t⟩
           | Dat v' => exact absurd h.1 (by simp [MemValSim])
           | Undef => exact absurd h.1 (by simp [MemValSim])
@@ -294,7 +293,7 @@ theorem CompilerInv_step_dealloc {τ : LayoutTy}
   simp only at h_step
   split at h_step
   case h_2 => simp at h_step
-  rename_i base offset size tag h_vals
+  rename_i base offset ext size tag h_vals
   by_cases h_off : offset = 0
   case neg => rw [if_pos (by simpa using h_off)] at h_step; simp at h_step
   subst h_off
@@ -350,7 +349,7 @@ theorem CompilerInv_step_dealloc {τ : LayoutTy}
   have h_entry : PtrRegisterEntry sR.reg
       (Register.R (CheckedCompilerM.run
         (placeToRegChecked RefKind.Shared (flattenPlace dst)) csPrefix).nextReg)
-      base' 0 size tag' := h_vreg
+      base' 0 size tag' := ⟨_, h_vreg⟩
   -- §5 the free, transported, and the `Dealloc` executed
   rw [h_ost] at h_de
   obtain ⟨tgtD, h_deT, h_psimD, h_nsD, h_ntD⟩ :=

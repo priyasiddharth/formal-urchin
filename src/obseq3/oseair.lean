@@ -24,7 +24,9 @@ deriving Repr, Inhabited, DecidableEq, BEq
 inductive Val
 | Undef
 | Dat (value : Word)
-| Ptr (base : Word) (offset : Word) (size : Word) (tag : Tag)
+-- `base`/`size`: the allocation; `offset`: where inside it; `extent`:
+-- how many cells the pointer claims from there (mirlite's `ptrVal`)
+| Ptr (base : Word) (offset : Word) (extent : Word) (size : Word) (tag : Tag)
 deriving Repr, BEq, Inhabited
 
 abbrev RegMap := List (Register × (TyVal × List Val))
@@ -103,11 +105,10 @@ inductive Rhs
 | AllocN (ty : TyVal) (n : Nat)
 | AllocDyn (ty : TyVal) (lenPtr : Register)
 -- `len = some n` retags exactly `n` cells at `base + offset`, range-
--- checked; `len = none` retags the REST of the pointer's allocation
--- from there — mirlite's `.refSlice` — with no range check, because
--- mirlite has none and a zero-length rest at a past-the-end address
--- (reachable through `PtrOffset`, which guards only the low end) must
--- succeed on both machines. One primitive for every retag: the
+-- checked; `len = none` retags the pointer's own EXTENT from there —
+-- mirlite's `.refSlice` — with no range check, because mirlite has
+-- none: the extent was checked when the pointer was minted. One
+-- primitive for every retag: the
 -- projection temporaries, `&x.f`, and the slice mint.
 | Borrow (kind : RefKind) (prot : Bool) (mask : List Bool) (len : Option Nat)
     (base : Register) (offset : Word)
@@ -156,7 +157,7 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
   match rhs with
   | Rhs.Load ty reg =>
      match state.reg.lookup reg with
-     | some (_, [Val.Ptr base offset size tag]) =>
+     | some (_, [Val.Ptr base offset _ size tag]) =>
        let addr := base + offset
        -- the WHOLE width must fit: `Load` is used at wide types by the
        -- copy lowering (2026-08-30), where checking only the start
@@ -182,7 +183,7 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
      match M.own state.perms base size with
      | .ok (perms2, tag) =>
        let s2 := { state with mem := mem2, perms := perms2 }
-       RhsResult.Ok [Val.Ptr base 0 size tag] obseq.TyVal.PTy s2
+       RhsResult.Ok [Val.Ptr base 0 size size tag] obseq.TyVal.PTy s2
      | .error msg => RhsResult.Err msg
 
   | Rhs.ExposeAddr srcPtr =>
@@ -190,7 +191,7 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
      -- STORED pointer's tag, result is the numeric address — exactly
      -- mirlite's `.exposeAddr`
      match state.reg.lookup srcPtr with
-     | some (_, [Val.Ptr base offset size tag]) =>
+     | some (_, [Val.Ptr base offset _ size tag]) =>
        let addr := base + offset
        if addr < base || addr >= base + size then RhsResult.Err "OOB"
        else
@@ -198,7 +199,7 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
          | .error msg => RhsResult.Err msg
          | .ok perms2 =>
            match state.mem.find? addr with
-           | some (Val.Ptr pBase pOff _ pTag) =>
+           | some (Val.Ptr pBase pOff _ _ pTag) =>
              let s2 := { state with perms := M.expose perms2 pTag }
              RhsResult.Ok [Val.Dat (pBase + pOff)] obseq.TyVal.NatTy s2
            | _ => RhsResult.Err "ptr-to-int cast of a non-pointer value"
@@ -208,7 +209,7 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
      -- read the integer cell, resolve it to its containing allocation,
      -- result is a wildcard-tagged pointer — mirlite's `.fromExposed`
      match state.reg.lookup srcPtr with
-     | some (_, [Val.Ptr base offset size tag]) =>
+     | some (_, [Val.Ptr base offset _ size tag]) =>
        let addr := base + offset
        if addr < base || addr >= base + size then RhsResult.Err "OOB"
        else
@@ -219,7 +220,7 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
            | some (Val.Dat n) =>
              let (rBase, rOff, rSize) := state.mem.resolveAddr n
              let s2 := { state with perms := perms2 }
-             RhsResult.Ok [Val.Ptr rBase rOff rSize wildcardTag] obseq.TyVal.PTy s2
+             RhsResult.Ok [Val.Ptr rBase rOff (rSize - rOff) rSize wildcardTag] obseq.TyVal.PTy s2
            | _ => RhsResult.Err "int-to-ptr cast of a non-integer value"
      | _ => RhsResult.Err "FromExposed expects Ptr"
 
@@ -228,7 +229,7 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
      -- preserved; deltaCells is pre-scaled by the compiler
      -- (delta · blockSize σ), matching mirlite's `.ptrOffset`
      match state.reg.lookup srcPtr with
-     | some (_, [Val.Ptr base offset size tag]) =>
+     | some (_, [Val.Ptr base offset _ size tag]) =>
        let addr := base + offset
        if addr < base || addr >= base + size then RhsResult.Err "OOB"
        else
@@ -236,13 +237,13 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
          | .error msg => RhsResult.Err msg
          | .ok perms2 =>
            match state.mem.find? addr with
-           | some (Val.Ptr pBase pOff pSize pTag) =>
+           | some (Val.Ptr pBase pOff pExt pSize pTag) =>
              let newOff : Int := (pOff : Int) + deltaCells
              if newOff < 0 then
                RhsResult.Err "pointer offset before the allocation base"
              else
                let s2 := { state with perms := perms2 }
-               RhsResult.Ok [Val.Ptr pBase newOff.toNat pSize pTag] obseq.TyVal.PTy s2
+               RhsResult.Ok [Val.Ptr pBase newOff.toNat pExt pSize pTag] obseq.TyVal.PTy s2
            | _ => RhsResult.Err "pointer offset of a non-pointer value"
      | _ => RhsResult.Err "PtrOffset expects Ptr"
 
@@ -252,7 +253,7 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
      match M.own state.perms base units with
      | .ok (perms2, tag) =>
        let s2 := { state with mem := mem2, perms := perms2 }
-       RhsResult.Ok [Val.Ptr base 0 units tag] obseq.TyVal.PTy s2
+       RhsResult.Ok [Val.Ptr base 0 units units tag] obseq.TyVal.PTy s2
      | .error msg => RhsResult.Err msg
 
   | Rhs.AllocDyn ty lenReg =>
@@ -265,13 +266,13 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
          match M.own state.perms heapBase units with
          | .ok (perms2, heapTag) =>
            let s2 := { state with mem := mem2, perms := perms2 }
-           RhsResult.Ok [Val.Ptr heapBase 0 units heapTag] obseq.TyVal.PTy s2
+           RhsResult.Ok [Val.Ptr heapBase 0 units units heapTag] obseq.TyVal.PTy s2
          | .error msg => RhsResult.Err msg
      | _ => RhsResult.Err "AllocDyn expects a concrete word"
 
   | Rhs.Borrow kind prot mask len baseReg offset =>
      match state.reg.lookup baseReg with
-     | some (_, [Val.Ptr base baseOff size tag]) =>
+     | some (_, [Val.Ptr base baseOff extent size tag]) =>
        let addr := base + baseOff + offset
        match len with
        | some n =>
@@ -286,16 +287,17 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
            match M.ref state.perms addr n tag kind prot mask with
            | .ok (perms2, newTag) =>
              let s2 := { state with perms := perms2 }
-             RhsResult.Ok [Val.Ptr base (baseOff + offset) size newTag] obseq.TyVal.PTy s2
+             RhsResult.Ok [Val.Ptr base (baseOff + offset) n size newTag] obseq.TyVal.PTy s2
            | .error msg => RhsResult.Err msg
        | none =>
-         -- the rest of the allocation, unchecked: `size - (baseOff + offset)`
-         -- truncates to 0 past the end, and a zero-length retag there is
-         -- what mirlite's `.refSlice` does too (see the constructor doc)
-         match M.ref state.perms addr (size - (baseOff + offset)) tag kind prot mask with
+         -- the pointer's own EXTENT, unchecked — mirlite's `.refSlice`
+         -- (2026-09-23; before, the rest of the allocation). No range
+         -- check because mirlite has none: the extent was checked when
+         -- the pointer was minted.
+         match M.ref state.perms addr extent tag kind prot mask with
          | .ok (perms2, newTag) =>
            let s2 := { state with perms := perms2 }
-           RhsResult.Ok [Val.Ptr base (baseOff + offset) size newTag] obseq.TyVal.PTy s2
+           RhsResult.Ok [Val.Ptr base (baseOff + offset) extent size newTag] obseq.TyVal.PTy s2
          | .error msg => RhsResult.Err msg
      | _ => RhsResult.Err "Borrow expects Ptr"
 
@@ -305,7 +307,7 @@ def evalRhs (M : PermissionModel) : State M → Rhs → RhsResult M :=
 def writeThroughPtr (M : PermissionModel) (state : State M) (ptr : Register)
     (vals : List Val) (invalidMsg : String) : Result M :=
   match state.reg.lookup ptr with
-  | some (_, [Val.Ptr base offset size tag]) =>
+  | some (_, [Val.Ptr base offset _ size tag]) =>
      let addr := base + offset
      if addr + vals.length > base + size then Result.Err "OOB"
      else
@@ -339,7 +341,7 @@ def stepWith (M : PermissionModel) (A : AllocatorSpec)
       else writeThroughPtr M state ptr vals "CStore Invalid Ptr"
     | Instr.Die reg len =>
        match state.reg.lookup reg with
-       | some (_, [Val.Ptr base offset _ tag]) =>
+       | some (_, [Val.Ptr base offset _ _ tag]) =>
           match M.die state.perms (base + offset) len tag with
           | .ok perms2 =>
             Result.Ok { state with perms := perms2, pc := state.pc + 1 }
@@ -347,7 +349,7 @@ def stepWith (M : PermissionModel) (A : AllocatorSpec)
        | _ => Result.Err "Die expects Ptr"
     | Instr.Dealloc ptr =>
        match state.reg.lookup ptr with
-       | some (_, [Val.Ptr base offset size tag]) =>
+       | some (_, [Val.Ptr base offset _ size tag]) =>
           if offset != 0 then
             Result.Err "deallocation of a pointer that is not the beginning of its allocation"
           else
@@ -373,7 +375,7 @@ def stepWith (M : PermissionModel) (A : AllocatorSpec)
        | .error msg => Result.Err msg
     | Instr.Memcpy dst src ty =>
        match state.reg.lookup dst, state.reg.lookup src with
-       | some (_, [Val.Ptr dBase dOff dSize dTag]), some (_, [Val.Ptr sBase sOff sSize sTag]) =>
+       | some (_, [Val.Ptr dBase dOff _ dSize dTag]), some (_, [Val.Ptr sBase sOff _ sSize sTag]) =>
           let dAddr := dBase + dOff
           let sAddr := sBase + sOff
           let sz := typeSize ty

@@ -400,7 +400,7 @@ theorem copy_projsrc_offset_read
           perms := q3,
           reg := (oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
               (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath)
-                rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
+                (blockSize τ) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
             (layoutToTyVal τ, (oseair.readWordSeq s_mid1.mem (rs.addr + pathOffset spath) (blockSize τ)))),
           pc := s_mid1.pc + 1 + 1 + 1 } ∧
       (emit
@@ -426,7 +426,7 @@ theorem copy_projsrc_offset_read
           perms := q3,
           reg := (oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
               (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath)
-                rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
+                (blockSize τ) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
             (layoutToTyVal τ, (oseair.readWordSeq s_mid1.mem (rs.addr + pathOffset spath) (blockSize τ)))),
           pc := s_mid1.pc + 1 + 1 + 1 }
         (emit
@@ -568,11 +568,11 @@ theorem copy_projsrc_offset_read
     (blockSize τ) (pathOffset spath) h_code1 h_sentry h_le1 h_ref_tgt'
   have h_bentry : PtrRegisterEntry (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
               (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath)
-                rs.allocSize s_mid1.perms.NextTag]))
+                (blockSize τ) rs.allocSize s_mid1.perms.NextTag]))
       (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) rs.allocBase
       (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize
       s_mid1.perms.NextTag :=
-    RegMap.lookup_insert_self _ _ _
+    PtrRegisterEntry.insert_self _ _ _ _ _ _ _
   have h_read2 : MSB.read q1
       (rs.allocBase + (rs.addr - rs.allocBase + pathOffset spath))
       (obseq.typeSize (layoutToTyVal τ)) s_mid1.perms.NextTag = .ok q2 := by
@@ -581,7 +581,7 @@ theorem copy_projsrc_offset_read
   have h_run2 := runN_Assgn_Load_ptr_step compProg
     { s_mid1 with perms := q1, reg := (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
               (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath)
-                rs.allocSize s_mid1.perms.NextTag])), pc := s_mid1.pc + 1 }
+                (blockSize τ) rs.allocSize s_mid1.perms.NextTag])), pc := s_mid1.pc + 1 }
     (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
     (layoutToTyVal τ) h_code2 h_bentry (by rw [h_ts]; grind) h_read2
     (by rw [h_ts, ← Nat.add_assoc, h_cancelS]
@@ -594,14 +594,14 @@ theorem copy_projsrc_offset_read
     grind
   have h_bentry2 : oseair.RegMap.lookup (oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
               (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath)
-                rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
+                (blockSize τ) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
             (layoutToTyVal τ, (oseair.readWordSeq s_mid1.mem (rs.addr + pathOffset spath) (blockSize τ))))
       (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
       = some (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
           (rs.addr - rs.allocBase + pathOffset spath)
-          rs.allocSize s_mid1.perms.NextTag]) := by
+          (blockSize τ) rs.allocSize s_mid1.perms.NextTag]) := by
     rw [RegMap.lookup_insert_ne _ h_regbv]
-    exact h_bentry
+    exact RegMap.lookup_insert_self _ _ _
   have h_die1' : MSB.die q2
       (rs.allocBase + (rs.addr - rs.allocBase + pathOffset spath))
       (blockSize τ) s_mid1.perms.NextTag = .ok q3 := by
@@ -610,9 +610,9 @@ theorem copy_projsrc_offset_read
   have h_run3 := runN_Die_step compProg
     { s_mid1 with perms := q2, reg := (oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
               (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath)
-                rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
+                (blockSize τ) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
             (layoutToTyVal τ, (oseair.readWordSeq s_mid1.mem (rs.addr + pathOffset spath) (blockSize τ)))), pc := s_mid1.pc + 1 + 1 }
-    (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τ) h_code3 h_bentry2 h_die1'
+    (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τ) h_code3 ⟨_, h_bentry2⟩ h_die1'
   -- the post-`Die` binding simulation: both temporaries are fresh
   have h_prmCS2 : (emit
         { (emit
@@ -628,14 +628,14 @@ theorem copy_projsrc_offset_read
   have h_lbsB : LocalBindingSim ρa ρt sM.env
       { s_mid1 with perms := q1, reg := (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
               (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath)
-                rs.allocSize s_mid1.perms.NextTag])), pc := s_mid1.pc + 1 } csA :=
+                (blockSize τ) rs.allocSize s_mid1.perms.NextTag])), pc := s_mid1.pc + 1 } csA :=
     LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
   have h_lbsV : LocalBindingSim ρa ρt sM.env
       { s_mid1 with
           perms := q3,
           reg := (oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
               (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath)
-                rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
+                (blockSize τ) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
             (layoutToTyVal τ, (oseair.readWordSeq s_mid1.mem (rs.addr + pathOffset spath) (blockSize τ)))),
           pc := s_mid1.pc + 1 + 1 + 1 } csA :=
     LocalBindingSim.insert_fresh_reg h_lbsB h_prb

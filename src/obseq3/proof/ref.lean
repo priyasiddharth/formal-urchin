@@ -1008,7 +1008,7 @@ theorem move_valuePkg_chain
         (Register.R (CheckedCompilerM.run (placeToRegChecked kindL B) csA).nextReg)
         resolved.allocBase (resolved.addr - resolved.allocBase + pathOffset f)
         resolved.allocSize s_mid.perms.NextTag := by
-      rw [hsB]; exact RegMap.lookup_insert_self _ _ _
+      rw [hsB]; exact PtrRegisterEntry.insert_self _ _ _ _ _ _ _
     have h_lt : resolved.addr - resolved.allocBase + pathOffset f
         + obseq.typeSize (layoutToTyVal τ) ≤ resolved.allocSize := by
       rw [h_sz]
@@ -1044,9 +1044,11 @@ theorem move_valuePkg_chain
         (Register.R (CheckedCompilerM.run (placeToRegChecked kindL B) csA).nextReg)
         resolved.allocBase (resolved.addr - resolved.allocBase + pathOffset f)
         resolved.allocSize s_mid.perms.NextTag := by
+      obtain ⟨eB, hB⟩ := id h_entryB
+      refine ⟨eB, ?_⟩
       show oseair.RegMap.lookup (oseair.RegMap.insert _ _ _) _ = _
       rw [RegMap.lookup_insert_ne _ h_ne]
-      exact h_entryB
+      exact hB
     have h_die' : MSB.die p2
         (resolved.allocBase + (resolved.addr - resolved.allocBase + pathOffset f))
         (blockSize τ) s_mid.perms.NextTag = .ok p3 := by

@@ -13,11 +13,13 @@ Tags: obseq3, mirlite, oseair, representation, arithmetic
                   resolved.allocSize freshTag
   ```
 
-- **oseair** `Val.Ptr base offset size tag` CARRIES the offset, and
-  `Rhs.Borrow` accumulates it by addition (`oseair.lean:305`):
+- **oseair** `Val.Ptr base offset extent size tag` CARRIES the offset,
+  and `Rhs.Borrow` accumulates it by addition (the borrowed length becomes
+  the new pointer's extent — the fifth field, added 2026-09-23, see
+  [[pointer-values-carry-an-extent]]):
 
   ```lean
-  RhsResult.Ok [Val.Ptr base (baseOff + offset) size newTag] ...
+  RhsResult.Ok [Val.Ptr base (baseOff + offset) len size newTag] ...
   ```
 
   (the absolute address is reconstructed as `base + baseOff + offset`

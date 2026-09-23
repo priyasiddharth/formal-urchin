@@ -343,13 +343,19 @@ def CompilerStateWF (_Γ : Ctx) (cs : CompilerState) : Prop :=
 def PlaceRegMapBound (cs : CompilerState) : Prop :=
   ∀ idx reg τ, getPlaceInfo cs idx = some (reg, τ) → RegisterBelow cs.nextReg reg
 
-/-- Register `reg` in `regMap` holds a pointer value with the given fields. -/
+/-- Register `reg` in `regMap` holds a pointer value with the given
+    allocation, offset and tag — at SOME extent. The extent is existential
+    because a place's register may hold a LOADED pointer, whose extent is
+    whatever the program stored; nothing a destination or a source
+    lowering does depends on it (only the slice mint reads it, and it
+    reads it from the loaded value directly). -/
 def PtrRegisterEntry
   (regMap : obseq3.oseair.RegMap)
   (reg : Register)
   (base offset size : Word)
   (tag : Tag) : Prop :=
-  obseq3.oseair.RegMap.lookup regMap reg = some (obseq.TyVal.PTy, [Val.Ptr base offset size tag])
+  ∃ extent, obseq3.oseair.RegMap.lookup regMap reg
+    = some (obseq.TyVal.PTy, [Val.Ptr base offset extent size tag])
 
 abbrev AddrRenameMap := Word → Option Word
 abbrev TagRenameMap := Tag → Option Tag
@@ -712,9 +718,10 @@ def UnboundLocalsUnmapped {Γ : Ctx}
       and derives the offset by ONE subtraction when the value is built
       (`mirlite_semantics.lean`, the `.ref` arm:
       `ptrVal allocBase (resolved.addr - resolved.allocBase) ...`);
-    * oseair's `Val.Ptr base offset size tag` CARRIES the offset, and
-      `Rhs.Borrow` accumulates it by addition
-      (`oseair.lean:305`: `Val.Ptr base (baseOff + offset) size newTag`).
+    * oseair's `Val.Ptr base offset extent size tag` CARRIES the offset,
+      and `Rhs.Borrow` accumulates it by addition
+      (`Val.Ptr base (baseOff + offset) len size newTag`; the borrowed
+      length becomes the new pointer's extent).
 
     So a projection applied on the source side lands as
     `addr + off - allocBase`, and the same projection applied on the
@@ -749,8 +756,8 @@ def MemValSim
   -- (`readWordSeq_sim`) without a reverse-domain memory invariant.
   | .undef,           _                  => True
   | .word v,          .Dat v'            => v' = v
-  | .ptrVal b o s t,  .Ptr b' o' s' t'  =>
-      ρa b = some b' ∧ o' = o ∧ s' = s ∧ ρt t = some t' ∧
+  | .ptrVal b o e s t,  .Ptr b' o' e' s' t'  =>
+      ρa b = some b' ∧ o' = o ∧ e' = e ∧ s' = s ∧ ρt t = some t' ∧
       -- NO non-wildcard side condition: `fromExposed` stores pointers
       -- carrying `wildcardTag`, and since 2026-09-13 an access through
       -- one transports too (`resolveWildcardIn_transport`), so BRIDGE 3
@@ -770,8 +777,8 @@ theorem MemValSim.rename_mono
     MemValSim ρa' ρt' mv v := by
   cases mv <;> cases v <;> simp [MemValSim] at h_sim ⊢
   · exact h_sim
-  · rcases h_sim with ⟨h_base, h_off, h_size, h_tag_old, h_dom⟩
-    exact ⟨h_addr _ _ h_base, h_off, h_size, h_tag _ _ h_tag_old,
+  · rcases h_sim with ⟨h_base, h_off, h_ext, h_size, h_tag_old, h_dom⟩
+    exact ⟨h_addr _ _ h_base, h_off, h_ext, h_size, h_tag _ _ h_tag_old,
       fun k hk => ⟨(h_dom k hk).choose, h_addr _ _ (h_dom k hk).choose_spec⟩⟩
 
 /-- Extend an address rename at one fresh address. Unlike ρt, ρa is
@@ -1870,6 +1877,12 @@ theorem RegMap.lookup_insert_self (r : oseair.RegMap) (reg : Register)
     oseair.RegMap.lookup (oseair.RegMap.insert r reg v) reg = some v := by
   simp [oseair.RegMap.insert, oseair.RegMap.lookup, List.lookup]
 
+theorem PtrRegisterEntry.insert_self (r : oseair.RegMap) (reg : Register)
+    (base offset extent size : Word) (tag : Tag) :
+    PtrRegisterEntry (oseair.RegMap.insert r reg
+      (obseq.TyVal.PTy, [Val.Ptr base offset extent size tag])) reg base offset size tag :=
+  ⟨extent, RegMap.lookup_insert_self _ _ _⟩
+
 theorem RegMap.lookup_insert_ne (r : oseair.RegMap) {reg' reg : Register}
     (h : reg' ≠ reg) (v : obseq.TyVal × List Val) :
     oseair.RegMap.lookup (oseair.RegMap.insert r reg v) reg'
@@ -1911,6 +1924,8 @@ theorem LocalBindingSim.insert_fresh_reg
   obtain ⟨reg, base, tag, h_pi, h_entry, h_ra, h_rt, h_nw, h_dom⟩ := h_lbs loc binding h_env
   refine ⟨reg, base, tag, h_pi, ?_, h_ra, h_rt, h_nw, h_dom⟩
   have h_below := h_prb _ _ _ h_pi
+  obtain ⟨e, h_entry⟩ := h_entry
+  refine ⟨e, ?_⟩
   show oseair.RegMap.lookup s'.reg reg = _
   rw [h_reg]
   cases reg with
@@ -1959,8 +1974,7 @@ theorem runN_Assgn_Load_ptr_step
                reg := oseair.RegMap.insert s.reg dst
                  (ty, oseair.readWordSeq s.mem (b + o) (obseq.typeSize ty)),
                pc := s.pc + 1 } := by
-  have h_lookup : oseair.RegMap.lookup s.reg preg
-      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  obtain ⟨e, h_lookup⟩ := h_entry
   have h_bounds : ((b + o < b) || (b + o + obseq.typeSize ty > b + sz)) = false := by
     simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
     refine ⟨Nat.not_lt.mpr (Nat.le_add_right b o), Nat.not_lt.mpr ?_⟩
@@ -1976,8 +1990,8 @@ theorem runN_Assgn_Load_ptr_step
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- A loaded pointer cell is initialized. -/
-theorem noUndef_singleton_ptr (b o s : Word) (t : Tag) :
-    ([Val.Ptr b o s t]).any (fun v => v == Val.Undef) = false := rfl
+theorem noUndef_singleton_ptr (b o e s : Word) (t : Tag) :
+    ([Val.Ptr b o e s t]).any (fun v => v == Val.Undef) = false := rfl
 
 /-- Initialization transports along `MemValSim`: a source value that is
     not `undef` is a word or a pointer, and its image is a `Dat` or a
@@ -2016,12 +2030,12 @@ theorem noUndef_transport {ρa : AddrRenameMap} {ρt : TagRenameMap} :
               cases w with
               | Undef => simp [MemValSim] at h_vw
               | Dat _ => rfl
-              | Ptr _ _ _ _ => rfl
-          | ptrVal b o sz t =>
+              | Ptr _ _ _ _ _ => rfl
+          | ptrVal b o e sz t =>
               cases w with
               | Undef => simp [MemValSim] at h_vw
               | Dat _ => rfl
-              | Ptr _ _ _ _ => rfl
+              | Ptr _ _ _ _ _ => rfl
         show (w == Val.Undef || ws.any (fun v => v == Val.Undef)) = false
         rw [h_w, ih h_rest hvs]
         rfl
@@ -2035,19 +2049,18 @@ theorem noUndef_transport {ρa : AddrRenameMap} {ρt : TagRenameMap} :
 theorem runN_Assgn_ExposeAddr_step
     (compProg : oseair.Prog) (s : oseair.State MSB)
     (dst preg : Register)
-    {b o sz : Word} {t : Tag} {p2 : AccessPerms} {pb po ps : Word} {pt : Tag}
+    {b o sz : Word} {t : Tag} {p2 : AccessPerms} {pb po pe ps : Word} {pt : Tag}
     (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.ExposeAddr preg)))
     (h_entry : PtrRegisterEntry s.reg preg b o sz t)
     (h_lt : o < sz)
     (h_read : MSB.read s.perms (b + o) 1 t = .ok p2)
-    (h_cell : oseair.Mem.find? s.mem (b + o) = some (Val.Ptr pb po ps pt)) :
+    (h_cell : oseair.Mem.find? s.mem (b + o) = some (Val.Ptr pb po pe ps pt)) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
       { s with perms := MSB.expose p2 pt,
                reg := oseair.RegMap.insert s.reg dst
                  (obseq.TyVal.NatTy, [Val.Dat (pb + po)]),
                pc := s.pc + 1 } := by
-  have h_lookup : oseair.RegMap.lookup s.reg preg
-      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  obtain ⟨e, h_lookup⟩ := h_entry
   have h_bounds : ((b + o < b) || (b + o ≥ b + sz)) = false := by
     simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
     exact ⟨Nat.not_lt.mpr (Nat.le_add_right b o),
@@ -2061,31 +2074,31 @@ theorem runN_Assgn_ExposeAddr_step
       h_bounds, Bool.false_eq_true, if_false, h_read, h_cell]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
-/-- A rest-of-allocation `Borrow` (`len = none`, offset `0`) executes in
-    one `runN` step: no cell read and no address arithmetic of its own —
-    the retagged range is the loaded pointer's own rest, `(pb + po,
-    ps - po)`, through its own tag, and there is no range check to
-    discharge. This is the slice mint, and it is what lets a projection's
-    `Borrow`/`Die` bracket close BEFORE the mint, so the `Die` always
-    finds its tag on top. -/
+/-- An own-extent `Borrow` (`len = none`, offset `0`) executes in one
+    `runN` step: no cell read and no address arithmetic of its own — the
+    retagged range is the loaded pointer's own extent `(pb + po, pe)`,
+    through its own tag, and there is no range check to discharge. This
+    is the slice mint, and it is what lets a projection's `Borrow`/`Die`
+    bracket close BEFORE the mint, so the `Die` always finds its tag on
+    top. Takes the register's VALUE (extent included), not a
+    `PtrRegisterEntry`, because the extent is what it retags. -/
 theorem runN_Assgn_Borrow_rest_step
     (compProg : oseair.Prog) (s : oseair.State MSB)
     (dst preg : Register) (kind : RefKind) (prot : Bool)
-    {pb po ps : Word} {pt newTag : Tag} {p3 : AccessPerms}
+    {pb po pe ps : Word} {pt newTag : Tag} {p3 : AccessPerms}
     (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.Borrow kind prot [] none preg 0)))
-    (h_entry : PtrRegisterEntry s.reg preg pb po ps pt)
-    (h_ref : MSB.ref s.perms (pb + po) (ps - po) pt kind prot [] = .ok (p3, newTag)) :
+    (h_lookup : oseair.RegMap.lookup s.reg preg
+      = some (obseq.TyVal.PTy, [Val.Ptr pb po pe ps pt]))
+    (h_ref : MSB.ref s.perms (pb + po) pe pt kind prot [] = .ok (p3, newTag)) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
       { s with perms := p3,
                reg := oseair.RegMap.insert s.reg dst
-                 (obseq.TyVal.PTy, [Val.Ptr pb po ps newTag]),
+                 (obseq.TyVal.PTy, [Val.Ptr pb po pe ps newTag]),
                pc := s.pc + 1 } := by
-  have h_lookup : oseair.RegMap.lookup s.reg preg
-      = some (obseq.TyVal.PTy, [Val.Ptr pb po ps pt]) := h_entry
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with perms := p3,
                reg := oseair.RegMap.insert s.reg dst
-                 (obseq.TyVal.PTy, [Val.Ptr pb po ps newTag]),
+                 (obseq.TyVal.PTy, [Val.Ptr pb po pe ps newTag]),
                pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
       Nat.add_zero, h_ref]
@@ -2099,20 +2112,19 @@ theorem runN_Assgn_Borrow_rest_step
 theorem runN_Assgn_PtrOffset_step
     (compProg : oseair.Prog) (s : oseair.State MSB)
     (dst preg : Register) (deltaCells : Int)
-    {b o sz : Word} {t : Tag} {p2 : AccessPerms} {pb po ps : Word} {pt : Tag}
+    {b o sz : Word} {t : Tag} {p2 : AccessPerms} {pb po pe ps : Word} {pt : Tag}
     (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.PtrOffset preg deltaCells)))
     (h_entry : PtrRegisterEntry s.reg preg b o sz t)
     (h_lt : o < sz)
     (h_read : MSB.read s.perms (b + o) 1 t = .ok p2)
-    (h_cell : oseair.Mem.find? s.mem (b + o) = some (Val.Ptr pb po ps pt))
+    (h_cell : oseair.Mem.find? s.mem (b + o) = some (Val.Ptr pb po pe ps pt))
     (h_nonneg : ¬ ((po : Int) + deltaCells < 0)) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
       { s with perms := p2,
                reg := oseair.RegMap.insert s.reg dst
-                 (obseq.TyVal.PTy, [Val.Ptr pb ((po : Int) + deltaCells).toNat ps pt]),
+                 (obseq.TyVal.PTy, [Val.Ptr pb ((po : Int) + deltaCells).toNat pe ps pt]),
                pc := s.pc + 1 } := by
-  have h_lookup : oseair.RegMap.lookup s.reg preg
-      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  obtain ⟨e, h_lookup⟩ := h_entry
   have h_bounds : ((b + o < b) || (b + o ≥ b + sz)) = false := by
     simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
     exact ⟨Nat.not_lt.mpr (Nat.le_add_right b o),
@@ -2120,7 +2132,7 @@ theorem runN_Assgn_PtrOffset_step
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with perms := p2,
                reg := oseair.RegMap.insert s.reg dst
-                 (obseq.TyVal.PTy, [Val.Ptr pb ((po : Int) + deltaCells).toNat ps pt]),
+                 (obseq.TyVal.PTy, [Val.Ptr pb ((po : Int) + deltaCells).toNat pe ps pt]),
                pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
       h_bounds, Bool.false_eq_true, if_false, h_read, h_cell, if_neg h_nonneg]
@@ -2143,10 +2155,9 @@ theorem runN_Assgn_FromExposed_step
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
       { s with perms := p2,
                reg := oseair.RegMap.insert s.reg dst
-                 (obseq.TyVal.PTy, [Val.Ptr rb ro rs wildcardTag]),
+                 (obseq.TyVal.PTy, [Val.Ptr rb ro (rs - ro) rs wildcardTag]),
                pc := s.pc + 1 } := by
-  have h_lookup : oseair.RegMap.lookup s.reg preg
-      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  obtain ⟨e, h_lookup⟩ := h_entry
   have h_bounds : ((b + o < b) || (b + o ≥ b + sz)) = false := by
     simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
     exact ⟨Nat.not_lt.mpr (Nat.le_add_right b o),
@@ -2154,7 +2165,7 @@ theorem runN_Assgn_FromExposed_step
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with perms := p2,
                reg := oseair.RegMap.insert s.reg dst
-                 (obseq.TyVal.PTy, [Val.Ptr rb ro rs wildcardTag]),
+                 (obseq.TyVal.PTy, [Val.Ptr rb ro (rs - ro) rs wildcardTag]),
                pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup,
       h_bounds, Bool.false_eq_true, if_false, h_read, h_cell, h_res]
@@ -2638,14 +2649,13 @@ theorem runN_Assgn_Borrow_step
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
       { s with perms := p2,
                reg := oseair.RegMap.insert s.reg dst
-                 (obseq.TyVal.PTy, [Val.Ptr b (bo + offset) sz newTag]),
+                 (obseq.TyVal.PTy, [Val.Ptr b (bo + offset) len sz newTag]),
                pc := s.pc + 1 } := by
-  have h_lookup : oseair.RegMap.lookup s.reg baseReg
-      = some (obseq.TyVal.PTy, [Val.Ptr b bo sz t]) := h_entry
+  obtain ⟨e, h_lookup⟩ := h_entry
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with perms := p2,
                reg := oseair.RegMap.insert s.reg dst
-                 (obseq.TyVal.PTy, [Val.Ptr b (bo + offset) sz newTag]),
+                 (obseq.TyVal.PTy, [Val.Ptr b (bo + offset) len sz newTag]),
                pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_lookup]
     rw [if_neg (Nat.not_lt.mpr h_le)]
@@ -2667,14 +2677,14 @@ theorem runN_Assgn_Alloc_step
         mem := (oseair.allocate s.mem (obseq.typeSize ty)).2,
         perms := perms2,
         reg := oseair.RegMap.insert s.reg dst
-          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (obseq.typeSize ty) tag]),
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (obseq.typeSize ty) (obseq.typeSize ty) tag]),
         pc := s.pc + 1 } := by
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with
         mem := (oseair.allocate s.mem (obseq.typeSize ty)).2,
         perms := perms2,
         reg := oseair.RegMap.insert s.reg dst
-          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (obseq.typeSize ty) tag]),
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (obseq.typeSize ty) (obseq.typeSize ty) tag]),
         pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith,
       oseair.bumpAllocator, oseair.allocate, h_own]
@@ -2694,14 +2704,14 @@ theorem runN_Assgn_AllocN_step
         mem := (oseair.allocate s.mem (n * obseq.typeSize ty)).2,
         perms := perms2,
         reg := oseair.RegMap.insert s.reg dst
-          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) tag]),
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) (n * obseq.typeSize ty) tag]),
         pc := s.pc + 1 } := by
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with
         mem := (oseair.allocate s.mem (n * obseq.typeSize ty)).2,
         perms := perms2,
         reg := oseair.RegMap.insert s.reg dst
-          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) tag]),
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) (n * obseq.typeSize ty) tag]),
         pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith,
       oseair.bumpAllocator, oseair.allocate, h_own]
@@ -2722,14 +2732,14 @@ theorem runN_Assgn_AllocDyn_step
         mem := (oseair.allocate s.mem (n * obseq.typeSize ty)).2,
         perms := perms2,
         reg := oseair.RegMap.insert s.reg dst
-          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) tag]),
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) (n * obseq.typeSize ty) tag]),
         pc := s.pc + 1 } := by
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with
         mem := (oseair.allocate s.mem (n * obseq.typeSize ty)).2,
         perms := perms2,
         reg := oseair.RegMap.insert s.reg dst
-          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) tag]),
+          (obseq.TyVal.PTy, [Val.Ptr s.mem.addrStart 0 (n * obseq.typeSize ty) (n * obseq.typeSize ty) tag]),
         pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_len,
       oseair.bumpAllocator, oseair.allocate, h_own]
@@ -2839,8 +2849,7 @@ theorem runN_Die_step
     (h_die : MSB.die s.perms (b + o) len t = .ok p2) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
       { s with perms := p2, pc := s.pc + 1 } := by
-  have h_lookup : oseair.RegMap.lookup s.reg r
-      = some (obseq.TyVal.PTy, [Val.Ptr b o sz t]) := h_entry
+  obtain ⟨e, h_lookup⟩ := h_entry
   have h_step : oseair.step MSB s compProg = oseair.Result.Ok
       { s with perms := p2, pc := s.pc + 1 } := by
     simp only [oseair.step, oseair.stepWith, h_instr, h_lookup, h_die]
@@ -3010,9 +3019,7 @@ theorem writeThroughPtr_sim
     · rename_i perms' h_useMut_src
       cases h_write
       constructor
-      · have h_lookup : oseair.RegMap.lookup s_osea.reg dstReg =
-            some (obseq.TyVal.PTy, [Val.Ptr resolved.allocBase
-              (resolved.addr - resolved.allocBase) resolved.allocSize t']) := h_entry
+      · obtain ⟨e, h_lookup⟩ := h_entry
         simp only [oseair.writeThroughPtr, h_lookup, h_addr]
         rw [if_neg (by rw [← h_len]; exact h_nb)]
         simp [h_useMut]

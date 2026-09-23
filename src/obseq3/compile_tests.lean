@@ -579,8 +579,8 @@ def g13_ref_slice : IO Unit :=
      Instr.Halt]
     "g13 refSlice"
 
-/-- Positive: a Mut slice retag over the runtime rest-of-allocation
-    (2 cells), written through and read back via the owner. -/
+/-- Positive: a Mut slice retag over the pointer's runtime extent
+    (2 cells, the whole array), written through and read back via the owner. -/
 def d22_ref_slice_write : IO Unit :=
   expectDiff ΓF
     [.assign fld0F (.constInit 1),
@@ -817,8 +817,8 @@ def d33_overlap_junk_copy_agrees : IO Unit := do
   -- program is exactly what the compiler emits for the statement
   let junkTgt : oseair.State M :=
     { pc := 0,
-      reg := [(.R 0, (.PTy, [.Ptr 0 0 2 4])),    -- tup: base 0, size 2, tag 4
-              (.R 1, (.PTy, [.Ptr 1 0 1 3]))],   -- y (forged): base 1, size 1, tag 3
+      reg := [(.R 0, (.PTy, [.Ptr 0 0 2 2 4])),    -- tup: base 0, extent 2, size 2, tag 4
+              (.R 1, (.PTy, [.Ptr 1 0 1 1 3]))],   -- y (forged): base 1, extent 1, size 1, tag 3
       mem := { mMap := [(0, .Dat 7), (1, .Dat 8), (2, .Dat 9)],
                addrStart := 3, allocs := [(0, 2), (2, 1)] },
       perms := perms }

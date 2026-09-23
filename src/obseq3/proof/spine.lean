@@ -100,7 +100,7 @@ theorem resolvePlace?_of_resolveAcc
                     cases mv with
                     | undef => simp [h_find] at h
                     | word w => simp [h_find] at h
-                    | ptrVal b o sz t =>
+                    | ptrVal b o e sz t =>
                         simp only [h_find, Except.ok.injEq, Prod.mk.injEq] at h
                         simp only [mirlite.resolvePlace?, ih h_b, h_find]
                         rw [h.1]
@@ -838,7 +838,7 @@ theorem ptrChain_lowering_sim
               cases mv with
               | undef => simp [h_qfind] at h_res
               | word w => simp [h_qfind] at h_res
-              | ptrVal b o sz t =>
+              | ptrVal b o e sz t =>
               simp only [h_qfind, Except.ok.injEq, Prod.mk.injEq] at h_res
               obtain ⟨h_r1, h_r2⟩ := h_res
               subst h_r1
@@ -918,12 +918,13 @@ theorem ptrChain_lowering_sim
               cases value' with
               | Undef => exact h_mvs.elim
               | Dat _ => exact h_mvs.elim
-              | Ptr b2 o2 s2 t2 =>
-              obtain ⟨h_b, h_o, h_s, h_t, h_range⟩ := h_mvs
+              | Ptr b2 o2 e2 s2 t2 =>
+              obtain ⟨h_b, h_o, h_e, h_s, h_t, h_range⟩ := h_mvs
               have h_b2 : b2 = b := (h_id_a _ _ h_b).symm
               subst h_b2
               subst h_o
               subst h_s
+              subst h_e
               -- code position of this level's Load
               have h_code1 : compProg s_mid.pc = some (Instr.Assgn
                   (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared q) cs).nextReg)
@@ -944,7 +945,7 @@ theorem ptrChain_lowering_sim
                   simpa using h
               have h_rws : oseair.readWordSeq s_mid.mem
                   (qRes.allocBase + (qRes.addr - qRes.allocBase))
-                  (obseq.typeSize obseq.TyVal.PTy) = [Val.Ptr b2 o2 s2 t2] := by
+                  (obseq.typeSize obseq.TyVal.PTy) = [Val.Ptr b2 o2 e2 s2 t2] := by
                 rw [h_cancel]
                 show oseair.readWordSeq s_mid.mem qRes.addr 1 = _
                 rw [h_qmem]
@@ -975,6 +976,7 @@ theorem ptrChain_lowering_sim
               · -- LocalBindingSim: fresh register insert
                 exact LocalBindingSim.insert_fresh_reg h_qlbs h_prb h_qregmono rfl
               · -- entry for the loaded register
+                refine ⟨e2, ?_⟩
                 show oseair.RegMap.lookup _ _ = _
                 rw [RegMap.lookup_insert_self, h_rws, Nat.add_sub_cancel_left]
               · -- range domain from MemValSim
@@ -1032,7 +1034,7 @@ theorem ptrChain_lowering_sim
               cases mv with
               | undef => simp [h_qfind] at h_res
               | word w => simp [h_qfind] at h_res
-              | ptrVal vb vo vsz vt =>
+              | ptrVal vb vo ve vsz vt =>
               simp only [h_qfind, Except.ok.injEq, Prod.mk.injEq] at h_res
               obtain ⟨h_r1, h_r2⟩ := h_res
               subst h_r1
@@ -1124,12 +1126,13 @@ theorem ptrChain_lowering_sim
                 cases value' with
                 | Undef => exact h_mvs.elim
                 | Dat _ => exact h_mvs.elim
-                | Ptr vb2 vo2 vs2 vt2 =>
-                obtain ⟨h_b, h_o, h_s, h_t, h_range⟩ := h_mvs
+                | Ptr vb2 vo2 ve2 vs2 vt2 =>
+                obtain ⟨h_b, h_o, h_e, h_s, h_t, h_range⟩ := h_mvs
                 have h_vb2 : vb2 = vb := (h_id_a _ _ h_b).symm
                 subst h_vb2
                 subst h_o
                 subst h_s
+                subst h_e
                 have h_code1 : compProg s_mid.pc = some (Instr.Assgn
                     (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                     (Rhs.Load obseq.TyVal.PTy bOut.result.reg)) := by
@@ -1148,7 +1151,7 @@ theorem ptrChain_lowering_sim
                     simpa using h
                 have h_rws : oseair.readWordSeq s_mid.mem
                     (bRes.allocBase + (bRes.addr - bRes.allocBase))
-                    (obseq.typeSize obseq.TyVal.PTy) = [Val.Ptr vb2 vo2 vs2 vt2] := by
+                    (obseq.typeSize obseq.TyVal.PTy) = [Val.Ptr vb2 vo2 ve2 vs2 vt2] := by
                   rw [h_cancel]
                   show oseair.readWordSeq s_mid.mem bRes.addr 1 = _
                   rw [h_bmem]
@@ -1172,7 +1175,8 @@ theorem ptrChain_lowering_sim
                   rw [sb_read_NextTag h_read_tgt]
                   exact h_bnt2
                 · exact LocalBindingSim.insert_fresh_reg h_blbs h_prb h_bregmono rfl
-                · show oseair.RegMap.lookup _ _ = _
+                · refine ⟨ve2, ?_⟩
+                  show oseair.RegMap.lookup _ _ = _
                   rw [RegMap.lookup_insert_self, h_rws, Nat.add_sub_cancel_left]
                 · intro k hk
                   exact h_range k hk
@@ -1300,11 +1304,11 @@ theorem ptrChain_lowering_sim
                       (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                       (obseq.TyVal.PTy, [Val.Ptr bRes.allocBase
                         ((bRes.addr - bRes.allocBase) + pathOffset f)
-                        bRes.allocSize s_mid.perms.NextTag]))
+                        (blockSize (obseq.LayoutTy.PtrL τ')) bRes.allocSize s_mid.perms.NextTag]))
                     (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                     bRes.allocBase ((bRes.addr - bRes.allocBase) + pathOffset f)
                     bRes.allocSize s_mid.perms.NextTag :=
-                  RegMap.lookup_insert_self _ _ _
+                  PtrRegisterEntry.insert_self _ _ _ _ _ _ _
                 have h_code2 : compProg (s_mid.pc + 1)
                     = some (Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1))
                         (Rhs.Load obseq.TyVal.PTy (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg))) := by
@@ -1333,15 +1337,16 @@ theorem ptrChain_lowering_sim
                 cases value' with
                 | Undef => exact h_mvs.elim
                 | Dat _ => exact h_mvs.elim
-                | Ptr vb2 vo2 vs2 vt2 =>
-                obtain ⟨h_b, h_o, h_s, h_t, h_range⟩ := h_mvs
+                | Ptr vb2 vo2 ve2 vs2 vt2 =>
+                obtain ⟨h_b, h_o, h_e, h_s, h_t, h_range⟩ := h_mvs
                 have h_vb2 : vb2 = vb := (h_id_a _ _ h_b).symm
                 subst h_vb2
                 subst h_o
                 subst h_s
+                subst h_e
                 have h_rws : oseair.readWordSeq s_mid.mem
                     (bRes.allocBase + ((bRes.addr - bRes.allocBase) + pathOffset f))
-                    (obseq.typeSize obseq.TyVal.PTy) = [Val.Ptr vb2 vo2 vs2 vt2] := by
+                    (obseq.typeSize obseq.TyVal.PTy) = [Val.Ptr vb2 vo2 ve2 vs2 vt2] := by
                   rw [h_po, ← Nat.add_assoc, h_cancel]
                   show oseair.readWordSeq s_mid.mem (bRes.addr + PathTo.offset f) 1 = _
                   rw [h_bmem]
@@ -1353,7 +1358,7 @@ theorem ptrChain_lowering_sim
                         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                         (obseq.TyVal.PTy, [Val.Ptr bRes.allocBase
                           ((bRes.addr - bRes.allocBase) + pathOffset f)
-                          bRes.allocSize s_mid.perms.NextTag]),
+                          (blockSize (obseq.LayoutTy.PtrL τ')) bRes.allocSize s_mid.perms.NextTag]),
                       pc := s_mid.pc + 1 }
                   (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1))
                   (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
@@ -1374,7 +1379,7 @@ theorem ptrChain_lowering_sim
                         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                         (obseq.TyVal.PTy, [Val.Ptr bRes.allocBase
                           ((bRes.addr - bRes.allocBase) + pathOffset f)
-                          bRes.allocSize s_mid.perms.NextTag]))
+                          (blockSize (obseq.LayoutTy.PtrL τ')) bRes.allocSize s_mid.perms.NextTag]))
                       (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1))
                       (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem
                         (bRes.allocBase + ((bRes.addr - bRes.allocBase) + pathOffset f))
@@ -1382,9 +1387,10 @@ theorem ptrChain_lowering_sim
                     (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                     bRes.allocBase ((bRes.addr - bRes.allocBase) + pathOffset f)
                     bRes.allocSize s_mid.perms.NextTag := by
+                  refine ⟨blockSize (obseq.LayoutTy.PtrL τ'), ?_⟩
                   show oseair.RegMap.lookup _ _ = _
                   rw [RegMap.lookup_insert_ne _ h_regne]
-                  exact h_entry_tmp
+                  exact RegMap.lookup_insert_self _ _ _
                 have h_code3 : compProg (s_mid.pc + 1 + 1)
                     = some (Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                         (blockSize (obseq.LayoutTy.PtrL τ'))) := by
@@ -1414,7 +1420,7 @@ theorem ptrChain_lowering_sim
                           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                           (obseq.TyVal.PTy, [Val.Ptr bRes.allocBase
                             ((bRes.addr - bRes.allocBase) + pathOffset f)
-                            bRes.allocSize s_mid.perms.NextTag]))
+                            (blockSize (obseq.LayoutTy.PtrL τ')) bRes.allocSize s_mid.perms.NextTag]))
                         (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1))
                         (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem
                           (bRes.allocBase + ((bRes.addr - bRes.allocBase) + pathOffset f))
@@ -1452,7 +1458,7 @@ theorem ptrChain_lowering_sim
                             (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                             (obseq.TyVal.PTy, [Val.Ptr bRes.allocBase
                               (bRes.addr - bRes.allocBase + pathOffset f)
-                              bRes.allocSize s_mid.perms.NextTag]),
+                              (blockSize (obseq.LayoutTy.PtrL τ')) bRes.allocSize s_mid.perms.NextTag]),
                           pc := s_mid.pc + 1 } cs :=
                     LocalBindingSim.insert_fresh_reg h_blbs h_prb h_bregmono rfl
                   have h_lbs2 : LocalBindingSim ρa ρt s_mir.env
@@ -1463,7 +1469,7 @@ theorem ptrChain_lowering_sim
                               (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg)
                               (obseq.TyVal.PTy, [Val.Ptr bRes.allocBase
                                 (bRes.addr - bRes.allocBase + pathOffset f)
-                                bRes.allocSize s_mid.perms.NextTag]))
+                                (blockSize (obseq.LayoutTy.PtrL τ')) bRes.allocSize s_mid.perms.NextTag]))
                             (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared b) cs).nextReg + 1))
                             (obseq.TyVal.PTy, oseair.readWordSeq s_mid.mem
                               (bRes.allocBase + (bRes.addr - bRes.allocBase + pathOffset f))
@@ -1473,10 +1479,11 @@ theorem ptrChain_lowering_sim
                       (Nat.le_trans h_bregmono (Nat.le_succ _)) rfl
                   intro τ'' loc' binding' h_env'
                   exact h_lbs2 loc' binding' h_env'
-                · show oseair.RegMap.lookup _ _ = _
+                · refine ⟨ve2, ?_⟩
+                  show oseair.RegMap.lookup _ _ = _
                   rw [RegMap.lookup_insert_self, h_rws]
-                  show some (obseq.TyVal.PTy, [Val.Ptr vb2 vo2 vs2 vt2])
-                    = some (obseq.TyVal.PTy, [Val.Ptr vb2 (vb2 + vo2 - vb2) vs2 vt2])
+                  show some (obseq.TyVal.PTy, [Val.Ptr vb2 vo2 ve2 vs2 vt2])
+                    = some (obseq.TyVal.PTy, [Val.Ptr vb2 (vb2 + vo2 - vb2) ve2 vs2 vt2])
                   rw [Nat.add_sub_cancel_left]
                 · intro k hk
                   exact h_range k hk
@@ -1878,10 +1885,7 @@ theorem copy_chainwrite_after_read
               perms := p3,
               mem := oseair.writeWordSeq s_mid2.mem rd.addr vals,
               pc := s_mid2.pc + 1 } := by
-      have h_dl : oseair.RegMap.lookup s_mid2.reg dOut.result.reg
-          = some (obseq.TyVal.PTy,
-              [Val.Ptr rd.allocBase (rd.addr - rd.allocBase) rd.allocSize
-                tresD]) := h_dentry
+      obtain ⟨eD, h_dl⟩ := id h_dentry
       simp only [oseair.writeThroughPtr, h_dl]
       rw [if_neg (by
         rw [h_vlen, h_cancelD]
@@ -2002,7 +2006,7 @@ theorem copy_freshroot_write_after_read
       perms := tgtPerms,
       reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
         (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+          (obseq.typeSize (layoutToTyVal σ)) (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
       pc := s_osea.pc + 1 })
     -- the two extended renames
     (h_incr_a : AddrRenameIncr ρa ρa') (h_incr_t : TagRenameIncr ρt ρt')
@@ -2022,7 +2026,7 @@ theorem copy_freshroot_write_after_read
       perms := tgtPerms,
       reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
         (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+          (obseq.typeSize (layoutToTyVal σ)) (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
       pc := s_osea.pc + 1 } compProg = oseair.Result.Ok sR)
     (h_prmR : csR.placeRegMap = ((setPlaceInfo
       (emit { csStart with nextReg := csStart.nextReg + 1 }
@@ -2091,9 +2095,7 @@ theorem copy_freshroot_write_after_read
     sb_write_respects_PermSim h_psimR h_wf_t' h_rtD2 h_useMut_src'
   -- the resolved destination IS the fresh root
   rw [h_rdaddr]
-  have h_dentry2 : oseair.RegMap.lookup sR.reg (Register.R csStart.nextReg)
-      = some (obseq.TyVal.PTy,
-          [Val.Ptr s_mir.mem.addrStart 0 (blockSize σ) tagD2]) := h_entryD2
+  obtain ⟨eD2, h_dentry2⟩ := id h_entryD2
   -- the `RStore` through the root register
   have h_code2 : compProg sR.pc
       = some (mkStore (Register.R csStart.nextReg)) := by
@@ -2260,7 +2262,7 @@ theorem copy_freshroot_prologue
       perms := tgtPerms,
       reg := oseair.RegMap.insert s_osea.reg (Register.R csPrefix.nextReg)
         (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-          (obseq.typeSize (layoutToTyVal τ)) s_osea.perms.NextTag]),
+          (obseq.typeSize (layoutToTyVal τ)) (obseq.typeSize (layoutToTyVal τ)) s_osea.perms.NextTag]),
       pc := s_osea.pc + 1 }
         (setPlaceInfo
       (emit { csPrefix with nextReg := csPrefix.nextReg + 1 }
@@ -2325,9 +2327,8 @@ theorem copy_freshroot_prologue
         s_osea.perms.NextTag, ?_, ?_, ?_, h_rt_new, h_nw, ?_⟩
       · rw [show loc'.idx.1 = dstLoc.idx.1 from congrArg Fin.val h_idx]
         exact h_pi_new
-      · show oseair.RegMap.lookup _ _ = _
-        rw [← h_addr_eq, ← h_sz]
-        exact RegMap.lookup_insert_self _ _ _
+      · rw [← h_addr_eq, ← h_sz]
+        exact PtrRegisterEntry.insert_self _ _ _ _ _ _ _
       · exact h_ra_base
       · intro k hk
         exact ⟨s_mir.mem.addrStart + k, h_ra_dom k hk⟩
@@ -2348,7 +2349,9 @@ theorem copy_freshroot_prologue
           h_incr_a _ _ (h_dom' k hk).choose_spec⟩⟩
       · rw [getPlaceInfo_setPlaceInfo_ne _ h_idxv]
         exact h_pi'
-      · show oseair.RegMap.lookup _ _ = _
+      · obtain ⟨e', h_entry'⟩ := h_entry'
+        refine ⟨e', ?_⟩
+        show oseair.RegMap.lookup _ _ = _
         rw [RegMap.lookup_insert_ne _ h_regne]
         exact h_entry'
 
@@ -2391,7 +2394,7 @@ theorem copy_freshproj_write_after_read
       perms := tgtPerms,
       reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
         (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+          (obseq.typeSize (layoutToTyVal σ)) (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
       pc := s_osea.pc + 1 })
     (h_incr_a : AddrRenameIncr ρa ρa') (h_incr_t : TagRenameIncr ρt ρt')
     (h_id_a' : IdentityOnDomain ρa') (h_wf_t' : TagRenameWF ρt')
@@ -2412,7 +2415,7 @@ theorem copy_freshproj_write_after_read
       perms := tgtPerms,
       reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
         (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+          (obseq.typeSize (layoutToTyVal σ)) (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
       pc := s_osea.pc + 1 } compProg = oseair.Result.Ok sR)
     (h_prmR : csR.placeRegMap = ((setPlaceInfo
       (emit { csStart with nextReg := csStart.nextReg + 1 }
@@ -2522,12 +2525,12 @@ theorem copy_freshproj_write_after_read
       = { sR with
           perms := q1,
           reg := oseair.RegMap.insert sR.reg (Register.R csR.nextReg)
-            (obseq.TyVal.PTy, [Val.Ptr s_mir.mem.addrStart (0 + off) (blockSize σ)
+            (obseq.TyVal.PTy, [Val.Ptr s_mir.mem.addrStart (0 + off) (blockSize τ) (blockSize σ)
               sR.perms.NextTag]),
           pc := sR.pc + 1 } := ⟨_, rfl⟩
   rw [← hsB] at h_run1
   have h_sBreg : sB.reg = oseair.RegMap.insert sR.reg (Register.R csR.nextReg)
-      (obseq.TyVal.PTy, [Val.Ptr s_mir.mem.addrStart (0 + off) (blockSize σ)
+      (obseq.TyVal.PTy, [Val.Ptr s_mir.mem.addrStart (0 + off) (blockSize τ) (blockSize σ)
         sR.perms.NextTag]) := by rw [hsB]
   have h_sBperms : sB.perms = q1 := by rw [hsB]
   have h_sBmem : sB.mem = sR.mem := by rw [hsB]
@@ -2537,7 +2540,7 @@ theorem copy_freshproj_write_after_read
       rd.allocBase (rd.addr - rd.allocBase) rd.allocSize sR.perms.NextTag := by
     rw [h_sBreg, h_rdaddr, h_rdbase, h_rdsize, Nat.add_sub_cancel_left,
       Nat.zero_add]
-    exact RegMap.lookup_insert_self _ _ _
+    exact PtrRegisterEntry.insert_self _ _ _ _ _ _ _
   have h_wr1' : MSB.useMut sB.perms rd.addr vals.length sR.perms.NextTag
       = .ok q2 := by
     rw [h_sBperms, h_vlen, h_rdaddr]
@@ -2575,9 +2578,7 @@ theorem copy_freshproj_write_after_read
         pc := sB.pc + 1 }
     (Register.R csR.nextReg) (blockSize τ)
     (by show compProg (sB.pc + 1) = _; rw [h_sBpc]; exact h_code3)
-    (by
-      show oseair.RegMap.lookup sB.reg _ = _
-      exact h_entry_tmp)
+    h_entry_tmp
     (by
       show MSB.die q2 (rd.allocBase + (rd.addr - rd.allocBase)) (blockSize τ)
         sR.perms.NextTag = _
@@ -2718,8 +2719,8 @@ theorem ref_chainsrc_borrow
         perms := tgtPerms,
         reg := oseair.RegMap.insert s_mid.reg (Register.R csD.nextReg)
           (obseq.TyVal.PTy, [Val.Ptr resolved.allocBase
-            (resolved.addr - resolved.allocBase + pathOffset f) resolved.allocSize
-            s_mid.perms.NextTag]),
+            (resolved.addr - resolved.allocBase + pathOffset f) (blockSize τ)
+            resolved.allocSize s_mid.perms.NextTag]),
         pc := s_mid.pc + 1 } ∧
       freshTag = permsR.NextTag ∧
       TagRenameIncr ρt (ρt.extend permsR.NextTag s_mid.perms.NextTag) ∧
@@ -2743,10 +2744,10 @@ theorem ref_chainsrc_borrow
         = some s_mid.perms.NextTag ∧
       ListRel (MemValSim ρa (ρt.extend permsR.NextTag s_mid.perms.NextTag))
         [mirlite.MemValue.ptrVal resolved.allocBase
-          (resolved.addr + pathOffset f - resolved.allocBase) resolved.allocSize
-          permsR.NextTag]
+          (resolved.addr + pathOffset f - resolved.allocBase) (blockSize τ)
+          resolved.allocSize permsR.NextTag]
         [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase + pathOffset f)
-          resolved.allocSize s_mid.perms.NextTag] ∧
+          (blockSize τ) resolved.allocSize s_mid.perms.NextTag] ∧
       resolved.allocBase ≤ resolved.addr := by
   subst h_csD
   obtain ⟨dOut', n1, s_mid, tres, h_dval', h_dclean, h_drun, h_dpc, h_dmem,
@@ -2790,7 +2791,7 @@ theorem ref_chainsrc_borrow
   refine ⟨_, s_mid, _, tgtPerms, rfl, rfl, h_incr_t, h_wf_t', h_tbd', h_psim',
     oseair_runN_trans h_drun h_run1, ?_, ?_, h_dprm, h_dregmono, h_dmem, h_dclean,
     h_rt_new,
-    ⟨⟨h_dbase, h_off_eq, rfl, h_rt_new, fun k hk => h_drange k hk⟩, trivial⟩, h_dle⟩
+    ⟨⟨h_dbase, h_off_eq, rfl, rfl, h_rt_new, fun k hk => h_drange k hk⟩, trivial⟩, h_dle⟩
   · exact LocalBindingSim.placeRegMap_congr (by grind [emit])
       (LocalBindingSim.insert_fresh_reg
         (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_dlbs)
@@ -2944,11 +2945,11 @@ theorem copy_boundproj_write_after_read
       = { sR with
           perms := q1,
           reg := oseair.RegMap.insert sR.reg (Register.R csR.nextReg)
-            (obseq.TyVal.PTy, [Val.Ptr dbase (boff + off) dsize sR.perms.NextTag]),
+            (obseq.TyVal.PTy, [Val.Ptr dbase (boff + off) (blockSize τ) dsize sR.perms.NextTag]),
           pc := sR.pc + 1 } := ⟨_, rfl⟩
   rw [← hsB] at h_run1
   have h_sBreg : sB.reg = oseair.RegMap.insert sR.reg (Register.R csR.nextReg)
-      (obseq.TyVal.PTy, [Val.Ptr dbase (boff + off) dsize sR.perms.NextTag]) := by rw [hsB]
+      (obseq.TyVal.PTy, [Val.Ptr dbase (boff + off) (blockSize τ) dsize sR.perms.NextTag]) := by rw [hsB]
   have h_sBperms : sB.perms = q1 := by rw [hsB]
   have h_sBmem : sB.mem = sR.mem := by rw [hsB]
   have h_sBpc : sB.pc = sR.pc + 1 := by rw [hsB]
@@ -2956,7 +2957,7 @@ theorem copy_boundproj_write_after_read
   have h_entry_tmp : PtrRegisterEntry sB.reg (Register.R csR.nextReg)
       rd.allocBase (rd.addr - rd.allocBase) rd.allocSize sR.perms.NextTag := by
     rw [h_sBreg, h_rdaddr, h_rdbase, h_rdsize, Nat.add_sub_cancel_left]
-    exact RegMap.lookup_insert_self _ _ _
+    exact PtrRegisterEntry.insert_self _ _ _ _ _ _ _
   have h_wr1' : MSB.useMut sB.perms rd.addr vals.length sR.perms.NextTag
       = .ok q2 := by
     rw [h_sBperms, h_vlen, h_rdaddr]
@@ -2995,7 +2996,6 @@ theorem copy_boundproj_write_after_read
     (Register.R csR.nextReg) (blockSize τ)
     (by show compProg (sB.pc + 1) = _; rw [h_sBpc]; exact h_code3)
     (by
-      show oseair.RegMap.lookup sB.reg _ = _
       have h := h_entry_tmp
       rw [h_rdaddr, h_rdbase, h_rdsize, Nat.add_sub_cancel_left] at h
       exact h)
@@ -3264,7 +3264,7 @@ theorem copy_fresh_write_after_read
       perms := tgtPerms,
       reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
         (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+          (obseq.typeSize (layoutToTyVal σ)) (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
       pc := s_osea.pc + 1 })
     (h_incr_a : AddrRenameIncr ρa ρa') (h_incr_t : TagRenameIncr ρt ρt')
     (h_id_a' : IdentityOnDomain ρa') (h_wf_t' : TagRenameWF ρt')
@@ -3285,7 +3285,7 @@ theorem copy_fresh_write_after_read
       perms := tgtPerms,
       reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
         (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-          (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+          (obseq.typeSize (layoutToTyVal σ)) (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
       pc := s_osea.pc + 1 } compProg = oseair.Result.Ok sR)
     (h_prmR : csR.placeRegMap = ((setPlaceInfo
       (emit { csStart with nextReg := csStart.nextReg + 1 }
@@ -3899,7 +3899,7 @@ theorem storereg_localfresh_simulation
             perms := tgtPerms,
             reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
               (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-                (obseq.typeSize (layoutToTyVal τ)) s_osea.perms.NextTag]),
+                (obseq.typeSize (layoutToTyVal τ)) (obseq.typeSize (layoutToTyVal τ)) s_osea.perms.NextTag]),
             pc := s_osea.pc + 1 }
         (freshRootCS csStart dstLoc)
         h_id_a' h_wf_t' (by rw [h_perms1]; exact h_tbd') h_lbs1 h_prb1
@@ -4389,7 +4389,7 @@ theorem storereg_projlocalfresh_simulation
             perms := tgtPerms,
             reg := oseair.RegMap.insert s_osea.reg (Register.R csStart.nextReg)
               (obseq.TyVal.PTy, [Val.Ptr s_osea.mem.addrStart 0
-                (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
+                (obseq.typeSize (layoutToTyVal σ)) (obseq.typeSize (layoutToTyVal σ)) s_osea.perms.NextTag]),
             pc := s_osea.pc + 1 }
         (freshRootCS csStart loc)
         h_id_a' h_wf_t' (by rw [h_perms1]; exact h_tbd') h_lbs1 h_prb1

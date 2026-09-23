@@ -272,7 +272,7 @@ def t15_deref_oob_pointer : IO Unit := do
 
 /-! t16: the invariant-gap example, encoded as a STATE (journal
     2026-08-27-ref-proj-closed / the event-fix discussion). No program
-    reaches a memory cell holding `ptrVal (0, 0, 0, t)` at a `PtrL NatL`
+    reaches a memory cell holding `ptrVal (0, 0, 1, 0, t)` at a `PtrL NatL`
     use site — every mint site stores the allocation's size — but
     `mirlite.State` is just data, so the junk state is constructible
     here. Before 2026-08-28 mirlite's `.ref` accepted the reborrow
@@ -293,9 +293,9 @@ def t16_junk_sized_pointer_retag : IO Unit := do
     .assign pJ (.ref .Mut false [] xJ)]) "t16 setup"
   -- forge the junk: shrink the STORED pointer's size to 0 (unreachable by
   -- any program; every mint site stores the allocation's size)
-  let some (.ptrVal b o _ t) := s0.mem.find? 1
+  let some (.ptrVal b o e _ t) := s0.mem.find? 1
     | throw (IO.userError "t16: p's cell should hold a pointer")
-  let junk : State M ΓJ := { s0 with mem := s0.mem.write 1 (.ptrVal b o 0 t) }
+  let junk : State M ΓJ := { s0 with mem := s0.mem.write 1 (.ptrVal b o e 0 t) }
   -- the reborrow through the junk-sized pointer must now be UB at the
   -- retag event (pre-fix it succeeded: sb_ref has the granting tag on
   -- cell 0 and never looked at the size)
@@ -304,7 +304,7 @@ def t16_junk_sized_pointer_retag : IO Unit := do
 
 
 /-- The read-side twin of t16: the same forged junk-SIZED pointer
-    (`ptrVal b o 0 t` at a u64 pointee), but consumed by a COPY instead
+    (`ptrVal b o e 0 t` at a u64 pointee), but consumed by a COPY instead
     of a retag. The copy-range dereferenceability check (2026-08-28)
     must reject it — pre-check, the wide SB read succeeded cell-wise
     and the target Memcpy diverged. -/
@@ -318,9 +318,9 @@ def t17_junk_sized_pointer_copy : IO Unit := do
     .assign xK (.constInit 1),
     .assign pK (.ref .Mut false [] xK),
     .assign yK (.constInit 0)]) "t17 setup"
-  let some (.ptrVal b o _ t) := s0.mem.find? 1
+  let some (.ptrVal b o e _ t) := s0.mem.find? 1
     | throw (IO.userError "t17: p's cell should hold a pointer")
-  let junk : State M ΓK := { s0 with mem := s0.mem.write 1 (.ptrVal b o 0 t) }
+  let junk : State M ΓK := { s0 with mem := s0.mem.write 1 (.ptrVal b o e 0 t) }
   expectErr (stepStmt M junk (.assign yK (.copy (.deref pK))))
     "t17 junk-sized copy" "out-of-bounds range"
 

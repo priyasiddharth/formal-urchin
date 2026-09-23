@@ -76,7 +76,7 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
       cases v with
       | undef => rw [h_cell] at h_eval; simp at h_eval
       | word n => rw [h_cell] at h_eval; simp at h_eval
-      | ptrVal pb po ps pt =>
+      | ptrVal pb po pe ps pt =>
       rw [h_cell] at h_eval
       injection h_eval with h_out
       subst h_out
@@ -102,12 +102,13 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
       cases value' with
       | Undef => exact h_mvs.elim
       | Dat _ => exact h_mvs.elim
-      | Ptr pb2 po2 ps2 pt2 =>
-      obtain ⟨h_pb, h_po, h_ps, h_pt, h_prange⟩ := h_mvs
+      | Ptr pb2 po2 pe2 ps2 pt2 =>
+      obtain ⟨h_pb, h_po, h_pe, h_ps, h_pt, h_prange⟩ := h_mvs
       have h_pb2 : pb2 = pb := (h_id_a _ _ h_pb).symm
       subst h_pb2
       subst h_po
       subst h_ps
+      subst h_pe
       -- the READ: transport, then execute the cast
       obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
         sb_read_respects_PermSim h_spsim h_wf_t h_srt h_read_src
@@ -138,7 +139,7 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
         exact h_read_tgt
       have h_cell_tgt : oseair.Mem.find? s_mid1.mem
           (rs.allocBase + (rs.addr - rs.allocBase))
-          = some (Val.Ptr pb2 po2 ps2 pt2) := by
+          = some (Val.Ptr pb2 po2 pe2 ps2 pt2) := by
         rw [h_cancel, h_smem]
         exact h_find_tgt
       have h_run1 := runN_Assgn_ExposeAddr_step compProg s_mid1
@@ -220,7 +221,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
       cases v with
       | undef => rw [h_cell] at h_eval; simp at h_eval
       | word n => rw [h_cell] at h_eval; simp at h_eval
-      | ptrVal pb po ps pt =>
+      | ptrVal pb po pe ps pt =>
       rw [h_cell] at h_eval
       injection h_eval with h_out
       subst h_out
@@ -264,12 +265,13 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
       cases value' with
       | Undef => exact h_mvs.elim
       | Dat _ => exact h_mvs.elim
-      | Ptr pb2 po2 ps2 pt2 =>
-      obtain ⟨h_pb, h_po, h_ps, h_pt, h_prange⟩ := h_mvs
+      | Ptr pb2 po2 pe2 ps2 pt2 =>
+      obtain ⟨h_pb, h_po, h_pe, h_ps, h_pt, h_prange⟩ := h_mvs
       have h_pb2 : pb2 = pb := (h_id_a _ _ h_pb).symm
       subst h_pb2
       subst h_po
       subst h_ps
+      subst h_pe
       -- BRIDGE 1S: the borrow is taken, read through, and retired
       obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
         sb_read_respects_PermSim h_spsim h_wf_t h_srt h_read_src
@@ -349,11 +351,11 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
           (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
             (rs.addr - rs.allocBase + pathOffset spath)
-            rs.allocSize s_mid1.perms.NextTag]))
+            (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]))
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) rs.allocBase
           (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize
           s_mid1.perms.NextTag :=
-        RegMap.lookup_insert_self _ _ _
+        PtrRegisterEntry.insert_self _ _ _ _ _ _ _
       have h_lt : rs.addr - rs.allocBase + pathOffset spath < rs.allocSize := by
         have h1 := Nat.not_lt.mp h_fit
         have h2 := h_sle
@@ -365,11 +367,11 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
         exact h_rd1
       have h_cell_tgt : oseair.Mem.find? s_mid1.mem
           (rs.allocBase + (rs.addr - rs.allocBase + pathOffset spath))
-          = some (Val.Ptr pb2 po2 ps2 pt2) := by
+          = some (Val.Ptr pb2 po2 pe2 ps2 pt2) := by
         rw [← Nat.add_assoc, h_cancelS, h_smem]
         exact h_find_tgt
       have h_run2 := runN_Assgn_ExposeAddr_step compProg
-        { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 }
+        { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 }
         (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
         h_code2 h_bentry h_lt h_read2 h_cell_tgt
       have h_regbv : (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
@@ -380,15 +382,15 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
             (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
             (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
               (rs.addr - rs.allocBase + pathOffset spath)
-              rs.allocSize s_mid1.perms.NextTag]))
+              (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]))
             (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
             (obseq.TyVal.NatTy, [Val.Dat (pb2 + po2)]))
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
           = some (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
               (rs.addr - rs.allocBase + pathOffset spath)
-              rs.allocSize s_mid1.perms.NextTag]) := by
+              (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]) := by
         rw [RegMap.lookup_insert_ne _ h_regbv]
-        exact h_bentry
+        exact RegMap.lookup_insert_self _ _ _
       -- the exposure slides past the `Die`
       have h_die1' : MSB.die q2
           (rs.allocBase + (rs.addr - rs.allocBase + pathOffset spath))
@@ -401,17 +403,17 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
           = .ok (MSB.expose q3 pt2) :=
         sb_die_expose_comm h_die1'
       have h_run3 := runN_Die_step compProg
-        { s_mid1 with perms := MSB.expose q2 pt2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.NatTy, [Val.Dat (pb2 + po2)]), pc := s_mid1.pc + 1 + 1 }
+        { s_mid1 with perms := MSB.expose q2 pt2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.NatTy, [Val.Dat (pb2 + po2)]), pc := s_mid1.pc + 1 + 1 }
         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize (obseq.LayoutTy.PtrL σ))
-        h_code3 h_bentry2 h_die_exp
+        h_code3 ⟨_, h_bentry2⟩ h_die_exp
       have h_psim3 : PermSim ρt (MSB.expose perms' pt) (MSB.expose q3 pt2) :=
         sb_expose_respects_PermSim h_psim2q h_wf_t h_pt
       -- the post-`Die` binding simulation: both temporaries are fresh
       have h_lbsB : LocalBindingSim ρa ρt sM.env
-          { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 } csA :=
+          { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
       have h_lbsV : LocalBindingSim ρa ρt sM.env
-          { s_mid1 with perms := MSB.expose q3 pt2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.NatTy, [Val.Dat (pb2 + po2)]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
+          { s_mid1 with perms := MSB.expose q3 pt2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.NatTy, [Val.Dat (pb2 + po2)]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_lbsB h_prb
           (Nat.le_trans h_sregmono (Nat.le_succ _)) rfl
       refine ⟨h_sclean, ρt, _, _, MSB.expose perms' pt, [Val.Dat (pb2 + po2)],
@@ -472,7 +474,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
     | some v =>
       cases v with
       | undef => rw [h_cell] at h_eval; simp at h_eval
-      | ptrVal pb po ps pt => rw [h_cell] at h_eval; simp at h_eval
+      | ptrVal pb po pe ps pt => rw [h_cell] at h_eval; simp at h_eval
       | word n =>
       rw [h_cell] at h_eval
       injection h_eval with h_out
@@ -599,11 +601,11 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
           (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
             (rs.addr - rs.allocBase + pathOffset spath)
-            rs.allocSize s_mid1.perms.NextTag]))
+            (blockSize obseq.LayoutTy.NatL) rs.allocSize s_mid1.perms.NextTag]))
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) rs.allocBase
           (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize
           s_mid1.perms.NextTag :=
-        RegMap.lookup_insert_self _ _ _
+        PtrRegisterEntry.insert_self _ _ _ _ _ _ _
       have h_lt : rs.addr - rs.allocBase + pathOffset spath < rs.allocSize := by
         have h1 := Nat.not_lt.mp h_fit
         have h2 := h_sle
@@ -622,7 +624,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
         rw [h_smem]
         exact h_alloc.resolveAddr_eq n
       have h_run2 := runN_Assgn_FromExposed_step compProg
-        { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 }
+        { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize obseq.LayoutTy.NatL) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 }
         (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
         h_code2 h_bentry h_lt h_read2 h_cell_tgt h_res_tgt
       have h_regbv : (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
@@ -633,33 +635,33 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
             (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
             (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
               (rs.addr - rs.allocBase + pathOffset spath)
-              rs.allocSize s_mid1.perms.NextTag]))
+              (blockSize obseq.LayoutTy.NatL) rs.allocSize s_mid1.perms.NextTag]))
             (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
-            (obseq.TyVal.PTy, [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 (sM.mem.resolveAddr n).2.2 wildcardTag]))
+            (obseq.TyVal.PTy, [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 ((sM.mem.resolveAddr n).2.2 - (sM.mem.resolveAddr n).2.1) (sM.mem.resolveAddr n).2.2 wildcardTag]))
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
           = some (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
               (rs.addr - rs.allocBase + pathOffset spath)
-              rs.allocSize s_mid1.perms.NextTag]) := by
+              (blockSize obseq.LayoutTy.NatL) rs.allocSize s_mid1.perms.NextTag]) := by
         rw [RegMap.lookup_insert_ne _ h_regbv]
-        exact h_bentry
+        exact RegMap.lookup_insert_self _ _ _
       have h_die1' : MSB.die q2
           (rs.allocBase + (rs.addr - rs.allocBase + pathOffset spath))
           (blockSize obseq.LayoutTy.NatL) s_mid1.perms.NextTag = .ok q3 := by
         rw [← Nat.add_assoc, h_cancelS, h_bs]
         exact h_die1
       have h_run3 := runN_Die_step compProg
-        { s_mid1 with perms := q2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 (sM.mem.resolveAddr n).2.2 wildcardTag]), pc := s_mid1.pc + 1 + 1 }
+        { s_mid1 with perms := q2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize obseq.LayoutTy.NatL) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 ((sM.mem.resolveAddr n).2.2 - (sM.mem.resolveAddr n).2.1) (sM.mem.resolveAddr n).2.2 wildcardTag]), pc := s_mid1.pc + 1 + 1 }
         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize obseq.LayoutTy.NatL)
-        h_code3 h_bentry2 h_die1'
+        h_code3 ⟨_, h_bentry2⟩ h_die1'
       -- the post-`Die` binding simulation: both temporaries are fresh
       have h_lbsB : LocalBindingSim ρa ρt sM.env
-          { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 } csA :=
+          { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize obseq.LayoutTy.NatL) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
       have h_lbsV : LocalBindingSim ρa ρt sM.env
-          { s_mid1 with perms := q3, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 (sM.mem.resolveAddr n).2.2 wildcardTag]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
+          { s_mid1 with perms := q3, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize obseq.LayoutTy.NatL) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 ((sM.mem.resolveAddr n).2.2 - (sM.mem.resolveAddr n).2.1) (sM.mem.resolveAddr n).2.2 wildcardTag]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_lbsB h_prb
           (Nat.le_trans h_sregmono (Nat.le_succ _)) rfl
-      refine ⟨h_sclean, ρt, _, _, perms', [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 (sM.mem.resolveAddr n).2.2 wildcardTag],
+      refine ⟨h_sclean, ρt, _, _, perms', [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 ((sM.mem.resolveAddr n).2.2 - (sM.mem.resolveAddr n).2.1) (sM.mem.resolveAddr n).2.2 wildcardTag],
         TagRenameIncr.refl ρt, h_wf_t, rfl, rfl,
         oseair_runN_trans (oseair_runN_trans (oseair_runN_trans h_srun h_run1)
           h_run2) h_run3,
@@ -668,7 +670,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
         (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
-        ⟨⟨h_alloc.2.2 _, rfl, rfl, h_wf_t.2,
+        ⟨⟨h_alloc.2.2 _, rfl, rfl, rfl, h_wf_t.2,
           fun k _ => ⟨_, h_alloc.2.2 ((sM.mem.resolveAddr n).1 + k)⟩⟩, trivial⟩⟩
       · intro τ' loc' binding' h_env'
         obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
@@ -733,7 +735,7 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
     | some v =>
       cases v with
       | undef => rw [h_cell] at h_eval; simp at h_eval
-      | ptrVal b o s t => rw [h_cell] at h_eval; simp at h_eval
+      | ptrVal b o e s t => rw [h_cell] at h_eval; simp at h_eval
       | word n =>
       rw [h_cell] at h_eval
       injection h_eval with h_out
@@ -804,11 +806,11 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
           (placeToRegChecked RefKind.Shared src) csA).nextReg)
         sOut.result.reg h_code1 h_sentry h_lt h_read2t h_cell_tgt h_res_tgt
       have h_ins : LocalBindingSim ρa ρt sM.env
-          { s_mid1 with perms := p2, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 (sM.mem.resolveAddr n).2.2 wildcardTag]), pc := s_mid1.pc + 1 } csA :=
+          { s_mid1 with perms := p2, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1 ((sM.mem.resolveAddr n).2.2 - (sM.mem.resolveAddr n).2.1) (sM.mem.resolveAddr n).2.2 wildcardTag]), pc := s_mid1.pc + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
       refine ⟨h_sclean, ρt, n1 + 1, _, perms',
         [Val.Ptr (sM.mem.resolveAddr n).1 (sM.mem.resolveAddr n).2.1
-          (sM.mem.resolveAddr n).2.2 wildcardTag],
+          ((sM.mem.resolveAddr n).2.2 - (sM.mem.resolveAddr n).2.1) (sM.mem.resolveAddr n).2.2 wildcardTag],
         TagRenameIncr.refl ρt, h_wf_t,
         rfl, rfl, oseair_runN_trans h_srun h_run1,
         (by grind [emit]),
@@ -820,7 +822,7 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
         (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
-        ⟨⟨h_alloc.2.2 _, rfl, rfl, h_wf_t.2,
+        ⟨⟨h_alloc.2.2 _, rfl, rfl, rfl, h_wf_t.2,
           fun k _ => ⟨_, h_alloc.2.2 ((sM.mem.resolveAddr n).1 + k)⟩⟩, trivial⟩⟩
       · intro τ' loc' binding' h_env'
         obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=

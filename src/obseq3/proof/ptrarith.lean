@@ -86,7 +86,7 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
       cases v with
       | undef => rw [h_cell] at h_eval; simp at h_eval
       | word n => rw [h_cell] at h_eval; simp at h_eval
-      | ptrVal pb po ps pt =>
+      | ptrVal pb po pe ps pt =>
       rw [h_cell] at h_eval
       simp only at h_eval
       by_cases h_neg : ((po : Int) + delta * (blockSize σ : Int)) < 0
@@ -117,12 +117,13 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
         cases value' with
         | Undef => exact h_mvs.elim
         | Dat _ => exact h_mvs.elim
-        | Ptr pb2 po2 ps2 pt2 =>
-        obtain ⟨h_pb, h_po, h_ps, h_pt, h_prange⟩ := h_mvs
+        | Ptr pb2 po2 pe2 ps2 pt2 =>
+        obtain ⟨h_pb, h_po, h_pe, h_ps, h_pt, h_prange⟩ := h_mvs
         have h_pb2 : pb2 = pb := (h_id_a _ _ h_pb).symm
         subst h_pb2
         subst h_po
         subst h_ps
+        subst h_pe
         -- the READ: transport, then execute the offset
         obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
           sb_read_respects_PermSim h_spsim h_wf_t h_srt h_read_src
@@ -153,7 +154,7 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
           exact h_read_tgt
         have h_cell_tgt : oseair.Mem.find? s_mid1.mem
             (rs.allocBase + (rs.addr - rs.allocBase))
-            = some (Val.Ptr pb2 po2 ps2 pt2) := by
+            = some (Val.Ptr pb2 po2 pe2 ps2 pt2) := by
           rw [h_cancel, h_smem]
           exact h_find_tgt
         have h_run1 := runN_Assgn_PtrOffset_step compProg s_mid1
@@ -170,11 +171,11 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
                 (Register.R (CheckedCompilerM.run
                   (placeToRegChecked RefKind.Shared src) csA).nextReg)
                 (obseq.TyVal.PTy,
-                  [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2]),
+                  [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2]),
               pc := s_mid1.pc + 1 } csA :=
           LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
         refine ⟨h_sclean, ρt, n1 + 1, _, perms',
-          [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2],
+          [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2],
           TagRenameIncr.refl ρt, h_wf_t,
           rfl, rfl, oseair_runN_trans h_srun h_run1,
           (by grind [emit]),
@@ -185,7 +186,7 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
           (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
           RegMap.lookup_insert_self _ _ _,
           (by grind [emit]),
-          ⟨⟨h_pb, rfl, rfl, h_pt, h_prange⟩, trivial⟩⟩
+          ⟨⟨h_pb, rfl, rfl, rfl, h_pt, h_prange⟩, trivial⟩⟩
         · intro τ' loc' binding' h_env'
           obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
             h_ins loc' binding' h_env'
@@ -234,7 +235,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
       cases v with
       | undef => rw [h_cell] at h_eval; simp at h_eval
       | word n => rw [h_cell] at h_eval; simp at h_eval
-      | ptrVal pb po ps pt =>
+      | ptrVal pb po pe ps pt =>
       rw [h_cell] at h_eval
       simp only at h_eval
       by_cases h_neg : ((po : Int) + delta * (blockSize σ : Int)) < 0
@@ -283,12 +284,13 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
       cases value' with
       | Undef => exact h_mvs.elim
       | Dat _ => exact h_mvs.elim
-      | Ptr pb2 po2 ps2 pt2 =>
-      obtain ⟨h_pb, h_po, h_ps, h_pt, h_prange⟩ := h_mvs
+      | Ptr pb2 po2 pe2 ps2 pt2 =>
+      obtain ⟨h_pb, h_po, h_pe, h_ps, h_pt, h_prange⟩ := h_mvs
       have h_pb2 : pb2 = pb := (h_id_a _ _ h_pb).symm
       subst h_pb2
       subst h_po
       subst h_ps
+      subst h_pe
       -- BRIDGE 1S: the borrow is taken, read through, and retired
       obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
         sb_read_respects_PermSim h_spsim h_wf_t h_srt h_read_src
@@ -368,11 +370,11 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
           (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
             (rs.addr - rs.allocBase + pathOffset spath)
-            rs.allocSize s_mid1.perms.NextTag]))
+            (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]))
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) rs.allocBase
           (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize
           s_mid1.perms.NextTag :=
-        RegMap.lookup_insert_self _ _ _
+        PtrRegisterEntry.insert_self _ _ _ _ _ _ _
       have h_lt : rs.addr - rs.allocBase + pathOffset spath < rs.allocSize := by
         have h1 := Nat.not_lt.mp h_fit
         have h2 := h_sle
@@ -384,11 +386,11 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         exact h_rd1
       have h_cell_tgt : oseair.Mem.find? s_mid1.mem
           (rs.allocBase + (rs.addr - rs.allocBase + pathOffset spath))
-          = some (Val.Ptr pb2 po2 ps2 pt2) := by
+          = some (Val.Ptr pb2 po2 pe2 ps2 pt2) := by
         rw [← Nat.add_assoc, h_cancelS, h_smem]
         exact h_find_tgt
       have h_run2 := runN_Assgn_PtrOffset_step compProg
-        { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 }
+        { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 }
         (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
         (delta * (blockSize σ : Int))
         h_code2 h_bentry h_lt h_read2 h_cell_tgt h_neg
@@ -400,15 +402,15 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
             (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
             (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
               (rs.addr - rs.allocBase + pathOffset spath)
-              rs.allocSize s_mid1.perms.NextTag]))
+              (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]))
             (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
-            (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2]))
+            (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2]))
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
           = some (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
               (rs.addr - rs.allocBase + pathOffset spath)
-              rs.allocSize s_mid1.perms.NextTag]) := by
+              (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]) := by
         rw [RegMap.lookup_insert_ne _ h_regbv]
-        exact h_bentry
+        exact RegMap.lookup_insert_self _ _ _
       -- the exposure slides past the `Die`
       have h_die1' : MSB.die q2
           (rs.allocBase + (rs.addr - rs.allocBase + pathOffset spath))
@@ -416,19 +418,19 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         rw [← Nat.add_assoc, h_cancelS, h_bs]
         exact h_die1
       have h_run3 := runN_Die_step compProg
-        { s_mid1 with perms := q2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2]), pc := s_mid1.pc + 1 + 1 }
+        { s_mid1 with perms := q2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2]), pc := s_mid1.pc + 1 + 1 }
         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize (obseq.LayoutTy.PtrL σ))
-        h_code3 h_bentry2 h_die1'
+        h_code3 ⟨_, h_bentry2⟩ h_die1'
       have h_psim3 : PermSim ρt perms' q3 := h_psim2q
       -- the post-`Die` binding simulation: both temporaries are fresh
       have h_lbsB : LocalBindingSim ρa ρt sM.env
-          { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 } csA :=
+          { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
       have h_lbsV : LocalBindingSim ρa ρt sM.env
-          { s_mid1 with perms := q3, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
+          { s_mid1 with perms := q3, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_lbsB h_prb
           (Nat.le_trans h_sregmono (Nat.le_succ _)) rfl
-      refine ⟨h_sclean, ρt, _, _, perms', [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat ps2 pt2],
+      refine ⟨h_sclean, ρt, _, _, perms', [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2],
         TagRenameIncr.refl ρt, h_wf_t, rfl, rfl,
         oseair_runN_trans (oseair_runN_trans (oseair_runN_trans h_srun h_run1)
           h_run2) h_run3,
@@ -437,7 +439,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
-        ⟨⟨h_pb, rfl, rfl, h_pt, h_prange⟩, trivial⟩⟩
+        ⟨⟨h_pb, rfl, rfl, rfl, h_pt, h_prange⟩, trivial⟩⟩
       · intro τ' loc' binding' h_env'
         obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
           h_lbsV loc' binding' h_env'
@@ -639,8 +641,8 @@ theorem CompilerInv_step_ptrCast
 /-! ## `refSlice`: the one read-then-store rvalue that MINTS
 
 A slice retag reads the fat-pointer cell and then takes a fresh tag over
-the REST of its allocation (`size - offset`), which is why the read
-packages let the renaming grow.
+the pointer's own EXTENT (its `len · elemSize`; until 2026-09-23 the rest
+of its allocation), which is why the read packages let the renaming grow.
 
 It is also the one member with a non-empty `post`. The old `Rhs.BorrowRest` used
 to do both halves in a single instruction, which forced a projected
@@ -689,10 +691,10 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
       cases v with
       | undef => rw [h_cell] at h_eval; simp at h_eval
       | word n => rw [h_cell] at h_eval; simp at h_eval
-      | ptrVal pb po ps pt =>
+      | ptrVal pb po pe ps pt =>
       rw [h_cell] at h_eval
       simp only at h_eval
-      cases h_ref_src : MSB.ref perms' (pb + po) (ps - po) pt kind prot [] with
+      cases h_ref_src : MSB.ref perms' (pb + po) pe pt kind prot [] with
       | error e => rw [h_ref_src] at h_eval; simp at h_eval
       | ok pr2 =>
         obtain ⟨perms'', newTag⟩ := pr2
@@ -720,12 +722,13 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
         cases value' with
         | Undef => exact h_mvs.elim
         | Dat _ => exact h_mvs.elim
-        | Ptr pb2 po2 ps2 pt2 =>
-        obtain ⟨h_pb, h_po, h_ps, h_pt, h_prange⟩ := h_mvs
+        | Ptr pb2 po2 pe2 ps2 pt2 =>
+        obtain ⟨h_pb, h_po, h_pe, h_ps, h_pt, h_prange⟩ := h_mvs
         have h_pb2 : pb2 = pb := (h_id_a _ _ h_pb).symm
         subst h_pb2
         subst h_po
         subst h_ps
+        subst h_pe
         -- the READ transports, and BOTH emitted instructions are in the
         -- program: the `Load` at the fragment's first label, the mint at
         -- the second
@@ -763,12 +766,12 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
           exact h_read_tgt
         have h_cell_tgt : oseair.Mem.find? s_mid1.mem
             (rs.allocBase + (rs.addr - rs.allocBase))
-            = some (Val.Ptr pb2 po2 ps2 pt2) := by
+            = some (Val.Ptr pb2 po2 pe2 ps2 pt2) := by
           rw [h_cancel, h_smem]
           exact h_find_tgt
         have h_seq : oseair.readWordSeq s_mid1.mem
             (rs.allocBase + (rs.addr - rs.allocBase)) (obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
-            = [Val.Ptr pb2 po2 ps2 pt2] := by
+            = [Val.Ptr pb2 po2 pe2 ps2 pt2] := by
           show oseair.readWordSeq s_mid1.mem _ 1 = _
           simp [oseair.readWordSeq, h_cell_tgt]
         -- STEP 1: the Load, through the projection's temporary
@@ -776,7 +779,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             { s_mid1 with
               perms := p2,
               reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2]),
+                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
               pc := s_mid1.pc + 1 } := by
           have h := runN_Assgn_Load_ptr_step compProg s_mid1 (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
             sOut.result.reg (layoutToTyVal (obseq.LayoutTy.PtrL σ)) h_code1 h_sentry h_lt1 h_read2t
@@ -794,13 +797,13 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             { s_mid1 with
               perms := p2,
               reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2]),
+                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
               pc := s_mid1.pc + 1 } compProg = oseair.Result.Ok
             { s_mid1 with
               perms := q,
               reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                  ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                (obseq.TyVal.PTy, [Val.Ptr pb2 po2 ps2 p2.NextTag]),
+                  ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                (obseq.TyVal.PTy, [Val.Ptr pb2 po2 pe2 ps2 p2.NextTag]),
               pc := s_mid1.pc + 1 + 1 } :=
           runN_Assgn_Borrow_rest_step compProg _ (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) kind prot
             h_code2 (RegMap.lookup_insert_self _ _ _) h_ref_tgt
@@ -809,19 +812,19 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             { s_mid1 with
               perms := q,
               reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                  ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                (obseq.TyVal.PTy, [Val.Ptr pb2 po2 ps2 p2.NextTag]),
+                  ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                (obseq.TyVal.PTy, [Val.Ptr pb2 po2 pe2 ps2 p2.NextTag]),
               pc := s_mid1.pc + 1 + 1 } csA :=
           LocalBindingSim.insert_fresh_reg
             (s := { s_mid1 with
               perms := p2,
               reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2]),
+                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
               pc := s_mid1.pc + 1 })
             (LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl)
             h_prb h_sregmono rfl
         refine ⟨h_sclean, ρt.extend perms'.NextTag p2.NextTag, n1 + 1 + 1, _, perms'',
-          [Val.Ptr pb2 po2 ps2 p2.NextTag],
+          [Val.Ptr pb2 po2 pe2 ps2 p2.NextTag],
           h_incr_t, h_wf_t',
           rfl, rfl, oseair_runN_trans (oseair_runN_trans h_srun h_run1) h_run2,
           (by grind [emit]),
@@ -833,7 +836,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             List.length_nil]),
           RegMap.lookup_insert_self _ _ _,
           (by grind [emit]),
-          ⟨⟨h_pb, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩⟩
+          ⟨⟨h_pb, rfl, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩⟩
         · intro τ' loc' binding' h_env'
           obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
             (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_ins)
@@ -884,10 +887,10 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
       cases v with
       | undef => rw [h_cell] at h_eval; simp at h_eval
       | word n => rw [h_cell] at h_eval; simp at h_eval
-      | ptrVal pb po ps pt =>
+      | ptrVal pb po pe ps pt =>
       rw [h_cell] at h_eval
       simp only at h_eval
-      cases h_ref_src : MSB.ref perms' (pb + po) (ps - po) pt kind prot [] with
+      cases h_ref_src : MSB.ref perms' (pb + po) pe pt kind prot [] with
       | error e => rw [h_ref_src] at h_eval; simp at h_eval
       | ok pr2 =>
         obtain ⟨perms'', newTag⟩ := pr2
@@ -925,14 +928,15 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         cases value' with
         | Undef => exact h_mvs.elim
         | Dat _ => exact h_mvs.elim
-        | Ptr pb2 po2 ps2 pt2 =>
-        obtain ⟨h_pb, h_po, h_ps, h_pt, h_prange⟩ := h_mvs
+        | Ptr pb2 po2 pe2 ps2 pt2 =>
+        obtain ⟨h_pb, h_po, h_pe, h_ps, h_pt, h_prange⟩ := h_mvs
         have h_pb2 : pb2 = pb := (h_id_a _ _ h_pb).symm
         subst h_pb2
         subst h_po
         subst h_ps
+        subst h_pe
         have h_seq : oseair.readWordSeq s_mid1.mem (rs.addr + pathOffset spath)
-            (blockSize (obseq.LayoutTy.PtrL σ)) = [Val.Ptr pb2 po2 ps2 pt2] := by
+            (blockSize (obseq.LayoutTy.PtrL σ)) = [Val.Ptr pb2 po2 pe2 ps2 pt2] := by
           show oseair.readWordSeq s_mid1.mem _ 1 = _
           rw [h_smem]
           simp [oseair.readWordSeq, h_find_tgt]
@@ -954,14 +958,14 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
               reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg
                   (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
                   (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
-                    (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize
+                    (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize
                     s_mid1.perms.NextTag]))
-                (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 ps2 pt2]),
+                (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
               pc := s_mid1.pc + 1 + 1 + 1 }
           (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) kind prot
           h_code3 (RegMap.lookup_insert_self _ _ _) h_ref_tgt
         refine ⟨h_sclean, ρt.extend perms'.NextTag q3.NextTag, n1 + 1, _, perms'',
-          [Val.Ptr pb2 po2 ps2 q3.NextTag],
+          [Val.Ptr pb2 po2 pe2 ps2 q3.NextTag],
           h_incr_t, h_wf_t', rfl, rfl,
           oseair_runN_trans h_runR h_run3,
           (by simp only [emit] at h_prmR ⊢; exact h_prmR),
@@ -970,7 +974,7 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
           (by simp [emit] at h_pcR ⊢; omega),
           RegMap.lookup_insert_self _ _ _,
           (by simp only [emit] at h_vbelow ⊢; exact h_vbelow),
-          ⟨⟨h_pb, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩⟩
+          ⟨⟨h_pb, rfl, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩⟩
         refine LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t ?_
         refine LocalBindingSim.placeRegMap_congr (cs := csA)
           (by simp only [emit] at h_prmR ⊢; exact h_prmR) ?_

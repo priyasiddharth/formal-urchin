@@ -4,6 +4,33 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-23 — Pointers Carry an Extent
+
+A pointer value on both machines now has five fields: the allocation it
+has provenance over (base and size), where inside it the pointer points
+(offset), the tag, and a new extent, the number of cells the pointer
+claims from where it points. For a thin pointer that is the pointee's
+block size; for a slice it is the slice's length in cells. The slice
+retag now covers the extent, where it used to cover the rest of the
+allocation, and that is the whole semantic change. Allocation gives an
+extent equal to the block, a reference retag gives the pointee's size,
+a borrow gives the borrowed length, pointer arithmetic keeps the extent,
+and an integer cast reconstructs the rest of the allocation. The user's
+question that led here was why a sub-slice retag was coarser than
+Miri's; the answer was that the value had nowhere to keep the length,
+and this is that place. Sub-slices themselves still need the seam to
+produce narrowed pointers, which is the next step.
+
+In the proof the extent is threaded but never constrained, except where
+the value simulation says both machines store the same extent and where
+the slice mint reads it. A register's pointer entry became existential
+in the extent, because a place's register may hold a loaded pointer
+whose extent is whatever the program stored, and nothing a destination
+or source lowering does depends on it. Corpus verdicts unchanged, since
+every slice in the corpus is a whole allocation.
+
+---
+
 ## 2026-09-22 — `dealloc` Joins; the Proof-Core Gate Is Empty
 
 The last statement outside the theorem was `dealloc`. What made it

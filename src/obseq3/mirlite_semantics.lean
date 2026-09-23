@@ -35,7 +35,12 @@ end Env
 inductive MemValue where
 | undef
 | word  (value : Word)
-| ptrVal (base : Word) (offset : Word) (size : Word) (tag : Tag)
+-- `base`/`size` are the ALLOCATION the pointer has provenance over;
+-- `offset` is where it points inside it; `extent` is how many cells the
+-- pointer claims from there — the pointee's block size for a thin
+-- pointer, `len · elemSize` for a slice (2026-09-23: what a sub-slice
+-- retag covers; before, a slice's length was the rest of its allocation).
+| ptrVal (base : Word) (offset : Word) (extent : Word) (size : Word) (tag : Tag)
 deriving Repr, BEq, Inhabited
 
 abbrev MemMap := List (Word × MemValue)
@@ -136,7 +141,7 @@ def resolvePlace? (state : State M Γ) : Place Γ τ → Option PlaceRes
       | none => none
       | some ptrRes =>
           match state.mem.find? ptrRes.addr with
-          | some (.ptrVal base offset size tag) =>
+          | some (.ptrVal base offset _ size tag) =>
               some { addr := base + offset, tag := tag,
                      allocBase := base, allocSize := size }
           | _ => none
@@ -176,7 +181,7 @@ def resolvePlaceAcc (M : PermissionModel) (state : State M Γ) :
           | .error e => .error s!"read access failed: {e}"
           | .ok perms'' =>
               match state.mem.find? ptrRes.addr with
-              | some (.ptrVal base offset size tag) =>
+              | some (.ptrVal base offset _ size tag) =>
                   .ok ({ addr := base + offset, tag := tag,
                          allocBase := base, allocSize := size }, perms'')
               | _ => .error "deref of a non-pointer value"
@@ -351,7 +356,7 @@ def evalRExpr
           match M.own state.perms state.mem.addrStart units with
           | .error e => .err s!"heap allocation failed: {e}"
           | .ok (perms', tag) =>
-              .ok { values := [MemValue.ptrVal state.mem.addrStart 0 units tag]
+              .ok { values := [MemValue.ptrVal state.mem.addrStart 0 units units tag]
                     values_len := rfl
                     state := { state with mem := (allocate state.mem units).2,
                                           perms := perms' } }
@@ -399,18 +404,18 @@ def evalRExpr
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               match state.mem.find? resolved.addr with
-              | some (.ptrVal base offset size tag) =>
+              | some (.ptrVal base offset extent size tag) =>
                   let newOff : Int := (offset : Int) + delta * (blockSize σ : Int)
                   if newOff < 0 then
                     .err "pointer offset before the allocation base"
                   else
-                    .ok { values := [MemValue.ptrVal base newOff.toNat size tag]
+                    .ok { values := [MemValue.ptrVal base newOff.toNat extent size tag]
                           values_len := rfl
                           state := { state with perms := perms' } }
               | _ => .err "pointer offset of a non-pointer value"
   | .refSlice kind prot src =>
-      -- retag of slice data: the fat value's length is the rest of its
-      -- allocation (size - offset); a fresh tag over that runtime range
+      -- retag of slice data: a fresh tag over the fat value's own EXTENT
+      -- (its `len · elemSize`), a runtime range
       match resolvePlaceAcc M state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
@@ -424,12 +429,13 @@ def evalRExpr
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               match state.mem.find? resolved.addr with
-              | some (.ptrVal base offset size tag) =>
-                  let len := size - offset
-                  match M.ref perms' (base + offset) len tag kind prot [] with
+              | some (.ptrVal base offset extent size tag) =>
+                  -- the slice's own EXTENT (2026-09-23; before, the rest of
+                  -- the allocation, exact only for whole-allocation slices)
+                  match M.ref perms' (base + offset) extent tag kind prot [] with
                   | .error e => .err s!"retag failed: {e}"
                   | .ok (perms'', newTag) =>
-                      .ok { values := [MemValue.ptrVal base offset size newTag]
+                      .ok { values := [MemValue.ptrVal base offset extent size newTag]
                             values_len := rfl
                             state := { state with perms := perms'' } }
               | _ => .err "slice value is not a pointer"
@@ -447,7 +453,7 @@ def evalRExpr
           | .error e => .err s!"read access failed: {e}"
           | .ok perms' =>
               match state.mem.find? resolved.addr with
-              | some (.ptrVal base offset _ tag) =>
+              | some (.ptrVal base offset _ _ tag) =>
                   .ok { values := [MemValue.word (base + offset)]
                         values_len := rfl
                         state := { state with perms := M.expose perms' tag } }
@@ -468,7 +474,9 @@ def evalRExpr
               match state.mem.find? resolved.addr with
               | some (.word n) =>
                   let (base, off, size) := state.mem.resolveAddr n
-                  .ok { values := [MemValue.ptrVal base off size wildcardTag]
+                  -- a thin pointer from an integer: its extent is the rest
+                  -- of the allocation it landed in
+                  .ok { values := [MemValue.ptrVal base off (size - off) size wildcardTag]
                         values_len := rfl
                         state := { state with perms := perms' } }
               | _ => .err "int-to-ptr cast of a non-integer value"
@@ -495,6 +503,7 @@ def evalRExpr
               .ok {
                 values := [MemValue.ptrVal resolved.allocBase
                              (resolved.addr - resolved.allocBase)
+                             (blockSize σ)
                              resolved.allocSize
                              freshTag]
                 values_len := rfl
@@ -593,7 +602,7 @@ def stepStmt
       | .err e => .err s!"dealloc pointer read failed: {e}"
       | .ok out =>
           match out.values with
-          | [.ptrVal base offset size tag] =>
+          | [.ptrVal base offset _ size tag] =>
               if offset != 0 then
                 .err "deallocation of a pointer that is not the beginning of its allocation"
               else

@@ -108,7 +108,7 @@ theorem ListRel_word_inv {ρa : AddrRenameMap} {ρt : TagRenameMap} {v : Word} {
       | nil =>
           cases x with
           | Dat v' => obtain ⟨h1, -⟩ := h; simp only [MemValSim] at h1; rw [h1]
-          | Ptr b o s t => exact absurd h.1 (by simp [MemValSim])
+          | Ptr b o e s t => exact absurd h.1 (by simp [MemValSim])
           | Undef => exact absurd h.1 (by simp [MemValSim])
 
 /-! ## The shared closing -/
@@ -142,7 +142,7 @@ theorem alloc_step_bundle {Γ : Ctx} (τ : LayoutTy) (n : Nat) (compProg : oseai
           perms := tgtPerms,
           reg := oseair.RegMap.insert sR1.reg (Register.R cs1.nextReg)
             (obseq.TyVal.PTy, [Val.Ptr sR1.mem.addrStart 0
-              (n * obseq.typeSize (layoutToTyVal τ)) sR1.perms.NextTag]),
+              (n * obseq.typeSize (layoutToTyVal τ)) (n * obseq.typeSize (layoutToTyVal τ)) sR1.perms.NextTag]),
           pc := sR1.pc + 1 }) :
     ∃ (ρa' : AddrRenameMap) (ρt' : TagRenameMap) (sR : oseair.State MSB) (vals : List Val),
       AddrRenameIncr ρa ρa' ∧
@@ -160,7 +160,7 @@ theorem alloc_step_bundle {Γ : Ctx} (τ : LayoutTy) (n : Nat) (compProg : oseai
       StoreStep compProg sR (emit { cs1 with nextReg := cs1.nextReg + 1 } [instr]).nextReg
         (fun d => Instr.RStore obseq.TyVal.PTy (Register.R cs1.nextReg) d) vals ∧
       ListRel (MemValSim ρa' ρt')
-        [mirlite.MemValue.ptrVal memS.addrStart 0 (n * blockSize τ) tagS] vals := by
+        [mirlite.MemValue.ptrVal memS.addrStart 0 (n * blockSize τ) (n * blockSize τ) tagS] vals := by
   -- §1 the target's `own`, through `PermSim`
   obtain ⟨tgtPerms, h_own_tgt, h_tagS_eq, h_incr_t, h_wf_t', h_tbd', h_psim'⟩ :=
     sb_own_respects_PermSim h_psim h_wf_t h_tbd h_own_src
@@ -177,7 +177,7 @@ theorem alloc_step_bundle {Γ : Ctx} (τ : LayoutTy) (n : Nat) (compProg : oseai
       = some sR1.perms.NextTag := TagRenameMap.extend_self _ _ _
   refine ⟨ρa.extendBlock memS.addrStart (n * blockSize τ),
     ρt.extend permsS.NextTag sR1.perms.NextTag, _,
-    [Val.Ptr sR1.mem.addrStart 0 (n * obseq.typeSize (layoutToTyVal τ)) sR1.perms.NextTag],
+    [Val.Ptr sR1.mem.addrStart 0 (n * obseq.typeSize (layoutToTyVal τ)) (n * obseq.typeSize (layoutToTyVal τ)) sR1.perms.NextTag],
     h_incr_a, h_id_a', h_incr_t, h_wf_t',
     by simp [blockSize, obseq.layoutSize], h_run, ?_, h_psim', h_tbd', ?_, ?_, ?_, ?_, ?_⟩
   · -- the locals: renames grow, the fresh register is above every mapped one
@@ -195,7 +195,7 @@ theorem alloc_step_bundle {Γ : Ctx} (τ : LayoutTy) (n : Nat) (compProg : oseai
     · exact RegMap.lookup_insert_self _ _ _
     · simp only [emit, RegisterBelow]
       omega
-  · refine ⟨⟨?_, rfl, h_units, h_rt_new, ?_⟩, trivial⟩
+  · refine ⟨⟨?_, rfl, h_units, h_units, h_rt_new, ?_⟩, trivial⟩
     · rw [h_addr_eq]
       exact AddrRenameMap.extendBlock_base _ _ _
     · intro k hk

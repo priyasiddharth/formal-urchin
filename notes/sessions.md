@@ -4195,3 +4195,35 @@ the roots now quantify over every `Prog Γ`. Audit unchanged.
   field on `xfail-model` entries (carried over).
 - The paper's "core fragment" table row (pldi27, the other session's
   file) names `CoreRhs`/`CoreStmt`/`CoreProg`, which no longer exist.
+
+## 2026-09-23 — pointer values carry an extent
+
+**Theme:** the user asked why `&s[2..5]`'s retag covered the rest of
+the allocation (answer: the value had no length; sub-slices never reach
+the model because `Index<Range>` is unshimmed), then why not narrow
+`size` (answer: conflates provenance with metadata — dealloc, offset
+guard, exposed casts), then "add extent to the ptr: base, offset,
+extent, size".
+
+**Key outputs:** `ptrVal`/`Val.Ptr` five fields; `refSlice`/`Borrow
+none` retag the extent; `MemValSim` relates extents;
+`PtrRegisterEntry` existential in the extent (`.insert_self`);
+`runN_Assgn_Borrow_rest_step` takes the register value; ~200 proof
+sites migrated across 11 files. Notes: durable
+pointer-values-carry-an-extent; resolved-address-vs-pointer-offset
+updated; journal; dev log.
+
+**Critical corrections:** none.
+
+**Status:** complete for the representation; sub-slice PRODUCTION is
+open. Audit 3 axioms / 0 sorries; units 17/17 + 116/116; corpus
+93/0/43; differential 93 matched.
+
+**Next-session pickup candidates:**
+- An `Index<Range>` shim at the seam producing `base + lo` with extent
+  `(hi − lo) · elemSize` (a `ptrOffset` variant or new rvalue), then the
+  three "slices" corpus entries.
+- `box-cell-alias` loader typing gap; `divergence: stricter|laxer`
+  field on `xfail-model` entries (carried over).
+- The paper's fragment table row (other session's file) names the
+  deleted `CoreRhs`/`CoreStmt`/`CoreProg`.
