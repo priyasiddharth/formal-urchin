@@ -121,6 +121,7 @@ def g5_compiler_total : IO Unit := do
        .assign x2 (.exposeAddr p2),
        .assign p2 (.fromExposed x2),
        .assign p2 (.ptrOffset p2 0),
+       .assign x2 (.binOp .add x2 x2),
        .assign x2 .uninit,
        .dealloc p2,
        .halt] with
@@ -2345,6 +2346,57 @@ def g14_paper_running_example : IO Unit :=
 def d92_paper_running_example : IO Unit :=
   expectDiff ΓP paperProg .ok "d92 the paper's running example"
 
+
+/-- `binOp` compiles to copy's two exposed reads (Load; Load), a
+    register-only `BinOp`, and the store. -/
+def g15_binop : IO Unit :=
+  expectCode ΓA
+    [.assign xA (.constInit 3),
+     .assign tA (.constInit 4),
+     .assign xA (.binOp .add xA tA),
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
+     Instr.CStore natTy [Val.Dat 3] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc natTy),
+     Instr.CStore natTy [Val.Dat 4] (Register.R 1),
+     Instr.Assgn (Register.R 2) (Rhs.Load natTy (Register.R 0)),
+     Instr.Assgn (Register.R 3) (Rhs.Load natTy (Register.R 1)),
+     Instr.Assgn (Register.R 4) (Rhs.BinOp .add (Register.R 2) (Register.R 3)),
+     Instr.RStore natTy (Register.R 4) (Register.R 0),
+     Instr.Halt]
+    "g15 binOp"
+
+/-- Positive: an add, then a comparison feeding a guard; both machines
+    take the guard. -/
+def d98_binop_add_then_guard : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 3),
+     .assign tA (.constInit 4),
+     .assign xA (.binOp .add xA tA),
+     .assign tA (.binOp .eq xA tA),
+     .assignIf tA 0 xA (.constInit 9),
+     .assign tA (.copy xA)]
+    .ok "d98 binOp add then guard"
+
+/-- Negative: a `binOp` operand that was never written is a typed read of
+    uninitialised memory — UB at the same statement on both machines. -/
+def d99_binop_uninit_operand : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 3),
+     .assign tA .uninit,
+     .assign xA (.binOp .add xA tA)]
+    (.ub 2) "d99 binOp uninit operand"
+
+/-- Positive: `sub` truncates at zero (unbounded words), on both machines. -/
+def d100_binop_sub_truncates : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 3),
+     .assign tA (.constInit 5),
+     .assign xA (.binOp .sub xA tA),
+     .assign tA (.binOp .eq xA tA),
+     .assignIf xA 0 tA (.constInit 1)]
+    .ok "d100 binOp sub truncates"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2461,7 +2513,11 @@ def allTests : List (IO Unit) := [
   d89_ref_two_mothers,
   d90_ref_projderef_dst_two_mothers,
   d91_uninit_wide_and_through_ptr,
-  d92_paper_running_example]
+  d92_paper_running_example,
+  g15_binop,
+  d98_binop_add_then_guard,
+  d99_binop_uninit_operand,
+  d100_binop_sub_truncates]
 
 def runAll : IO Unit := do
   allTests.forM id

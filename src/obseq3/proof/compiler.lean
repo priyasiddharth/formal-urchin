@@ -440,6 +440,9 @@ theorem CompilerInv_step
         | alloc len =>
             exact CompilerInv_step_constStore compProg (alloc_valuePkg len compProg)
               h_comp h_inv h_get h_step
+        | binOp op a b =>
+            exact CompilerInv_step_constStore compProg (binOp_valuePkg op a b compProg)
+              h_comp h_inv h_get h_step
         | ref kind prot mask src =>
             exact CompilerInv_step_ref kind prot mask compProg h_comp h_inv h_get h_step
         | ptrCast src =>

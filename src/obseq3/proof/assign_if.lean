@@ -5,6 +5,7 @@ import obseq3.proof.casts
 import obseq3.proof.ptrarith
 import obseq3.proof.protectors
 import obseq3.proof.alloc
+import obseq3.proof.binop
 
 /-! # `assignIf`: a guarded assign
 
@@ -322,6 +323,9 @@ theorem assignLeaf_all {τ : LayoutTy} (compProg : oseair.Prog)
   | alloc len =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_constStore compProg (alloc_valuePkg len compProg) h_invAt hF h_step
+  | binOp op a b =>
+      intro _ _ _ _ _ _ _ _ h_invAt hF h_step
+      exact assignStep_constStore compProg (binOp_valuePkg op a b compProg) h_invAt hF h_step
   | ref kind prot mask src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_ref kind prot mask compProg h_invAt hF h_step
@@ -437,7 +441,8 @@ theorem CompilerInv_step_assignIf {τ : LayoutTy}
       h_inv1.psim h_inv1.pc output h_eval'
   rw [← h_gfr] at h_prmR h_rest
   obtain ⟨ρt2, nR, sR, perms₂, vals, h_incrT2, h_wfT2, h_ost, h_vlen, h_runR, h_regmono,
-    h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vreg, h_valsRel⟩ := h_rest h_codeR
+    h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vreg, h_valsRel, h_vbelow, h_frameR⟩ :=
+    h_rest h_codeR
   rw [← h_r] at h_vreg
   -- the discriminant is a word
   split at h_step

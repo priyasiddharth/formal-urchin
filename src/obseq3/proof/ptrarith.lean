@@ -102,7 +102,7 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
         -- the source mother
         obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
           h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
-          h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
+          h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
           h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
             rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
         have h_sOut_eq : sOut = sOut0 := by
@@ -186,7 +186,11 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
           (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
           RegMap.lookup_insert_self _ _ _,
           (by grind [emit]),
-          ⟨⟨h_pb, rfl, rfl, rfl, h_pt, h_prange⟩, trivial⟩⟩
+          ⟨⟨h_pb, rfl, rfl, rfl, h_pt, h_prange⟩, trivial⟩,
+          (by
+            intro r h_below
+            rw [RegMap.lookup_insert_ne _ (fresh_reg_ne h_below h_sregmono)]
+            exact h_sframe r h_below)⟩
         · intro τ' loc' binding' h_env'
           obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
             h_ins loc' binding' h_env'
@@ -252,7 +256,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
       -- the source mother, on the chain BASE
       obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
-        h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
+        h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
         h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
           rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
       have h_cancelS := resolvedAddr_cancel h_sle
@@ -439,7 +443,13 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
-        ⟨⟨h_pb, rfl, rfl, rfl, h_pt, h_prange⟩, trivial⟩⟩
+        ⟨⟨h_pb, rfl, rfl, rfl, h_pt, h_prange⟩, trivial⟩,
+        (by
+          intro r h_below
+          rw [RegMap.lookup_insert_ne _ (fresh_reg_ne h_below
+                (Nat.le_trans h_sregmono (Nat.le_succ _))),
+            RegMap.lookup_insert_ne _ (fresh_reg_ne h_below h_sregmono)]
+          exact h_sframe r h_below)⟩
       · intro τ' loc' binding' h_env'
         obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
           h_lbsV loc' binding' h_env'
@@ -533,13 +543,13 @@ theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
     intro sOut0 h_sval0 h_instS h_instD
     simp only [List.append_nil] at h_instD
     obtain ⟨h_sclean, n1, s_mid1, p2, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
-      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
+      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel, h_frameR⟩ :=
       copy_chainsrc_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb
         h_sms h_psim h_pc h_sres h_fit h_read_src h_init h_sval0 h_instS h_instD
     exact ⟨h_sclean, ρt, n1 + 1, _, perms₂, _, TagRenameIncr.refl ρt, h_wf_t, rfl,
       (by rw [oseair_readWordSeq_length]; rfl),
       h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
-      RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel⟩
+      RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel, h_frameR⟩
 
 
 /-- **The `ptrCast` read package**, projected source at a nonzero offset:
@@ -584,14 +594,14 @@ theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
     intro sOut0 h_sval0 sOutP h_regP h_clP h_instS h_instCS
     simp only [List.append_nil] at h_instCS
     obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
-      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
+      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel, h_frameR⟩ :=
       copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
         h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_init h_sval0 h_regP h_clP
         h_instS h_instCS
     exact ⟨h_sclean, ρt, n1, _, perms₂, _, TagRenameIncr.refl ρt, h_wf_t, rfl,
       (by rw [oseair_readWordSeq_length]; rfl),
       h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
-      RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel⟩
+      RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel, h_frameR⟩
 
 /-- The mirlite step of a `ptrCast` assignment does not see the difference
     between a source place and its flattening. -/
@@ -707,7 +717,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
         -- the source mother
         obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
           h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
-          h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
+          h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
           h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
             rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
         have h_sOut_eq : sOut = sOut0 := by
@@ -836,7 +846,12 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             List.length_nil]),
           RegMap.lookup_insert_self _ _ _,
           (by grind [emit]),
-          ⟨⟨h_pb, rfl, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩⟩
+          ⟨⟨h_pb, rfl, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩,
+          (by
+            intro r h_below
+            rw [RegMap.lookup_insert_ne _ (fresh_reg_ne h_below h_sregmono),
+              RegMap.lookup_insert_ne _ (fresh_reg_ne h_below h_sregmono)]
+            exact h_sframe r h_below)⟩
         · intro τ' loc' binding' h_env'
           obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
             (LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t h_ins)
@@ -907,7 +922,7 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
           (((((EmittedAt.nil _).setNextReg _).snoc _).setNextReg _).snoc _)
         have h_instCS3 := h_instCS.mono (emit_append_state_incr _ _ _)
         obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR,
-          h_psimR, h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
+          h_psimR, h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel, h_frameR⟩ :=
           copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
             h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src
             (by show (mirlite.readWordSeq sM.mem _ 1).any _ = false
@@ -940,7 +955,7 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
           show oseair.readWordSeq s_mid1.mem _ 1 = _
           rw [h_smem]
           simp [oseair.readWordSeq, h_find_tgt]
-        rw [h_seq] at h_runR h_lbsR
+        rw [h_seq] at h_runR h_lbsR h_frameR
         -- the mint, after the `Die`
         have h_code3 : compProg (s_mid1.pc + 1 + 1 + 1)
             = some (Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Rhs.Borrow kind prot [] none (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) 0)) := by
@@ -974,7 +989,13 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
           (by simp [emit] at h_pcR ⊢; omega),
           RegMap.lookup_insert_self _ _ _,
           (by simp only [emit] at h_vbelow ⊢; exact h_vbelow),
-          ⟨⟨h_pb, rfl, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩⟩
+          ⟨⟨h_pb, rfl, rfl, rfl, TagRenameMap.extend_self _ _ _, h_prange⟩, trivial⟩,
+          (by
+            intro r h_below
+            rw [RegMap.lookup_insert_ne _ (fresh_reg_ne h_below (Nat.le_trans
+                  (CheckedCompilerM.incr (placeToRegChecked RefKind.Shared B) csA).nextReg_le
+                  (Nat.le_succ _)))]
+            exact h_frameR r h_below)⟩
         refine LocalBindingSim.rename_mono (AddrRenameIncr.refl ρa) h_incr_t ?_
         refine LocalBindingSim.placeRegMap_congr (cs := csA)
           (by simp only [emit] at h_prmR ⊢; exact h_prmR) ?_

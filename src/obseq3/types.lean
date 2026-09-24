@@ -12,6 +12,26 @@ abbrev typeSizeList : List TyVal → Nat := obseq.typeSizeList
 abbrev layoutSize : LayoutTy → Nat := obseq.layoutSize
 abbrev layoutSizeList : List LayoutTy → Nat := obseq.layoutSizeList
 
+/-- Word arithmetic and comparison, on unbounded `Nat` words (2026-09-24):
+    `sub` truncates at 0, `add`/`mul` never overflow, comparisons yield
+    0/1. Fixed-width (modulo `2^w`, two's complement) was considered and
+    declined; a Rust overflow is only observable on paths where Miri
+    panics, which the conformance certificate rejects. -/
+inductive BinOp where
+| add | sub | mul | lt | le | gt | ge | eq | ne
+deriving Repr, BEq, DecidableEq, Inhabited
+
+def evalBinOp : BinOp → Word → Word → Word
+  | .add, a, b => a + b
+  | .sub, a, b => a - b
+  | .mul, a, b => a * b
+  | .lt, a, b => if a < b then 1 else 0
+  | .le, a, b => if a ≤ b then 1 else 0
+  | .gt, a, b => if a > b then 1 else 0
+  | .ge, a, b => if a ≥ b then 1 else 0
+  | .eq, a, b => if a == b then 1 else 0
+  | .ne, a, b => if a != b then 1 else 0
+
 def blockSize (layout : LayoutTy) : Nat :=
   layoutSize layout
 

@@ -81,7 +81,11 @@ def ReadPkgLowered {Γ : Ctx} {τs τ : LayoutTy} (compProg : oseair.Prog)
         sR.pc = (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)] ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))).nextLabel ∧
         oseair.RegMap.lookup sR.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) = some (layoutToTyVal τ, vals) ∧
         RegisterBelow (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg + 1 } ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (mk sOut0.result.reg)] ++ post (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg))).nextReg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) ∧
-        ListRel (MemValSim ρa ρt') output.values vals
+        ListRel (MemValSim ρa ρt') output.values vals ∧
+        -- the read writes only FRESH registers: everything the caller
+        -- held below its own watermark survives (a second read's operand)
+        (∀ r, RegisterBelow csA.nextReg r →
+          oseair.RegMap.lookup sR.reg r = oseair.RegMap.lookup sA.reg r)
 
 def ReadPkgProjOffset {Γ : Ctx} {τs σs τ : LayoutTy} (compProg : oseair.Prog)
     (rhs : RExpr Γ τ) (B : Place Γ σs) (spath : PathTo σs τs) (mk : Register → Rhs)
@@ -125,7 +129,11 @@ def ReadPkgProjOffset {Γ : Ctx} {τs σs τ : LayoutTy} (compProg : oseair.Prog
         sR.pc = (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)] ++ post (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)))).nextLabel ∧
         oseair.RegMap.lookup sR.reg (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) = some (layoutToTyVal τ, vals) ∧
         RegisterBelow (emit { (emit { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 } [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (borrowRhs RefKind.Shared (blockSize τs) sOut0.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 } ([Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (mk (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)), Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize τs)] ++ post (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)))).nextReg (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) ∧
-        ListRel (MemValSim ρa ρt') output.values vals
+        ListRel (MemValSim ρa ρt') output.values vals ∧
+        -- the read writes only FRESH registers: everything the caller
+        -- held below its own watermark survives (a second read's operand)
+        (∀ r, RegisterBelow csA.nextReg r →
+          oseair.RegMap.lookup sR.reg r = oseair.RegMap.lookup sA.reg r)
 
 
 
@@ -251,7 +259,14 @@ theorem copy_chainsrc_read
         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) ∧
       ListRel (MemValSim ρa ρt)
         (mirlite.readWordSeq sM.mem rs.addr (blockSize τ))
-        (oseair.readWordSeq s_mid1.mem rs.addr (blockSize τ)) := by
+        (oseair.readWordSeq s_mid1.mem rs.addr (blockSize τ)) ∧
+      -- the whole read writes only FRESH registers: the source lowering
+      -- (the mother's frame) and the `Load`'s own temporary
+      (∀ r, RegisterBelow csA.nextReg r →
+        oseair.RegMap.lookup (oseair.RegMap.insert s_mid1.reg
+          (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+          (layoutToTyVal τ, (oseair.readWordSeq s_mid1.mem rs.addr (blockSize τ)))) r
+          = oseair.RegMap.lookup sA.reg r) := by
   -- the source mother
   obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
     h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
@@ -316,7 +331,11 @@ theorem copy_chainsrc_read
     h_smem, h_spc,
     (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
     (by grind [emit]),
-    (by rw [h_smem]; exact readWordSeq_sim h_id_a h_sms (blockSize τ) rs.addr)⟩
+    (by rw [h_smem]; exact readWordSeq_sim h_id_a h_sms (blockSize τ) rs.addr),
+    (by
+      intro r h_below
+      rw [RegMap.lookup_insert_ne _ (fresh_reg_ne h_below h_sregmono)]
+      exact h_sframe r h_below)⟩
   -- the post-Load LocalBindingSim: the fresh temp is above every mapped register
   have h_ins : LocalBindingSim ρa ρt sM.env
       { s_mid1 with
@@ -463,7 +482,17 @@ theorem copy_projsrc_offset_read
       ListRel (MemValSim ρa ρt)
         (mirlite.readWordSeq sM.mem (rs.addr + pathOffset spath) (blockSize τ))
         (oseair.readWordSeq s_mid1.mem (rs.addr + pathOffset spath)
-          (blockSize τ)) := by
+          (blockSize τ)) ∧
+      -- the whole read writes only FRESH registers: the base lowering
+      -- (the mother's frame), the projection's borrow and the `Load`
+      (∀ r, RegisterBelow csA.nextReg r →
+        oseair.RegMap.lookup (oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg
+            (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
+            (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath)
+              (blockSize τ) rs.allocSize s_mid1.perms.NextTag]))
+          (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
+          (layoutToTyVal τ, (oseair.readWordSeq s_mid1.mem (rs.addr + pathOffset spath) (blockSize τ)))) r
+          = oseair.RegMap.lookup sA.reg r) := by
   -- the source mother, on the chain BASE
   obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
     h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
@@ -653,7 +682,13 @@ theorem copy_projsrc_offset_read
     (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
     (by grind [emit]),
     (by rw [h_smem]
-        exact readWordSeq_sim h_id_a h_sms (blockSize τ) _)⟩
+        exact readWordSeq_sim h_id_a h_sms (blockSize τ) _),
+    (by
+      intro r h_below
+      rw [RegMap.lookup_insert_ne _ (fresh_reg_ne h_below
+            (Nat.le_trans h_sregmono (Nat.le_succ _))),
+        RegMap.lookup_insert_ne _ (fresh_reg_ne h_below h_sregmono)]
+      exact h_sframe r h_below)⟩
   intro τ' loc' binding' h_env'
   obtain ⟨reg', base', tag', h_pi', h_entry', h_ra', h_rt', h_nw', h_dom'⟩ :=
     h_lbsV loc' binding' h_env'
@@ -703,7 +738,7 @@ theorem ValuePkg.of_readPkgLowered
   intro h_code
   obtain ⟨h_sclean, ρt', nR, sR, perms₂, vals, h_incrT, h_wfT, h_ost, h_vlen,
     h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR,
-    h_vbelow, h_valsRel⟩ :=
+    h_vbelow, h_valsRel, h_frameR⟩ :=
     h_pkg' sOut0 h_sval0
       (h_code.mono (StateIncr.trans (freshReg_state_incr _) (emit_state_incr _ _)))
       h_code
@@ -752,13 +787,13 @@ theorem copy_readpkg_lowered {τ : LayoutTy} {src : Place Γ τ}
     intro sOut0 h_sval0 h_instS h_instD
     simp only [List.append_nil] at h_instD
     obtain ⟨h_sclean, n1, s_mid1, p2, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
-      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
+      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel, h_frameR⟩ :=
       copy_chainsrc_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb
         h_sms h_psim h_pc h_sres h_fit h_read_src h_init h_sval0 h_instS h_instD
     exact ⟨h_sclean, ρt, n1 + 1, _, perms₂, _, TagRenameIncr.refl ρt, h_wf_t, rfl,
       (by rw [oseair_readWordSeq_length]),
       h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
-      RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel⟩
+      RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel, h_frameR⟩
 
 /-- Every projected-source read package is a value package too: the
     projection's `Borrow`, the rvalue's instruction and the `Die` that
@@ -801,7 +836,7 @@ theorem ValuePkg.of_readPkgProjOffset
   rw [h_prun] at h_code
   obtain ⟨h_sclean, ρt', nR, sR, perms₂, vals, h_incrT, h_wfT, h_ost, h_vlen,
     h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR,
-    h_vbelow, h_valsRel⟩ :=
+    h_vbelow, h_valsRel, h_frameR⟩ :=
     h_pkg' sOut0 h_sval0 sOutP h_regP h_clP
       (by
         refine h_code.mono ?_
@@ -867,7 +902,14 @@ def ReadRegPkg {Γ : Ctx} {σ τ : LayoutTy} (compProg : oseair.Prog)
           oseair.RegMap.lookup sR.reg (Register.R (CheckedCompilerM.run
             (placeToRegChecked RefKind.Shared src) csA).nextReg)
             = some (layoutToTyVal τ, vals) ∧
-          ListRel (MemValSim ρa ρt') output.values vals)
+          ListRel (MemValSim ρa ρt') output.values vals ∧
+          RegisterBelow (CheckedCompilerM.run (compileRExprPreChecked rhs) csA).nextReg
+            (Register.R (CheckedCompilerM.run
+              (placeToRegChecked RefKind.Shared src) csA).nextReg) ∧
+          -- only FRESH registers were written: a register the caller held
+          -- below its own watermark (a first operand) survives the read
+          (∀ r, RegisterBelow csA.nextReg r →
+            oseair.RegMap.lookup sR.reg r = oseair.RegMap.lookup sA.reg r))
 
 theorem ReadRegPkg.of_readPkgLowered
     {σ τ : LayoutTy} {rhs : RExpr Γ τ} {src : Place Γ σ} {mk : Register → Rhs} {post : Register → List Instr}
@@ -891,13 +933,14 @@ theorem ReadRegPkg.of_readPkgLowered
   intro h_code
   obtain ⟨h_sclean, ρt', nR, sR, perms₂, vals, h_incrT, h_wfT, h_ost, h_vlen,
     h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR,
-    h_vbelow, h_valsRel⟩ :=
+    h_vbelow, h_valsRel, h_frameR⟩ :=
     h_pkg' sOut0 h_sval0
       (h_code.mono (StateIncr.trans (freshReg_state_incr _) (emit_state_incr _ _)))
       h_code
   simp only [csCleanup, h_sclean, List.append_nil]
   exact ⟨ρt', nR, sR, perms₂, vals, h_incrT, h_wfT, h_ost, h_vlen,
-    h_runR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR, h_valsRel⟩
+    h_runR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR, h_valsRel,
+    h_vbelow, h_frameR⟩
 
 theorem ReadRegPkg.of_readPkgProjOffset
     {σs τs τ : LayoutTy} {rhs : RExpr Γ τ} {B : Place Γ σs} {spath : PathTo σs τs}
@@ -932,7 +975,7 @@ theorem ReadRegPkg.of_readPkgProjOffset
   rw [h_prun] at h_code
   obtain ⟨h_sclean, ρt', nR, sR, perms₂, vals, h_incrT, h_wfT, h_ost, h_vlen,
     h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR,
-    h_vbelow, h_valsRel⟩ :=
+    h_vbelow, h_valsRel, h_frameR⟩ :=
     h_pkg' sOut0 h_sval0 sOutP h_regP h_clP
       (by
         refine h_code.mono ?_
@@ -945,7 +988,8 @@ theorem ReadRegPkg.of_readPkgProjOffset
     List.reverse_cons, List.map_cons, List.map_nil, List.cons_append]
   csnorm at h_vregR h_vbelow h_prmR h_regmonoR h_lbsR h_pcR ⊢
   exact ⟨ρt', nR, sR, perms₂, vals, h_incrT, h_wfT, h_ost, h_vlen,
-    h_runR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR, h_valsRel⟩
+    h_runR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vregR, h_valsRel,
+    h_vbelow, h_frameR⟩
 
 /-- copy's projected-source read package, as an instance of the generic one. -/
 theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : PathTo σs τ}
@@ -983,14 +1027,14 @@ theorem copy_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs} {spath : 
     intro sOut0 h_sval0 sOutP h_regP h_clP h_instS h_instCS
     simp only [List.append_nil] at h_instCS
     obtain ⟨h_sclean, n1, s_mid1, q3, h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR,
-      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel⟩ :=
+      h_tbdR, h_smem, h_spc, h_pcR, h_vbelow, h_rel, h_frameR⟩ :=
       copy_projsrc_offset_read compProg h_slower sM sA csA h_id_a h_wf_t h_tbd
         h_lbs h_prb h_sms h_psim h_pc h_sres h_fit h_read_src h_init h_sval0 h_regP h_clP
         h_instS h_instCS
     exact ⟨h_sclean, ρt, n1, _, perms₂, _, TagRenameIncr.refl ρt, h_wf_t, rfl,
       (by rw [oseair_readWordSeq_length]),
       h_runR, h_prmR, h_regmonoR, h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR,
-      RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel⟩
+      RegMap.lookup_insert_self _ _ _, h_vbelow, h_rel, h_frameR⟩
 
 
 

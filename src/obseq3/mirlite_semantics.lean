@@ -360,6 +360,24 @@ def evalRExpr
                     values_len := rfl
                     state := { state with mem := (allocate state.mem units).2,
                                           perms := perms' } }
+  | .binOp op a b =>
+      -- two copy reads in sequence (the second in the state the first
+      -- left), then the word; uninitialised operands are UB via `evalCopy`
+      match evalCopy M state a with
+      | .err e => .err e
+      | .ok out1 =>
+          match out1.values with
+          | [.word x] =>
+              match evalCopy M out1.state b with
+              | .err e => .err e
+              | .ok out2 =>
+                  match out2.values with
+                  | [.word y] =>
+                      .ok { values := [MemValue.word (evalBinOp op x y)]
+                            values_len := rfl
+                            state := out2.state }
+                  | _ => .err "binOp operand is not a concrete word"
+          | _ => .err "binOp operand is not a concrete word"
   | .uninit =>
       .ok { values := List.replicate (blockSize τ) MemValue.undef
             values_len := List.length_replicate

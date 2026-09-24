@@ -324,6 +324,19 @@ def t17_junk_sized_pointer_copy : IO Unit := do
   expectErr (stepStmt M junk (.assign yK (.copy (.deref pK))))
     "t17 junk-sized copy" "out-of-bounds range"
 
+
+/-- `binOp`: two copy reads then the word; `sub` truncates at zero. -/
+def t18_binop_words : IO Unit := do
+  let s0 ← expectOk (run ΓK [
+    .assign xK (.constInit 3),
+    .assign yK (.constInit 5),
+    .assign xK (.binOp .sub xK yK),
+    .assign yK (.binOp .lt xK yK)]) "t18 binOp"
+  -- locals are placed in first-write order: x at 0, y at 1 (p is never written)
+  match s0.mem.find? 0, s0.mem.find? 1 with
+  | some (.word 0), some (.word 1) => pure ()
+  | a, b => throw (IO.userError s!"t18: expected x = 0, y = 1, got {reprStr a} {reprStr b}")
+
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
   t2_raw_const_is_read_only,
@@ -341,7 +354,8 @@ def allTests : List (IO Unit) := [
   t14_deref_read_disables_sibling,
   t15_deref_oob_pointer,
   t16_junk_sized_pointer_retag,
-  t17_junk_sized_pointer_copy]
+  t17_junk_sized_pointer_copy,
+  t18_binop_words]
 
 def runAll : IO Unit := do
   allTests.forM id

@@ -115,6 +115,9 @@ inductive Rhs
 | ExposeAddr (srcPtr : Register)
 | FromExposed (srcPtr : Register)
 | PtrOffset (srcPtr : Register) (deltaCells : Int)
+-- word arithmetic on two VALUE registers (copy's reads precede it); no
+-- memory or permission event — mirlite's `binOp`
+| BinOp (op : BinOp) (r1 r2 : Register)
 deriving Repr, Inhabited, BEq
 
 inductive Instr
@@ -246,6 +249,12 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
                RhsResult.Ok [Val.Ptr pBase newOff.toNat pExt pSize pTag] obseq.TyVal.PTy s2
            | _ => RhsResult.Err "pointer offset of a non-pointer value"
      | _ => RhsResult.Err "PtrOffset expects Ptr"
+
+  | Rhs.BinOp op r1 r2 =>
+     match state.reg.lookup r1, state.reg.lookup r2 with
+     | some (_, [Val.Dat x]), some (_, [Val.Dat y]) =>
+         RhsResult.Ok [Val.Dat (evalBinOp op x y)] obseq.TyVal.NatTy state
+     | _, _ => RhsResult.Err "BinOp expects two concrete words"
 
   | Rhs.AllocN ty n =>
      let units := n * typeSize ty

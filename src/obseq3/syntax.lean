@@ -98,7 +98,9 @@ inductive AllocLen (Γ : Ctx) : Type where
     `ref`'s `Bool` marks a *protected* (function-entry) retag and its
     `List Bool` is the UnsafeCell freeze mask (true = interior-mutable
     cell); `uninit` fills the destination with undef (used to
-    materialize hoisted statics and other uninitialized allocations). -/
+    materialize hoisted statics and other uninitialized allocations);
+    `binOp op a b` reads the two word places as `copy` does (the second
+    in the state the first read left) and stores `evalBinOp op` of them. -/
 inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | constInit : Word → RExpr Γ obseq.LayoutTy.NatL
 | copy : Place Γ τ → RExpr Γ τ
@@ -111,6 +113,8 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | fromExposed : Place Γ obseq.LayoutTy.NatL → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | uninit : RExpr Γ τ
 | alloc : AllocLen Γ → RExpr Γ (obseq.LayoutTy.PtrL τ)
+| binOp : BinOp → Place Γ obseq.LayoutTy.NatL → Place Γ obseq.LayoutTy.NatL
+    → RExpr Γ obseq.LayoutTy.NatL
 
 /-- A statement in context `Γ`.
     - `pushProtectors`/`popProtectors` bracket an inlined call's protector

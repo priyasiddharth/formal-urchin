@@ -335,7 +335,8 @@ theorem alloc_fromPlace_valuePkg {Γ : Ctx} (τ : LayoutTy)
     rw [h_pre]
     exact StateIncr.trans (freshReg_state_incr _) (emit_state_incr _ _)
   obtain ⟨ρt2, nR, sR, perms₂, vals, h_incrT2, h_wfT2, h_ost, -, h_runR, h_regmono,
-    h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vreg, h_valsRel⟩ := h_restC h_codeR
+    h_lbsR, h_psimR, h_tbdR, h_smem, h_pcR, h_vreg, h_valsRel, h_vbelow, h_frameR⟩ :=
+    h_restC h_codeR
   rw [h_vals] at h_valsRel
   have h_valsD := ListRel_word_inv h_valsRel
   subst h_valsD

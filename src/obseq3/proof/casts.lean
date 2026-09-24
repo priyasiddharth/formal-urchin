@@ -87,7 +87,7 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
       -- the source mother
       obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
-        h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
+        h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
         h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
           rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
       have h_sOut_eq : sOut = sOut0 := by
@@ -168,7 +168,11 @@ theorem expose_readpkg_lowered {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.P
         (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
-        ⟨rfl, trivial⟩⟩
+        ⟨rfl, trivial⟩,
+        (by
+          intro r h_below
+          rw [RegMap.lookup_insert_ne _ (fresh_reg_ne h_below h_sregmono)]
+          exact h_sframe r h_below)⟩
       · intro τ' loc' binding' h_env'
         obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
           h_ins loc' binding' h_env'
@@ -233,7 +237,7 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
       -- the source mother, on the chain BASE
       obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
-        h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
+        h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
         h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
           rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
       have h_cancelS := resolvedAddr_cancel h_sle
@@ -425,7 +429,13 @@ theorem expose_readpkg_projoffset {σ σs : LayoutTy} {B : Place Γ σs}
         (by rw [h_spc]; simp only [emit, List.append_nil, List.length_cons, List.length_nil]),
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
-        ⟨rfl, trivial⟩⟩
+        ⟨rfl, trivial⟩,
+        (by
+          intro r h_below
+          rw [RegMap.lookup_insert_ne _ (fresh_reg_ne h_below
+                (Nat.le_trans h_sregmono (Nat.le_succ _))),
+            RegMap.lookup_insert_ne _ (fresh_reg_ne h_below h_sregmono)]
+          exact h_sframe r h_below)⟩
       · intro τ' loc' binding' h_env'
         obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
           h_lbsV loc' binding' h_env'
@@ -487,7 +497,7 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
       -- the source mother, on the chain BASE
       obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
-        h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
+        h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
         h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
           rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
       have h_cancelS := resolvedAddr_cancel h_sle
@@ -671,7 +681,13 @@ theorem fromexposed_readpkg_projoffset {τ σs : LayoutTy} {B : Place Γ σs}
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
         ⟨⟨h_alloc.2.2 _, rfl, rfl, rfl, h_wf_t.2,
-          fun k _ => ⟨_, h_alloc.2.2 ((sM.mem.resolveAddr n).1 + k)⟩⟩, trivial⟩⟩
+          fun k _ => ⟨_, h_alloc.2.2 ((sM.mem.resolveAddr n).1 + k)⟩⟩, trivial⟩,
+          (by
+            intro r h_below
+            rw [RegMap.lookup_insert_ne _ (fresh_reg_ne h_below
+                  (Nat.le_trans h_sregmono (Nat.le_succ _))),
+              RegMap.lookup_insert_ne _ (fresh_reg_ne h_below h_sregmono)]
+            exact h_sframe r h_below)⟩
       · intro τ' loc' binding' h_env'
         obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
           h_lbsV loc' binding' h_env'
@@ -747,7 +763,7 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
       -- the source mother
       obtain ⟨sOut, n1, s_mid1, tres, h_sval, h_sclean, h_srun, h_spc, h_smem,
         h_spsim, h_snt1, h_snt2, h_slbs, h_sentry, h_srt, h_sle, h_srange,
-        h_sbelow, h_sprm, h_sregmono, h_slabmono, -, -⟩ :=
+        h_sbelow, h_sprm, h_sregmono, h_slabmono, h_sframe, -⟩ :=
         h_slower _ _ _ h_id_a h_wf_t RefKind.Shared csA sA
           rs permsS h_sres h_tbd h_lbs h_prb h_sms h_psim h_pc h_instS
       have h_sOut_eq : sOut = sOut0 := by
@@ -823,7 +839,11 @@ theorem fromexposed_readpkg_lowered {τ : LayoutTy}
         RegMap.lookup_insert_self _ _ _,
         (by grind [emit]),
         ⟨⟨h_alloc.2.2 _, rfl, rfl, rfl, h_wf_t.2,
-          fun k _ => ⟨_, h_alloc.2.2 ((sM.mem.resolveAddr n).1 + k)⟩⟩, trivial⟩⟩
+          fun k _ => ⟨_, h_alloc.2.2 ((sM.mem.resolveAddr n).1 + k)⟩⟩, trivial⟩,
+          (by
+            intro r h_below
+            rw [RegMap.lookup_insert_ne _ (fresh_reg_ne h_below h_sregmono)]
+            exact h_sframe r h_below)⟩
       · intro τ' loc' binding' h_env'
         obtain ⟨reg', base', tag', h_pi', h_entry', h_ra2', h_rt', h_nw', h_dom'⟩ :=
           h_ins loc' binding' h_env'

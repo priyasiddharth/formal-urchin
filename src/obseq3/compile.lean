@@ -9,7 +9,8 @@ Differences from v2:
 - the compiler is TOTAL on obseq3's statement/rvalue surface: `constInit`/
   `copy`/`ref`/`uninit`/`exposeAddr`/`fromExposed`/`ptrCast` (a Memcpy at
   PTy)/`ptrOffset` (delta pre-scaled to cells)/`refSlice` (`Load`, then a
-  `Borrow` with `len = none` — the rest of the allocation)/`halt`, `pushProtectors`/`popProtectors`, `alloc`/`dealloc`,
+  `Borrow` with `len = none` — the rest of the allocation)/`binOp` (two exposed
+  reads, then a register-only `BinOp`)/`halt`, `pushProtectors`/`popProtectors`, `alloc`/`dealloc`,
   `assignIf` (via `SkipIf`, the target's only — forward-only — branch);
   `CompilerError.unsupported` is retained for future source constructs;
 - one `Rhs.Borrow` (kind, prot, mask, len) replaces the three v2 borrow
@@ -533,6 +534,8 @@ inductive RExprToEvidence {Γ : Ctx}
       RExprToEvidence dstPtr (.uninit (τ := τ))
   | alloc {τ : LayoutTy} (len : AllocLen Γ) (reg : Register) :
       RExprToEvidence dstPtr (.alloc (τ := τ) len)
+  | binOp (op : BinOp) (a b : Place Γ obseq.LayoutTy.NatL) (r1 r2 tmp : Register) :
+      RExprToEvidence dstPtr (.binOp op a b)
   | exposeAddr
       {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
@@ -696,6 +699,17 @@ def compileRExprPreChecked
         store := fun dstPtr => [Instr.RStore obseq.TyVal.PTy r dstPtr],
         postCleanup := [],
         ev := fun _ => RExprToEvidence.alloc len r
+      }
+  | .binOp op a b => do
+      -- copy's reads of both operands, registers exposed, then the word
+      let r1 ← readToReg a
+      let r2 ← readToReg b
+      let tmp ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift (emitM [Instr.Assgn tmp (Rhs.BinOp op r1 r2)])
+      pure {
+        store := fun dstPtr => [Instr.RStore obseq.TyVal.NatTy tmp dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.binOp op a b r1 r2 tmp
       }
   | .uninit =>
       -- mirlite fills the destination with `blockSize τ` undef cells via a

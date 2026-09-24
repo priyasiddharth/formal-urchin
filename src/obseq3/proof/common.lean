@@ -273,6 +273,15 @@ theorem compileProgFrom_code_eq_compileStmt
 def RegisterBelow (bound : Nat) : Register → Prop
   | .R idx => idx < bound
 
+/-- A register the caller already held is never the fresh one a lowering
+    mints at or above the caller's watermark. -/
+theorem fresh_reg_ne {bound n : Nat} {r : Register}
+    (h_below : RegisterBelow bound r) (h_mono : bound ≤ n) : r ≠ Register.R n := by
+  cases r with
+  | R m =>
+      have h_lt : m < bound := h_below
+      grind
+
 theorem RegisterBelow.mono {b b' : Nat} (h : b ≤ b') :
     ∀ {r : Register}, RegisterBelow b r → RegisterBelow b' r
   | .R _, h_lt => Nat.lt_of_lt_of_le h_lt h
@@ -287,6 +296,7 @@ def RhsRegsBelow (bound : Nat) : Rhs → Prop
   | .ExposeAddr src => RegisterBelow bound src
   | .FromExposed src => RegisterBelow bound src
   | .PtrOffset src _ => RegisterBelow bound src
+  | .BinOp _ r1 r2 => RegisterBelow bound r1 ∧ RegisterBelow bound r2
 
 /-- All registers mentioned in an `Instr` have index strictly less than `bound`. -/
 def InstrRegsBelow (bound : Nat) : Instr → Prop
@@ -2745,6 +2755,27 @@ theorem runN_Assgn_AllocDyn_step
       oseair.bumpAllocator, oseair.allocate, h_own]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
+/-- `BinOp` is REGISTER-ONLY: two value registers in, one word out, no
+    memory and no permission event. One `runN` step. -/
+theorem runN_Assgn_BinOp_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst r1 r2 : Register) (op : BinOp) (t1 t2 : obseq.TyVal) (x y : Word)
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.BinOp op r1 r2)))
+    (h_r1 : oseair.RegMap.lookup s.reg r1 = some (t1, [Val.Dat x]))
+    (h_r2 : oseair.RegMap.lookup s.reg r2 = some (t2, [Val.Dat y])) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.NatTy, [Val.Dat (evalBinOp op x y)]),
+        pc := s.pc + 1 } := by
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.NatTy, [Val.Dat (evalBinOp op x y)]),
+        pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_r1, h_r2]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
 /-- A `CStore` whose value count matches the declared type size executes in
     exactly one `runN` step via `writeThroughPtr`. -/
 theorem runN_CStore_step
@@ -3208,6 +3239,15 @@ theorem compileRExprPreChecked_placeRegMap_any {Γ : Ctx} {τ : LayoutTy} (rhs :
       split
       · simp [ih]
       · exact ih
+  | binOp op a b =>
+      have ih1 := readToReg_placeRegMap_any a cs
+      have ih2 := readToReg_placeRegMap_any b (CheckedCompilerM.run (readToReg a) cs)
+      simp only [compileRExprPreChecked, csMonad]
+      split
+      · split
+        · simp [csMonad, csRun, emit_placeRegMap, ih1, ih2]
+        · simp [ih1, ih2]
+      · exact ih1
 
 /-- `ensureLocalRegE` leaves its local mapped at the register it returns. -/
 theorem ensureLocalRegE_maps {Γ : Ctx} {τ : LayoutTy} (loc : Local Γ τ) (cs : CompilerState) :
