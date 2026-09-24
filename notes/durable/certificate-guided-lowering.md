@@ -23,17 +23,25 @@ UPDATES its target) and Miri's arm must agree — disagreement is the error
 runtime word (a load, an enum's slot 0, `Eq/Ne(place, const)`) →
 `bad := uninit; assignIf d v (bad := 0); tmp := copy bad`, UB iff the
 pin is wrong; the statements carry sentinel lines (`certLineBase`) so the
-harness reports `certificate rejected at line L`. T3: a comparison on
-words Miri did not log → the arm is taken, the result is a TAINTED
-placeholder (never an index/offset/size/checkable discriminant), and the
-pin is counted (`[certified: k checked, m unchecked]`). No mirlite,
-oseair or proof change; `--osea` attributes check UB like any statement.
+harness reports `certificate rejected at line L`. No mirlite, oseair or
+proof change; `--osea` attributes check UB like any statement.
+
+[SUPERSEDED 2026-09-24] There WAS a third tier: a comparison on words
+Miri did not log took its arm on Miri's word alone, with the result a
+TAINTED placeholder barred from indices/offsets/sizes. Since mirlite
+gained the word `binOp` rvalue the seam EMITS that arithmetic instead,
+so the discriminant is a real computed word and T2 applies to every
+branch it cannot fold; `symVals`/`tainted`/`memTainted`/`faithfulPlace`
+are gone. The `pinned` counter stays in the report as the standing
+witness that it is 0.
 
 [FACT] Corpus effect (2026-09-23): 93 → 96 supported (fnentry_invalidation,
 int-to-ptr, stacked-borrows::two_phase_aliasing_violation), 20 entries'
 prep rewrites reverted to upstream `assert_eq!`/`+=`/`match`; 23 entries
 certified, 27 checked, 14 unchecked pins (all `+=` through RefCell
-guards or exposed-address arithmetic). A UB-outcome certificate is a
+guards or exposed-address arithmetic) — which `binOp` then took to 41
+checked and 0 unchecked (2026-09-24, same 96/0/40). A UB-outcome
+certificate is a
 PREFIX: the lowering emits a poison at its end and mirlite must reach its
 own UB first (`ran past Miri's UB point` otherwise).
 
@@ -46,7 +54,14 @@ a wrong verdict. See [[what-compile-correct-actually-says]] for what the
 theorem does and does not cover (it covers every statement the checks
 use).
 
+[FACT 2026-09-24] The checks have teeth on the runtime path too, not
+only on the folded one: making `emitCheckEq` demand `v + 1` turns three
+corpus entries into `certificate rejected` (int-to-ptr,
+aliasing_mut_and_shr, box_derefer — the entries whose branches are T2).
+Flipping a recorded `arm` instead is caught EARLIER, by the T1
+cross-check or by walking into an abort path, which is why the flip test
+alone does not exercise the check statements.
+
 [OPEN] `assert_eq!` on a tuple calls the tuple's `PartialEq::eq`, an
-opaque std body — one rewrite stays. A word `binOp` rvalue would make
-every T3 pin a T2 check (parked). Slice lengths remain the next language
-step.
+opaque std body — one rewrite stays. Slice lengths remain the next
+language step.

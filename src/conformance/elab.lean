@@ -70,6 +70,16 @@ def elabPlace (Γ : Ctx) (p : UPlace) : Except String ((τ : LayoutTy) × Place 
   let ⟨τ, pl⟩ ← elabRoot Γ p.root
   elabPlaceAux Γ τ pl p.projs
 
+/-- Elaborate a place that must have layout `NatL` (discriminants,
+    allocation sizes). -/
+def elabNatPlace (Γ : Ctx) (p : UPlace) (what : String) :
+    Except String (Place Γ .NatL) := do
+  let ⟨τ, pl⟩ ← elabPlace Γ p
+  if h : τ = obseq.LayoutTy.NatL then
+    return h ▸ pl
+  else
+    .error s!"{what} is not a word-typed place"
+
 def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr Γ τ)
   | .use (.const v) => .ok ⟨.NatL, .constInit v⟩
   | .use .constUnit => .error "unit constant not dropped by lowering"
@@ -95,23 +105,30 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
   | .use (.constNeg _) => .error "negative constant not clamped by lowering"
   | .fromExposed _ => .error "fromExposed is elaborated against the destination type"
   | .ptrOffset _ _ => .error "ptrOffset is elaborated against the destination type"
-  | .binOp _ _ _ => .error "arithmetic not const-folded by lowering"
+  | .binOp op a b => do
+      -- a runtime word: two `NatL` operand PLACES (the seam materialised
+      -- any constant operand) and the mirlite `BinOp` the string names
+      let pa ← match a with
+        | .copy p | .move p => elabNatPlace Γ p "binOp operand"
+        | _ => .error "binOp operand not materialised by lowering"
+      let pb ← match b with
+        | .copy p | .move p => elabNatPlace Γ p "binOp operand"
+        | _ => .error "binOp operand not materialised by lowering"
+      let bop ← match op with
+        | "Add" | "AddChecked" | "WrappingAdd" => pure BinOp.add
+        | "Sub" | "SubChecked" | "WrappingSub" => pure BinOp.sub
+        | "Mul" | "MulChecked" | "WrappingMul" => pure BinOp.mul
+        | "Lt" => pure BinOp.lt | "Le" => pure BinOp.le
+        | "Gt" => pure BinOp.gt | "Ge" => pure BinOp.ge
+        | "Eq" => pure BinOp.eq | "Ne" => pure BinOp.ne
+        | _ => .error s!"unsupported: binary op {op}"
+      return ⟨.NatL, .binOp bop pa pb⟩
   | .refSlice _ _ _ => .error "refSlice is elaborated against the destination type"
   | .fnRef _ => .error "fn reference not consumed by lowering"
   | .uninit => .error "uninit is elaborated against the destination type"
   | .aggregate _ _ => .error "aggregate not desugared by lowering"
   | .discriminant _ => .error "discriminant not desugared by lowering"
   | .unsupported d => .error s!"unsupported: {d}"
-
-/-- Elaborate a place that must have layout `NatL` (discriminants,
-    allocation sizes). -/
-def elabNatPlace (Γ : Ctx) (p : UPlace) (what : String) :
-    Except String (Place Γ .NatL) := do
-  let ⟨τ, pl⟩ ← elabPlace Γ p
-  if h : τ = obseq.LayoutTy.NatL then
-    return h ▸ pl
-  else
-    .error s!"{what} is not a word-typed place"
 
 def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
   | .pushProt _ => return .pushProtectors

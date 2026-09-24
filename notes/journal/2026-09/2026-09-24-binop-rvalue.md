@@ -76,3 +76,37 @@ Audit after the change: same two roots, 3 axioms, 0 sorries. Units
 18/18 and 120/120; corpus unchanged at 96/0/40 (the seam has not been
 taught `binOp` yet — that is the next commit, and it is what takes the
 14 unchecked pins to 0).
+
+## The seam half (same day)
+
+[FACT] With `binOp` available, `emitAssign`'s arithmetic arm keeps T1
+folding (indices, offsets and sizes need the STATIC value) and otherwise
+emits `dst := binOp op pa pb`, materialising a constant operand into a
+fresh `.nat` local first (mirlite's `binOp` takes two places; Miri's own
+MIR does the same with `_9 = const 2`). Checked ops become
+`dst.0 := binOp op a b; dst.1 := const 0`. Deleted: `symVals`,
+`tainted`, `memTainted`, `isTainted`, `faithfulPlace`,
+`isComparisonOp`, the `Eq`-shape rescue in the switch arm, and the
+"value not in certificate" index message. `trackAssign` lost its whole
+taint half and simply kills the destination key for a `binOp`.
+
+[EMP] Corpus effect (verified against this tree): 96 pass / 0 fail / 40
+unsupported unchanged, `--osea` 96 matched, certificates **41 checked,
+0 unchecked** (was 27/14). The `+=` through a RefCell guard now lowers
+as `t := 4; s.0 := binOp AddChecked (*g) t; s.1 := 0; *g := move s.0`
+with the overflow assert a T2 check on `s.1`.
+
+[FACT] Teeth, measured two ways:
+- Flipping a recorded `arm` in a certificate is caught, but EARLIER than
+  the runtime check: by the T1 cross-check ("certificate disagrees with
+  lowering") or by the wrong arm walking into an abort path. All 7
+  switches of int_to_ptr and the first switches of every other
+  certificate behave that way.
+- Making `emitCheckEq` demand `v + 1` (a one-line local experiment,
+  reverted) turns exactly the three entries with T2 checks —
+  int-to-ptr, aliasing_mut_and_shr, box_derefer — into `certificate
+  rejected`. That is the check statements firing at runtime.
+
+The `pinned` counter stays in `CertStats` and in the harness report as
+the standing witness that no branch is taken on Miri's word alone; no
+lowering path can increment it any more.

@@ -9,8 +9,11 @@ arm every `switch` took, whether every `assert` passed — as Miri saw
 them (`MIRI_LOG=info`; see conformance/scripts/miri_cert.py). The seam
 consumes it to emit the one path that runs as straight-line mirlite,
 unrolling loops, and to emit runtime CHECKS (built from `uninit`,
-`assignIf` and `copy` alone) that reject a wrong pin before any code that
-depends on it runs.
+`assignIf` and `copy` alone) that reject a wrong branch before any code
+that depends on it runs. Since mirlite gained `binOp` (2026-09-24) the
+discriminant of every recorded branch is a word the program actually
+computed, so every branch is either folded-and-cross-checked or
+runtime-checked — none is taken on Miri's word alone.
 
 Events are matched by KIND in execution ORDER per user-frame instance —
 never by block or local numbers, which differ between charon's built MIR
@@ -92,7 +95,7 @@ def parseCert (j : Json) : Except String Cert := do
 structure CertStats where
   used : Bool := false
   checked : Nat := 0   -- T1 cross-checks and T2 runtime checks
-  pinned : Nat := 0    -- T3 arms taken on Miri's word alone
+  pinned : Nat := 0    -- arms followed on Miri's word alone: 0 since `binOp`
 deriving Repr, Inhabited
 
 /-- A cursor over the certificate: which frame instance is next to open,
@@ -103,7 +106,7 @@ structure CertCursor where
   nextFrame : Nat := 0
   stack : List (Nat × Nat) := []   -- (frame index, next event index)
   checked : Nat := 0   -- T1 cross-checks + T2 runtime checks emitted
-  pinned : Nat := 0    -- T3 arms taken on Miri's word alone
+  pinned : Nat := 0    -- arms followed on Miri's word alone: 0 since `binOp`
 deriving Inhabited
 
 namespace CertCursor

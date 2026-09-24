@@ -241,11 +241,11 @@ feature-level view.
    branches/loops/asserts follow Miri's recorded outcomes with runtime
    checks; fnentry_invalidation, int-to-ptr, two_phase_aliasing_violation
    flipped; the Option-match mains and the assert/`+=` rewrites reverted.
-2. **Runtime integer arithmetic** (BinaryOp with non-const operands) —
-   folded when the operands are tracked (now per field path and through
-   references); otherwise a tainted PLACEHOLDER whose branches are T3
-   unchecked pins (14 in the corpus). A word `binOp` rvalue in
-   mirlite+oseair (+ proof leaf) would make them checkable — own entry.
+2. **Runtime integer arithmetic** — DONE 2026-09-24: folded when the
+   operands are tracked, otherwise emitted as mirlite's `binOp` on two
+   word places, so every branch on the result is a runtime check
+   (0 unchecked pins). Fixed-width (wrapping) semantics is the remaining
+   fidelity gap — own entry below.
 3. **Runtime array indexing / subslicing** — Index projections resolve
    only through tracked constants (Miri's trace has no values); range
    indexing (`&a[0..0]`) needs the std Index chain + `sliceLen`/`subSlice`
@@ -323,23 +323,36 @@ where noted), `println!`, RefCell's flag probe, and one tuple
 `assert_eq!` (the tuple's `PartialEq::eq` is an opaque std body).
 
 ## A word `binOp` rvalue (makes every certificate pin checkable)
-**Status:** parked 2026-09-23
-**Context:** Miri's trace records branch ARMS, not operand values, so a
-`Lt/Le/Gt/Ge` (or `Eq/Ne` of two runtime words) on operands the lowering
-cannot fold is taken on Miri's word alone — a counted "unchecked pin"
-(T3). 14 in the corpus, all `+=` on values loaded through RefCell guards
-or exposed-address arithmetic. With runtime word arithmetic in mirlite
-(`RExpr.binOp op a b` on `NatL` places) and oseair (`Rhs.BinOp`), the
-comparison is COMPUTED and the branch becomes a T2 runtime check on its
-result; `+=` stores the real sum instead of a placeholder.
-**Why parked:** the user chose existing instructions only for the
-certificate step; this is the one model addition that finishes it.
-**To resume:** rvalue + `Rhs`, a two-source read-then-store proof leaf
-(`ReadPkg` over two places), elab for `.binOp`, then drop the placeholder
-path in `emitAssign` and the taint machinery it needed.
-**Effort estimate:** ~2 days (the two-source package dominates)
-**References:** durable/certificate-guided-lowering.md, lowering.lean
-`emitAssign` `.binOp` arm
+**Status:** DONE 2026-09-24 (commits f41ddc0 model+proof, this one seam)
+**Outcome:** `RExpr.binOp op a b` on two `NatL` places in mirlite,
+`Rhs.BinOp op r1 r2` in oseair, `binOp_valuePkg` in proof/binop.lean
+(the read package used twice; the only change to existing proofs is that
+reads now export their register frame). The seam folds when it can and
+emits otherwise; `symVals`/`tainted`/`memTainted`/`faithfulPlace` and the
+T3 path are deleted. Corpus: 41 checked, 0 unchecked (was 27/14), same
+96/0/40 and 96 matched differentially.
+**References:** durable/certificate-guided-lowering.md,
+journal/2026-09/2026-09-24-binop-rvalue.md
+
+## Fixed-width (wrapping) arithmetic
+**Status:** parked 2026-09-24
+**Context:** mirlite words are unbounded `Nat` (sb.lean:30), so `binOp`
+`sub` TRUNCATES at 0 and `add`/`mul` never wrap. Rust's checked ops only
+differ on paths where Miri panics, and the certificate rejects those, so
+no corpus verdict can silently diverge; `WrappingAdd/Sub/Mul` WOULD
+diverge in value, and the corpus contains none (op strings present: Eq,
+AddChecked, Lt, SubChecked). A branch on a diverged value would still be
+caught by its own T2 check.
+**Why parked:** it buys fidelity, not coverage, and the user chose
+unbounded `Nat` when the plan costed both.
+**To resume:** `binOp (t : IntTy) op a b` with arithmetic modulo `2^w`
+and two's-complement comparisons, widths from Charon's operand types;
+negative literals and `SwitchInt` cases become two's-complement words.
+The proof does not unfold the arithmetic (`evalBinOp` is opaque to
+`binOp_valuePkg`), so the cost is model + seam + tests only.
+**Effort estimate:** ~half a day
+**References:** notes/journal/2026-09/2026-09-24-binop-rvalue.md,
+src/obseq3/types.lean `evalBinOp`
 
 **References:** conformance/README.md (claim + rule→witness table),
 durable/sb-conformance-claim.md, manifest.json (per-test ground truth).

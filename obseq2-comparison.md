@@ -4,6 +4,58 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-24 — A Word `binOp`, and What a Second Read Costs the Proof
+
+The certificate left fourteen branches across three tests taken on
+Miri's word alone: arithmetic whose operands the seam could not fold had
+no runtime form, so the result was a quarantined placeholder and any
+branch on it was a counted pin. The user asked whether dynamic binary
+operations could be added to mirlite and oseair, and what that would do
+to the proof surface. It can, and the answer to the second half is: one
+export.
+
+The model half is a constructor each. `binOp op a b` reads two word
+places — copy's read, twice, the second in the state the first left —
+and combines them; oseair's `BinOp` is register-only, with no memory and
+no permission event, so the compiler's shape is two reads and one
+instruction. Words stay unbounded naturals. Subtraction truncates and
+addition never overflows, which differs from Rust only where Rust
+panics, and a panicking path is one the certificate refuses; fixed-width
+arithmetic was costed, declined, and recorded as the follow-up if exact
+wrapping values are ever wanted.
+
+The proof cost is concentrated in one place. `binOp` is the first rvalue
+that reads twice, so the first operand's register has to survive the
+second read. The lowering mother lemma always proved that frame and the
+copy read lemmas had been dropping it; now they export it at the
+post-read register map, the three read-package predicates carry it, and
+a dozen instances in copy, casts and pointer arithmetic discharge it in
+a line each. The package itself is `alloc`'s read-then-step template
+with the read used twice. Its one genuinely new obligation is that a
+value package must produce its compiled value UNGATED, so the second
+operand's place has to be known mapped before any code fact exists —
+which comes from the place map, not from the simulation, because a
+read changes only the permissions. Same two roots, three axioms, no
+sorries.
+
+With the word available, the seam stops pretending. Arithmetic still
+folds when both operands are known, because indices and sizes need the
+static value; otherwise it is emitted, with constant operands
+materialised into fresh word locals. Everything the placeholder needed —
+symbolic values, taint on locals, taint on memory, the faithfulness test
+and the `Eq`-shape rescue — is deleted, and every recorded branch is now
+either cross-checked against a folded value or checked at runtime
+against the word the program computed. The corpus is unchanged at 96
+supported with the differential matching on all of them; certificates go
+from twenty-seven checked and fourteen unchecked to forty-one checked
+and none unchecked. The runtime checks were confirmed to have teeth by
+making them demand the wrong word: three entries then report a rejected
+certificate, which is also a reminder that flipping a recorded arm
+usually gets caught earlier, by the static cross-check or by walking
+into an abort path.
+
+---
+
 ## 2026-09-23 (later) — Certificates: Dynamic Branches and Loops Without a CFG
 
 The seam, not the model, was what kept forty-three corpus tests out, and

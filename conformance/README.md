@@ -96,18 +96,19 @@ saw them — per user-function frame instance in entry order, the arm every
 
 - **T1 checked statically** — the lowering folds the discriminant and
   Miri's arm must agree ("certificate disagrees with lowering" otherwise);
-- **T2 checked at runtime** — the discriminant is a word Miri also read
-  (a load, an enum's discriminant, `x == const`), and the check is built
+- **T2 checked at runtime** — the discriminant is a word the program
+  computed (a load, an enum's discriminant, a `binOp` result — the same
+  word Miri's own `switchInt`/`assert` read), and the check is built
   from existing statements only: `bad := uninit; assignIf d v (bad := 0);
-  tmp := copy bad` is UB exactly when the pin is wrong, reported as
-  `certificate rejected at line L`, never as a program verdict;
-- **T3 unchecked pin** — a comparison on words Miri did not log (its
-  trace has no values): the arm is taken on Miri's word, the result is a
-  tainted placeholder that can never re-enter as an index, offset, size
-  or checkable discriminant, and the pin is COUNTED — the report prints
-  `[certified: k checked, m unchecked]` per entry and lists every entry
-  with unchecked pins. A word `binOp` rvalue would make T3 checkable
-  (parked).
+  tmp := copy bad` is UB exactly when the recorded arm is wrong, reported
+  as `certificate rejected at line L`, never as a program verdict.
+
+There is no third tier since mirlite gained the word `binOp` rvalue
+(2026-09-24): arithmetic the seam cannot fold is EMITTED rather than
+replaced by a placeholder, so every recorded branch has a real word to
+check. The report still prints `[certified: k checked, m unchecked]`
+per entry and lists entries with unchecked pins — `m` is now the
+standing witness that no branch is taken on Miri's word alone.
 
 No mirlite/oseair/proof change: the checks are ordinary statements, and
 `--osea` attributes their UB like any other. Regenerate with
@@ -118,9 +119,8 @@ may carry `// miri-flags: -Zmiri-…` for extra Miri flags.
 
 - 96 supported / 40 unsupported of 136 entries; every supported entry
   agrees with Miri's verdict (and line, where specified); `--osea`
-  differential 96 matched. 23 entries run under a certificate; 14 of
-  their branches are unchecked pins (all `+=` on values loaded through
-  RefCell guards or exposed-address arithmetic), listed by the harness.
+  differential 96 matched. 23 entries run under a certificate, with 41
+  branches checked and 0 unchecked.
 - No xfail-model divergences.
 
 Modeled beyond the core: protectors (call-frame protector sets,
