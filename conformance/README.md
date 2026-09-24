@@ -117,9 +117,9 @@ may carry `// miri-flags: -Zmiri-…` for extra Miri flags.
 
 ## Current score (miri @ PIN)
 
-- 96 supported / 40 unsupported of 136 entries; every supported entry
+- 98 supported / 40 unsupported of 138 entries; every supported entry
   agrees with Miri's verdict (and line, where specified); `--osea`
-  differential 96 matched. 23 entries run under a certificate, with 41
+  differential 98 matched. 24 entries run under a certificate, with 43
   branches checked and 0 unchecked.
 - No xfail-model divergences.
 
@@ -138,7 +138,12 @@ items (popping/deallocating them is allowed), `UnsafeCell`/`Cell`/
 `Atomic*` map to cell-marked layouts with pointees inferred from
 constructor/accessor call sites, and `UnsafeCell::{new,get}`, `Cell::new`
 and `ptr::read` are shimmed. Pointer type-punning casts are
-tag-preserving reinterprets (`RExpr.ptrCast`). Transmute is shimmed
+tag-preserving reinterprets (`RExpr.ptrCast`). Slice LENGTH is real:
+`<[T]>::len` and rustc's `PtrMetadata` place read lower to mirlite's
+`sliceLen`, which reads the fat pointer (copy's read of the cell that
+holds it — not an access to the slice data) and yields the extent it
+carries, in elements (2026-09-24); range SUB-slicing through the std
+`Index` chain is not modeled yet. Transmute is shimmed
 (to-raw = reinterpret, to-ref = a real retag, `transmute_copy` = a typed
 load); reified fn pointers are tracked statically and indirect calls
 resolve to their targets (the `aliasing_mut*` family). Int-to-ptr uses
@@ -237,6 +242,18 @@ but has NOT been verified against a real Miri run. Current entries:
   write is cell-wise: kills only the child covering the written cells) —
   not expressible in safe Rust, since borrowck rejects using a borrow
   across a parent write.
+- `local/slice_len_alias` — the slice-length ALIASING witness: taking
+  `s.len()` through a shared reborrow of a `&mut [T]` does not disable a
+  raw pointer derived from it earlier, because the length is metadata
+  read out of the local holding the fat pointer, not an access to the
+  slice data. Verified against the pinned Miri (verdict ok).
+- `local/slice_len_value` — the slice-length VALUE witness: the program
+  branches on `n != 4`, so the certificate's runtime check compares the
+  lowering's own computed length against the arm Miri took. Perturbing
+  `sliceLen` by one turns it into `certificate rejected at line 16`,
+  which is the property being witnessed: the length is the extent's
+  element count, not the rest of the allocation. Certificate extracted
+  from the pinned Miri.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

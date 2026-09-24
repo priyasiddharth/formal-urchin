@@ -1,0 +1,44 @@
+{
+ "version": 1,
+ "source": "local/slice_len_value.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _10",
+     "cases": [
+      [
+       0,
+       5
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _10) -> [0: bb5, otherwise: bb3]",
+     "next": 5,
+     "arm": "0"
+    },
+    {
+     "k": "assert",
+     "cond": "move _18",
+     "success": 7,
+     "descr": "rustc_const_eval::interpret::step assert(move _18, \"index out of bounds: the length is {} but the index is {}\", const 4_usize, copy _17) -> [success: bb7, unwind continue]",
+     "next": 7,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

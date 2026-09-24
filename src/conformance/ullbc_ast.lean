@@ -77,6 +77,11 @@ inductive UProj
 | deref
 | field (idx : Nat)
 | index (i : UIdx)
+-- the METADATA half of a fat pointer place (`_p.PtrMetadata`): for a
+-- slice pointer, its length in elements. Only legal as the last
+-- projection of a read operand, where the lowering turns the whole
+-- place into `URvalue.sliceLen`
+| ptrMetadata
 deriving Repr, BEq, Inhabited
 
 /-- Place roots: a local, or a global (static) — the latter is rewritten
@@ -128,6 +133,7 @@ inductive URvalue
 | fromExposed (p : UPlace)
 | ptrOffset (p : UPlace) (delta : Int)
 | refSlice (kind : URefKind) (prot : Bool) (p : UPlace)  -- retag of slice data, runtime length
+| sliceLen (p : UPlace)   -- a fat pointer's length in elements (`.len()`, `PtrMetadata`)
 | binOp (op : String) (a b : UOperand)
 | discriminant (p : UPlace)   -- an enum's variant index (payload slot 0)
 | fnRef (funId : Nat)
@@ -541,6 +547,7 @@ partial def parsePlace (ctx : ParseCtx) (j : Json) : Except String UPlace := do
             let p ←
               match sumKey proj with
               | some ("Deref", _) => pure UProj.deref
+              | some ("PtrMetadata", _) => pure UProj.ptrMetadata
               | some ("Field", fargs) =>
                   match (asArr fargs).reverse.findSome? asNat with
                   | some i => pure (UProj.field i)

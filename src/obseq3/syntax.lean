@@ -100,7 +100,11 @@ inductive AllocLen (Γ : Ctx) : Type where
     cell); `uninit` fills the destination with undef (used to
     materialize hoisted statics and other uninitialized allocations);
     `binOp op a b` reads the two word places as `copy` does (the second
-    in the state the first read left) and stores `evalBinOp op` of them. -/
+    in the state the first read left) and stores `evalBinOp op` of them;
+    `sliceLen p` reads the fat pointer in `p` the same way and stores its
+    LENGTH IN ELEMENTS — the extent the pointer claims divided by the
+    element's block size (the slice metadata Miri carries beside the
+    address). -/
 inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | constInit : Word → RExpr Γ obseq.LayoutTy.NatL
 | copy : Place Γ τ → RExpr Γ τ
@@ -109,6 +113,7 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | ptrCast : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | ptrOffset : Place Γ (obseq.LayoutTy.PtrL σ) → Int → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | refSlice : RefKind → Bool → Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ (obseq.LayoutTy.PtrL τ)
+| sliceLen : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ obseq.LayoutTy.NatL
 | exposeAddr : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ obseq.LayoutTy.NatL
 | fromExposed : Place Γ obseq.LayoutTy.NatL → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | uninit : RExpr Γ τ

@@ -305,7 +305,7 @@
         "dropped revisions/annotations"
       ],
       "miri_error": "retag .* tag does not exist",
-      "note": "verdict matches; our UB point is the call-site seam retag (line 14), miri flags the `ret` line (10) — tuple returns get no rustc reborrow, so the retag happens at our synthesized seam"
+      "note": "verdict matches; our UB point is the call-site seam retag (line 14), miri flags the `ret` line (10) \u2014 tuple returns get no rustc reborrow, so the retag happens at our synthesized seam"
     },
     {
       "id": "fail/stacked_borrows/return_invalid_mut_tuple",
@@ -321,7 +321,7 @@
         "dropped error annotation"
       ],
       "miri_error": "retag .* tag does not exist",
-      "note": "verdict matches; our UB point is the call-site seam retag (line 13), miri flags the `ret` line (9) — tuple returns get no rustc reborrow, so the retag happens at our synthesized seam"
+      "note": "verdict matches; our UB point is the call-site seam retag (line 13), miri flags the `ret` line (9) \u2014 tuple returns get no rustc reborrow, so the retag happens at our synthesized seam"
     },
     {
       "id": "fail/both_borrows/shr_frozen_violation1",
@@ -790,7 +790,7 @@
         "dropped revisions/annotations"
       ],
       "miri_error": "protect",
-      "note": "verdict matches; UB at the call-site seam (line 20), miri flags safe's signature line — same protected-retag collision"
+      "note": "verdict matches; UB at the call-site seam (line 20), miri flags safe's signature line \u2014 same protected-retag collision"
     },
     {
       "id": "fail/both_borrows/aliasing_mut2",
@@ -1819,6 +1819,27 @@
       },
       "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-20",
       "notes": "Moving one field into a call clears that field's stacks only (through rustc's temporary in MIR; our model clears at the assignment move); a raw pointer into the sibling field survives on both machines and in Miri."
+    },
+    {
+      "id": "local/slice_len_alias",
+      "artifact": "local/slice_len_alias.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; verified against the pinned Miri",
+      "notes": "slice length witness (2026-09-24): `s.len()` reads the fat pointer's metadata out of the local holding it, not the slice data, so a shared reborrow taken for `len()` does not disable the raw pointer derived earlier. The array-to-slice coercion carries the extent, so the length is 4."
+    },
+    {
+      "id": "local/slice_len_value",
+      "artifact": "local/slice_len_value.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/slice_len_value.cert.json",
+      "provenance": "local; certificate extracted from the pinned Miri (2026-09-24)",
+      "notes": "slice length VALUE witness: the program branches on `n != 4`, so the certificate's T2 check compares the lowering's own computed word (sliceLen, then binOp Ne) against the arm Miri took. A length that was not the extent's element count would be reported as `certificate rejected`, not as a verdict."
     },
     {
       "id": "fail/function_calls/arg_inplace_observe_after",

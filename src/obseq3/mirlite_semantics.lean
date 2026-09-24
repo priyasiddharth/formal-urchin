@@ -360,6 +360,20 @@ def evalRExpr
                     values_len := rfl
                     state := { state with mem := (allocate state.mem units).2,
                                           perms := perms' } }
+  | .sliceLen (σ := σ) src =>
+      -- slice metadata: copy's read of the fat cell, then the LENGTH IN
+      -- ELEMENTS the pointer claims (`extent / elemSize`). A zero-sized
+      -- element carries no length in the extent, and `Nat` division gives
+      -- 0 there; the seam rejects `.len()` on such a slice instead.
+      match evalCopy M state src with
+      | .err e => .err e
+      | .ok out =>
+          match out.values with
+          | [.ptrVal _ _ extent _ _] =>
+              .ok { values := [MemValue.word (extent / blockSize σ)]
+                    values_len := rfl
+                    state := out.state }
+          | _ => .err "slice length of a non-pointer value"
   | .binOp op a b =>
       -- two copy reads in sequence (the second in the state the first
       -- left), then the word; uninitialised operands are UB via `evalCopy`

@@ -246,10 +246,12 @@ feature-level view.
    word places, so every branch on the result is a runtime check
    (0 unchecked pins). Fixed-width (wrapping) semantics is the remaining
    fidelity gap — own entry below.
-3. **Runtime array indexing / subslicing** — Index projections resolve
-   only through tracked constants (Miri's trace has no values); range
-   indexing (`&a[0..0]`) needs the std Index chain + `sliceLen`/`subSlice`
-   rvalues (roadmap step 1 in the 2026-09-23 plan).
+3. **Runtime array indexing / subslicing** — `sliceLen` landed
+   2026-09-24, so a runtime LENGTH is a real word and a bounds check on
+   it is a real check. What remains: index PROJECTIONS still need a
+   static field index, and range indexing (`&a[0..0]`) needs the std
+   `Index<Range>` chain plus a `subSlice` rvalue (offset + extent from
+   two runtime words) — own entry below.
 4. **Std containers**: Vec/String/vec! (buggy_as_mut_slice,
    box-custom-alloc-aliasing), Rc (illegal_read5), NonNull
    (mut_exclusive_violation2).
@@ -284,8 +286,10 @@ feature-level view.
    the borrow flag — valid only for conflict-free executions (all the
    corpus exercises); a test relying on a borrow-flag panic stays
    unsupported.
-4. **Slice length convention**: a slice value is one cell; length =
-   rest of its allocation (size − offset). No subslices.
+4. **Slice length convention**: a slice value is one cell carrying its
+   own EXTENT (2026-09-23), and `sliceLen` reads the length off it in
+   elements (2026-09-24). Zero-sized elements have no length in the
+   extent. No sub-slices yet (range indexing).
 5. **Enum layout**: discriminant word + prefix-merged payload — no
    niche optimization; incompatible variant layouts and nested refs in
    payloads are unsupported; payload seam retags are assignIf-guarded;
@@ -333,6 +337,30 @@ T3 path are deleted. Corpus: 41 checked, 0 unchecked (was 27/14), same
 96/0/40 and 96 matched differentially.
 **References:** durable/certificate-guided-lowering.md,
 journal/2026-09/2026-09-24-binop-rvalue.md
+
+## Range sub-slicing (`&s[lo..hi]`)
+**Status:** parked 2026-09-24
+**Context:** with `sliceLen` in (lengths are real words), the remaining
+half of the slice roadmap is producing sub-slices. `&mut s[1..3]` is a
+call to `core::slice::index::index_mut(&mut *s, Range{start,end})` — a
+bodyless std fn, so a seam shim replaces it. The value it must produce
+is the fat pointer `base, offset + lo·elem, (hi − lo)·elem, size, tag`,
+i.e. a runtime `ptrOffset` that also SETS the extent. mirlite has no
+such rvalue: `ptrOffset` takes a static delta and preserves the extent.
+**Why parked:** the three corpus tests it would unlock (zst_slice,
+buggy_split_at_mut, buggy_as_mut_slice) cannot even be built here — the
+Miri corpus is fetched from a local checkout that is absent on this
+machine, so their ULLBC artifacts are not regenerable; local witnesses
+are the only validation available, and lengths were the ask.
+**To resume:** `RExpr.subSlice (src : Place (PtrL σ)) (lo hi : Place
+NatL)` + `Rhs.SubSlice`, proof by the `binOp` template with THREE reads
+(the frame export already carries operands across later reads), a shim
+for `Index<Range>`/`index_mut` reading the Range aggregate's two fields,
+and `IndexMut` for arrays. Bounds behaviour: Rust PANICS on a bad range,
+which the certificate rejects, so mirlite can simply err.
+**Effort estimate:** ~1 day
+**References:** durable/pointer-values-carry-an-extent.md,
+journal/2026-09/2026-09-24-slice-length.md
 
 ## Fixed-width (wrapping) arithmetic
 **Status:** parked 2026-09-24

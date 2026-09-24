@@ -118,6 +118,10 @@ inductive Rhs
 -- word arithmetic on two VALUE registers (copy's reads precede it); no
 -- memory or permission event — mirlite's `binOp`
 | BinOp (op : BinOp) (r1 r2 : Register)
+-- slice metadata from a VALUE register holding a fat pointer (copy's
+-- read precedes it): the extent it claims, in elements — mirlite's
+-- `sliceLen`. No memory and no permission event
+| SliceLen (ty : TyVal) (srcPtr : Register)
 deriving Repr, Inhabited, BEq
 
 inductive Instr
@@ -249,6 +253,12 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
                RhsResult.Ok [Val.Ptr pBase newOff.toNat pExt pSize pTag] obseq.TyVal.PTy s2
            | _ => RhsResult.Err "pointer offset of a non-pointer value"
      | _ => RhsResult.Err "PtrOffset expects Ptr"
+
+  | Rhs.SliceLen ty r =>
+     match state.reg.lookup r with
+     | some (_, [Val.Ptr _ _ extent _ _]) =>
+         RhsResult.Ok [Val.Dat (extent / typeSize ty)] obseq.TyVal.NatTy state
+     | _ => RhsResult.Err "SliceLen expects a pointer value"
 
   | Rhs.BinOp op r1 r2 =>
      match state.reg.lookup r1, state.reg.lookup r2 with

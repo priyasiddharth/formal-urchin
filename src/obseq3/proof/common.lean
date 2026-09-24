@@ -297,6 +297,7 @@ def RhsRegsBelow (bound : Nat) : Rhs → Prop
   | .FromExposed src => RegisterBelow bound src
   | .PtrOffset src _ => RegisterBelow bound src
   | .BinOp _ r1 r2 => RegisterBelow bound r1 ∧ RegisterBelow bound r2
+  | .SliceLen _ src => RegisterBelow bound src
 
 /-- All registers mentioned in an `Instr` have index strictly less than `bound`. -/
 def InstrRegsBelow (bound : Nat) : Instr → Prop
@@ -2776,6 +2777,26 @@ theorem runN_Assgn_BinOp_step
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_r1, h_r2]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
+/-- `SliceLen` is REGISTER-ONLY: a fat pointer in, its length in
+    elements out, no memory and no permission event. One `runN` step. -/
+theorem runN_Assgn_SliceLen_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst src : Register) (ty t1 : obseq.TyVal) (b o e sz : Word) (tag : Tag)
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.SliceLen ty src)))
+    (h_src : oseair.RegMap.lookup s.reg src = some (t1, [Val.Ptr b o e sz tag])) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.NatTy, [Val.Dat (e / obseq.typeSize ty)]),
+        pc := s.pc + 1 } := by
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.NatTy, [Val.Dat (e / obseq.typeSize ty)]),
+        pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_src]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
 /-- A `CStore` whose value count matches the declared type size executes in
     exactly one `runN` step via `writeThroughPtr`. -/
 theorem runN_CStore_step
@@ -3238,6 +3259,12 @@ theorem compileRExprPreChecked_placeRegMap_any {Γ : Ctx} {τ : LayoutTy} (rhs :
       simp only [compileRExprPreChecked, csMonad]
       split
       · simp [ih]
+      · exact ih
+  | sliceLen src =>
+      have ih := readToReg_placeRegMap_any src cs
+      simp only [compileRExprPreChecked, csMonad]
+      split
+      · simp [csMonad, csRun, emit_placeRegMap, ih]
       · exact ih
   | binOp op a b =>
       have ih1 := readToReg_placeRegMap_any a cs

@@ -39,6 +39,9 @@ Covered (interpreted):
   discriminant/payload writes), `uninit`;
 - pointer/provenance ops: `exposeAddr`/`fromExposed`, constant
   `ptrOffset`, runtime-length `refSlice` retags;
+- slice metadata: `<[T]>::len` and `_p.PtrMetadata` become mirlite's
+  `sliceLen` — the extent the fat pointer carries, in elements
+  (2026-09-24), so a bounds check on a runtime length is a real check;
 - heap: `alloc`/`dealloc` via the std shims (`Box::new`, `alloc::alloc`,
   `Layout::*`), incl. `Box` unique retags at seams;
 - interior mutability: `UnsafeCell`/`Cell`/`RefCell` shims with freeze
@@ -67,7 +70,10 @@ Not covered (rejected as `unsupported`), with the reason:
 - **unwind paths / `abort` / certified panic paths** — exception
   machinery, no SB content;
 - **runtime array indices / pointer offsets / allocation sizes whose
-  VALUE the lowering cannot fold** — Miri's trace has no values;
+  VALUE the lowering cannot fold** — an index PROJECTION needs a static
+  field, and `sliceLen`'s word is not one (the length itself is now
+  real; range SUB-slicing through the std `Index` chain is the next
+  step);
 - **recursion & deep (>8) call chains, unknown/bodyless callees,
   unresolved indirect calls** — inlining must terminate statically;
 - **drop glue, closures, containers, threads, unions** (as they arise in
@@ -177,6 +183,7 @@ partial def resolveKey (st : LowerSt) (fuel : Nat) (p : UPlace) : Option ConstKe
                 | none => none
             | none => none
         | .index _ :: _ => none
+        | .ptrMetadata :: _ => none   -- metadata is not a tracked word
       go (l, []) p.projs
 
 def rebaseProj (off : Nat) : UProj → UProj
@@ -203,6 +210,7 @@ def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .fromExposed p => .fromExposed (rebasePlace off p)
   | .ptrOffset p d => .ptrOffset (rebasePlace off p) d
   | .refSlice kind prot p => .refSlice kind prot (rebasePlace off p)
+  | .sliceLen p => .sliceLen (rebasePlace off p)
   | .binOp op a b => .binOp op (rebaseOperand off a) (rebaseOperand off b)
   | .discriminant p => .discriminant (rebasePlace off p)
   | .fnRef fid => .fnRef fid
@@ -282,6 +290,7 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
   | .ptrOffset p d => do return .ptrOffset (← resolveIdxPlace st line p) d
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveIdxPlace st line p)
   | .discriminant p => do return .discriminant (← resolveIdxPlace st line p)
+  | .sliceLen p => do return .sliceLen (← resolveIdxPlace st line p)
   | .binOp op a b => do
       return .binOp op (← resolveIdxOperand st line a) (← resolveIdxOperand st line b)
   | rv => pure rv
@@ -449,7 +458,7 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
   | .use (.constNeg _) =>
       -- negative constants clamp to 0 in value positions (SB-irrelevant)
       return pushOut st (.assign dst (.use (.const 0)) line)
-  | .ptrOffset _ _ | .refSlice _ _ _ =>
+  | .ptrOffset _ _ | .refSlice _ _ _ | .sliceLen _ =>
       return pushOut st (.assign dst rv line)
   | .binOp op a b =>
       -- arithmetic is FOLDED when both operands are known (T1: the static
@@ -486,6 +495,12 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
           else
             return pushOut st (.assign dst (.binOp op (.copy pa) (.copy pb)) line)
   | .use (.copy p) | .use (.move p) =>
+      -- `_p.PtrMetadata` in a read position is the fat pointer's length
+      -- (rustc lowers `a[i]`'s bounds check through it)
+      if p.projs.getLast? == some .ptrMetadata then
+        return pushOut st
+          (.assign dst (.sliceLen { p with projs := p.projs.dropLast }) line)
+      else
       -- Miri retags reference-typed values loaded through a pointer
       -- indirection (see load_invalid_mut/shr)
       if p.projs.contains .deref && containsRef p.ty then
@@ -798,6 +813,16 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
             | _ => throw s!"unsupported: runtime pointer offset (line {line})"
           return pushOut st (.assign dest (.ptrOffset p delta) line)
       | _ => .error s!"unsupported: pointer offset arguments (line {line})"
+  else if f.path == ["core", "slice", "len"] then
+    -- `<[T]>::len(&self)`: the metadata of the fat pointer argument. The
+    -- shim replaces the whole call, and the length read is not an access
+    -- to the slice DATA — only to the local holding the pointer, which
+    -- is what `sliceLen` performs (copy's read of that cell).
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          return pushOut st (.assign dest (.sliceLen p) line)
+      | _ => .error s!"unsupported: slice len argument is not a place (line {line})"
   else if f.path == ["core", "slice", "as_ptr"] ||
           f.path == ["core", "slice", "as_mut_ptr"] then
     -- slice data pointer. The shim replaces the whole call, so it must
@@ -1149,6 +1174,7 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
   | .ptrOffset p d => do return .ptrOffset (← resolveGlobalRoot gmap p) d
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveGlobalRoot gmap p)
   | .discriminant p => do return .discriminant (← resolveGlobalRoot gmap p)
+  | .sliceLen p => do return .sliceLen (← resolveGlobalRoot gmap p)
   | .binOp op a b => do
       return .binOp op (← resolveGlobalsOp gmap a) (← resolveGlobalsOp gmap b)
   | rv => .ok rv

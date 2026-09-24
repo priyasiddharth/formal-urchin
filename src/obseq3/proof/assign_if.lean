@@ -6,6 +6,7 @@ import obseq3.proof.ptrarith
 import obseq3.proof.protectors
 import obseq3.proof.alloc
 import obseq3.proof.binop
+import obseq3.proof.slice
 
 /-! # `assignIf`: a guarded assign
 
@@ -326,6 +327,9 @@ theorem assignLeaf_all {τ : LayoutTy} (compProg : oseair.Prog)
   | binOp op a b =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_constStore compProg (binOp_valuePkg op a b compProg) h_invAt hF h_step
+  | sliceLen src =>
+      intro _ _ _ _ _ _ _ _ h_invAt hF h_step
+      exact assignStep_constStore compProg (sliceLen_valuePkg src compProg) h_invAt hF h_step
   | ref kind prot mask src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_ref kind prot mask compProg h_invAt hF h_step

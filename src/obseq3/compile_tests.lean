@@ -2397,6 +2397,62 @@ def d100_binop_sub_truncates : IO Unit :=
      .assignIf xA 0 tA (.constInit 1)]
     .ok "d100 binOp sub truncates"
 
+/-- `sliceLen` lowers as one exposed `Load` of the fat pointer and a
+    register-only `SliceLen`: the extent the pointer claims, divided by
+    the element size the destination type names. -/
+def g16_slice_len : IO Unit :=
+  expectCode ΓF
+    [.assign fld0F (.constInit 1),
+     .assign rF (.ref (.Raw true) false [] tupF),
+     .assign qF (.ptrCast rF),
+     .assign tF (.sliceLen qF),
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
+     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] (some 2) (Register.R 0) 0),
+     Instr.RStore pTy (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 4) (Rhs.Load pTy (Register.R 1)),
+     Instr.RStore pTy (Register.R 4) (Register.R 3),
+     Instr.Assgn (Register.R 5) (Rhs.Alloc natTy),
+     Instr.Assgn (Register.R 6) (Rhs.Load pTy (Register.R 3)),
+     Instr.Assgn (Register.R 7) (Rhs.SliceLen natTy (Register.R 6)),
+     Instr.RStore natTy (Register.R 7) (Register.R 5),
+     Instr.Halt]
+    "g16 sliceLen"
+
+/-- Positive: the array-to-slice idiom — a raw pointer to a 2-cell pair,
+    reinterpreted at the element type, has length 2; the guard sees it. -/
+def d101_slice_len_of_cast : IO Unit :=
+  expectDiff ΓF
+    [.assign fld0F (.constInit 1),
+     .assign rF (.ref (.Raw true) false [] tupF),
+     .assign qF (.ptrCast rF),
+     .assign tF (.sliceLen qF),
+     .assignIf tF 2 fld1F (.constInit 9),
+     .assign tF (.copy fld1F)]
+    .ok "d101 sliceLen of a cast"
+
+/-- Positive: a slice retag keeps the extent, so the length survives it. -/
+def d102_slice_len_after_retag : IO Unit :=
+  expectDiff ΓF
+    [.assign fld0F (.constInit 1),
+     .assign rF (.ref (.Raw true) false [] tupF),
+     .assign qF (.refSlice .Mut false rF),
+     .assign tF (.sliceLen qF),
+     .assignIf tF 2 fld1F (.constInit 9),
+     .assign tF (.copy fld1F)]
+    .ok "d102 sliceLen after a slice retag"
+
+/-- Negative: the length of a pointer cell that was never written is a
+    typed read of uninitialised memory — UB at the same statement. -/
+def d103_slice_len_uninit : IO Unit :=
+  expectDiff ΓF
+    [.assign qF .uninit,
+     .assign tF (.sliceLen qF)]
+    (.ub 1) "d103 sliceLen of an uninitialised cell"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2517,7 +2573,11 @@ def allTests : List (IO Unit) := [
   g15_binop,
   d98_binop_add_then_guard,
   d99_binop_uninit_operand,
-  d100_binop_sub_truncates]
+  d100_binop_sub_truncates,
+  g16_slice_len,
+  d101_slice_len_of_cast,
+  d102_slice_len_after_retag,
+  d103_slice_len_uninit]
 
 def runAll : IO Unit := do
   allTests.forM id

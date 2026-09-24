@@ -65,6 +65,7 @@ def elabPlaceAux (Γ : Ctx) :
       else .error s!"field index {i} out of range"
   | _, _, .field _ :: _ => .error "field projection on non-tuple place"
   | _, _, .index _ :: _ => .error "array index not resolved by lowering"
+  | _, _, .ptrMetadata :: _ => .error "pointer metadata not turned into `sliceLen` by lowering"
 
 def elabPlace (Γ : Ctx) (p : UPlace) : Except String ((τ : LayoutTy) × Place Γ τ) := do
   let ⟨τ, pl⟩ ← elabRoot Γ p.root
@@ -105,6 +106,12 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
   | .use (.constNeg _) => .error "negative constant not clamped by lowering"
   | .fromExposed _ => .error "fromExposed is elaborated against the destination type"
   | .ptrOffset _ _ => .error "ptrOffset is elaborated against the destination type"
+  | .sliceLen p => do
+      -- slice metadata: the fat pointer's extent, in elements
+      let ⟨τ, pl⟩ ← elabPlace Γ p
+      match τ, pl with
+      | .PtrL _, pl => return ⟨.NatL, .sliceLen pl⟩
+      | _, _ => .error "slice length of a non-pointer place"
   | .binOp op a b => do
       -- a runtime word: two `NatL` operand PLACES (the seam materialised
       -- any constant operand) and the mirlite `BinOp` the string names
@@ -206,7 +213,7 @@ def operandPlaces : UOperand → List UPlace
 def rvaluePlaces : URvalue → List UPlace
   | .use op => operandPlaces op
   | .move p | .ref _ _ p | .exposeAddr p | .fromExposed p | .ptrOffset p _
-  | .refSlice _ _ p | .discriminant p => [p]
+  | .refSlice _ _ p | .discriminant p | .sliceLen p => [p]
   | .aggregate _ ops => ops.flatMap operandPlaces
   | .binOp _ a b => operandPlaces a ++ operandPlaces b
   | .fnRef _ | .uninit | .unsupported _ => []
