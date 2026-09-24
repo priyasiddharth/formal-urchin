@@ -4262,3 +4262,46 @@ the checks (field un-taint; self-referential in-place retag).
   glue.
 - Word `binOp` rvalue (parked.md) to make the 14 pins checkable.
 - CLAUDE.md test counts are stale (other session's file).
+
+## 2026-09-24
+
+**Session:** `formal-urchin` (continued from 2026-09-23)
+
+**Theme:** A word `binOp` rvalue in mirlite and oseair, asked as "what
+is the fallout to the proof surface area?" — answered by building it,
+then using it to retire the certificate's unchecked pins.
+
+**Key outputs:**
+- Model/target/compiler: `BinOp`/`evalBinOp` (types.lean, NOT syntax.lean
+  — oseair imports only types), `RExpr.binOp`, `Rhs.BinOp`,
+  `compileRExprPreChecked` arm; tests g15_binop, d98–d100, t18
+  (18/18, 120/120).
+- Proof: read packages export a REGISTER FRAME (`copy_chainsrc_read`,
+  `copy_projsrc_offset_read` at the post-read map; `ReadPkgLowered`,
+  `ReadPkgProjOffset`, `ReadRegPkg`; 12 instances in copy/casts/ptrarith;
+  new `fresh_reg_ne`), `runN_Assgn_BinOp_step`, and
+  `src/obseq3/proof/binop.lean` (`binOp_valuePkg`, ~230 lines).
+  Dispatch arms in `CompilerInv_step`, `assignLeaf_all`,
+  `compileRExprPreChecked_placeRegMap_any`, `RhsRegsBelow`.
+- Seam: `emitAssign` emits `binOp` when it cannot fold (constant operands
+  materialised into fresh word locals; checked ops → `(v, 0)`);
+  `symVals`/`tainted`/`memTainted`/`faithfulPlace`/T3 deleted; elab
+  `.binOp`; README/durable/parked/dev-log updated.
+- Commits f41ddc0 (model+proof) and c2808db (seam).
+
+**Critical corrections:** none from the user. Two structural findings
+worth carrying: `CheckedCompilerM.incr` gives free nextReg monotonicity
+for any compiler computation (no need to dig it out of the mother), and
+a value package must produce its compiled value UNGATED, so a SECOND
+operand's place has to be mapped via the place map, not the simulation.
+
+**Status:** complete. 96 pass / 0 fail / 40 unsupported; certificates 41
+checked / 0 unchecked; differential 96 matched; audit 3 axioms /
+0 sorries, same two roots.
+
+**Next-session pickup candidates:**
+- Fixed-width (wrapping) arithmetic — new parked.md entry, ~half a day.
+- Roadmap: slice length + sub-slicing (`sliceLen`, `subSlice`), unions,
+  Box completions, Vec/String shims, closures, drop glue.
+- CLAUDE.md's test counts (17/17, 110/110) are stale — now 18/18 and
+  120/120; that file belongs to another session's working tree.
