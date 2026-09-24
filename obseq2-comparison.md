@@ -4,6 +4,50 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-24 (later) — Slice Length Is a Word the Program Computes
+
+A slice value in this model is one cell, and since the extent landed it
+carries the range the pointer claims. What it did not have was a way to
+read that range back out, so `.len()` was unsupported and any bounds
+check on a runtime length was out of reach. The first half of the slice
+roadmap closes that: `sliceLen` reads the fat pointer the way a copy
+does and yields the extent divided by the element size — the length in
+elements, which is exactly Rust's slice metadata in a model where every
+scalar is one cell.
+
+The proof came in at a third the cost of the arithmetic one, for a
+reason worth recording. The obvious design would give the instruction
+its own memory read, in the shape of the pointer casts, which means
+cloning the read-package instances for both source shapes. Instead the
+rvalue reads through the ordinary copy package and the new instruction
+is register-only, so the whole proof is one read and one step — the
+pattern the binary-operation work established the day before. The extent
+needed no argument at all: the value relation between the two machines
+has carried it since pointers grew the field, so the length the target
+computes is the length the source computed by construction.
+
+The seam learns two routes, not one. A `.len()` call is a std function
+with no body, so a shim replaces it; but rustc also reads the metadata
+as a place projection when it emits an index's bounds check, and that
+projection is now legal in exactly one position — the last one of a
+read — where it becomes the same rvalue.
+
+Validation had to be arranged differently than usual. The three corpus
+tests that slices would unlock are unsupported, and unsupported entries
+do not have committed artifacts; rebuilding them needs the Miri test
+corpus, which this machine cannot export. Charon and the pinned Miri
+both run, so the witnesses are local: one test shows that taking a
+length through a shared reborrow does not disable a raw pointer derived
+from the slice earlier, because the length is read out of the local
+holding the pointer rather than from the data; the other branches on the
+length under a certificate, so the runtime check compares the lowering's
+own word against the branch Miri took. Perturbing the length by one
+turns that second test into a rejected certificate, which is the
+property being claimed. The corpus stands at ninety-eight supported,
+with the differential matching on all of them. Range sub-slicing — the
+other half of the roadmap step — is parked with its design written down.
+
+
 ## 2026-09-24 — A Word `binOp`, and What a Second Read Costs the Proof
 
 The certificate left fourteen branches across three tests taken on

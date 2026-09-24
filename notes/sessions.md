@@ -4305,3 +4305,38 @@ checked / 0 unchecked; differential 96 matched; audit 3 axioms /
   Box completions, Vec/String shims, closures, drop glue.
 - CLAUDE.md's test counts (17/17, 110/110) are stale — now 18/18 and
   120/120; that file belongs to another session's working tree.
+
+## 2026-09-24 (later)
+
+**Session:** `formal-urchin` (same session as the binOp entry above)
+
+**Theme:** "now do slice lengths" — the first half of the slice roadmap
+step: reading the length a fat pointer carries.
+
+**Key outputs:**
+- `RExpr.sliceLen` / `Rhs.SliceLen` / compiler arm / evidence ctor;
+  `runN_Assgn_SliceLen_step`; `sliceLen_valuePkg`
+  (src/obseq3/proof/slice.lean, ~150 lines — the `binOp` package with
+  ONE read); dispatch arms; tests g16_slice_len, d101–d103 (124/124).
+- Seam: `UProj.ptrMetadata` (legal only as a read's last projection),
+  `URvalue.sliceLen`, the `core::slice::len` shim, elab.
+- Two local witnesses with committed artifacts: `local/slice_len_alias`
+  (aliasing) and `local/slice_len_value` (value, certified from the
+  pinned Miri). Corpus 98/0/40, osea 98, certificates 24/43/0.
+- Docs: lowering + README + durable/pointer-values-carry-an-extent +
+  parked (new "Range sub-slicing" entry) + journal + dev log.
+- Commit c648c1a.
+
+**Critical corrections:** none. One environment finding worth keeping:
+the Miri corpus is NOT available on this machine
+(`scripts/fetch_corpus.sh` needs a local Miri checkout at
+/home/siddharth/rustc/…), so unsupported corpus entries cannot be
+regenerated here — but `conformance/tools/charon` and
+`cargo +nightly-2026-06-01 miri` both work, so new LOCAL tests
+(including certificates) are fully buildable.
+
+**Status:** complete. Audit 3 axioms / 0 sorries, same two roots.
+
+**Next-session pickup candidates:**
+- Range sub-slicing (`subSlice` + `Index<Range>` shim) — parked.md, ~1 day.
+- Fixed-width (wrapping) arithmetic — parked.md, ~half a day.
