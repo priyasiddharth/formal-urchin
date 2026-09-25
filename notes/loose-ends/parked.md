@@ -339,29 +339,37 @@ T3 path are deleted. Corpus: 41 checked, 0 unchecked (was 27/14), same
 journal/2026-09/2026-09-24-binop-rvalue.md
 
 ## Range sub-slicing (`&s[lo..hi]`)
-**Status:** parked 2026-09-24
-**Context:** with `sliceLen` in (lengths are real words), the remaining
-half of the slice roadmap is producing sub-slices. `&mut s[1..3]` is a
-call to `core::slice::index::index_mut(&mut *s, Range{start,end})` — a
-bodyless std fn, so a seam shim replaces it. The value it must produce
-is the fat pointer `base, offset + lo·elem, (hi − lo)·elem, size, tag`,
-i.e. a runtime `ptrOffset` that also SETS the extent. mirlite has no
-such rvalue: `ptrOffset` takes a static delta and preserves the extent.
-**Why parked:** lengths were the ask, and sub-slicing is a second
-rvalue plus a std-chain shim. (The 2026-09-24 version of this note also
-claimed the three corpus tests could not be built here; that was wrong —
-the corpus was cloned on 2026-09-25, so zst_slice, buggy_split_at_mut
-and buggy_as_mut_slice are now preppable and certifiable like any other
-entry, which makes this item *more* attractive than when it was parked.)
-**To resume:** `RExpr.subSlice (src : Place (PtrL σ)) (lo hi : Place
-NatL)` + `Rhs.SubSlice`, proof by the `binOp` template with THREE reads
-(the frame export already carries operands across later reads), a shim
-for `Index<Range>`/`index_mut` reading the Range aggregate's two fields,
-and `IndexMut` for arrays. Bounds behaviour: Rust PANICS on a bad range,
-which the certificate rejects, so mirlite can simply err.
-**Effort estimate:** ~1 day
-**References:** durable/pointer-values-carry-an-extent.md,
-journal/2026-09/2026-09-24-slice-length.md
+**Status:** DONE 2026-09-25 (commit a955996)
+**Outcome:** `RExpr.subSlice p lo hi` (three copy reads, then the
+narrowed pointer — no retag, no memory event) with the register-only
+`Rhs.SubSlice`; `subSlice_valuePkg` is the `binOp` package with a third
+read. The seam shims `core::array::index{,_mut}` and
+`core::slice::index::{index,index_mut,get_unchecked,get_unchecked_mut}`
+into the receiver retag, the narrowing, and the mint over the narrowed
+range. `fail/stacked_borrows/zst_slice` passes (verdict-only).
+**References:** journal/2026-09/2026-09-25-sub-slicing.md,
+durable/pointer-values-carry-an-extent.md
+
+## Slices from raw parts, and runtime pointer offsets
+**Status:** parked 2026-09-25
+**Context:** the two slice tests still unsupported need one gap each
+beyond sub-slicing. `buggy_split_at_mut` calls
+`slice::from_raw_parts_mut(ptr, len)` — a fat pointer minted from a THIN
+one plus a length, i.e. the inverse of `sliceLen`: set the extent to
+`len · elemSize` — and `ptr.offset(mid as isize)` with a RUNTIME delta,
+where mirlite's `ptrOffset` takes a static one. `buggy_as_mut_slice`
+needs the same `from_raw_parts_mut` plus `Vec`, so it stays out until
+containers land.
+**Why parked:** sub-slicing was the ask, and both gaps are their own
+rvalue-shaped changes.
+**To resume:** (1) a `withLen` rvalue (or a `subSlice` variant taking a
+thin pointer and a length) for `from_raw_parts{,_mut}`, proof by the
+two-read package template; (2) `ptrOffsetDyn` reading its delta from a
+word place — the same three-read shape as `subSlice`, minus the extent
+change. Both tests' sources and Miri are available locally now.
+**Effort estimate:** ~1 day for (1) + (2) together
+**References:** journal/2026-09/2026-09-25-sub-slicing.md,
+corpus/tests/fail/both_borrows/buggy_split_at_mut.rs
 
 ## Fixed-width (wrapping) arithmetic
 **Status:** parked 2026-09-24

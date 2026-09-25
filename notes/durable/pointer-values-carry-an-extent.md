@@ -41,13 +41,12 @@ a fresh root → its block; a projection `Borrow (some (blockSize τ))` →
 `blockSize τ`. The whole migration was mechanical: no lemma changed its
 meaning, the corpus verdicts did not move.
 
-[OPEN] Sub-slices are not yet produced: `&s[2..5]` goes through the std
-`Index<Range>` chain, which the seam does not shim (zst_slice,
-buggy_split_at_mut, buggy_as_mut_slice remain unsupported). The shim
-would emit `ptrOffset` to `base + lo` with extent `(hi − lo) · elemSize`
-— a new rvalue (`subSlice src lo hi`, THREE reads then a register-only
-step, the `binOp` package shape again) or a `ptrOffset` variant that also
-sets the extent. Their ULLBC artifacts are not committed, but the corpus
-sources ARE available again (2026-09-25): `scripts/fetch_corpus.sh`
-clones the pinned Miri, so the three tests can be prepped, charon'd and
-certified like any other entry. See [[what-compile-correct-actually-says]].
+[FACT 2026-09-25] Sub-slices ARE produced: `RExpr.subSlice src lo hi`
+(three copy reads, then `base`, `offset + lo·elem`, `(hi − lo)·elem`,
+same size and tag) is the third consumer of the extent, and the seam
+shims the std `Index`/`array` chain into the receiver's retag, the
+narrowing, and the mint over the narrowed range. `zst_slice` passes on
+it. What remains of the slice surface: `from_raw_parts_mut` (mint a fat
+pointer from a thin one plus a length) and a RUNTIME `ptr::add` — the
+two gaps `buggy_split_at_mut` still has, parked with a plan. See
+[[what-compile-correct-actually-says]].
