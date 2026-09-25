@@ -330,6 +330,10 @@ theorem assignLeaf_all {τ : LayoutTy} (compProg : oseair.Prog)
   | sliceLen src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_constStore compProg (sliceLen_valuePkg src compProg) h_invAt hF h_step
+  | subSlice src lo hi =>
+      intro _ _ _ _ _ _ _ _ h_invAt hF h_step
+      exact assignStep_constStore compProg (subSlice_valuePkg src lo hi compProg)
+        h_invAt hF h_step
   | ref kind prot mask src =>
       intro _ _ _ _ _ _ _ _ h_invAt hF h_step
       exact assignStep_ref kind prot mask compProg h_invAt hF h_step

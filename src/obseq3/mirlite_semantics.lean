@@ -374,6 +374,39 @@ def evalRExpr
                     values_len := rfl
                     state := out.state }
           | _ => .err "slice length of a non-pointer value"
+  | .subSlice (σ := σ) src lo hi =>
+      -- narrow a fat pointer to elements `lo..hi`: three copy reads (each
+      -- in the state the previous left), then pointer arithmetic. No
+      -- retag and no new tag — the borrow around it is its own rvalue.
+      -- An out-of-range slice PANICS in Rust, and a panicking path is one
+      -- the certificate refuses, so erring here is unreachable on any
+      -- certified execution.
+      match evalCopy M state src with
+      | .err e => .err e
+      | .ok out1 =>
+          match out1.values with
+          | [.ptrVal base offset extent size tag] =>
+              match evalCopy M out1.state lo with
+              | .err e => .err e
+              | .ok out2 =>
+                  match out2.values with
+                  | [.word l] =>
+                      match evalCopy M out2.state hi with
+                      | .err e => .err e
+                      | .ok out3 =>
+                          match out3.values with
+                          | [.word h] =>
+                              if h < l || h * blockSize σ > extent then
+                                .err "sub-slice range out of bounds"
+                              else
+                                .ok { values := [MemValue.ptrVal base
+                                        (offset + l * blockSize σ)
+                                        ((h - l) * blockSize σ) size tag]
+                                      values_len := rfl
+                                      state := out3.state }
+                          | _ => .err "sub-slice bound is not a concrete word"
+                  | _ => .err "sub-slice bound is not a concrete word"
+          | _ => .err "sub-slice of a non-pointer value"
   | .binOp op a b =>
       -- two copy reads in sequence (the second in the state the first
       -- left), then the word; uninitialised operands are UB via `evalCopy`

@@ -11,7 +11,8 @@ Differences from v2:
   PTy)/`ptrOffset` (delta pre-scaled to cells)/`refSlice` (`Load`, then a
   `Borrow` with `len = none` — the pointer's own extent)/`binOp` (two exposed
   reads, then a register-only `BinOp`)/`sliceLen` (one exposed read, then a
-  register-only `SliceLen`)/`halt`, `pushProtectors`/`popProtectors`, `alloc`/`dealloc`,
+  register-only `SliceLen`)/`subSlice` (three exposed reads, then a
+  register-only `SubSlice`)/`halt`, `pushProtectors`/`popProtectors`, `alloc`/`dealloc`,
   `assignIf` (via `SkipIf`, the target's only — forward-only — branch);
   `CompilerError.unsupported` is retained for future source constructs;
 - one `Rhs.Borrow` (kind, prot, mask, len) replaces the three v2 borrow
@@ -539,6 +540,9 @@ inductive RExprToEvidence {Γ : Ctx}
       RExprToEvidence dstPtr (.binOp op a b)
   | sliceLen {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (r tmp : Register) :
       RExprToEvidence dstPtr (.sliceLen src)
+  | subSlice {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ))
+      (lo hi : Place Γ obseq.LayoutTy.NatL) (rp rLo rHi tmp : Register) :
+      RExprToEvidence dstPtr (.subSlice src lo hi)
   | exposeAddr
       {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
@@ -724,6 +728,20 @@ def compileRExprPreChecked
         store := fun dstPtr => [Instr.RStore obseq.TyVal.NatTy tmp dstPtr],
         postCleanup := [],
         ev := fun _ => RExprToEvidence.sliceLen src r tmp
+      }
+  | .subSlice (σ := σ) src lo hi => do
+      -- copy's reads of the pointer and both bounds, registers exposed,
+      -- then the narrowed pointer
+      let rp ← readToReg src
+      let rLo ← readToReg lo
+      let rHi ← readToReg hi
+      let tmp ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM [Instr.Assgn tmp (Rhs.SubSlice (layoutToTyVal σ) rp rLo rHi)])
+      pure {
+        store := fun dstPtr => [Instr.RStore obseq.TyVal.PTy tmp dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.subSlice src lo hi rp rLo rHi tmp
       }
   | .uninit =>
       -- mirlite fills the destination with `blockSize τ` undef cells via a

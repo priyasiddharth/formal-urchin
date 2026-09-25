@@ -134,6 +134,7 @@ inductive URvalue
 | ptrOffset (p : UPlace) (delta : Int)
 | refSlice (kind : URefKind) (prot : Bool) (p : UPlace)  -- retag of slice data, runtime length
 | sliceLen (p : UPlace)   -- a fat pointer's length in elements (`.len()`, `PtrMetadata`)
+| subSlice (p : UPlace) (lo hi : UOperand)  -- narrow a fat pointer to elements `lo..hi`
 | binOp (op : String) (a b : UOperand)
 | discriminant (p : UPlace)   -- an enum's variant index (payload slot 0)
 | fnRef (funId : Nat)

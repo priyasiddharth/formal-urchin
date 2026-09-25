@@ -1,0 +1,37 @@
+{
+ "version": 1,
+ "source": "corpus/tests/fail/stacked_borrows/zst_slice.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0",
+   "-Zmiri-strict-provenance"
+  ]
+ },
+ "outcome": "ub",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _15",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _15) -> [0: bb4, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    }
+   ]
+  }
+ ]
+}

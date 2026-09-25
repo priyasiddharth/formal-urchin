@@ -2453,6 +2453,106 @@ def d103_slice_len_uninit : IO Unit :=
      .assign tF (.sliceLen qF)]
     (.ub 1) "d103 sliceLen of an uninitialised cell"
 
+/-! ## Slice narrowing: a context with two word locals for the bounds -/
+
+def ΓS : Ctx := [pairL, ptrPair, ptrNat, natL, natL]
+def tupS : Place ΓS pairL := .local ⟨⟨0, by decide⟩, rfl⟩
+def fld0S : Place ΓS natL := .proj tupS (.field ⟨0, by decide⟩ .nil)
+def fld1S : Place ΓS natL := .proj tupS (.field ⟨1, by decide⟩ .nil)
+def rS : Place ΓS ptrPair := .local ⟨⟨1, by decide⟩, rfl⟩
+def qS : Place ΓS ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def loS : Place ΓS natL := .local ⟨⟨3, by decide⟩, rfl⟩
+def hiS : Place ΓS natL := .local ⟨⟨4, by decide⟩, rfl⟩
+
+/-- `subSlice` lowers as three exposed `Load`s and a register-only
+    `SubSlice`: the pointer, then both bounds, then the narrowing. -/
+def g17_sub_slice : IO Unit :=
+  expectCode ΓF
+    [.assign fld0F (.constInit 1),
+     .assign rF (.ref (.Raw true) false [] tupF),
+     .assign qF (.ptrCast rF),
+     .assign tF (.constInit 1),
+     .assign qF (.subSlice qF tF tF),
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
+     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] (some 2) (Register.R 0) 0),
+     Instr.RStore pTy (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
+     Instr.Assgn (Register.R 4) (Rhs.Load pTy (Register.R 1)),
+     Instr.RStore pTy (Register.R 4) (Register.R 3),
+     Instr.Assgn (Register.R 5) (Rhs.Alloc natTy),
+     Instr.CStore natTy [Val.Dat 1] (Register.R 5),
+     Instr.Assgn (Register.R 6) (Rhs.Load pTy (Register.R 3)),
+     Instr.Assgn (Register.R 7) (Rhs.Load natTy (Register.R 5)),
+     Instr.Assgn (Register.R 8) (Rhs.Load natTy (Register.R 5)),
+     Instr.Assgn (Register.R 9) (Rhs.SubSlice natTy (Register.R 6) (Register.R 7) (Register.R 8)),
+     Instr.RStore pTy (Register.R 9) (Register.R 3),
+     Instr.Halt]
+    "g17 subSlice"
+
+/-- Positive: narrowing a 2-cell pointer to its TAIL element (`1..2`),
+    retagging over the narrowed extent, and writing through it — the
+    write lands on the second cell and the owner reads it back. -/
+def d104_sub_slice_tail : IO Unit :=
+  expectDiff ΓS
+    [.assign fld0S (.constInit 1),
+     .assign fld1S (.constInit 2),
+     .assign rS (.ref (.Raw true) false [] tupS),
+     .assign qS (.ptrCast rS),
+     .assign loS (.constInit 1),
+     .assign hiS (.constInit 2),
+     .assign qS (.subSlice qS loS hiS),
+     .assign qS (.refSlice .Mut false qS),
+     .assign (.deref qS) (.constInit 7),
+     .assign loS (.copy fld1S)]
+    .ok "d104 subSlice tail"
+
+/-- Positive: the narrowed pointer's LENGTH is the narrowed extent —
+    `sliceLen` after `subSlice 0..1` sees 1, not the whole allocation. -/
+def d105_sub_slice_len : IO Unit :=
+  expectDiff ΓS
+    [.assign fld0S (.constInit 1),
+     .assign rS (.ref (.Raw true) false [] tupS),
+     .assign qS (.ptrCast rS),
+     .assign loS (.constInit 0),
+     .assign hiS (.constInit 1),
+     .assign qS (.subSlice qS loS hiS),
+     .assign loS (.sliceLen qS),
+     .assignIf loS 1 fld1S (.constInit 9),
+     .assign loS (.copy fld1S)]
+    .ok "d105 subSlice then sliceLen"
+
+/-- Negative: a sub-slice past the pointer's extent is out of range —
+    the same statement errs on both machines. -/
+def d106_sub_slice_out_of_range : IO Unit :=
+  expectDiff ΓS
+    [.assign fld0S (.constInit 1),
+     .assign rS (.ref (.Raw true) false [] tupS),
+     .assign qS (.ptrCast rS),
+     .assign loS (.constInit 0),
+     .assign hiS (.constInit 3),
+     .assign qS (.subSlice qS loS hiS)]
+    (.ub 5) "d106 subSlice out of range"
+
+/-- Negative: the retag after a narrowing grants ONLY the narrowed range,
+    so a write one element past it is UB — the `zst_slice` shape
+    (`&a[0..0]` then a write through `as_ptr().add(1)`). -/
+def d107_sub_slice_narrows_the_retag : IO Unit :=
+  expectDiff ΓS
+    [.assign fld0S (.constInit 1),
+     .assign fld1S (.constInit 2),
+     .assign rS (.ref (.Raw true) false [] tupS),
+     .assign qS (.ptrCast rS),
+     .assign loS (.constInit 0),
+     .assign hiS (.constInit 1),
+     .assign qS (.subSlice qS loS hiS),
+     .assign qS (.refSlice .Mut false qS),
+     .assign qS (.ptrOffset qS 1),
+     .assign (.deref qS) (.constInit 7)]
+    (.ub 9) "d107 subSlice narrows the retag"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2577,7 +2677,12 @@ def allTests : List (IO Unit) := [
   g16_slice_len,
   d101_slice_len_of_cast,
   d102_slice_len_after_retag,
-  d103_slice_len_uninit]
+  d103_slice_len_uninit,
+  g17_sub_slice,
+  d104_sub_slice_tail,
+  d105_sub_slice_len,
+  d106_sub_slice_out_of_range,
+  d107_sub_slice_narrows_the_retag]
 
 def runAll : IO Unit := do
   allTests.forM id

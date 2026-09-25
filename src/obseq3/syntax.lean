@@ -104,7 +104,12 @@ inductive AllocLen (Γ : Ctx) : Type where
     `sliceLen p` reads the fat pointer in `p` the same way and stores its
     LENGTH IN ELEMENTS — the extent the pointer claims divided by the
     element's block size (the slice metadata Miri carries beside the
-    address). -/
+    address); `subSlice p lo hi` reads the same three places and stores
+    the pointer NARROWED to elements `lo..hi` — same allocation, same
+    tag, offset moved by `lo` elements and extent cut to `hi − lo`. It
+    is pure pointer arithmetic: no retag (the `&mut s[lo..hi]` that
+    surrounds it is a separate `refSlice`) and no memory event beyond
+    the three reads. -/
 inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | constInit : Word → RExpr Γ obseq.LayoutTy.NatL
 | copy : Place Γ τ → RExpr Γ τ
@@ -114,6 +119,8 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | ptrOffset : Place Γ (obseq.LayoutTy.PtrL σ) → Int → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | refSlice : RefKind → Bool → Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | sliceLen : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ obseq.LayoutTy.NatL
+| subSlice : Place Γ (obseq.LayoutTy.PtrL σ) → Place Γ obseq.LayoutTy.NatL
+    → Place Γ obseq.LayoutTy.NatL → RExpr Γ (obseq.LayoutTy.PtrL σ)
 | exposeAddr : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ obseq.LayoutTy.NatL
 | fromExposed : Place Γ obseq.LayoutTy.NatL → RExpr Γ (obseq.LayoutTy.PtrL τ)
 | uninit : RExpr Γ τ

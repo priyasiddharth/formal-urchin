@@ -298,6 +298,8 @@ def RhsRegsBelow (bound : Nat) : Rhs → Prop
   | .PtrOffset src _ => RegisterBelow bound src
   | .BinOp _ r1 r2 => RegisterBelow bound r1 ∧ RegisterBelow bound r2
   | .SliceLen _ src => RegisterBelow bound src
+  | .SubSlice _ rp rLo rHi =>
+      RegisterBelow bound rp ∧ RegisterBelow bound rLo ∧ RegisterBelow bound rHi
 
 /-- All registers mentioned in an `Instr` have index strictly less than `bound`. -/
 def InstrRegsBelow (bound : Nat) : Instr → Prop
@@ -2797,6 +2799,33 @@ theorem runN_Assgn_SliceLen_step
     simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_src]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
+/-- `SubSlice` is REGISTER-ONLY: a fat pointer and two bounds in, the
+    narrowed pointer out, no memory and no permission event. -/
+theorem runN_Assgn_SubSlice_step
+    (compProg : oseair.Prog) (s : oseair.State MSB)
+    (dst rp rLo rHi : Register) (ty t0 t1 t2 : obseq.TyVal)
+    (b o e sz l h : Word) (tag : Tag)
+    (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.SubSlice ty rp rLo rHi)))
+    (h_p : oseair.RegMap.lookup s.reg rp = some (t0, [Val.Ptr b o e sz tag]))
+    (h_lo : oseair.RegMap.lookup s.reg rLo = some (t1, [Val.Dat l]))
+    (h_hi : oseair.RegMap.lookup s.reg rHi = some (t2, [Val.Dat h]))
+    (h_fit : ¬ (h < l ∨ h * obseq.typeSize ty > e)) :
+    oseair.runN MSB 1 s compProg = oseair.Result.Ok
+      { s with
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.PTy, [Val.Ptr b (o + l * obseq.typeSize ty)
+            ((h - l) * obseq.typeSize ty) sz tag]),
+        pc := s.pc + 1 } := by
+  have h_step : oseair.step MSB s compProg = oseair.Result.Ok
+      { s with
+        reg := oseair.RegMap.insert s.reg dst
+          (obseq.TyVal.PTy, [Val.Ptr b (o + l * obseq.typeSize ty)
+            ((h - l) * obseq.typeSize ty) sz tag]),
+        pc := s.pc + 1 } := by
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_p, h_lo, h_hi]
+    rw [if_neg (by simpa using h_fit)]
+  simp [oseair.runN_succ, oseair.runN_zero, h_step]
+
 /-- A `CStore` whose value count matches the declared type size executes in
     exactly one `runN` step via `writeThroughPtr`. -/
 theorem runN_CStore_step
@@ -3260,6 +3289,19 @@ theorem compileRExprPreChecked_placeRegMap_any {Γ : Ctx} {τ : LayoutTy} (rhs :
       split
       · simp [ih]
       · exact ih
+  | subSlice src lo hi =>
+      have ih1 := readToReg_placeRegMap_any src cs
+      have ih2 := readToReg_placeRegMap_any lo (CheckedCompilerM.run (readToReg src) cs)
+      have ih3 := readToReg_placeRegMap_any hi
+        (CheckedCompilerM.run (readToReg lo) (CheckedCompilerM.run (readToReg src) cs))
+      simp only [compileRExprPreChecked, csMonad]
+      split
+      · split
+        · split
+          · simp [csMonad, csRun, emit_placeRegMap, ih1, ih2, ih3]
+          · simp [ih1, ih2, ih3]
+        · simp [ih1, ih2]
+      · exact ih1
   | sliceLen src =>
       have ih := readToReg_placeRegMap_any src cs
       simp only [compileRExprPreChecked, csMonad]

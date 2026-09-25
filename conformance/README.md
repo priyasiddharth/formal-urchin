@@ -140,10 +140,11 @@ may carry `// miri-flags: -Zmiri-…` for extra Miri flags.
 
 ## Current score (miri @ PIN)
 
-- 98 supported / 40 unsupported of 138 entries; every supported entry
+- 99 supported / 39 unsupported of 138 entries; every supported entry
   agrees with Miri's verdict (and line, where specified); `--osea`
-  differential 98 matched. 24 entries run under a certificate, with 43
-  branches checked and 0 unchecked.
+  differential 99 matched. 25 entries run under a certificate, with 44
+  branches checked (25 static, 19 runtime across 7 entries) and 0
+  unchecked.
 - No xfail-model divergences.
 
 Modeled beyond the core: protectors (call-frame protector sets,
@@ -161,12 +162,15 @@ items (popping/deallocating them is allowed), `UnsafeCell`/`Cell`/
 `Atomic*` map to cell-marked layouts with pointees inferred from
 constructor/accessor call sites, and `UnsafeCell::{new,get}`, `Cell::new`
 and `ptr::read` are shimmed. Pointer type-punning casts are
-tag-preserving reinterprets (`RExpr.ptrCast`). Slice LENGTH is real:
-`<[T]>::len` and rustc's `PtrMetadata` place read lower to mirlite's
-`sliceLen`, which reads the fat pointer (copy's read of the cell that
-holds it — not an access to the slice data) and yields the extent it
-carries, in elements (2026-09-24); range SUB-slicing through the std
-`Index` chain is not modeled yet. Transmute is shimmed
+tag-preserving reinterprets (`RExpr.ptrCast`). Slices are real: `<[T]>::len` and rustc's
+`PtrMetadata` place read lower to mirlite's `sliceLen`, which reads the
+fat pointer (copy's read of the cell that holds it — not an access to
+the slice data) and yields the extent it carries, in elements
+(2026-09-24); and range SUB-slicing (`&s[lo..hi]`, `&a[..]`) lowers the
+std `Index`/`array` chain to the two retags it performs — the receiver's
+own, then the mint over the narrowed range — with `subSlice` (pure
+pointer arithmetic: same allocation, same tag, offset moved by `lo`
+elements, extent cut to `hi − lo`) between them (2026-09-25). Transmute is shimmed
 (to-raw = reinterpret, to-ref = a real retag, `transmute_copy` = a typed
 load); reified fn pointers are tracked statically and indirect calls
 resolve to their targets (the `aliasing_mut*` family). Int-to-ptr uses

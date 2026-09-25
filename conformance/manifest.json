@@ -770,11 +770,14 @@
       "source": "corpus/tests/fail/stacked_borrows/zst_slice.rs",
       "prep": null,
       "artifact": "zst_slice.ullbc.json",
-      "status": "unsupported",
-      "reason": "slice length (`.len()`/metadata) and range sub-slicing; control flow is certified since 2026-09-23",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ub"
-      }
+      },
+      "miri_error": "retag .* tag does not exist in the borrow stack",
+      "certificate": "zst_slice.cert.json",
+      "notes": "verdict-only: the failing statement is the `&*ptr` retag inside the `assert_eq!` expansion, whose charon span points at the macro's own line (44) rather than the call site (8) Miri names. Same mechanism and same cell: a retag from a tag that is not on the stack at element 1, because `&a[0..0]` granted a zero-length range (2026-09-25, sub-slicing)."
     },
     {
       "id": "fail/both_borrows/aliasing_mut1",

@@ -42,6 +42,10 @@ Covered (interpreted):
 - slice metadata: `<[T]>::len` and `_p.PtrMetadata` become mirlite's
   `sliceLen` — the extent the fat pointer carries, in elements
   (2026-09-24), so a bounds check on a runtime length is a real check;
+- range SUB-SLICING (`&s[lo..hi]`, `&a[..]`): the std `Index`/`array`
+  chain is shimmed into the two retags it performs — the receiver's,
+  then the mint over the narrowed range — with mirlite's `subSlice`
+  (pure pointer arithmetic) between them (2026-09-25);
 - heap: `alloc`/`dealloc` via the std shims (`Box::new`, `alloc::alloc`,
   `Layout::*`), incl. `Box` unique retags at seams;
 - interior mutability: `UnsafeCell`/`Cell`/`RefCell` shims with freeze
@@ -71,9 +75,8 @@ Not covered (rejected as `unsupported`), with the reason:
   machinery, no SB content;
 - **runtime array indices / pointer offsets / allocation sizes whose
   VALUE the lowering cannot fold** — an index PROJECTION needs a static
-  field, and `sliceLen`'s word is not one (the length itself is now
-  real; range SUB-slicing through the std `Index` chain is the next
-  step);
+  field, and neither `sliceLen`'s nor `subSlice`'s word is one (lengths
+  and sub-slices are real; a runtime `ptr::add` is the next gap);
 - **recursion & deep (>8) call chains, unknown/bodyless callees,
   unresolved indirect calls** — inlining must terminate statically;
 - **drop glue, closures, containers, threads, unions** (as they arise in
@@ -133,6 +136,12 @@ structure LowerSt where
   certBad : Nat := 0     -- scratch NatL local the checks poison
   certTmp : Nat := 0     -- scratch NatL local the checks read into
   halted : Bool := false -- the certificate's UB/panic prefix ended here
+
+/-- The place an operand reads, when it reads one. -/
+def operandPlace? : UOperand → Option UPlace
+  | .copy p => some p
+  | .move p => some p
+  | _ => none
 
 /-- The local and tuple-field path of a projection-free-of-deref place. -/
 def fieldPath? (p : UPlace) : Option ConstKey :=
@@ -211,6 +220,8 @@ def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .ptrOffset p d => .ptrOffset (rebasePlace off p) d
   | .refSlice kind prot p => .refSlice kind prot (rebasePlace off p)
   | .sliceLen p => .sliceLen (rebasePlace off p)
+  | .subSlice p lo hi =>
+      .subSlice (rebasePlace off p) (rebaseOperand off lo) (rebaseOperand off hi)
   | .binOp op a b => .binOp op (rebaseOperand off a) (rebaseOperand off b)
   | .discriminant p => .discriminant (rebasePlace off p)
   | .fnRef fid => .fnRef fid
@@ -291,6 +302,9 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveIdxPlace st line p)
   | .discriminant p => do return .discriminant (← resolveIdxPlace st line p)
   | .sliceLen p => do return .sliceLen (← resolveIdxPlace st line p)
+  | .subSlice p lo hi => do
+      return .subSlice (← resolveIdxPlace st line p) (← resolveIdxOperand st line lo)
+        (← resolveIdxOperand st line hi)
   | .binOp op a b => do
       return .binOp op (← resolveIdxOperand st line a) (← resolveIdxOperand st line b)
   | rv => pure rv
@@ -460,6 +474,12 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
       return pushOut st (.assign dst (.use (.const 0)) line)
   | .ptrOffset _ _ | .refSlice _ _ _ | .sliceLen _ =>
       return pushOut st (.assign dst rv line)
+  | .subSlice p lo hi => do
+      -- mirlite's `subSlice` takes two word PLACES; a constant bound is
+      -- materialised into a fresh local exactly as `binOp`'s are
+      let (st, pLo) ← materialiseWord st line lo
+      let (st, pHi) ← materialiseWord st line hi
+      return pushOut st (.assign dst (.subSlice p (.copy pLo) (.copy pHi)) line)
   | .binOp op a b =>
       -- arithmetic is FOLDED when both operands are known (T1: the static
       -- value is what indices, offsets and sizes need). Otherwise it is
@@ -813,6 +833,73 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
             | _ => throw s!"unsupported: runtime pointer offset (line {line})"
           return pushOut st (.assign dest (.ptrOffset p delta) line)
       | _ => .error s!"unsupported: pointer offset arguments (line {line})"
+  else if f.path == ["core", "slice", "index", "index"] ||
+          f.path == ["core", "slice", "index", "index_mut"] ||
+          f.path == ["core", "slice", "index", "get_unchecked"] ||
+          f.path == ["core", "slice", "index", "get_unchecked_mut"] ||
+          f.path == ["core", "array", "index"] ||
+          f.path == ["core", "array", "index_mut"] then
+    -- `&s[lo..hi]` / `&mut s[lo..hi]`: the std chain bottoms out in
+    -- `from_raw_parts_mut(ptr.add(lo), hi - lo)`, i.e. a retag over the
+    -- NARROWED range. The shim replaces the whole call and reproduces
+    -- the two retags it performs: the fn-entry retag of the receiver
+    -- (over its whole extent) and the mint over the sub-range. The
+    -- narrowing between them is pure pointer arithmetic (`subSlice`).
+    --
+    -- The range argument is a `Range { start, end }` aggregate: a place
+    -- whose two fields are the bounds. A full range (`..`) has no
+    -- fields, and is the identity narrowing `0 .. len`.
+    some fun st args dest line => do
+      let mutbl := f.path == ["core", "slice", "index", "index_mut"] ||
+                   f.path == ["core", "slice", "index", "get_unchecked_mut"] ||
+                   f.path == ["core", "array", "index_mut"]
+      let kind : URefKind := if mutbl then .mut else .shared
+      match args with
+      | [sliceOp, rangeOp] =>
+          let some sp := operandPlace? sliceOp
+            | .error s!"unsupported: slice index receiver is not a place (line {line})"
+          -- the receiver's fn-entry retag, over its own extent
+          let tmpIdx := st.locals.length
+          let st := { st with locals := st.locals ++ [sp.ty] }
+          let tmp : UPlace := { root := .local tmpIdx, projs := [], ty := sp.ty }
+          let st := pushOut st (.assign tmp (.refSlice kind false sp) line)
+          -- the bounds: a `Range`'s two fields, or `0 .. len` for `..`
+          let (lo, hi) ←
+            match operandPlace? rangeOp with
+            | none => .error s!"unsupported: slice index argument is not a place (line {line})"
+            | some rp =>
+                match rp.ty with
+                | .tup [] | .structT [] =>
+                    -- RangeFull: the whole slice, so `0 .. len`
+                    let lenIdx := st.locals.length
+                    pure (UOperand.const 0, UOperand.copy
+                      { root := .local lenIdx, projs := [], ty := .nat })
+                | .tup [_, _] | .structT [_, _] =>
+                    pure (UOperand.copy (fld rp 0), UOperand.copy (fld rp 1))
+                | _ => .error s!"unsupported: slice index by {reprStr rp.ty} (line {line})"
+          -- a RangeFull needs the length materialised first
+          let st ←
+            match rangeOp with
+            | .copy rp | .move rp =>
+                match rp.ty with
+                | .tup [] | .structT [] =>
+                    let lenIdx := st.locals.length
+                    let st := { st with locals := st.locals ++ [UTy.nat] }
+                    pure (pushOut st (.assign
+                      { root := .local lenIdx, projs := [], ty := .nat }
+                      (.sliceLen tmp) line))
+                | _ => pure st
+            | _ => pure st
+          -- move the retagged receiver into the destination first: when
+          -- the receiver is an ARRAY reference (`&a[0..0]`) the copy is
+          -- the tag-preserving reinterpret that gives the pointer the
+          -- slice's element type, which is the type the narrowing scales
+          -- its bounds by
+          let st ← emitAssign st line dest (.use (.copy tmp))
+          let st ← emitAssign st line dest (.subSlice dest lo hi)
+          -- the mint over the narrowed range
+          return pushOut st (.assign dest (.refSlice kind false dest) line)
+      | _ => .error s!"unsupported: slice index arity (line {line})"
   else if f.path == ["core", "slice", "len"] then
     -- `<[T]>::len(&self)`: the metadata of the fat pointer argument. The
     -- shim replaces the whole call, and the length read is not an access
@@ -943,12 +1030,6 @@ def consumeEvent (st : LowerSt) (line : Nat) : Except String (Option CertEvent �
 def switchTarget (cases : List (Nat × Nat)) (otherwise : Nat) : Option Nat → Nat
   | some v => (cases.lookup v).getD otherwise
   | none => otherwise
-
-/-- The bare local a discriminant operand names, if it is one. -/
-def operandPlace? : UOperand → Option UPlace
-  | .copy p => some p
-  | .move p => some p
-  | _ => none
 
 mutual
 
@@ -1178,6 +1259,9 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveGlobalRoot gmap p)
   | .discriminant p => do return .discriminant (← resolveGlobalRoot gmap p)
   | .sliceLen p => do return .sliceLen (← resolveGlobalRoot gmap p)
+  | .subSlice p lo hi => do
+      return .subSlice (← resolveGlobalRoot gmap p) (← resolveGlobalsOp gmap lo)
+        (← resolveGlobalsOp gmap hi)
   | .binOp op a b => do
       return .binOp op (← resolveGlobalsOp gmap a) (← resolveGlobalsOp gmap b)
   | rv => .ok rv

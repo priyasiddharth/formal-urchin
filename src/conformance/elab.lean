@@ -112,6 +112,7 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
       match τ, pl with
       | .PtrL _, pl => return ⟨.NatL, .sliceLen pl⟩
       | _, _ => .error "slice length of a non-pointer place"
+  | .subSlice _ _ _ => .error "subSlice is elaborated against the destination type"
   | .binOp op a b => do
       -- a runtime word: two `NatL` operand PLACES (the seam materialised
       -- any constant operand) and the mirlite `BinOp` the string names
@@ -160,6 +161,25 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           | .PtrL _, pp, .PtrL _, pd =>
               return .assign pd (.refSlice (toRefKind kind) prot pp)
           | _, _, _, _ => .error s!"slice retag on a non-pointer place (line {line})"
+      | .subSlice p lo hi =>
+          -- the ELEMENT type is the destination's pointee: the narrowing
+          -- scales its bounds by that block size
+          let ⟨τp, pp⟩ ← elabPlace Γ p
+          let ploOp ← match lo with
+            | .copy q | .move q => elabNatPlace Γ q "sub-slice bound"
+            | _ => .error "sub-slice bound not materialised by lowering"
+          let phiOp ← match hi with
+            | .copy q | .move q => elabNatPlace Γ q "sub-slice bound"
+            | _ => .error "sub-slice bound not materialised by lowering"
+          match τd, pd with
+          | .PtrL τe, pd =>
+              -- source and destination are the same slice type: the
+              -- narrowing neither changes the element nor the pointee
+              if h : τp = obseq.LayoutTy.PtrL τe then
+                return .assign pd (.subSlice (h ▸ pp) ploOp phiOp)
+              else
+                .error s!"sub-slice element type mismatch (line {line})"
+          | _, _ => .error s!"sub-slice into a non-pointer place (line {line})"
       | _ =>
         let ⟨τr, er⟩ ← elabRvalue Γ rv
         if h : τr = τd then
@@ -214,6 +234,7 @@ def rvaluePlaces : URvalue → List UPlace
   | .use op => operandPlaces op
   | .move p | .ref _ _ p | .exposeAddr p | .fromExposed p | .ptrOffset p _
   | .refSlice _ _ p | .discriminant p | .sliceLen p => [p]
+  | .subSlice p lo hi => p :: (operandPlaces lo ++ operandPlaces hi)
   | .aggregate _ ops => ops.flatMap operandPlaces
   | .binOp _ a b => operandPlaces a ++ operandPlaces b
   | .fnRef _ | .uninit | .unsupported _ => []

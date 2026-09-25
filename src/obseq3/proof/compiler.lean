@@ -446,6 +446,9 @@ theorem CompilerInv_step
         | sliceLen src =>
             exact CompilerInv_step_constStore compProg (sliceLen_valuePkg src compProg)
               h_comp h_inv h_get h_step
+        | subSlice src lo hi =>
+            exact CompilerInv_step_constStore compProg
+              (subSlice_valuePkg src lo hi compProg) h_comp h_inv h_get h_step
         | ref kind prot mask src =>
             exact CompilerInv_step_ref kind prot mask compProg h_comp h_inv h_get h_step
         | ptrCast src =>

@@ -122,6 +122,10 @@ inductive Rhs
 -- read precedes it): the extent it claims, in elements — mirlite's
 -- `sliceLen`. No memory and no permission event
 | SliceLen (ty : TyVal) (srcPtr : Register)
+-- narrow a fat pointer to elements `lo..hi` from three VALUE registers
+-- (copy's reads precede them) — mirlite's `subSlice`. Pure pointer
+-- arithmetic: no retag, no memory and no permission event
+| SubSlice (ty : TyVal) (srcPtr rLo rHi : Register)
 deriving Repr, Inhabited, BEq
 
 inductive Instr
@@ -259,6 +263,17 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
      | some (_, [Val.Ptr _ _ extent _ _]) =>
          RhsResult.Ok [Val.Dat (extent / typeSize ty)] obseq.TyVal.NatTy state
      | _ => RhsResult.Err "SliceLen expects a pointer value"
+
+  | Rhs.SubSlice ty rp rLo rHi =>
+     match state.reg.lookup rp, state.reg.lookup rLo, state.reg.lookup rHi with
+     | some (_, [Val.Ptr base offset extent size tag]),
+       some (_, [Val.Dat l]), some (_, [Val.Dat h]) =>
+         if h < l || h * typeSize ty > extent then
+           RhsResult.Err "sub-slice range out of bounds"
+         else
+           RhsResult.Ok [Val.Ptr base (offset + l * typeSize ty)
+             ((h - l) * typeSize ty) size tag] obseq.TyVal.PTy state
+     | _, _, _ => RhsResult.Err "SubSlice expects a pointer and two words"
 
   | Rhs.BinOp op r1 r2 =>
      match state.reg.lookup r1, state.reg.lookup r2 with
