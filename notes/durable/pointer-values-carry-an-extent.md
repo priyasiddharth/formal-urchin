@@ -15,6 +15,15 @@ slice's length was reconstructed as `size − offset`, exact only for
 whole-allocation slices (journal/2026-08/2026-08-14-slices-landed.md).
 Source: src/obseq3/{mirlite_semantics,oseair}.lean.
 
+[FACT] There is NO thin/fat pointer distinction in either machine: a
+pointer value is always one cell with all five fields, so the extent is
+carried even by a pointer whose Rust type is thin (`*mut T`), where it
+holds whatever its mint gave it — `as_ptr` through `refSlice` keeps the
+source slice's extent, for instance. "Minting a fat pointer from a thin
+one" is therefore not a thing this model can need; what it can lack is a
+way to SET the extent from a runtime word (see the `from_raw_parts`
+entry in loose-ends/parked.md).
+
 [FACT, updated 2026-09-24] What consumes the extent: the slice mint and
 `sliceLen`. `RExpr.sliceLen p` / `Rhs.SliceLen ty r` read the fat pointer
 (copy's read of the cell that HOLDS it — not an access to the slice data)
@@ -46,7 +55,7 @@ meaning, the corpus verdicts did not move.
 same size and tag) is the third consumer of the extent, and the seam
 shims the std `Index`/`array` chain into the receiver's retag, the
 narrowing, and the mint over the narrowed range. `zst_slice` passes on
-it. What remains of the slice surface: `from_raw_parts_mut` (mint a fat
-pointer from a thin one plus a length) and a RUNTIME `ptr::add` — the
-two gaps `buggy_split_at_mut` still has, parked with a plan. See
+it. What remains of the slice surface: `from_raw_parts_mut` (SET the extent
+from a runtime word) and a RUNTIME `ptr::add` — the two gaps
+`buggy_split_at_mut` still has, parked with a plan. See
 [[what-compile-correct-actually-says]].
