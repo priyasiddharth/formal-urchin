@@ -54,6 +54,9 @@ a wrong verdict. See [[what-compile-correct-actually-says]] for what the
 theorem does and does not cover (it covers every statement the checks
 use).
 
+See [[certificate-check-tiers]] for the two tiers in detail (what T1
+and T2 are, how a T2 check becomes UB, and the measured coverage).
+
 [FACT 2026-09-25] Coverage, measured: the 24 certificates record 43
 branch events (6 record none — straight-line executions), and all 43 are
 checked: 25 by folding (T1) and 18 at runtime (T2) across 6 entries
