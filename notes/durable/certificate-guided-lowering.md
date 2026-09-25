@@ -54,6 +54,18 @@ a wrong verdict. See [[what-compile-correct-actually-says]] for what the
 theorem does and does not cover (it covers every statement the checks
 use).
 
+[FACT 2026-09-25] Coverage, measured: the 24 certificates record 43
+branch events (6 record none — straight-line executions), and all 43 are
+checked: 25 by folding (T1) and 18 at runtime (T2) across 6 entries
+(int-to-ptr 9, aliasing_mut_and_shr 4, box_derefer 2, array_casts 1,
+aliasing_frz_and_shr 1, local/slice_len_value 1). The harness now prints
+that split instead of one conflated `checked` number, so "how much of
+the certificate is really checked by the PROGRAM" is readable off the
+report. Both runtime check forms are demonstrated live: perturbing
+`emitCheckEq` (demand `v + 1`) rejects int-to-ptr, aliasing_mut_and_shr
+and box_derefer; perturbing `emitCheckNotIn` (demand membership) rejects
+array_casts, int-to-ptr, aliasing_mut_and_shr and aliasing_frz_and_shr.
+
 [FACT 2026-09-24] The checks have teeth on the runtime path too, not
 only on the folded one: making `emitCheckEq` demand `v + 1` turns three
 corpus entries into `certificate rejected` (int-to-ptr,

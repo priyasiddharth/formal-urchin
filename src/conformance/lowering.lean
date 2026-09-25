@@ -891,8 +891,9 @@ def natLocal (i : Nat) : UPlace := { root := .local i, projs := [], ty := .nat }
     word alone — has no lowering path left since `binOp` (2026-09-24):
     the counter stays in the report as the standing witness that it is
     0. -/
-def certBump (st : LowerSt) (checked : Nat) : LowerSt :=
-  { st with cert := st.cert.map fun c => { c with checked := c.checked + checked } }
+def certBump (st : LowerSt) (checked : Nat) (runtime : Nat := 0) : LowerSt :=
+  { st with cert := st.cert.map fun c =>
+      { c with checked := c.checked + checked, runtime := c.runtime + runtime } }
 
 /-- UB unless `discr == v`. -/
 def emitCheckEq (st : LowerSt) (line : Nat) (discr : UPlace) (v : Nat) : LowerSt :=
@@ -901,17 +902,19 @@ def emitCheckEq (st : LowerSt) (line : Nat) (discr : UPlace) (v : Nat) : LowerSt
   let l := certLineBase + line
   let st := pushOut st (.assign bad .uninit l)
   let st := pushOut st (.assignIf discr v bad (.use (.const 0)) l)
-  certBump (pushOut st (.assign tmp (.use (.copy bad)) l)) 1
+  certBump (pushOut st (.assign tmp (.use (.copy bad)) l)) 1 1
 
 /-- UB unless `discr ∉ vs` (the `otherwise` arm of a switch). -/
 def emitCheckNotIn (st : LowerSt) (line : Nat) (discr : UPlace) (vs : List Nat) : LowerSt :=
+  -- an `otherwise` arm with NO cases to exclude is vacuous: nothing to
+  -- check at runtime, and nothing the certificate could get wrong
   if vs.isEmpty then certBump st 1 else
   let bad := natLocal st.certBad
   let tmp := natLocal st.certTmp
   let l := certLineBase + line
   let st := pushOut st (.assign bad .uninit l)
   let st := vs.foldl (fun st v => pushOut st (.assignIf discr v tmp (.use (.copy bad)) l)) st
-  certBump st 1
+  certBump st 1 1
 
 /-- The end of a UB/panic certificate prefix: mirlite must have failed
     before reaching this; reaching it is the distinct verdict
@@ -1231,7 +1234,7 @@ def lowerCrate (crate : UCrate) (cert? : Option Cert := none) : Except String LP
         | none => pure st
       let stmts ← st.out.reverse.mapM (resolveGlobalsStmt gmap)
       let stats : CertStats := match st.cert with
-        | some c => { used := true, checked := c.checked, pinned := c.pinned }
+        | some c => { used := true, checked := c.checked, runtime := c.runtime, pinned := c.pinned }
         | none => {}
       return { locals := st.locals, stmts, stats }
 

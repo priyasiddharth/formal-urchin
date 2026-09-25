@@ -269,7 +269,7 @@ def reportResult (r : TestResult) (record : Bool) : IO Unit := do
       if record then IO.println s!"{base}  [observed: {r.verdict.render}]"
       else IO.println base
   if r.stats.used && (record || r.stats.pinned > 0) then
-    IO.println s!"        [certified: {r.stats.checked} checked, {r.stats.pinned} unchecked]"
+    IO.println s!"        [certified: {r.stats.checked} checked ({r.stats.runtime} at runtime), {r.stats.pinned} unchecked]"
   match r.osea with
   | some .matched => IO.println s!"        [osea: matched]"
   | some (.mismatch why) => IO.println s!"        OSEA MISMATCH: {why}"
@@ -290,8 +290,16 @@ def summarize (rs : List TestResult) : IO UInt32 := do
   let certified := rs.filter (·.stats.used)
   if !certified.isEmpty then
     let checked := certified.foldl (· + ·.stats.checked) 0
+    let runtime := certified.foldl (· + ·.stats.runtime) 0
     let pinned := certified.foldl (· + ·.stats.pinned) 0
-    IO.println s!"certificates: {certified.length} entries | checked {checked} | unchecked {pinned}"
+    let withRuntime := certified.filter (·.stats.runtime > 0) |>.length
+    -- a branch the lowering FOLDS is cross-checked against Miri's arm at
+    -- lowering time (T1); one it cannot fold gets a check the PROGRAM
+    -- runs (T2), which is the tier with teeth against a wrong pin
+    IO.println s!"certificates: {certified.length} entries | checked {checked} ({checked - runtime} static, {runtime} runtime in {withRuntime} entries) | unchecked {pinned}"
+    for r in certified do
+      if r.stats.runtime > 0 then
+        IO.println s!"  runtime-checked: {r.entry.id} ({r.stats.runtime})"
     for r in certified do
       if r.stats.pinned > 0 then
         IO.println s!"  unchecked pins: {r.entry.id} ({r.stats.pinned})"

@@ -94,7 +94,8 @@ def parseCert (j : Json) : Except String Cert := do
 /-- What the lowering did with a certificate, for the harness report. -/
 structure CertStats where
   used : Bool := false
-  checked : Nat := 0   -- T1 cross-checks and T2 runtime checks
+  checked : Nat := 0   -- T1 cross-checks + T2 runtime checks
+  runtime : Nat := 0   -- of those, the T2 ones: checks the PROGRAM performs
   pinned : Nat := 0    -- arms followed on Miri's word alone: 0 since `binOp`
 deriving Repr, Inhabited
 
@@ -106,6 +107,7 @@ structure CertCursor where
   nextFrame : Nat := 0
   stack : List (Nat × Nat) := []   -- (frame index, next event index)
   checked : Nat := 0   -- T1 cross-checks + T2 runtime checks emitted
+  runtime : Nat := 0   -- of those, the T2 ones (emitted check statements)
   pinned : Nat := 0    -- arms followed on Miri's word alone: 0 since `binOp`
 deriving Inhabited
 

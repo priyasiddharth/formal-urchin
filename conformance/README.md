@@ -111,9 +111,27 @@ saw them — per user-function frame instance in entry order, the arm every
 There is no third tier since mirlite gained the word `binOp` rvalue
 (2026-09-24): arithmetic the seam cannot fold is EMITTED rather than
 replaced by a placeholder, so every recorded branch has a real word to
-check. The report still prints `[certified: k checked, m unchecked]`
-per entry and lists entries with unchecked pins — `m` is now the
-standing witness that no branch is taken on Miri's word alone.
+check.
+
+Coverage as of 2026-09-25 — **every recorded event is checked**: the 24
+certificates record 43 branch events between them (6 record none: those
+executions are straight-line under Miri), and the lowering consumes and
+checks all 43, 25 by folding (T1) and 18 by a runtime check (T2) spread
+over 6 entries. A frame whose events are not all consumed is an error
+(`unconsumed events`), so the counts cannot silently drift apart. The
+report prints the split, lists the runtime-checked entries, and prints
+`m unchecked` as the standing witness that no branch is taken on Miri's
+word alone.
+
+The runtime tier is the one with teeth against a wrong certificate, and
+both of its check forms are demonstrated live rather than assumed: make
+the equality check demand `v + 1` and int-to-ptr, aliasing_mut_and_shr
+and box_derefer report `certificate rejected`; make the exclusion check
+demand membership instead and array_casts, int-to-ptr,
+aliasing_mut_and_shr and aliasing_frz_and_shr do. (Flipping a recorded
+`arm` instead is usually caught EARLIER — by the T1 cross-check, or by
+the wrong arm walking into an abort — which is why the flip test alone
+does not exercise the check statements.)
 
 No mirlite/oseair/proof change: the checks are ordinary statements, and
 `--osea` attributes their UB like any other. Regenerate with
