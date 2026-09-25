@@ -347,11 +347,12 @@ bodyless std fn, so a seam shim replaces it. The value it must produce
 is the fat pointer `base, offset + lo·elem, (hi − lo)·elem, size, tag`,
 i.e. a runtime `ptrOffset` that also SETS the extent. mirlite has no
 such rvalue: `ptrOffset` takes a static delta and preserves the extent.
-**Why parked:** the three corpus tests it would unlock (zst_slice,
-buggy_split_at_mut, buggy_as_mut_slice) cannot even be built here — the
-Miri corpus is fetched from a local checkout that is absent on this
-machine, so their ULLBC artifacts are not regenerable; local witnesses
-are the only validation available, and lengths were the ask.
+**Why parked:** lengths were the ask, and sub-slicing is a second
+rvalue plus a std-chain shim. (The 2026-09-24 version of this note also
+claimed the three corpus tests could not be built here; that was wrong —
+the corpus was cloned on 2026-09-25, so zst_slice, buggy_split_at_mut
+and buggy_as_mut_slice are now preppable and certifiable like any other
+entry, which makes this item *more* attractive than when it was parked.)
 **To resume:** `RExpr.subSlice (src : Place (PtrL σ)) (lo hi : Place
 NatL)` + `Rhs.SubSlice`, proof by the `binOp` template with THREE reads
 (the frame export already carries operands across later reads), a shim

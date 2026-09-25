@@ -47,6 +47,7 @@ buggy_split_at_mut, buggy_as_mut_slice remain unsupported). The shim
 would emit `ptrOffset` to `base + lo` with extent `(hi − lo) · elemSize`
 — a new rvalue (`subSlice src lo hi`, THREE reads then a register-only
 step, the `binOp` package shape again) or a `ptrOffset` variant that also
-sets the extent. Note those three corpus tests cannot be regenerated
-without a Miri checkout: their ULLBC artifacts are not committed
-(2026-09-24). See [[what-compile-correct-actually-says]].
+sets the extent. Their ULLBC artifacts are not committed, but the corpus
+sources ARE available again (2026-09-25): `scripts/fetch_corpus.sh`
+clones the pinned Miri, so the three tests can be prepped, charon'd and
+certified like any other entry. See [[what-compile-correct-actually-says]].

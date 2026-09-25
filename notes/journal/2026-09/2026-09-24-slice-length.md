@@ -38,12 +38,16 @@ content of the new local witness `slice_len_alias`.
 
 ## Validation: local witnesses, because the corpus cannot be rebuilt
 
-[OBS 2026-09-24] The three corpus tests this would help (zst_slice,
-buggy_split_at_mut, buggy_as_mut_slice) are UNSUPPORTED, and unsupported
-entries' ULLBC artifacts are not committed. Regenerating them needs the
-Miri corpus, which `scripts/fetch_corpus.sh` exports from a local Miri
-checkout — absent on this machine (`/home/siddharth/rustc/...` does not
-exist). Charon (conformance/tools/) and the pinned Miri
+[OBS 2026-09-24, SUPERSEDED → 2026-09-25-corpus-sources.md] The three
+corpus tests this would help (zst_slice, buggy_split_at_mut,
+buggy_as_mut_slice) are UNSUPPORTED, and unsupported entries' ULLBC
+artifacts are not committed. Regenerating them needs the Miri corpus,
+which `scripts/fetch_corpus.sh` exports from a local Miri checkout —
+absent on this machine (`/home/siddharth/rustc/...` does not exist).
+**The next day the corpus was simply cloned** (the remote is public and
+this machine has network); what was missing was a checkout, not a
+possibility. Why I was misled: the script hard-coded one path and I read
+its failure as an environment constraint instead of a default. Charon (conformance/tools/) and the pinned Miri
 (`cargo +nightly-2026-06-01 miri`) DO work, so new LOCAL tests are the
 available validation, and that is what landed:
 

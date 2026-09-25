@@ -8,12 +8,17 @@ pass tests must run clean. Design: `plans/sb_conformance_obseq3.md`.
 
 - `PIN` — pinned miri commit, Charon release, rustc toolchain.
 - `corpus/` — pristine miri `tests/` at the pinned commit
-  (regenerate: `scripts/fetch_corpus.sh`; gitignored).
+  (regenerate: `scripts/fetch_corpus.sh`, which uses `$MIRI_REPO` or
+  `~/src/miri` and clones a blobless mirror there if neither exists;
+  gitignored).
 - `prep/` — curated single-scenario Rust sources, one per supported
   manifest entry. Each carries a header naming the upstream test and
   every rewrite applied.
 - `charon/` — ULLBC JSON artifacts (committed, so the Lean suite runs
-  without a Rust toolchain; regenerate: `scripts/gen_charon.sh`).
+  without a Rust toolchain; regenerate: `scripts/gen_charon.sh`, **run
+  from `conformance/`** — charon records the source path relative to the
+  cwd, and only that cwd reproduces the committed artifacts byte for
+  byte; verified 2026-09-25 by regenerating `illegal_read1`).
 - `tools/` — Charon prebuilt binary (gitignored; release in `PIN`).
 - `manifest.json` — the test registry: per test, status
   (`supported` | `unsupported` | `xfail-model`), reason, expected
