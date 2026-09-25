@@ -510,18 +510,22 @@ decomposition (obseq2/proof stays frozen).
 
 
 ## Verify local conformance witnesses against real Miri
-**Status:** parked 2026-08-21
-**Context:** conformance/local/ holds project-authored Rust witnesses
-(currently deref_read_disables_sibling.rs) with model-reasoned expected
-verdicts; the Miri-derived corpus stays ground truth.
-**Why parked:** running Miri needs a Miri build at the PIN commit; not
-part of the current toolchain setup (tools/ has charon only).
-**To resume:** build/install Miri at the PIN's miri_commit, `cargo miri
-run` each local/*.rs, compare verdict+line, flip the manifest provenance
-field to "miri-verified".
-**Effort estimate:** ~1h once a Miri toolchain is available.
+**Status:** DONE 2026-09-25
+**Outcome:** all 13 `conformance/local/*.rs` run under the pinned Miri
+(`cargo +nightly-2026-06-01 miri`, miri 0.1.0 14210df0e2) and every
+verdict matches the manifest, including the UB one
+(deref_read_disables_sibling, line 13 — the line the model reports, with
+Miri naming the `*p = 5` on the line before as the invalidation).
+Provenance flipped from "local-model-reasoned; pending real-Miri
+verification" to real-Miri verified, and the run is repeatable:
+`conformance/scripts/miri_local.sh` (new).
+**What the parking note got wrong:** it assumed Miri needed a build at
+the PIN commit. The pinned TOOLCHAIN carries the `miri` component
+(rust-toolchain in conformance/tools/ lists it) and `cargo miri` was
+already usable — the corpus SOURCES are what this machine lacks
+(see the certificate work's note), not Miri itself.
 **References:** conformance/README.md (Local witnesses section),
-journal/2026-08/2026-08-21-deref-read.md.
+journal/2026-09/2026-09-25-local-witnesses-miri-checked.md.
 
 ## separation-invariant (DEMOTED 2026-08-28 night — likely unnecessary)
 Originally: `CompilerInv` lacks a separation conjunct, making the

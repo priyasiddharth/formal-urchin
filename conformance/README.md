@@ -187,16 +187,27 @@ unions, MaybeUninit, Rc, runtime VALUES for indices/offsets/sizes.
 
 `conformance/local/` holds Rust test programs written for THIS project
 (not derived from the Miri corpus), lowered through the identical
-charon → loader pipeline. Their manifest entries carry
-`"provenance": "local-model-reasoned"`: the expected verdict is derived
-from the model (and, where noted, from Miri's documented semantics)
-but has NOT been verified against a real Miri run. Current entries:
+charon → loader pipeline. **Every one of them is checked against the
+pinned Miri**, not against model reasoning: `scripts/miri_local.sh` runs
+each file under `cargo +nightly-2026-06-01 miri` and prints the verdict
+(and the UB line), which is what each entry's `expected` block records.
+As of 2026-09-25 all 13 agree, including the one that is UB
+(`deref_read_disables_sibling`, line 13 — the same line the model
+reports). Re-run it whenever a witness is added or the pin moves:
+
+```
+conformance/scripts/miri_local.sh              # all of local/
+conformance/scripts/miri_local.sh local/zst_ref.rs
+```
+
+Current entries:
 
 - `local/deref_read_disables_sibling` — the deref-read alignment
   witness: evaluating `*p` reads `p` as an operand, disabling
   `&mut *(&raw mut p)`; motivated the 2026-08-21 mirlite change making
-  deref resolution a real SB read (`resolvePlaceAcc`). Follow-up: run
-  the pinned Miri on this file and upgrade the provenance.
+  deref resolution a real SB read (`resolvePlaceAcc`). Miri agrees:
+  UB at line 13, "attempting a read access … tag does not exist in the
+  borrow stack", invalidated by the `*p = 5` on the line before.
 - `local/zst_ref` — the ZST borrow witness: `&mut ()` is a legal,
   access-free retag (expected `ok`, PASSES end to end, differential
   matched). Writing it found and closed TWO gaps on 2026-08-22: the

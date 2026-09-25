@@ -1716,8 +1716,9 @@
         "verdict": "ub",
         "line": 13
       },
-      "provenance": "local-model-reasoned; pending real-Miri verification",
-      "notes": "deref-read alignment witness: *p reads p, disabling &mut *(&raw mut p)"
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
+      "notes": "deref-read alignment witness: *p reads p, disabling &mut *(&raw mut p)",
+      "miri_error": "read access .* tag does not exist in the borrow stack"
     },
     {
       "id": "local/zst_ref",
@@ -1726,7 +1727,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "ZST borrow witness (2026-08-22): &mut () is a legal, access-free retag. Source OK since the loader keeps unit-aggregate assignments as access-free uninit inits (they allocate the ZST root). The --osea differential MISMATCHES here by design until the OSEA target relaxes its Rhs.Borrow bounds check for len = 0 (source-ok/target-UB; Rust sides with the source; proof-side the ref L->L regime carries 0 < blockSize and ref_zst_residual is the named sorry). Expected verdict model-reasoned; pending real-Miri verification."
     },
     {
@@ -1736,7 +1737,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "StorageLive-vs-first-assignment probe. rustc rejects `let x: u64; &raw const x` (E0381), so in the union-free fragment every local IS written before it is borrowed -- the first-assignment allocation strategy is sound there BY CONSTRUCTION of the borrow checker. Lights up if unions ever land.",
       "reason": "unions (MaybeUninit); the only legal Rust form of the probe"
     },
@@ -1747,7 +1748,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "ZST field at a struct TAIL: addr = base + size, len = 0 -- the non-degenerate one-past-the-end retag (base != addr, unlike local/zst_ref). Admitted by the range-form Rhs.Borrow check; rejected by the pre-2026-08-22 point check."
     },
     {
@@ -1757,7 +1758,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "ZST field in the INTERIOR of a struct. In the model's cell layout (u64,(),u64) puts s.1 and s.2 at the SAME offset 1 (the ZST occupies no cell), so a retag of s.1 that wrongly used length 1 would write-access exactly the cell `b` points at; the test keeps `b` live across the ZST retag to catch that. NOT a boundary regression test -- verified to pass under the older point check `addr >= base + size` too, since an interior address is genuinely in bounds; local/zst_ref and local/zst_tail_field are the boundary witnesses."
     },
     {
@@ -1767,7 +1768,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "Nested-projection witness, FIXED 2026-08-27: the compiler now REASSOCIATES proj chains (.proj (.proj b q) p -> .proj b (q++p)) so a nested projection emits ONE field-sized Borrow anchored at the chain root instead of retagging every intermediate place -- writing s.1.1 no longer invalidates a live &mut s.1.0. Differential matched; also pinned in-repo as compile_tests d26 (teeth verified: reverting the reassociation arms makes d26 fail with target ub 5 / source ok). Expected verdict model-reasoned; pending real-Miri verification."
     },
     {
@@ -1777,7 +1778,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local-model-reasoned; pending real-Miri verification",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "Split borrows: all three fields of (u64,u64,u64) mutably borrowed simultaneously, writes interleaved. Falls out of per-cell stacks (disjoint ranges, disjoint stacks); no other suite coverage of borrow COEXISTENCE. Companion Lean-level scenarios pinned as compile_tests d27-d29 (parent-write cell-wise kill is not expressible in safe Rust -- borrowck rejects it, which is the point)."
     },
     {
@@ -1787,7 +1788,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-21",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "Moving a named local into a call: rustc emits `_4 = move _1; consume(move _4)`; the seam's in-place protection (protected reborrow + uninit) hits `_4`, so the raw pointer into `s` survives on both machines and in Miri."
     },
     {
@@ -1797,7 +1798,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-20",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "Positive `move`: a non-Copy value moved into a call arrives; a raw pointer into an unrelated local is untouched."
     },
     {
@@ -1807,7 +1808,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-21",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "`let t = s;` is `Operand::Move`, evaluated as a copy (rustc interpreter, with a FIXME); the raw pointer into `s` survives."
     },
     {
@@ -1817,7 +1818,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local; real-Miri verified OK (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-20",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "Moving one field into a call clears that field's stacks only (through rustc's temporary in MIR; our model clears at the assignment move); a raw pointer into the sibling field survives on both machines and in Miri."
     },
     {
@@ -1827,7 +1828,7 @@
       "expected": {
         "verdict": "ok"
       },
-      "provenance": "local; verified against the pinned Miri",
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "slice length witness (2026-09-24): `s.len()` reads the fat pointer's metadata out of the local holding it, not the slice data, so a shared reborrow taken for `len()` does not disable the raw pointer derived earlier. The array-to-slice coercion carries the extent, so the length is 4."
     },
     {
@@ -1838,8 +1839,8 @@
         "verdict": "ok"
       },
       "certificate": "local/slice_len_value.cert.json",
-      "provenance": "local; certificate extracted from the pinned Miri (2026-09-24)",
-      "notes": "slice length VALUE witness: the program branches on `n != 4`, so the certificate's T2 check compares the lowering's own computed word (sliceLen, then binOp Ne) against the arm Miri took. A length that was not the extent's element count would be reported as `certificate rejected`, not as a verdict."
+      "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
+      "notes": "slice length VALUE witness: the program branches on `n != 4`, so the certificate's T2 check compares the lowering's own computed word (sliceLen, then binOp Ne) against the arm Miri took. A length that was not the extent's element count would be reported as `certificate rejected`, not as a verdict. Miri itself reports `ok`, and its recorded arm is what the check compares against."
     },
     {
       "id": "fail/function_calls/arg_inplace_observe_after",
