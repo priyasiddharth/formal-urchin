@@ -354,12 +354,34 @@ durable/pointer-values-carry-an-extent.md
 **Status:** parked 2026-09-25
 **Context:** the two slice tests still unsupported need one gap each
 beyond sub-slicing. `buggy_split_at_mut` calls
-`slice::from_raw_parts_mut(ptr, len)` — a fat pointer minted from a THIN
-one plus a length, i.e. the inverse of `sliceLen`: set the extent to
-`len · elemSize` — and `ptr.offset(mid as isize)` with a RUNTIME delta,
-where mirlite's `ptrOffset` takes a static one. `buggy_as_mut_slice`
-needs the same `from_raw_parts_mut` plus `Vec`, so it stays out until
+`slice::from_raw_parts_mut(ptr, len)` and `ptr.offset(mid as isize)`
+with a RUNTIME delta (mirlite's `ptrOffset` takes a static one).
+`buggy_as_mut_slice` needs the same plus `Vec`, so it stays out until
 containers land.
+
+NOT a thin/fat distinction: mirlite has none — every pointer value is
+one cell carrying `base offset extent size tag`, and the extent IS the
+metadata Rust keeps in the fat half. What is missing is an rvalue that
+SETS the extent from a runtime word: `sliceLen` reads it, `subSlice`
+narrows it relative to the current one, `ref`/`Borrow (some n)` sets a
+STATIC n, `alloc` sets the block, `fromExposed` sets `size − offset`,
+and `ptrOffset` leaves it alone. Nothing sets `extent := n · elemSize`
+for a runtime n.
+**Why not just `subSlice p 0 n`:** it would work for this test (the
+`as_mut_ptr` shim keeps the source slice's extent, so `n ≤ extent`), but
+it is wrong in the direction that matters — Rust permits a length beyond
+the pointer's provenance and Miri flags it at the reference creation,
+while narrowing would retag a SHORTER range and MISS the UB.
+**Design note for whoever picks this up:** `Borrow none` (the slice
+retag) deliberately does no range check, justified by "the extent was
+checked when the pointer was minted" (oseair.lean). A setting rvalue
+weakens that justification. The saving grace is that every retag form
+errors on a cell with no borrow stack (`sb-insert/sb-read/sb-write: no
+borrow stack at address`), so an over-long extent still lands as UB —
+the same verdict Miri gives, with a different message. Decide
+deliberately: keep the unchecked retag and rely on the per-cell failure,
+or bounds-check at the set. The same question already applies to
+`ptrOffset`, which keeps the extent and so over-claims after `.add(k)`.
 **Why parked:** sub-slicing was the ask, and both gaps are their own
 rvalue-shaped changes.
 **To resume:** (1) a `withLen` rvalue (or a `subSlice` variant taking a
