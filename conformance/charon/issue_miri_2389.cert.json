@@ -1,0 +1,22 @@
+{
+ "version": 1,
+ "source": "prep/issue_miri_2389.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0",
+   "-Zmiri-permissive-provenance"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  }
+ ]
+}

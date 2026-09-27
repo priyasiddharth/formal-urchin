@@ -279,6 +279,9 @@ are STALE (marked †). Splitting a whole-file entry ADDS entries; the
 whole-file entry stays unsupported.
 
 **Tier 0 — no loader/model change (prep, split, or manifest only)**
+**DONE 2026-09-27** — all ten below except drop_in_place_protector (left for
+item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
+`--osea` 109 matched, every fail entry's line pinned from Miri's own run.
 | entry | what it takes | |
 |---|---|---|
 | illegal_read5 † | nothing: passes on the raw source (UB line 16; no Rc in it) | [OBS] |
@@ -290,7 +293,7 @@ whole-file entry stays unsupported.
 | issue-miri-2389 | prep: `.cast::<i32>()` → `as *const i32` | [OBS] |
 | 2phase::two_phase1 | split out | [OBS] |
 | 2phase::two_phase_overlapping2 | split + local-trait rewrite of `+=` (keeps autoref) | [OBS] |
-| basic::write_does_not_invalidate_all_aliases † | prep: `.cast` → `as` | [HYP] |
+| basic::write_does_not_invalidate_all_aliases † | prep: `.cast` → `as` | [OBS 09-27] |
 | drop_in_place_protector | only with a HEAVY prep (hand-inline drop_in_place) — prefer item q | [OBS] |
 
 **Tier 1 — small loader/tooling fixes (each ≲ a few dozen lines)**

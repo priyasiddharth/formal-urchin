@@ -140,11 +140,12 @@ may carry `// miri-flags: -Zmiri-…` for extra Miri flags.
 
 ## Current score (miri @ PIN)
 
-- 99 supported / 39 unsupported of 138 entries; every supported entry
-  agrees with Miri's verdict (and line, where specified); `--osea`
-  differential 99 matched. 25 entries run under a certificate, with 44
-  branches checked (25 static, 19 runtime across 7 entries) and 0
-  unchecked.
+- 109 supported / 31 unsupported of 140 entries (2026-09-27); every
+  supported entry agrees with Miri's verdict (and line, where
+  specified); `--osea` differential 109 matched. 35 entries run under a
+  certificate, with 47 branches checked (27 static, 20 runtime across 8
+  entries) and 0 unchecked. What each unsupported entry still needs:
+  notes/loose-ends/parked.md, MASTER INVENTORY § A′.
 - No xfail-model divergences.
 
 Modeled beyond the core: protectors (call-frame protector sets,

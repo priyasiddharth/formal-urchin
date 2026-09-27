@@ -1,0 +1,49 @@
+{
+ "version": 1,
+ "source": "prep/basic_aliasing_model__write_does_not_invalidate_all_aliases.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "S",
+  "lib1",
+  "lib2",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _14",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _14) -> [0: bb4, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "lib1",
+   "miri_path": "main::other::lib1",
+   "events": []
+  },
+  {
+   "fn": "lib2",
+   "miri_path": "main::other::lib2",
+   "events": []
+  }
+ ]
+}

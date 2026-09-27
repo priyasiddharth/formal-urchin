@@ -4,6 +4,23 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-27 — Ten More Corpus Entries, No New Semantics
+
+A survey of the 39 unsupported conformance entries found that several
+were blocked by nothing the model lacks. Two passed on the unmodified
+upstream source (their recorded blockers, "Rc" and "closures", were
+stale), and eight more needed only a prep rewrite of the kind the corpus
+already records: a union that exists only to carry a tag across a call
+without a retag became a raw pointer, which does the same; `NonNull`
+became the raw pointer it wraps; `<*T>::cast` became the `as` cast it
+is defined as; and two scenarios were split out of the 2phase file.
+Every rewritten program was re-run under the pinned Miri, which gives
+the same verdict and, for the six fail tests, the same line the model
+reports. The corpus now stands at 109 supported and 31 unsupported, and
+the per-test list of what the remaining 31 need is kept in the notes.
+
+---
+
 ## 2026-09-24 (later) — Slice Length Is a Word the Program Computes
 
 A slice value in this model is one cell, and since the extent landed it

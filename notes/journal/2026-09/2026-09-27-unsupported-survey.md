@@ -21,3 +21,21 @@ Headlines:
 
 ## See also
 loose-ends/parked.md (§ A′)
+
+## Later: Tier 0 landed
+
+[OBS] Ten entries flipped with preps only: illegal_read5, track_caller
+(raw source), illegal_read3 (union → `*const i32`),
+mut_exclusive_violation2 (NonNull → raw), mixed_cell_deallocate
+(alloc for Box), box-cell-alias (trailing `val.get()` dropped),
+issue-miri-2389 and write_does_not_invalidate_all_aliases (`.cast` →
+`as`), and two 2phase split-outs (two_phase1; two_phase_overlapping2
+with a local `AddAssign` trait). Each prep got a certificate from the
+pinned Miri, and every fail entry's expected line is Miri's own
+(16, 10, 18, 17, 18, 11). Corpus 109/0/31, osea 109 matched,
+certificates 35 entries / 47 checked (27 static, 20 runtime) / 0
+unchecked; units 18/18, 129/129. No Lean change.
+
+[OBS] box-cell-alias's expected line moved 9 → 11: the prep gained two
+header lines. drop_in_place_protector's heavy prep was NOT taken; it
+waits for the drop_in_place shim (§ A′ q).

@@ -1,0 +1,27 @@
+{
+ "version": 1,
+ "source": "prep/2phase__two_phase1.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main",
+  "tpb"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "tpb",
+   "miri_path": "<i32 as S>::tpb",
+   "events": []
+  }
+ ]
+}

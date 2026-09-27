@@ -483,24 +483,38 @@
     {
       "id": "fail/stacked_borrows/illegal_read3",
       "source": "corpus/tests/fail/stacked_borrows/illegal_read3.rs",
-      "prep": null,
+      "prep": "prep/illegal_read3.rs",
       "artifact": "illegal_read3.ullbc.json",
-      "status": "unsupported",
-      "reason": "transmute + statics",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 18
+      },
+      "miri_error": "read access .* tag does not exist in the borrow stack",
+      "rewrites": [
+        "dropped error annotation",
+        "union HiddenRef { r: &i32 } -> *const i32 (carries the tag across the call without a retag, as the union does)"
+      ],
+      "certificate": "illegal_read3.cert.json"
     },
     {
       "id": "fail/stacked_borrows/illegal_read5",
       "source": "corpus/tests/fail/stacked_borrows/illegal_read5.rs",
-      "prep": null,
+      "prep": "prep/illegal_read5.rs",
       "artifact": "illegal_read5.ullbc.json",
-      "status": "unsupported",
-      "reason": "Rc + interior mutability",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 16
+      },
+      "miri_error": "read access .* tag does not exist in the borrow stack",
+      "rewrites": [
+        "dropped rustfmt attr, normalize directive and error annotation"
+      ],
+      "certificate": "illegal_read5.cert.json",
+      "note": "the old reason (\"Rc + interior mutability\") was stale: no Rc; RefCell shims + ptr::read already covered it (survey 2026-09-27)"
     },
     {
       "id": "fail/stacked_borrows/illegal_read7",
@@ -708,13 +722,20 @@
     {
       "id": "fail/stacked_borrows/track_caller",
       "source": "corpus/tests/fail/stacked_borrows/track_caller.rs",
-      "prep": null,
+      "prep": "prep/track_caller.rs",
       "artifact": "track_caller.ullbc.json",
-      "status": "unsupported",
-      "reason": "#[track_caller] + closures",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 10
+      },
+      "miri_error": "read access .* tag does not exist in the borrow stack",
+      "rewrites": [
+        "dropped rustfmt attr and error annotation"
+      ],
+      "certificate": "track_caller.cert.json",
+      "note": "#[track_caller] adds no location argument in Charon's MIR; the old reason (\"closures\") was stale"
     },
     {
       "id": "fail/stacked_borrows/transmute-is-no-escape",
@@ -1043,13 +1064,21 @@
     {
       "id": "fail/both_borrows/mixed_cell_deallocate",
       "source": "corpus/tests/fail/both_borrows/mixed_cell_deallocate.rs",
-      "prep": null,
+      "prep": "prep/mixed_cell_deallocate.rs",
       "artifact": "mixed_cell_deallocate.ullbc.json",
-      "status": "unsupported",
-      "reason": "interior mutability + deallocation",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 18
+      },
+      "miri_error": "deallocation .* only grants SharedReadOnly permission",
+      "rewrites": [
+        "dropped revisions and error annotation",
+        "Box::new + Box::into_raw -> alloc + store",
+        "Layout::new::<T>() -> Layout::for_value(x)"
+      ],
+      "certificate": "mixed_cell_deallocate.cert.json"
     },
     {
       "id": "fail/both_borrows/mixed_mutability_static",
@@ -1088,13 +1117,20 @@
     {
       "id": "fail/both_borrows/mut_exclusive_violation2",
       "source": "corpus/tests/fail/both_borrows/mut_exclusive_violation2.rs",
-      "prep": null,
+      "prep": "prep/mut_exclusive_violation2.rs",
       "artifact": "mut_exclusive_violation2.ullbc.json",
-      "status": "unsupported",
-      "reason": "std NonNull (non-tuple ADT)",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 17
+      },
+      "miri_error": "read access .* tag does not exist in the borrow stack",
+      "rewrites": [
+        "dropped revisions and error annotations",
+        "NonNull<i32> -> *mut i32 (from -> cast, clone -> copy, as_mut -> &mut *p)"
+      ],
+      "certificate": "mut_exclusive_violation2.cert.json"
     },
     {
       "id": "fail/both_borrows/newtype_pair_retagging",
@@ -1386,14 +1422,18 @@
     {
       "id": "pass/both_borrows/basic_aliasing_model::write_does_not_invalidate_all_aliases",
       "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
-      "prep": null,
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "statics + ptr casts",
+      "prep": "prep/basic_aliasing_model__write_does_not_invalidate_all_aliases.rs",
+      "artifact": "basic_aliasing_model__write_does_not_invalidate_all_aliases.ullbc.json",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ok"
       },
-      "rewrites": []
+      "rewrites": [
+        "scenario extracted",
+        ".cast::<*mut i32>() -> as *const *mut i32"
+      ],
+      "certificate": "basic_aliasing_model__write_does_not_invalidate_all_aliases.cert.json"
     },
     {
       "id": "pass/both_borrows/basic_aliasing_model::box_into_raw_allows_interior_mutable_alias",
@@ -1455,11 +1495,42 @@
       "prep": null,
       "artifact": null,
       "status": "unsupported",
-      "reason": "two-phase activation patterns + Vec",
+      "reason": "Vec (two_phase2/3, two_phase_raw, two_phase_overlapping1); two_phase1 and two_phase_overlapping2 are split out",
       "expected": {
         "verdict": "ok"
       },
       "rewrites": []
+    },
+    {
+      "id": "pass/both_borrows/2phase::two_phase1",
+      "source": "corpus/tests/pass/both_borrows/2phase.rs",
+      "prep": "prep/2phase__two_phase1.rs",
+      "artifact": "2phase__two_phase1.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted"
+      ],
+      "certificate": "2phase__two_phase1.cert.json"
+    },
+    {
+      "id": "pass/both_borrows/2phase::two_phase_overlapping2",
+      "source": "corpus/tests/pass/both_borrows/2phase.rs",
+      "prep": "prep/2phase__two_phase_overlapping2.rs",
+      "artifact": "2phase__two_phase_overlapping2.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "std AddAssign::add_assign -> local trait method with the same body (keeps the two-phase autoref)"
+      ],
+      "certificate": "2phase__two_phase_overlapping2.cert.json"
     },
     {
       "id": "pass/both_borrows/interior_mutability",
@@ -1491,14 +1562,18 @@
     {
       "id": "pass/both_borrows/issue-miri-2389",
       "source": "corpus/tests/pass/both_borrows/issue-miri-2389.rs",
-      "prep": null,
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "int-to-ptr exposed provenance",
+      "prep": "prep/issue_miri_2389.rs",
+      "artifact": "issue_miri_2389.ullbc.json",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ok"
       },
-      "rewrites": []
+      "rewrites": [
+        "dropped revisions; stack revision's -Zmiri-permissive-provenance kept as miri-flags",
+        "wildcard.cast::<i32>() -> wildcard as *const i32"
+      ],
+      "certificate": "issue_miri_2389.cert.json"
     },
     {
       "id": "pass/both_borrows/maybe_dangling",
@@ -1982,19 +2057,21 @@
       "id": "fail/box-cell-alias",
       "source": "corpus/tests/fail/box-cell-alias.rs",
       "prep": "prep/box_cell_alias.rs",
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "loader: `*const Cell<u8>` from `&*val` with `val: Box<Cell<u8>>` elaborates the destination as one word (Cell pointee fallback) against a pointer rvalue",
+      "artifact": "box_cell_alias.ullbc.json",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ub",
-        "line": 9
+        "line": 11
       },
       "miri_error": "trying to retag from .* but that tag does not exist",
       "rewrites": [
         "dropped //@compile-flags and //~ ERROR annotation",
-        "assert_eq! -> plain read"
+        "assert_eq! -> plain read",
+        "trailing val.get() -> 0 (UB fires first; Cell::get is mis-shimmed as UnsafeCell::get \u2014 parked.md \u00a7 A\u2032 b)"
       ],
-      "notes": "A Box<Cell<u8>> moved into a call while a raw pointer to the cell survives; the callee's write through the raw pointer conflicts with the box's protected fn-entry retag."
+      "notes": "A Box<Cell<u8>> moved into a call while a raw pointer to the cell survives; the callee's write through the raw pointer conflicts with the box's protected fn-entry retag.",
+      "certificate": "box_cell_alias.cert.json"
     },
     {
       "id": "fail/function_calls/return_pointer_aliasing_write_tail_call",

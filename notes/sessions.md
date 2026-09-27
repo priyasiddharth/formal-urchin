@@ -4355,7 +4355,9 @@ list, [OBS]/[HYP] marked); journal/2026-09/2026-09-27-unsupported-survey.md.
 (listed † in § A′); the named-struct no-retag rule's cited basis does
 not support it.
 
-**Status:** list complete; nothing implemented or committed.
+**Status:** list committed (39d0114); then Tier 0 landed — ten
+entries via preps, corpus 109/0/31, osea 109, units 18/18 and 129/129,
+no Lean change.
 
-**Next-session pickup candidates:** Tier 0 promotions; bugs b/c/d/e/f;
-the struct-field retag rule (m).
+**Next-session pickup candidates:** bugs b/c/d/e/f (Cell::get restores
+box-cell-alias's `val.get()`); the struct-field retag rule (m).

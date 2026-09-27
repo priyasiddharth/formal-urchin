@@ -1,0 +1,45 @@
+{
+ "version": 1,
+ "source": "prep/2phase__two_phase_overlapping2.rs",
+ "miri": {
+  "toolchain": "nightly-2026-06-01",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "add_assign",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_8.1: bool)",
+     "success": 1,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_8.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _6, move _7) -> [success: bb1, unwind continue]",
+     "next": 1,
+     "outcome": "success"
+    }
+   ]
+  },
+  {
+   "fn": "add_assign",
+   "miri_path": "<i32 as AddAssign>::add_assign",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_4.1: bool)",
+     "success": 1,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_4.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_1), move _3) -> [success: bb1, unwind continue]",
+     "next": 1,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}
