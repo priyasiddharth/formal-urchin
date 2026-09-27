@@ -270,6 +270,133 @@ feature-level view.
 11. **Miri-internal tests**: stack-printing, unknown-bottom-gc,
     zst-field-retagging-terminates.
 
+### A′. Per-test blocker survey of the 39 unsupported entries (2026-09-27, HEAD c4b3c83)
+Four read-only agents charon-compiled every unsupported source, ran the
+loader on it and on candidate preps (scratch manifests only), and
+generated Miri certificates where needed. [OBS] = observed in a run,
+[HYP] = read off the source, not run. Several manifest `reason` fields
+are STALE (marked †). Splitting a whole-file entry ADDS entries; the
+whole-file entry stays unsupported.
+
+**Tier 0 — no loader/model change (prep, split, or manifest only)**
+| entry | what it takes | |
+|---|---|---|
+| illegal_read5 † | nothing: passes on the raw source (UB line 16; no Rc in it) | [OBS] |
+| track_caller † | nothing: passes (line 10; Charon adds no location arg) | [OBS] |
+| illegal_read3 | prep: union `HiddenRef` → `*const i32`; Miri gives the same UB line | [OBS] |
+| mut_exclusive_violation2 | prep: NonNull → raw ptrs (repr(transparent)) | [OBS] |
+| mixed_cell_deallocate | prep: `alloc` + store instead of `Box::new`/`into_raw` | [OBS] |
+| box-cell-alias † | prep: drop trailing `val.get()` (UB fires first); real fix is item b | [OBS] |
+| issue-miri-2389 | prep: `.cast::<i32>()` → `as *const i32` | [OBS] |
+| 2phase::two_phase1 | split out | [OBS] |
+| 2phase::two_phase_overlapping2 | split + local-trait rewrite of `+=` (keeps autoref) | [OBS] |
+| basic::write_does_not_invalidate_all_aliases † | prep: `.cast` → `as` | [HYP] |
+| drop_in_place_protector | only with a HEAVY prep (hand-inline drop_in_place) — prefer item q | [OBS] |
+
+**Tier 1 — small loader/tooling fixes (each ≲ a few dozen lines)**
+- a. `<*T>::cast`/`cast_mut`/`cast_const` shim (tag-preserving ptrCast) —
+  would remove the `.cast` rewrites above; also needed by box_into_raw,
+  basic::zst, drop_in_place_retag, dealloc_against_protector2, unsafe_pinned.
+- b. **BUG: `Cell::get` hits the `UnsafeCell::get` shim** (both are
+  `["core","cell","get"]` once impl segments are dropped;
+  lowering.lean ~674) → "dst NatL vs rhs PtrL". Unlocks box-cell-alias
+  honestly and interior_mutability::two_phase. [OBS]
+- c. **BUG: enum-variant field projection drops the variant**
+  (ullbc_ast.lean ~552, `findSome? asNat` over the reversed Field args), so
+  `(x as Some).0` resolves to cell 0 = the discriminant, not 1+i.
+  Gave a false-positive UB on a rust_issue_68303 rewrite; latent in the
+  committed return_invalid_{mut,shr}_option artifacts. [OBS]
+- d. **BUG: `miri_cert.py` `last_segment`** — a turbofish frame
+  `safe::split_at_mut::<i32>` strips to `…::` and the last segment is
+  `""`, so generic user fns get no certificate events. Fix:
+  `p.rstrip(": ").split("::")[-1]`. [OBS]
+- e. fn-pointer tracking lost through MOVED call args (`emitSeamBind` →
+  `.move` branch doesn't propagate `fnPtrs`) → "indirect call with
+  unknown target". With the prep (closure → named fn, leak → alloc,
+  drop(Box) → dealloc) this alone unlocks dealloc_against_protector1/2. [OBS]
+- f. Box pointee inference only from `*box` (`collectBoxPointees`); also
+  infer from `Box::new`/`from_raw` argument types → mixed_cell_deallocate
+  (no prep), dealloc_against_protector*, unsafe_cell_deallocate. [OBS]
+- g. Integer `as` casts (`Cast Scalar`) and BitAnd/BitOr/Shl/Shr;
+  offset shim should consult `constOf` for a const-tracked delta →
+  buggy_split_at_mut, smallvec. [OBS]
+- h. Loop visit budget (lowering.lean ~1048) compares cumulative visits
+  against REMAINING events, so long certified loops trip it: 3 iterations
+  pass, 100 fail → unknown-bottom-gc (+ Range→`while` rewrite or shims). [OBS]
+- i. Zero-sized arrays expand to `List.replicate n` (Array type and
+  Repeat) — `[(); usize::MAX]` HANGS the loader → keep ZST arrays zero
+  cells; unlocks zst-field-retagging-terminates (passes at N=4). [OBS]
+- j. Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
+  Unique then raw retag), `Layout::new::<T>`, `ptr.write`, `is_null`,
+  `ManuallyDrop::new`, `Option::{as_ref,unwrap,is_some}`,
+  `AddAssign::add_assign`, `Layout::from_size_align`+`unwrap`.
+  box_into_raw_allows_interior_mutable_alias needs only j+a. [HYP]
+- k. `VaList` as an opaque word + variadic call arity; extra args bound
+  WITHOUT retag (the test's point); prep needs `#![feature(c_variadic)]`
+  → c_variadics. [HYP]
+
+**Tier 2 — model / retag-rule changes (touch semantics, maybe proofs)**
+- m. **By-value named-struct fields must be fn-entry retagged** →
+  newtype_retagging, newtype_pair_retagging (both return "ok" today with
+  the prep; the tuple variant passes). `containsRef (.structT _) = false`
+  (lowering.lean:321) cites fnentry_invalidation2, but that test passes
+  `&mut Thing` and retags never recurse through a reference, so it does
+  not support the rule; newtype_retagging's own comment says "Make sure
+  that we protect references inside structs". Re-run the corpus. [OBS+source]
+- n. `place_base_raw`: `&raw` of a place based on a raw-pointer deref
+  does NOT retag (Miri) — the loader always mints → raw_ref_to_part
+  (+ Box::leak). May shift supported tests; re-run. [HYP]
+- o. Zero-sized retag = no access, no bounds/liveness check; plus
+  no-provenance pointers (`without_provenance_mut`) → basic::zst.
+  Touches mirlite, oseair and the `ref` proof leaf. [HYP]
+- p. Box drop → dealloc (Drop terminators and `mem::drop` are no-ops
+  today, so several "ok" verdicts would be vacuous) — MUST land with weak
+  Box protectors (B2 becomes exercised) and the `&mut !Unpin` →
+  SRW/no-protector rule → not_unpin_not_protected, basic::zst freed case,
+  interior_mutability::unsafe_cell_deallocate. [HYP]
+- q. `drop_in_place` shim (protected Unique retag of `*p`) + drop glue
+  (Drop terminators call Charon's `drop_glue`; flags static on the
+  single certified path) → drop_in_place_retag (also `cast_mut`),
+  drop_in_place_protector, maybe_dangling::boxy, drop_after_sharing. [OBS]
+- r. Slices from raw parts: `withLen` (runtime extent) +
+  `ptrOffsetDyn` (existing parked entry) → buggy_split_at_mut (with d, g),
+  buggy_as_mut_slice (+ Vec or a mini-Vec prep). Risk: Miri blames the
+  tuple aggregate line 13; the loader doesn't retag ref aggregates. [OBS]
+- s. `UnsafePinned` cell-like type + `&mut` to a non-`UnsafeUnpin` type
+  gets the SRW retag (from a type mask, not `Unpin`) → unsafe_pinned;
+  also coroutine's model need. Verify Miri's exact rule first. [HYP]
+- t. `MaybeUninit<T>` = layout of T (`uninit`/`as_ptr`/`write`/
+  `assume_init_ref`) → local/unassigned_local_addr,
+  interior_mutability::into_interior_mutability; + unions (decl,
+  aggregate, `&raw mut self.inline`, never retagged) → smallvec
+  (after the g rewrites). [OBS]
+- u. `MaybeDangling` (transparent, inner ref not retagged) + StorageDead
+  actually killing locals → maybe_dangling (boxy also needs q). [HYP]
+- v. dyn trait objects: unsize-to-dyn sets the extent, dyn reborrow
+  retags `extent` cells, static dyn dispatch + `type_id` shim →
+  wide_raw_ptr_in_tuple. [HYP]
+- w. Vec/String container model (3-word header, push with protected
+  fn-entry retag + realloc, len, as_ptr, `vec!` via `new_uninit`/
+  `into_vec`, str literals, drop → dealloc) → 2phase ×5 fns,
+  interior_mutability::unsafe_cell_2phase, buggy_as_mut_slice,
+  drop_after_sharing, disjoint_mutable_subborrows. The biggest
+  single unlock. [HYP]
+- x. Closures through `FnOnce::call_once`/trait-impl calls ("call to
+  non-static function") — every current closure use is avoidable by a
+  named-fn prep, so it is optional.
+
+**Tier 3 — out of scope or blocked upstream (6)**
+retag_data_race_{read,write,protected_read} (threads + a data-race
+checker, A5); return_pointer_aliasing_write_tail_call (pinned Charon:
+"Unsupported terminator: tailcall"); coroutine-self-referential
+(Charon: "Coroutines are not supported"); stack-printing (the test IS
+Miri's printed stacks); box-custom-alloc-aliasing (allocator-generic
+Box/Vec calling user `allocate`/`deallocate` — heaviest; revisit after w+q).
+
+**Suggested order:** Tier 0 (8 entries flip + 2 split-outs), then b c d
+e f (bugs first), then m (one rule, two tests), g+r (slice pair),
+a+j (small shims), h i, then q, p, t, w.
+
 ### B. SB-model approximations (implemented, but simplified — all noted where they apply)
 1. **Wildcard determinization**: accesses resolve to the topmost
    exposed granting item vs miri's angelic/"unknown bottom" reading.

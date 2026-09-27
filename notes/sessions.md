@@ -4340,3 +4340,22 @@ regenerated here — but `conformance/tools/charon` and
 **Next-session pickup candidates:**
 - Range sub-slicing (`subSlice` + `Index<Range>` shim) — parked.md, ~1 day.
 - Fixed-width (wrapping) arithmetic — parked.md, ~half a day.
+
+## 2026-09-27
+
+**Session:** `formal-urchin`
+
+**Theme:** "continue building a list of functionality to support the 39
+unsupported tests" — a per-test blocker survey, no code changes.
+
+**Key outputs:** parked.md MASTER INVENTORY § A′ (tiered feature → tests
+list, [OBS]/[HYP] marked); journal/2026-09/2026-09-27-unsupported-survey.md.
+
+**Critical corrections:** manifest reasons are stale for ~10 entries
+(listed † in § A′); the named-struct no-retag rule's cited basis does
+not support it.
+
+**Status:** list complete; nothing implemented or committed.
+
+**Next-session pickup candidates:** Tier 0 promotions; bugs b/c/d/e/f;
+the struct-field retag rule (m).
