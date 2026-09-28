@@ -2,7 +2,7 @@
  "version": 1,
  "source": "prep/basic_aliasing_model__two_raw.rs",
  "miri": {
-  "toolchain": "nightly-2026-06-01",
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
   "flags": [
    "-Zmir-opt-level=0"
   ]

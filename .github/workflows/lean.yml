@@ -69,3 +69,68 @@ jobs:
 
       - name: Differential (mirlite vs oseair)
         run: lake exe sb_conformance --manifest conformance/manifest.json --charon-dir conformance/charon --osea
+
+  # The live conformance run: rebuild every input of the corpus suites from
+  # the Rust sources with the PINNED tools (submodules conformance/vendor/
+  # {miri,charon}), check Miri's verdict and line against the manifest,
+  # require the regenerated Charon artifacts and certificates to equal the
+  # committed ones, and run the corpus + differential suites on the fresh
+  # artifacts (conformance/scripts/live.py).
+  #
+  # Everything the tools need is built by conformance/scripts/bootstrap_tools.sh
+  # and cached, keyed on the two submodule commits: a cache hit makes the
+  # bootstrap a no-op; a miss (a pin moved) costs one rustc download + the
+  # Miri and Charon builds + two std sysroots.
+  live:
+    name: live conformance (pinned Miri + Charon)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Tool cache key (submodule commits + bootstrap script)
+        id: pins
+        run: |
+          echo "miri=$(git rev-parse HEAD:conformance/vendor/miri)" >> "$GITHUB_OUTPUT"
+          echo "charon=$(git rev-parse HEAD:conformance/vendor/charon)" >> "$GITHUB_OUTPUT"
+          echo "charon_tc=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' conformance/vendor/charon/rust-toolchain)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pinned tools
+        uses: actions/cache@v5
+        with:
+          path: |
+            conformance/.tools
+            ~/.rustup/toolchains/miri
+            ~/.rustup/toolchains/${{ steps.pins.outputs.charon_tc }}-x86_64-unknown-linux-gnu
+            ~/.rustup/update-hashes/${{ steps.pins.outputs.charon_tc }}-x86_64-unknown-linux-gnu
+            ~/.cargo/bin/rustup-toolchain-install-master
+          key: tools-${{ runner.os }}-miri-${{ steps.pins.outputs.miri }}-charon-${{ steps.pins.outputs.charon }}-${{ hashFiles('conformance/scripts/bootstrap_tools.sh') }}
+
+      - name: Bootstrap Miri + Charon (no-op on a cache hit)
+        run: bash conformance/scripts/bootstrap_tools.sh
+
+      - name: Install elan (toolchain pinned by lean-toolchain)
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/latest/download/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz -C /tmp
+          /tmp/elan-init -y --no-modify-path --default-toolchain "$(cat lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore .lake build cache (saved by the build job)
+        uses: actions/cache/restore@v5
+        with:
+          path: .lake
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}-${{ github.sha }}
+          restore-keys: |
+            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}-
+
+      - name: Live run (Miri + Charon from source, then both corpus suites)
+        run: python3 conformance/scripts/live.py
+
+      - name: Upload the live report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-report
+          path: conformance/.live/report.txt

@@ -1,5 +1,10 @@
+# The PINS ARE THE SUBMODULE COMMITS (conformance/vendor/{miri,charon});
+# scripts/bootstrap_tools.sh builds both from source. The lines below
+# restate them for readers; move a pin with `git -C conformance/vendor/<x>
+# checkout <commit> && git add conformance/vendor/<x>`, then run
+# scripts/live.py --update and commit the regenerated artifacts.
 miri_commit: 34d6a7954425f3d97d6a7ff19bdf0f7a51560754
 miri_date: 2026-08-13
-miri_remote: https://github.com/rust-lang/miri.git (checkout: $MIRI_REPO, else ~/src/miri — scripts/fetch_corpus.sh clones a blobless mirror there if absent)
-charon_release: nightly-2026.08.14 (charon 0.1.232, linux-x86_64 prebuilt, in conformance/tools/)
-charon_toolchain: nightly-2026-06-01 (rustup, components rustc-dev llvm-tools-preview rust-src miri)
+miri_rustc: 4667d75565e47ba5df36c0df598c556b543e8624 (vendor/miri/rust-version; installed as the rustup toolchain `miri`)
+charon_commit: 0c229235fe28aeea953d03fb5d5096db574ccc1a (= release tag nightly-2026.08.14, charon 0.1.232)
+charon_toolchain: nightly-2026-06-01 (vendor/charon/rust-toolchain; rustup, components rustc-dev llvm-tools-preview rust-src miri)

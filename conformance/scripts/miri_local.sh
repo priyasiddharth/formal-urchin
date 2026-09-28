@@ -12,36 +12,23 @@
 # carry `// miri-flags: -Zmiri-...` for extra flags, as preps do.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-TOOLCHAIN="${MIRI_TOOLCHAIN:-nightly-2026-06-01}"
-BUILD="${MIRI_LOCAL_BUILD:-$HERE/.miribuild}"
-if ! cargo "+$TOOLCHAIN" miri --version >/dev/null 2>&1; then
-  echo "miri_local: cargo +$TOOLCHAIN miri is not available" >&2
-  exit 2
-fi
+. "$HERE/scripts/tools.sh"
 shopt -s nullglob
 files=("$@")
 [ ${#files[@]} -eq 0 ] && files=("$HERE"/local/*.rs)
 for f in "${files[@]}"; do
   name="$(basename "$f" .rs)"
-  crate="$BUILD/$name"
-  mkdir -p "$crate/src"
-  cat > "$crate/Cargo.toml" <<TOML
-[package]
-name = "miriprobe"
-version = "0.1.0"
-edition = "2021"
-[dependencies]
-TOML
-  cp "$f" "$crate/src/main.rs"
-  extra="$(grep -h '^// miri-flags:' "$f" | sed 's|^// miri-flags:||' | tr '\n' ' ' || true)"
+  err="$(mktemp)"
   set +e
-  ( cd "$crate" && MIRIFLAGS="$extra" cargo "+$TOOLCHAIN" miri run -q \
-      > "$crate/stdout.txt" 2> "$crate/stderr.txt" )
+  run_miri "$f" > /dev/null 2> "$err"
   status=$?
   set -e
-  err="$crate/stderr.txt"
   if grep -q "^error: Undefined Behavior" "$err"; then
-    line="$(grep -m1 -- '--> src/main.rs:' "$err" | sed 's|.*src/main.rs:\([0-9]*\):.*|\1|')"
+    # the first span AFTER the UB line (warnings print spans before it);
+    # empty when the UB is in another file (std), as upstream's
+    # `error-in-other-file` tests expect
+    line="$(sed -n '/^error: Undefined Behavior/,$p' "$err" \
+      | grep -m1 -- "--> .*$(basename "$f"):" | sed 's|.*\.rs:\([0-9]*\):.*|\1|' || true)"
     msg="$(grep -m1 "^error: Undefined Behavior" "$err" | cut -c1-140)"
     echo "$name: ub line=$line :: $msg"
   elif grep -qE "panicked at|^error: abnormal termination" "$err"; then
@@ -52,4 +39,5 @@ TOML
     echo "$name: FAILED (miri exited $status)"
     sed -n 1,20p "$err" >&2
   fi
+  rm -f "$err"
 done

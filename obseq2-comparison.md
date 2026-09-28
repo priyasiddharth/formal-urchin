@@ -4,6 +4,24 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-28 — The Conformance Suite Now Runs Miri Every Time
+
+Until today the corpus suite compared the model against verdicts that had
+been recorded once, from Charon output and Miri runs that were also
+committed once. Nothing re-checked them when a test program was edited,
+and the Miri that produced them turned out not even to be the one the
+corpus was pinned to. Miri and Charon are now git submodules pinned to
+fixed commits, built from source by one bootstrap script, and a live run
+regenerates everything from the Rust sources on each CI run: Miri's
+verdict and UB line for every entry, Charon's IR, and the execution
+certificates. It then runs the Lean suite on that fresh output. With the
+pinned Miri every supported entry agrees with its recorded verdict and
+line, and the regenerated IR matches what was committed. The whole run
+takes about fifteen seconds; CI caches the built tools against the two
+submodule commits.
+
+---
+
 ## 2026-09-27 — Ten More Corpus Entries, No New Semantics
 
 A survey of the 39 unsupported conformance entries found that several

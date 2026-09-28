@@ -4361,3 +4361,31 @@ no Lean change.
 
 **Next-session pickup candidates:** bugs b/c/d/e/f (Cell::get restores
 box-cell-alias's `val.get()`); the struct-field retag rule (m).
+
+## 2026-09-28
+
+**Session:** `formal-urchin`
+
+**Theme:** "make the test run miri + charon and produce output each
+time", then "have miri, charon as submodules … pin them", "whatever is
+needed for the build should be available in ci", "use ci caching".
+
+**Key outputs:** submodules conformance/vendor/{miri,charon} (pins
+34d6a79544 / 0c229235); `corpus` → symlink to vendor/miri;
+scripts/bootstrap_tools.sh, scripts/tools.sh (`run_miri`, flags,
+pinned paths), scripts/live.py; gen_charon/gen_cert/miri_local on the
+pinned tools; fetch_corpus.sh deleted; 69 committed artifacts/certs
+regenerated (cosmetic); CI job `live` with a tool cache; README/PIN/
+durable/parked updated; journal/2026-09/2026-09-28-live-conformance.md.
+
+**Critical corrections:** the old judge was rustup's Miri 14210df0e2,
+not the corpus pin; Charon rebuilds Miri's sysroot unless given its own;
+miri_local.sh read a warning's line for custom-MIR preps.
+
+**Status:** complete locally — live 109/109 Miri agreement, 0 drift,
+109/0/31, osea 109, units 18/18 + 129/129. The CI job is untested until
+pushed (cold cache: rustc download + Miri/Charon builds).
+
+**Next-session pickup candidates:** watch the first CI `live` run; then
+bugs b/c/d/e/f from 2026-09-27; CLAUDE.md should mention live.py (its
+working tree has another session's edits).

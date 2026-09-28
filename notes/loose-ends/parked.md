@@ -679,7 +679,9 @@ verdict matches the manifest, including the UB one
 Miri naming the `*p = 5` on the line before as the invalidation).
 Provenance flipped from "local-model-reasoned; pending real-Miri
 verification" to real-Miri verified, and the run is repeatable:
-`conformance/scripts/miri_local.sh` (new).
+`conformance/scripts/miri_local.sh` (new). [2026-09-28: Miri is now the
+submodule pin 34d6a79544, and `scripts/live.py` re-checks every entry,
+local witnesses included, on each CI run.]
 **What the parking note got wrong:** it assumed Miri needed a build at
 the PIN commit. The pinned TOOLCHAIN carries the `miri` component
 (rust-toolchain in conformance/tools/ lists it) and `cargo miri` was

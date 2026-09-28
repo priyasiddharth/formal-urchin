@@ -4,8 +4,9 @@
 along an execution CERTIFICATE: `conformance/charon/<name>.cert.json`
 (manifest field `certificate`) records, per USER-frame instance in Miri's
 entry order, the arm every `switch` took and whether every `assert`
-passed. Source: `scripts/gen_cert.sh` → `cargo +nightly-2026-06-01 miri`
-with `-Zmir-opt-level=0` and `MIRI_LOG="rustc_const_eval::interpret::step=info,…stack=info,…call=info"`,
+passed. Source: `scripts/gen_cert.sh` → the pinned Miri (submodule
+`conformance/vendor/miri`, driver run directly since 2026-09-28; was
+`cargo +nightly-2026-06-01 miri`) with `-Zmir-opt-level=0` and `MIRI_LOG="rustc_const_eval::interpret::step=info,…stack=info,…call=info"`,
 parsed by `scripts/miri_cert.py`. Events are matched by KIND in
 execution ORDER (block/local numbers differ between charon's built MIR
 and Miri's runtime MIR); a frame ends at `popping stack frame` (or its

@@ -6,20 +6,18 @@ pass tests must run clean. Design: `plans/sb_conformance_obseq3.md`.
 
 ## Layout
 
-- `PIN` — pinned miri commit, Charon release, rustc toolchain.
-- `corpus/` — pristine miri `tests/` at the pinned commit
-  (regenerate: `scripts/fetch_corpus.sh`, which uses `$MIRI_REPO` or
-  `~/src/miri` and clones a blobless mirror there if neither exists;
-  gitignored).
+- `vendor/miri`, `vendor/charon` — git SUBMODULES; their commits ARE the
+  pins (`PIN` restates them). `scripts/bootstrap_tools.sh` builds both
+  from source into `.tools/` and the rustup toolchain `miri`
+  (idempotent; CI caches the result keyed on the two commits).
+- `corpus` — symlink to `vendor/miri`, so `corpus/tests/…` is the
+  pristine Miri corpus at the pinned commit.
 - `prep/` — curated single-scenario Rust sources, one per supported
   manifest entry. Each carries a header naming the upstream test and
   every rewrite applied.
-- `charon/` — ULLBC JSON artifacts (committed, so the Lean suite runs
-  without a Rust toolchain; regenerate: `scripts/gen_charon.sh`, **run
-  from `conformance/`** — charon records the source path relative to the
-  cwd, and only that cwd reproduces the committed artifacts byte for
-  byte; verified 2026-09-25 by regenerating `illegal_read1`).
-- `tools/` — Charon prebuilt binary (gitignored; release in `PIN`).
+- `charon/` — ULLBC JSON artifacts and Miri certificates (committed, so
+  the Lean suite runs without a Rust toolchain). Regenerated and checked
+  on every CI run by `scripts/live.py`; `--update` rewrites them.
 - `manifest.json` — the test registry: per test, status
   (`supported` | `unsupported` | `xfail-model`), reason, expected
   verdict (+ optional line), miri's error text (provenance only, never
@@ -28,12 +26,40 @@ pass tests must run clean. Design: `plans/sb_conformance_obseq3.md`.
 ## Running
 
 ```
-scripts/run_suite.sh              # lake exe sb_conformance ...
+scripts/run_suite.sh              # lake exe sb_conformance ... (committed artifacts)
 scripts/run_suite.sh --record     # print observed verdicts (curation)
 scripts/run_suite.sh --filter illegal_read
 lake exe sb_conformance --unit ...          # obseq3 unit tests first
 lake exe sb_conformance ... --dump <id>     # lowered program of one test
 ```
+
+### Live run: Miri and Charon from source, every time
+
+```
+conformance/scripts/bootstrap_tools.sh      # once (no-op when up to date)
+conformance/scripts/live.py                 # everything, ~15 s
+conformance/scripts/live.py --filter zst    # a subset
+conformance/scripts/live.py --update        # rewrite charon/ from the fresh run
+```
+
+For every manifest entry `live.py` runs the pinned Miri on its source
+(`prep/`, `local/`, or the unprepped corpus file) and compares the verdict
+and UB line with the manifest; regenerates its Charon artifact and, where
+the entry has one, its certificate into `.live/charon/`; requires both to
+equal the committed files (Charon's `dest_file` and its run-to-run
+`short_names` order are ignored); then runs `sb_conformance` plain and
+`--osea` on `.live/charon/`. Any disagreement on a SUPPORTED entry fails
+the run; unsupported entries are reported only. Per-entry results:
+`.live/report.txt`.
+
+Two things the scripts rely on, both found the hard way (2026-09-28):
+Miri is invoked as the driver on the file (`run_miri` in
+`scripts/tools.sh`), not through a cargo crate per test — cargo-miri
+re-checks the sysroot on every call and parallel calls race; and Charon
+gets its OWN std sysroot (`CHARON_MIRI_SYSROOTS`) — its driver otherwise
+runs `cargo miri setup` on its own toolchain per call, into
+`MIRI_SYSROOT` or `~/.cache/miri`, overwriting Miri's with a std from a
+different rustc.
 
 Outcomes: `pass`/`fail` (mismatch — missed UB is always a hard failure),
 `xfail`/`xpass(!)` for documented model divergences, `unsupported`
@@ -217,11 +243,12 @@ unions, MaybeUninit, Rc, runtime VALUES for indices/offsets/sizes.
 (not derived from the Miri corpus), lowered through the identical
 charon → loader pipeline. **Every one of them is checked against the
 pinned Miri**, not against model reasoning: `scripts/miri_local.sh` runs
-each file under `cargo +nightly-2026-06-01 miri` and prints the verdict
+each file under the submodule's Miri and prints the verdict
 (and the UB line), which is what each entry's `expected` block records.
 As of 2026-09-25 all 13 agree, including the one that is UB
 (`deref_read_disables_sibling`, line 13 — the same line the model
-reports). Re-run it whenever a witness is added or the pin moves:
+reports). `scripts/live.py` re-checks them on every CI run; to check one
+by hand:
 
 ```
 conformance/scripts/miri_local.sh              # all of local/
