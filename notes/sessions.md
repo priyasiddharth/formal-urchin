@@ -4411,3 +4411,21 @@ literals were dead (real path is inherent on `[T]`).
 pre-change binary on all 140 entries.
 
 **Next-session pickup candidates:** survey bugs c, e, f; item m.
+
+## 2026-09-28 (later still)
+
+**Session:** `formal-urchin` (same session)
+
+**Theme:** survey bug c — enum variant field projections.
+
+**Key outputs:** `parsePlace` Field arm (variant ⇒ `1 + i`);
+local/enum_payload_read; split interior_mutability::rust_issue_68303;
+README local-witness entry; journal 2026-09-28-enum-payload-read.md.
+
+**Critical corrections:** the two option tests never contained the read
+(it follows their UB), so "latent" there meant unreachable.
+
+**Status:** complete, not committed. 112/0/31, osea 112, live 112/112,
+0 drift; units 18/18 + 129/129; both new entries fail on the old binary.
+
+**Next-session pickup candidates:** survey bugs e, f; item m.

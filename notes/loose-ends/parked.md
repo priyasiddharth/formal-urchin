@@ -309,7 +309,13 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   `["core","cell","get"]` once impl segments are dropped;
   lowering.lean ~674) → "dst NatL vs rhs PtrL". Unlocks box-cell-alias
   honestly and interior_mutability::two_phase. [OBS]
-- c. **BUG: enum-variant field projection drops the variant**
+- c. **DONE 2026-09-28** — a `Field` projection whose kind carries a
+  variant (`{"Adt": [decl, v]}`) is now `.field (1 + i)`. Witnesses:
+  local/enum_payload_read and the new split
+  interior_mutability::rust_issue_68303 (both fail on the old code: type
+  mismatch / the false UB at line 17). The two option tests never reached
+  the read (it follows their UB), so their lowering is unchanged.
+  Was: **BUG: enum-variant field projection drops the variant**
   (ullbc_ast.lean ~552, `findSome? asNat` over the reversed Field args), so
   `(x as Some).0` resolves to cell 0 = the discriminant, not 1+i.
   Gave a false-positive UB on a rust_issue_68303 rewrite; latent in the

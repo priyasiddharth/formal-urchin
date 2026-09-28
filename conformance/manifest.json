@@ -1802,6 +1802,23 @@
       "certificate": "interior_mutability__two_phase.cert.json"
     },
     {
+      "id": "pass/both_borrows/interior_mutability::rust_issue_68303",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__rust_issue_68303.rs",
+      "artifact": "interior_mutability__rust_issue_68303.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted",
+        "as_ref().unwrap() -> match &optional",
+        "is_some() -> matches!"
+      ],
+      "certificate": "interior_mutability__rust_issue_68303.cert.json"
+    },
+    {
       "id": "local/deref_read_disables_sibling",
       "artifact": "local/deref_read_disables_sibling.ullbc.json",
       "status": "supported",
@@ -1934,6 +1951,17 @@
       "certificate": "local/slice_len_value.cert.json",
       "provenance": "local; real-Miri verified (toolchain nightly-2026-06-01, miri 0.1.0 14210df0e2), 2026-09-25 via scripts/miri_local.sh",
       "notes": "slice length VALUE witness: the program branches on `n != 4`, so the certificate's T2 check compares the lowering's own computed word (sliceLen, then binOp Ne) against the arm Miri took. A length that was not the extent's element count would be reported as `certificate rejected`, not as a verdict. Miri itself reports `ok`, and its recorded arm is what the check compares against."
+    },
+    {
+      "id": "local/enum_payload_read",
+      "artifact": "local/enum_payload_read.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/enum_payload_read.cert.json",
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-28 via scripts/live.py",
+      "notes": "enum variant field projection witness (survey item c): the `Some(r)` binding reads `(o as Some).0`, which is cell 1 of the enum (cell 0 is the discriminant). Before the fix the binding read the discriminant word and the write through `r` went wild."
     },
     {
       "id": "fail/function_calls/arg_inplace_observe_after",

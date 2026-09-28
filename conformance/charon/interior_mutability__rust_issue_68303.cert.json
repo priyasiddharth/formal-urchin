@@ -1,0 +1,68 @@
+{
+ "version": 1,
+ "source": "prep/interior_mutability__rust_issue_68303.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _7",
+     "cases": [
+      [
+       0,
+       3
+      ],
+      [
+       1,
+       4
+      ]
+     ],
+     "otherwise": 2,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _7) -> [0: bb3, 1: bb4, otherwise: bb2]",
+     "next": 4,
+     "arm": "1"
+    },
+    {
+     "k": "switch",
+     "discr": "move _12",
+     "cases": [
+      [
+       1,
+       7
+      ]
+     ],
+     "otherwise": 6,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _12) -> [1: bb7, otherwise: bb6]",
+     "next": 7,
+     "arm": "1"
+    },
+    {
+     "k": "switch",
+     "discr": "move _11",
+     "cases": [
+      [
+       0,
+       9
+      ]
+     ],
+     "otherwise": 10,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _11) -> [0: bb9, otherwise: bb10]",
+     "next": 10,
+     "arm": "otherwise"
+    }
+   ]
+  }
+ ]
+}

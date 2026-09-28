@@ -1,0 +1,40 @@
+{
+ "version": 1,
+ "source": "local/enum_payload_read.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _6",
+     "cases": [
+      [
+       0,
+       2
+      ],
+      [
+       1,
+       3
+      ]
+     ],
+     "otherwise": 1,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _6) -> [0: bb2, 1: bb3, otherwise: bb1]",
+     "next": 3,
+     "arm": "1"
+    }
+   ]
+  }
+ ]
+}

@@ -4,6 +4,22 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-28 (evening) — Reading a Matched Payload
+
+An enum is laid out as its discriminant followed by the payload, and the
+loader already built and retagged enums that way. Reading a payload back
+out, which is what a `match` arm's binding does, still used the field's
+index as if there were no discriminant in front of it, so `Some(r)`
+bound `r` to the discriminant word. The existing tests never noticed
+because their bindings come after the undefined behaviour they test.
+The loader now offsets variant fields past the discriminant. A new
+local test that writes through a matched `Some(&mut i32)`, and a
+RefCell scenario from the interior-mutability file that used to report
+a spurious violation, both fail on the old loader and pass on the new
+one, in agreement with Miri.
+
+---
+
 ## 2026-09-28 (later) — A Method's Name Includes Its Impl
 
 The conformance loader recognised standard-library functions by their

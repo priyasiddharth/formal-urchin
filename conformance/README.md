@@ -320,6 +320,11 @@ Current entries:
   which is the property being witnessed: the length is the extent's
   element count, not the rest of the allocation. Certificate extracted
   from the pinned Miri.
+- `local/enum_payload_read` — the enum-payload read witness: a `Some(r)`
+  match binding reads `(o as Some).0`, which is cell 1 of the enum (the
+  discriminant is cell 0), and the program writes through `r`. Before
+  the 2026-09-28 fix the loader read the discriminant word and rejected
+  the program (type mismatch); Miri: ok.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

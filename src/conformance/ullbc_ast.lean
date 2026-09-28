@@ -651,9 +651,22 @@ partial def parsePlace (ctx : ParseCtx) (j : Json) : Except String UPlace := do
               | some ("Deref", _) => pure UProj.deref
               | some ("PtrMetadata", _) => pure UProj.ptrMetadata
               | some ("Field", fargs) =>
-                  match (asArr fargs).reverse.findSome? asNat with
-                  | some i => pure (UProj.field i)
-                  | none => .error s!"field projection without index: {proj.compress}"
+                  -- `[kind, i]`: kind is `{"Tuple": n}`, a struct's
+                  -- `{"Adt": [decl, null]}`, or an enum VARIANT's
+                  -- `{"Adt": [decl, v]}`. An enum is laid out as its
+                  -- discriminant then the payload, so variant field i is
+                  -- cell 1+i (as the aggregate and the seam retags write it).
+                  match asArr fargs with
+                  | [kind, iJ] =>
+                      match asNat iJ with
+                      | some i =>
+                          let variant? := (getK kind "Adt").bind fun a =>
+                            match asArr a with
+                            | [_, v] => asNat v
+                            | _ => none
+                          pure (UProj.field (if variant?.isSome then 1 + i else i))
+                      | none => .error s!"field projection without index: {proj.compress}"
+                  | _ => .error s!"malformed field projection: {proj.compress}"
               | some ("Index", payload) =>
                   if (getK payload "from_end") == some (Json.bool true) then
                     pure (UProj.index (.unsupported "from-end index"))
