@@ -1,0 +1,36 @@
+{
+ "version": 1,
+ "source": "prep/interior_mutability__two_phase.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "do_the_thing",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_14.1: bool)",
+     "success": 6,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_14.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _10, move _12) -> [success: bb6, unwind continue]",
+     "next": 6,
+     "outcome": "success"
+    }
+   ]
+  },
+  {
+   "fn": "do_the_thing",
+   "miri_path": "<std::cell::Cell<i32> as main::Thing>::do_the_thing",
+   "events": []
+  }
+ ]
+}

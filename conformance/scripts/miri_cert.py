@@ -45,8 +45,37 @@ def strip_generics(s):
 
 
 def last_segment(path):
-    p = strip_generics(path)
+    # a turbofish frame (`safe::split_at_mut::<i32>`) strips to a trailing
+    # `::`, which is not a segment
+    p = strip_generics(path).rstrip(": ")
     return p.split("::")[-1].strip()
+
+
+def qualified_self(path):
+    """`<Self as Trait>::rest` -> (Self, Trait); None for a plain path."""
+    if not path.startswith("<"):
+        return None
+    depth = 0
+    for i, ch in enumerate(path):
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+            if depth == 0:
+                inner = path[1:i]
+                break
+    else:
+        return None
+    depth = 0
+    for i in range(len(inner)):
+        ch = inner[i]
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        elif depth == 0 and inner.startswith(" as ", i):
+            return inner[:i], inner[i + 4:]
+    return inner, ""
 
 
 def user_fns_of(ullbc):
@@ -68,8 +97,21 @@ def user_fns_of(ullbc):
     return names
 
 
+STD_CRATES = ("std::", "core::", "alloc::", "libc::")
+
+
 def is_user_frame(path, user_fns):
-    if any(x in path for x in ("std::", "core::", "alloc::", "{closure#", "{constant#", "libc::")):
+    if any(x in path for x in ("{closure#", "{constant#")):
+        return False
+    q = qualified_self(path)
+    if q is not None:
+        # `<Self as Trait>::f` is user code when the impl could only be the
+        # user's: the self type or the trait is not a std one
+        # (`<std::cell::Cell<i32> as main::Thing>::do_the_thing`)
+        self_ty, trait = q
+        if all(strip_generics(t).startswith(STD_CRATES) for t in (self_ty, trait) if t):
+            return False
+    elif any(x in path for x in STD_CRATES):
         return False
     return last_segment(path) in user_fns
 

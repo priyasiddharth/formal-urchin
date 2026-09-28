@@ -4389,3 +4389,25 @@ pushed (cold cache: rustc download + Miri/Charon builds).
 **Next-session pickup candidates:** watch the first CI `live` run; then
 bugs b/c/d/e/f from 2026-09-27; CLAUDE.md should mention live.py (its
 working tree has another session's edits).
+
+## 2026-09-28 (later)
+
+**Session:** `formal-urchin` (same session)
+
+**Theme:** survey bug b, "do the principled fix": keep impl blocks in
+function paths instead of special-casing `Cell::get`.
+
+**Key outputs:** `NameCtx`/`renderSelfTy`/`nameSegs`/`mkNameCtx` in
+ullbc_ast.lean; all shim literals renamed (lowering.lean + the cell
+prescan); `Cell::get` shim; miri_cert.py qualified-self user frames +
+bug d; box-cell-alias restored to upstream; new entry
+interior_mutability::two_phase; journal 2026-09-28-impl-segments.md.
+
+**Critical corrections:** the `core::slice::index::get_unchecked`
+literals were dead (real path is inherent on `[T]`).
+
+**Status:** complete, not committed. 110/0/31, osea 110, units 18/18 +
+129/129, live 110/110 with 0 drift; lowering dumps byte-identical to the
+pre-change binary on all 140 entries.
+
+**Next-session pickup candidates:** survey bugs c, e, f; item m.

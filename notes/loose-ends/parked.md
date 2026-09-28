@@ -300,7 +300,12 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
 - a. `<*T>::cast`/`cast_mut`/`cast_const` shim (tag-preserving ptrCast) —
   would remove the `.cast` rewrites above; also needed by box_into_raw,
   basic::zst, drop_in_place_retag, dealloc_against_protector2, unsafe_pinned.
-- b. **BUG: `Cell::get` hits the `UnsafeCell::get` shim** (both are
+- b. **DONE 2026-09-28** — function paths now keep impl blocks as
+  segments (`core::cell::Cell::get`, `core::cell::<Ref as Deref>::deref`;
+  `nameSegs` in ullbc_ast.lean), every shim matches its own function, and
+  `Cell::get` has its own shim (reborrow + read). box-cell-alias runs its
+  upstream body; interior_mutability::two_phase split out and passes.
+  Was: **BUG: `Cell::get` hits the `UnsafeCell::get` shim** (both are
   `["core","cell","get"]` once impl segments are dropped;
   lowering.lean ~674) → "dst NatL vs rhs PtrL". Unlocks box-cell-alias
   honestly and interior_mutability::two_phase. [OBS]
@@ -309,7 +314,10 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   `(x as Some).0` resolves to cell 0 = the discriminant, not 1+i.
   Gave a false-positive UB on a rust_issue_68303 rewrite; latent in the
   committed return_invalid_{mut,shr}_option artifacts. [OBS]
-- d. **BUG: `miri_cert.py` `last_segment`** — a turbofish frame
+- d. **DONE 2026-09-28** (with b: `last_segment` strips a trailing `::`;
+  and `is_user_frame` now judges `<Self as Trait>::f` by Self/Trait, so a
+  user trait's default method on a std type is a user frame).
+  Was: **BUG: `miri_cert.py` `last_segment`** — a turbofish frame
   `safe::split_at_mut::<i32>` strips to `…::` and the last segment is
   `""`, so generic user fns get no certificate events. Fix:
   `p.rstrip(": ").split("::")[-1]`. [OBS]

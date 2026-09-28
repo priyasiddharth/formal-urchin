@@ -176,7 +176,7 @@ deriving Repr, BEq, Inhabited
 structure UFun where
   defId : Nat
   name : String            -- last path ident
-  path : List String       -- all path idents (impl elements dropped)
+  path : List String       -- path segments, impl blocks rendered (`nameSegs`)
   argCount : Nat
   locals : List UTy
   blocks : List UBlock
@@ -253,6 +253,7 @@ structure ParseCtx where
   decls : List (Nat × DeclInfo)
   boxPointee : List (Nat × Json)    -- Box decl id ↦ pointee type Json
   cellPointee : List (Nat × Json)   -- UnsafeCell/Cell decl id ↦ inner type Json
+  funPaths : List (Nat × List String) -- fun decl id ↦ path segments (`funName`)
 
 partial def collectTable (j : Json) (acc : TyTable) : TyTable :=
   match j with
@@ -290,6 +291,76 @@ def adtDeclId (tbl : TyTable) (j : Json) : Option Nat :=
       | some idJ => getK idJ "Adt" >>= asNat
       | none => none
   | _ => none
+
+/-! ## Function names: impl blocks are path segments
+
+Charon names a method by its module path with an `Impl` element where the
+impl block sits: `core::cell::{impl Cell<T>}::get`. Dropping that element
+makes distinct functions collide (`Cell::get` and `UnsafeCell::get` are
+both `core::cell::get`), so it is rendered, the way Rust writes the
+qualified path:
+
+  inherent `impl T`        ↦ `T`                 (`core::cell::Cell::get`)
+  trait `impl Tr for T`    ↦ `<T as Tr>`         (`core::cell::<Ref as Deref>::deref`)
+
+`T` is the self type's head only (monomorphised arguments are dropped):
+an ADT's name, `*const T`/`*mut T`, `&T`/`&mut T`, `[T]`, `[T; N]`,
+`(..)`, or a primitive (`i32`). -/
+
+structure NameCtx where
+  tbl : TyTable
+  typeNames : List (Nat × String)           -- type decl id ↦ its name
+  traitImpls : List (Nat × (String × Json)) -- trait impl id ↦ (trait, Self type)
+deriving Inhabited
+
+def renderSelfTy (nc : NameCtx) (j : Json) : String :=
+  match sumKey (resolveTyJson nc.tbl j) with
+  | some ("Adt", adt) =>
+      match (getK adt "id").bind sumKey with
+      | some ("Adt", n) => ((asNat n).bind (nc.typeNames.lookup ·)).getD "?"
+      | some ("Tuple", _) => "(..)"
+      | some ("Builtin", b) =>
+          match sumKey b with
+          | some ("Slice", _) => "[T]"
+          | some ("Array", _) => "[T; N]"
+          | some ("Str", _) => "str"
+          | some (k, _) => k
+          | none => "?"
+      | _ => "?"
+  | some ("RawPtr", args) =>
+      if (asArr args).getLast? == some (Json.str "Mut") then "*mut T" else "*const T"
+  | some ("Ref", args) =>
+      if (asArr args).getLast? == some (Json.str "Mut") then "&mut T" else "&T"
+  | some ("Literal", lit) =>
+      match sumKey lit with
+      | some ("Int", k) | some ("UInt", k) | some ("Float", k) => ((asStr k).getD "?").toLower
+      | some (k, _) => k.toLower
+      | none => "?"
+  | some ("Slice", _) => "[T]"
+  | some ("Array", _) => "[T; N]"
+  | some (k, _) => k
+  | none => "?"
+
+/-- The segments of an item_meta name: idents, and impl blocks rendered
+    as above; generic instantiations are dropped. -/
+def nameSegs (nc : NameCtx) (nameJ : Json) : List String :=
+  (asArr nameJ).filterMap fun e =>
+    match sumKey e with
+    | some ("Ident", identJ) =>
+        match asArr identJ with
+        | Json.str s :: _ => some s
+        | _ => none
+    | some ("Impl", implJ) =>
+        match sumKey implJ with
+        | some ("Ty", b) => some (renderSelfTy nc ((getK b "skip_binder").getD Json.null))
+        | some ("Trait", idJ) => do
+            let (tr, selfJ) ← (asNat idJ).bind (nc.traitImpls.lookup ·)
+            pure s!"<{renderSelfTy nc selfJ} as {tr}>"
+        | _ => none
+    | _ => none
+
+def funName (nc : NameCtx) (j : Json) : List String :=
+  ((getK j "item_meta" >>= (getK · "name")).map (nameSegs nc)).getD []
 
 def parseDecls (j : Json) : List (Nat × DeclInfo) :=
   match getK j "translated" >>= (getK · "type_decls") with
@@ -334,14 +405,27 @@ partial def collectBoxPointees (tbl : TyTable) (decls : List (Nat × DeclInfo))
   | .arr a => a.foldl (fun acc v => collectBoxPointees tbl decls v acc) acc
   | _ => acc
 
-/-- Light pass: def_id ↦ path idents for every fun decl. -/
-def funPaths (root : Json) : List (Nat × List String) :=
+def mkNameCtx (root : Json) (tbl : TyTable) (decls : List (Nat × DeclInfo)) : NameCtx :=
+  let listOf (k : String) : List Json :=
+    ((getK root "translated" >>= (getK · k)).map asArr).getD []
+  let traitNames : List (Nat × String) := (listOf "trait_decls").filterMap fun t => do
+    pure (← getK t "def_id" >>= asNat, ← (itemName t).getLast?)
+  let traitImpls := (listOf "trait_impls").filterMap fun ti => do
+    let did ← getK ti "def_id" >>= asNat
+    let it ← getK ti "impl_trait"
+    let tr ← (getK it "id" >>= asNat).bind (traitNames.lookup ·)
+    let selfJ ← ((getK it "generics" >>= (getK · "types")).map asArr).getD [] |>.head?
+    pure (did, (tr, selfJ))
+  { tbl, typeNames := decls.filterMap (fun (d, i) => i.path.getLast?.map ((d, ·))), traitImpls }
+
+/-- Light pass: def_id ↦ path segments for every fun decl. -/
+def funPaths (nc : NameCtx) (root : Json) : List (Nat × List String) :=
   match getK root "translated" >>= (getK · "fun_decls") with
   | none => []
   | some funsJ =>
       (asArr funsJ).filterMap fun f => do
         let did ← getK f "def_id" >>= asNat
-        pure (did, itemName f)
+        pure (did, funName nc f)
 
 /-- The type Json of an operand (place ty or const ty). -/
 def operandTyJson (op : Json) : Option Json :=
@@ -353,7 +437,8 @@ def operandTyJson (op : Json) : Option Json :=
 /-- Prescan: infer UnsafeCell/Cell inner types from calls to their
     (bodyless) constructors and accessors:
     `new(v) -> CellTy` gives CellTy ↦ ty(v);
-    `get(&CellTy) -> *mut T` gives CellTy ↦ T. -/
+    `UnsafeCell::get(&CellTy) -> *mut T` and `Cell::get(&CellTy) -> T`
+    give CellTy ↦ T. -/
 partial def collectCellPointees (tbl : TyTable) (paths : List (Nat × List String))
     (j : Json) (acc : List (Nat × Json)) : List (Nat × Json) :=
   let acc :=
@@ -363,13 +448,16 @@ partial def collectCellPointees (tbl : TyTable) (paths : List (Nat × List Strin
           (getK callJ "func" >>= (getK · "Regular") >>= (getK · "kind")
             >>= (getK · "Fun") >>= (getK · "Regular")) >>= asNat
         match funIdx? >>= (paths.lookup ·) with
-        | some ["core", "cell", "new"] =>
+        | some ["core", "cell", "Cell", "new"] | some ["core", "cell", "UnsafeCell", "new"]
+        | some ["core", "cell", "RefCell", "new"] =>
             let did? := (getK callJ "dest" >>= (getK · "ty")) >>= (adtDeclId tbl ·)
             let argTy? := (((getK callJ "args").map asArr).getD []).head? >>= operandTyJson
             match did?, argTy? with
             | some did, some t => if (acc.lookup did).isNone then (did, t) :: acc else acc
             | _, _ => acc
-        | some ["core", "cell", "deref"] | some ["core", "cell", "deref_mut"] =>
+        | some ["core", "cell", "<Ref as Deref>", "deref"]
+        | some ["core", "cell", "<RefMut as Deref>", "deref"]
+        | some ["core", "cell", "<RefMut as DerefMut>", "deref_mut"] =>
             -- Ref/RefMut deref: arg is &Guard, dest is &T ⇒ Guard ↦ T
             let argTy? := (((getK callJ "args").map asArr).getD []).head? >>= operandTyJson
             let did? := argTy?.bind fun t =>
@@ -389,7 +477,20 @@ partial def collectCellPointees (tbl : TyTable) (paths : List (Nat × List Strin
             match did?, retTy? with
             | some did, some t => if (acc.lookup did).isNone then (did, t) :: acc else acc
             | _, _ => acc
-        | some ["core", "cell", "get"] =>
+        | some ["core", "cell", "Cell", "get"] =>
+            -- Cell::get(&CellTy) -> T gives CellTy ↦ T
+            let argTy? := (((getK callJ "args").map asArr).getD []).head? >>= operandTyJson
+            let did? := argTy?.bind fun t =>
+              match sumKey (resolveTyJson tbl t) with
+              | some ("Ref", args) =>
+                  match asArr args with
+                  | [_, inner, _] => adtDeclId tbl inner
+                  | _ => none
+              | _ => none
+            match did?, getK callJ "dest" >>= (getK · "ty") with
+            | some did, some t => if (acc.lookup did).isNone then (did, t) :: acc else acc
+            | _, _ => acc
+        | some ["core", "cell", "UnsafeCell", "get"] =>
             let argTy? := (((getK callJ "args").map asArr).getD []).head? >>= operandTyJson
             let did? := argTy?.bind fun t =>
               match sumKey (resolveTyJson tbl t) with
@@ -867,7 +968,7 @@ def parseBlock (ctx : ParseCtx) (j : Json) : UBlock :=
 
 def parseFun (ctx : ParseCtx) (j : Json) : UFun :=
   let defId := ((getK j "def_id") >>= asNat).getD 0
-  let path := itemName j
+  let path := (ctx.funPaths.lookup defId).getD (itemName j)
   let name := path.getLast?.getD "?"
   match getK j "body" >>= (getK · "Unstructured") with
   | none => { defId, name, path, argCount := 0, locals := [], blocks := [], hasBody := false }
@@ -889,8 +990,9 @@ def parseCrate (root : Json) : Except String UCrate := do
   let tbl := collectTable root []
   let decls := parseDecls root
   let boxPointee := collectBoxPointees tbl decls root []
-  let cellPointee := collectCellPointees tbl (funPaths root) root []
-  let ctx : ParseCtx := { tbl, decls, boxPointee, cellPointee }
+  let paths := funPaths (mkNameCtx root tbl decls) root
+  let cellPointee := collectCellPointees tbl paths root []
+  let ctx : ParseCtx := { tbl, decls, boxPointee, cellPointee, funPaths := paths }
   let globals :=
     match getK root "translated" >>= (getK · "global_decls") with
     | some gJ =>

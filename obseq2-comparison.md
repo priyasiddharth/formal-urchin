@@ -4,6 +4,23 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-28 (later) — A Method's Name Includes Its Impl
+
+The conformance loader recognised standard-library functions by their
+module path alone, so methods from different impl blocks in the same
+module shared a name: `Cell::get`, which returns a value, and
+`UnsafeCell::get`, which returns a raw pointer, were both
+`core::cell::get`, and the first was lowered as the second. Rather than
+special-case that pair, a function's path now keeps its impl block the
+way Rust writes it, as `core::cell::Cell::get` or
+`core::cell::<Ref as Deref>::deref`, and every library shim names exactly
+the function it models. The rename changes nothing else: every lowered
+program in the corpus is byte-for-byte what it was. With `Cell::get`
+modelled on its own, one test now runs its upstream code unmodified and
+a second scenario from the interior-mutability file joins the corpus.
+
+---
+
 ## 2026-09-28 — The Conformance Suite Now Runs Miri Every Time
 
 Until today the corpus suite compared the model against verdicts that had

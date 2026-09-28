@@ -632,7 +632,7 @@ def emitSeamBind (st : LowerSt) (line : Nat) (prot : Bool) (dstLocal : UPlace)
 def shimCall (crate : UCrate) (funIdx : Nat) :
     Option (LowerSt → List UOperand → UPlace → Nat → Except String LowerSt) := do
   let f ← crate.funs.find? (·.defId == funIdx)
-  if f.path == ["alloc", "boxed", "new"] then
+  if f.path == ["alloc", "boxed", "Box", "new"] then
     some fun st args dest line => do
       match args with
       | [valOp] => do
@@ -649,7 +649,7 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
       match args with
       | .copy p :: _ | .move p :: _ => return pushOut st (.dealloc p line)
       | _ => .error s!"unsupported: dealloc argument is not a place (line {line})"
-  else if f.path == ["core", "alloc", "layout", "for_value"] then
+  else if f.path == ["core", "alloc", "layout", "Layout", "for_value"] then
     -- Layout::for_value(&T): the size word, statically from the pointee
     some fun st args dest line => do
       match args with
@@ -659,19 +659,38 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
             | _ => 1
           emitAssign st line dest (.use (.const sz))
       | _ => .error s!"unsupported: for_value argument is not a place (line {line})"
-  else if f.path == ["core", "alloc", "layout", "from_size_align_unchecked"] then
+  else if f.path == ["core", "alloc", "layout", "Layout", "from_size_align_unchecked"] then
     some fun st args dest line => do
       match args with
       | szOp :: _ => emitAssign st line dest (.use szOp)
       | _ => .error s!"unsupported: from_size_align_unchecked arity (line {line})"
-  else if f.path == ["core", "cell", "new"] then
+  else if f.path == ["core", "cell", "Cell", "new"] ||
+          f.path == ["core", "cell", "UnsafeCell", "new"] ||
+          f.path == ["core", "cell", "RefCell", "new"] then
     -- UnsafeCell/Cell are layout-transparent: the constructor is identity
     some fun st args dest line => do
       match dest.ty, args with
       | .cell _, [valOp] => emitAssign st line dest (.use valOp)
       | _, [_] => .error s!"unsupported: non-Cell core::cell constructor (line {line})"
       | _, _ => .error s!"unsupported: cell constructor arity (line {line})"
-  else if f.path == ["core", "cell", "get"] then
+  else if f.path == ["core", "cell", "Cell", "get"] then
+    -- Cell::get(&self) -> T: a masked shared reborrow of the cell region
+    -- (the `UnsafeCell::get` inside it), then a read through it
+    some fun st args dest line => do
+      match args with
+      | [.copy p] | [.move p] =>
+          let inner := match p.ty with
+            | .ref _ i => i
+            | .raw _ i => i
+            | _ => .unsupported "Cell::get on non-pointer"
+          let tmpIdx := st.locals.length
+          let st := { st with locals := st.locals ++ [.raw true inner] }
+          let tmp : UPlace := { root := .local tmpIdx, projs := [] }
+          let st := pushOut st (.assign tmp
+            (.ref .shared false { pointee p with ty := inner }) line)
+          emitAssign st line dest (.use (.copy (pointee tmp)))
+      | _ => .error s!"unsupported: Cell::get argument is not a place (line {line})"
+  else if f.path == ["core", "cell", "UnsafeCell", "get"] then
     -- UnsafeCell::get(&self) -> *mut T: a raw reborrow of the cell region;
     -- the pointee type carries the freeze mask (all-cell → SharedReadWrite)
     some fun st args dest line => do
@@ -685,8 +704,8 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
             (.ref .shared false { pointee p with ty := inner }) line)
       | _ => .error s!"unsupported: cell get argument is not a place (line {line})"
   else if f.path == ["core", "ptr", "read"] ||
-          f.path == ["core", "ptr", "const_ptr", "read"] ||
-          f.path == ["core", "ptr", "mut_ptr", "read"] then
+          f.path == ["core", "ptr", "const_ptr", "*const T", "read"] ||
+          f.path == ["core", "ptr", "mut_ptr", "*mut T", "read"] then
     -- ptr::read(p): a plain read of *p (with the reference-load retag
     -- rule applied by emitAssign when the value contains refs)
     some fun st args dest line => do
@@ -730,8 +749,8 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
       | [.copy p] | [.move p] =>
           emitAssign st line dest (.use (.copy { pointee p with ty := dest.ty }))
       | _ => .error s!"unsupported: transmute_copy argument is not a place (line {line})"
-  else if f.path == ["core", "ptr", "const_ptr", "expose_provenance"] ||
-          f.path == ["core", "ptr", "mut_ptr", "expose_provenance"] then
+  else if f.path == ["core", "ptr", "const_ptr", "*const T", "expose_provenance"] ||
+          f.path == ["core", "ptr", "mut_ptr", "*mut T", "expose_provenance"] then
     some fun st args dest line => do
       match args with
       | [.copy p] | [.move p] =>
@@ -744,7 +763,7 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
       | [.copy p] | [.move p] =>
           return pushOut st (.assign dest (.fromExposed p) line)
       | _ => .error s!"unsupported: with_exposed_provenance argument is not a place (line {line})"
-  else if f.path == ["core", "cell", "set"] then
+  else if f.path == ["core", "cell", "Cell", "set"] then
     -- Cell::set(&self, v): a masked shared reborrow of the cell region,
     -- then a write through it
     some fun st args _dest line => do
@@ -761,7 +780,7 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
             (.ref .shared false { pointee p with ty := inner }) line)
           emitAssign st line (pointee tmp) (.use valOp)
       | _ => .error s!"unsupported: Cell::set arguments (line {line})"
-  else if f.path == ["core", "cell", "borrow"] then
+  else if f.path == ["core", "cell", "RefCell", "borrow"] then
     -- RefCell::borrow (flag-elided): a masked shared reborrow of the
     -- value region; the guard holds the resulting pointer
     some fun st args dest line => do
@@ -774,7 +793,7 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
           return pushOut st (.assign dest
             (.ref .shared false { pointee p with ty := inner }) line)
       | _ => .error s!"unsupported: borrow argument is not a place (line {line})"
-  else if f.path == ["core", "cell", "borrow_mut"] then
+  else if f.path == ["core", "cell", "RefCell", "borrow_mut"] then
     -- RefCell::borrow_mut (flag-elided): a unique reborrow of the value
     -- region (the parent's SharedReadWrite cell items grant the write)
     some fun st args dest line => do
@@ -787,7 +806,9 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
           return pushOut st (.assign dest
             (.ref .mut false { pointee p with ty := inner }) line)
       | _ => .error s!"unsupported: borrow_mut argument is not a place (line {line})"
-  else if f.path == ["core", "cell", "deref"] || f.path == ["core", "cell", "deref_mut"] then
+  else if f.path == ["core", "cell", "<Ref as Deref>", "deref"] ||
+          f.path == ["core", "cell", "<RefMut as Deref>", "deref"] ||
+          f.path == ["core", "cell", "<RefMut as DerefMut>", "deref_mut"] then
     -- Ref/RefMut deref: a typed load of the guard's pointer at the
     -- destination's reference type — the load-retag rule then produces
     -- the fresh (re)borrow, matching miri's deref reborrow
@@ -796,7 +817,8 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
       | [.copy p] | [.move p] =>
           emitAssign st line dest (.use (.copy { pointee p with ty := dest.ty }))
       | _ => .error s!"unsupported: guard deref argument is not a place (line {line})"
-  else if f.path == ["core", "cell", "replace"] then
+  else if f.path == ["core", "cell", "Cell", "replace"] ||
+          f.path == ["core", "cell", "RefCell", "replace"] then
     -- Cell/RefCell::replace(&self, v) -> T (flag-elided): masked shared
     -- reborrow, read the old value, write the new one
     some fun st args dest line => do
@@ -814,14 +836,14 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
           let st ← emitAssign st line dest (.use (.copy (pointee tmp)))
           emitAssign st line (pointee tmp) (.use valOp)
       | _ => .error s!"unsupported: replace arguments (line {line})"
-  else if (f.path == ["core", "ptr", "mut_ptr", "add"] ||
-           f.path == ["core", "ptr", "const_ptr", "add"] ||
-           f.path == ["core", "ptr", "mut_ptr", "offset"] ||
-           f.path == ["core", "ptr", "const_ptr", "offset"] ||
-           f.path == ["core", "ptr", "mut_ptr", "wrapping_add"] ||
-           f.path == ["core", "ptr", "const_ptr", "wrapping_add"] ||
-           f.path == ["core", "ptr", "mut_ptr", "wrapping_offset"] ||
-           f.path == ["core", "ptr", "const_ptr", "wrapping_offset"]) then
+  else if (f.path == ["core", "ptr", "mut_ptr", "*mut T", "add"] ||
+           f.path == ["core", "ptr", "const_ptr", "*const T", "add"] ||
+           f.path == ["core", "ptr", "mut_ptr", "*mut T", "offset"] ||
+           f.path == ["core", "ptr", "const_ptr", "*const T", "offset"] ||
+           f.path == ["core", "ptr", "mut_ptr", "*mut T", "wrapping_add"] ||
+           f.path == ["core", "ptr", "const_ptr", "*const T", "wrapping_add"] ||
+           f.path == ["core", "ptr", "mut_ptr", "*mut T", "wrapping_offset"] ||
+           f.path == ["core", "ptr", "const_ptr", "*const T", "wrapping_offset"]) then
     -- pointer arithmetic with a constant delta (scaled by the pointee
     -- size at elaboration); provenance/tag is preserved
     some fun st args dest line => do
@@ -833,12 +855,12 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
             | _ => throw s!"unsupported: runtime pointer offset (line {line})"
           return pushOut st (.assign dest (.ptrOffset p delta) line)
       | _ => .error s!"unsupported: pointer offset arguments (line {line})"
-  else if f.path == ["core", "slice", "index", "index"] ||
-          f.path == ["core", "slice", "index", "index_mut"] ||
-          f.path == ["core", "slice", "index", "get_unchecked"] ||
-          f.path == ["core", "slice", "index", "get_unchecked_mut"] ||
-          f.path == ["core", "array", "index"] ||
-          f.path == ["core", "array", "index_mut"] then
+  else if f.path == ["core", "slice", "index", "<[T] as Index>", "index"] ||
+          f.path == ["core", "slice", "index", "<[T] as IndexMut>", "index_mut"] ||
+          f.path == ["core", "slice", "[T]", "get_unchecked"] ||
+          f.path == ["core", "slice", "[T]", "get_unchecked_mut"] ||
+          f.path == ["core", "array", "<[T; N] as Index>", "index"] ||
+          f.path == ["core", "array", "<[T; N] as IndexMut>", "index_mut"] then
     -- `&s[lo..hi]` / `&mut s[lo..hi]`: the std chain bottoms out in
     -- `from_raw_parts_mut(ptr.add(lo), hi - lo)`, i.e. a retag over the
     -- NARROWED range. The shim replaces the whole call and reproduces
@@ -850,9 +872,9 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
     -- whose two fields are the bounds. A full range (`..`) has no
     -- fields, and is the identity narrowing `0 .. len`.
     some fun st args dest line => do
-      let mutbl := f.path == ["core", "slice", "index", "index_mut"] ||
-                   f.path == ["core", "slice", "index", "get_unchecked_mut"] ||
-                   f.path == ["core", "array", "index_mut"]
+      let mutbl := f.path == ["core", "slice", "index", "<[T] as IndexMut>", "index_mut"] ||
+                   f.path == ["core", "slice", "[T]", "get_unchecked_mut"] ||
+                   f.path == ["core", "array", "<[T; N] as IndexMut>", "index_mut"]
       let kind : URefKind := if mutbl then .mut else .shared
       match args with
       | [sliceOp, rangeOp] =>
@@ -900,7 +922,7 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
           -- the mint over the narrowed range
           return pushOut st (.assign dest (.refSlice kind false dest) line)
       | _ => .error s!"unsupported: slice index arity (line {line})"
-  else if f.path == ["core", "slice", "len"] then
+  else if f.path == ["core", "slice", "[T]", "len"] then
     -- `<[T]>::len(&self)`: the metadata of the fat pointer argument. The
     -- shim replaces the whole call, and the length read is not an access
     -- to the slice DATA — only to the local holding the pointer, which
@@ -910,14 +932,14 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
       | [.copy p] | [.move p] =>
           return pushOut st (.assign dest (.sliceLen p) line)
       | _ => .error s!"unsupported: slice len argument is not a place (line {line})"
-  else if f.path == ["core", "slice", "as_ptr"] ||
-          f.path == ["core", "slice", "as_mut_ptr"] then
+  else if f.path == ["core", "slice", "[T]", "as_ptr"] ||
+          f.path == ["core", "slice", "[T]", "as_mut_ptr"] then
     -- slice data pointer. The shim replaces the whole call, so it must
     -- reproduce the fn-entry retag of the &[T]/&mut [T] receiver (that
     -- retag's write access is the invalidation fnentry_invalidation2
     -- tests), then the raw retag of the data the body performs.
     some fun st args dest line => do
-      let mutbl := f.path == ["core", "slice", "as_mut_ptr"]
+      let mutbl := f.path == ["core", "slice", "[T]", "as_mut_ptr"]
       match args with
       | [.copy p] | [.move p] =>
           let tmpIdx := st.locals.length
@@ -928,7 +950,7 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
           return pushOut st (.assign dest
             (.refSlice (if mutbl then .rawMut else .rawConst) false tmp) line)
       | _ => .error s!"unsupported: as_ptr argument is not a place (line {line})"
-  else if f.path == ["alloc", "boxed", "from_raw"] then
+  else if f.path == ["alloc", "boxed", "Box", "from_raw"] then
     -- Box::from_raw: adopts the raw pointer's tag (a plain value copy;
     -- the box retag happens at the next seam)
     some fun st args dest line => do
@@ -943,7 +965,9 @@ def shimCall (crate : UCrate) (funIdx : Nat) :
     -- mem::drop: consumes the value; drop glue for modeled types is
     -- either nothing or elided flag maintenance (RefCell guards)
     some fun st _args _dest _line => return st
-  else if f.path == ["core", "cell", "get_mut"] then
+  else if f.path == ["core", "cell", "Cell", "get_mut"] ||
+          f.path == ["core", "cell", "UnsafeCell", "get_mut"] ||
+          f.path == ["core", "cell", "RefCell", "get_mut"] then
     -- Cell::get_mut(&mut self) -> &mut T: a unique reborrow of the cell
     some fun st args dest line => do
       match args with

@@ -305,7 +305,7 @@
         "dropped revisions/annotations"
       ],
       "miri_error": "retag .* tag does not exist",
-      "note": "verdict matches; our UB point is the call-site seam retag (line 14), miri flags the `ret` line (10) \u2014 tuple returns get no rustc reborrow, so the retag happens at our synthesized seam"
+      "note": "verdict matches; our UB point is the call-site seam retag (line 14), miri flags the `ret` line (10) — tuple returns get no rustc reborrow, so the retag happens at our synthesized seam"
     },
     {
       "id": "fail/stacked_borrows/return_invalid_mut_tuple",
@@ -321,7 +321,7 @@
         "dropped error annotation"
       ],
       "miri_error": "retag .* tag does not exist",
-      "note": "verdict matches; our UB point is the call-site seam retag (line 13), miri flags the `ret` line (9) \u2014 tuple returns get no rustc reborrow, so the retag happens at our synthesized seam"
+      "note": "verdict matches; our UB point is the call-site seam retag (line 13), miri flags the `ret` line (9) — tuple returns get no rustc reborrow, so the retag happens at our synthesized seam"
     },
     {
       "id": "fail/both_borrows/shr_frozen_violation1",
@@ -814,7 +814,7 @@
         "dropped revisions/annotations"
       ],
       "miri_error": "protect",
-      "note": "verdict matches; UB at the call-site seam (line 20), miri flags safe's signature line \u2014 same protected-retag collision"
+      "note": "verdict matches; UB at the call-site seam (line 20), miri flags safe's signature line — same protected-retag collision"
     },
     {
       "id": "fail/both_borrows/aliasing_mut2",
@@ -1787,6 +1787,21 @@
       "certificate": "interior_mutability__box_derefer.cert.json"
     },
     {
+      "id": "pass/both_borrows/interior_mutability::two_phase",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__two_phase.rs",
+      "artifact": "interior_mutability__two_phase.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted"
+      ],
+      "certificate": "interior_mutability__two_phase.cert.json"
+    },
+    {
       "id": "local/deref_read_disables_sibling",
       "artifact": "local/deref_read_disables_sibling.ullbc.json",
       "status": "supported",
@@ -2066,9 +2081,7 @@
       },
       "miri_error": "trying to retag from .* but that tag does not exist",
       "rewrites": [
-        "dropped //@compile-flags and //~ ERROR annotation",
-        "assert_eq! -> plain read",
-        "trailing val.get() -> 0 (UB fires first; Cell::get is mis-shimmed as UnsafeCell::get \u2014 parked.md \u00a7 A\u2032 b)"
+        "dropped //@compile-flags and //~ ERROR annotation"
       ],
       "notes": "A Box<Cell<u8>> moved into a call while a raw pointer to the cell survives; the callee's write through the raw pointer conflicts with the box's protected fn-entry retag.",
       "certificate": "box_cell_alias.cert.json"
