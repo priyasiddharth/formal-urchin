@@ -1,11 +1,11 @@
 // derived from miri tests/fail/both_borrows/mixed_cell_deallocate.rs @ 34d6a7954
 // expected: UB at the dealloc (the plain i32 half of `*x` is
 // SharedReadOnly under the shared retag, which does not grant dealloc)
-// rewrites: dropped revisions and error annotation; `Box::new` +
-// `Box::into_raw` replaced by `alloc` + a store (both hand `foo` a raw
-// pointer carrying the allocation's root permission);
+// rewrites: dropped revisions and error annotation;
 // `Layout::new::<T>()` -> `Layout::for_value(x)` (same layout; dealloc's
-// layout argument is not modelled)
+// layout argument is not modelled). The upstream `Box::new` +
+// `Box::into_raw` are restored (2026-09-29, `Box::into_raw` shim).
+
 
 use std::alloc;
 use std::cell::Cell;
@@ -19,9 +19,6 @@ fn foo(x: &T) {
 }
 
 fn main() {
-    unsafe {
-        let b = alloc::alloc(alloc::Layout::for_value(&(Cell::new(0i32), 0i32))) as *mut T;
-        *b = (Cell::new(0), 0);
-        foo(std::mem::transmute(b));
-    }
+    let b: Box<T> = Box::new((Cell::new(0), 0));
+    foo(unsafe { std::mem::transmute(Box::into_raw(b)) });
 }

@@ -334,6 +334,12 @@ Current entries:
   never through `*b`. Charon monomorphises each `Box<T>` into an opaque
   decl, so `T` is read off those calls (2026-09-29); before, "Box with
   uninferred pointee". Miri: ok.
+- `local/box_into_raw_ok` / `local/box_into_raw_pops_prior_raw` — the
+  `Box::into_raw` shim (2026-09-29): the returned pointer is usable (ok),
+  and a raw pointer taken from the Box BEFORE `into_raw` is popped by
+  `into_raw`'s fn-entry Unique retag of the Box, so writing through it is
+  UB at line 13 — Miri's line and reason. A shim that merely copied the
+  pointer would report ok there.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

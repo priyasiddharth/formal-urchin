@@ -4,6 +4,20 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-29 (night) — `Box::into_raw`
+
+`Box::into_raw` gives up a box and returns the raw pointer inside it. The
+standard library writes it so that the aliasing model sees what happens:
+the box is reborrowed uniquely on entry, then reborrowed again, and the
+raw pointer is taken from that. The model now does the same three steps.
+A new test shows why they matter: a raw pointer taken from the box before
+the call is invalidated by the first of them, so using it afterwards is
+undefined behaviour, on the same line and for the same reason as Miri
+reports. A plain copy of the pointer would have missed it. One corpus
+test now runs its original box code instead of a hand-written allocation.
+
+---
+
 ## 2026-09-29 (evening) — The Standard-Library Models Get Their Own Module
 
 Calls into the Rust standard library that have no body in the extracted

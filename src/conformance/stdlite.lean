@@ -323,6 +323,32 @@ def boxFromRaw : Shim := fun st args dest line => do
       return pushOut st (.assign dest (.use (.copy p)) line)
   | _ => .error s!"unsupported: from_raw argument is not a place (line {line})"
 
+/-- Box::into_raw(b) -> *mut T. The std body is
+    `let mut b = ManuallyDrop::new(b); (&mut **b) as *mut T`, written so
+    that Stacked Borrows sees a retag; under SB that is three retags of
+    the pointee: the fn-entry Unique retag of the Box argument, the
+    `&mut **b` Unique reborrow, and the raw retag that is the result.
+    The argument's protector is omitted: it ends when `into_raw` returns,
+    and the only accesses meanwhile are these reborrows of its own tag,
+    which it cannot fail. -/
+def boxIntoRaw : Shim := fun st args dest line => do
+  match args with
+  | [.copy b] | [.move b] =>
+      let inner ← match b.ty with
+        | .boxT i => pure i
+        | _ => throw s!"unsupported: Box::into_raw on a non-Box argument (line {line})"
+      let t1 := st.locals.length
+      let st := { st with locals := st.locals ++ [.ref true inner, .ref true inner] }
+      let tmp1 : UPlace := { root := .local t1, projs := [], ty := .ref true inner }
+      let tmp2 : UPlace := { root := .local (t1 + 1), projs := [], ty := .ref true inner }
+      -- the fn-entry retag of the Box argument
+      let st := pushOut st (.assign tmp1 (.ref .mut false { pointee b with ty := inner }) line)
+      -- `&mut **b`
+      let st := pushOut st (.assign tmp2 (.ref .mut false { pointee tmp1 with ty := inner }) line)
+      -- `as *mut T`
+      return pushOut st (.assign dest (.ref .rawMut false { pointee tmp2 with ty := inner }) line)
+  | _ => .error s!"unsupported: Box::into_raw argument is not a place (line {line})"
+
 /-- mem::forget: no drop, no access; protectors end at fn return anyway -/
 def memForget : Shim := fun st _args _dest _line => return st
 
@@ -390,6 +416,7 @@ def table : List (List String × Shim) :=
   , (["core", "slice", "[T]", "as_ptr"], (sliceAsPtr false))
   , (["core", "slice", "[T]", "as_mut_ptr"], (sliceAsPtr true))
   , (["alloc", "boxed", "Box", "from_raw"], boxFromRaw)
+  , (["alloc", "boxed", "Box", "into_raw"], boxIntoRaw)
   , (["core", "mem", "forget"], memForget)
   , (["core", "mem", "drop"], memDrop)
   , (["core", "cell", "Cell", "get_mut"], cellGetMut)

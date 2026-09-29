@@ -4491,3 +4491,23 @@ and record/osea run; live 116/116, 0 drift.
 **Next-session pickup candidates:** item-j shims as `stdlite.table` rows
 (`Box::into_raw`, `leak`, `cast`, `write`, `Layout::new`, …); item m.
 
+## 2026-09-29 (evening)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** `Box::into_raw` shim — the first new row in `stdlite.table`.
+
+**Key outputs:** `boxIntoRaw` (three retags per the std body); witnesses
+local/box_into_raw_ok and local/box_into_raw_pops_prior_raw (UB line 13);
+mixed_cell_deallocate restored to upstream Box code; README; journal
+2026-09-29-box-into-raw.md.
+
+**Critical corrections:** none.
+
+**Status:** complete, not committed. 118/0/29, osea 118, live 118/118,
+0 drift; existing lowering byte-identical.
+
+**Next-session pickup candidates:** remaining item-j rows (`leak`, `cast`,
+`write`, `Layout::new`, `null_mut`/`is_null`); Box drop glue (item p) for
+unsafe_cell_deallocate and the newtype tests; item m.
+

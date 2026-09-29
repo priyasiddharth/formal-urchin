@@ -354,7 +354,9 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   Repeat) — `[(); usize::MAX]` HANGS the loader → keep ZST arrays zero
   cells; unlocks zst-field-retagging-terminates (passes at N=4). [OBS]
 - j. (2026-09-29: shims now live in src/conformance/stdlite.lean — each
-  new one is a `def … : Shim` plus rows in `stdlite.table`.) Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
+  new one is a `def … : Shim` plus rows in `stdlite.table`. `Box::into_raw`
+  DONE 2026-09-29 (`boxIntoRaw`: fn-entry Unique, `&mut **b`, raw retag);
+  mixed_cell_deallocate runs its upstream Box code.) Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
   Unique then raw retag), `Layout::new::<T>`, `ptr.write`, `is_null`,
   `ManuallyDrop::new`, `Option::{as_ref,unwrap,is_some}`,
   `AddAssign::add_assign`, `Layout::from_size_align`+`unwrap`.

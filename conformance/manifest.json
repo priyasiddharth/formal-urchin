@@ -1092,7 +1092,6 @@
       "miri_error": "deallocation .* only grants SharedReadOnly permission",
       "rewrites": [
         "dropped revisions and error annotation",
-        "Box::new + Box::into_raw -> alloc + store",
         "Layout::new::<T>() -> Layout::for_value(x)"
       ],
       "certificate": "mixed_cell_deallocate.cert.json"
@@ -1999,6 +1998,28 @@
       },
       "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
       "notes": "Box pointee inference from constructors (survey item f): `Box<i32>` from `Box::new(5i32)` and `Box<u64>` from `Box::from_raw(p: *mut u64)`, neither ever dereferenced. Before the fix: Box with uninferred pointee."
+    },
+    {
+      "id": "local/box_into_raw_ok",
+      "artifact": "local/box_into_raw_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
+      "notes": "Box::into_raw shim: the returned raw pointer may be written and read, then rebuilt with Box::from_raw."
+    },
+    {
+      "id": "local/box_into_raw_pops_prior_raw",
+      "artifact": "local/box_into_raw_pops_prior_raw.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 13
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
+      "miri_error": "attempting a write access using .* but that tag does not exist in the borrow stack",
+      "notes": "Box::into_raw shim: a raw pointer taken from the Box before into_raw is popped by into_raw's fn-entry Unique retag of the Box; the later write through it is UB (Miri, line 13)."
     },
     {
       "id": "fail/function_calls/arg_inplace_observe_after",
