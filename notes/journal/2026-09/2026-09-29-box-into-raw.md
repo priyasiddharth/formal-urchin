@@ -53,5 +53,24 @@ write_does_not_invalidate_all_aliases and deallocate_against_protector2
 146 others byte-identical. Corpus 121/0/29, osea 121, live 121/121, 0
 drift.
 
+## Later: `ptr::write` and `Atomic::new`
+
+[FACT] std `ptr::write` = a debug precondition (alignment, non-null; no
+memory access) then `write_via_move(dst, src)`; `<*mut T>::write` calls it.
+`ptrWrite` stores through `*dst` (emitAssign), no read, no drop, no retag
+of the raw `dst`. Witnesses local/ptr_write_ok (ok) and
+local/ptr_write_popped (UB line 12 — the store is a write access).
+
+[OBS] Restored upstream `ptr.read()`/`ptr.write(v)` in illegal_dealloc1,
+arg_inplace_mutate, return_pointer_aliasing_{read,write},
+arg_inplace_observe_during: same lines as before (14, 26, 25, 25, 28);
+the rewrites had written/read field `.0` only, upstream accesses the whole
+value. mixed_mutability_static runs
+`ptr.cast_mut().write((1, AtomicI32::new(0)))` again after one more row:
+`core::sync::atomic::Atomic::new` ↦ `cellNew` (`AtomicI32` is
+`Atomic<i32>`; an Atomic is a one-word cell in the model) — UB line 16,
+SharedReadOnly, as Miri. Old binary: all write/new users rejected; 144
+others byte-identical. Corpus 123/0/29, osea 123, live 123/123, 0 drift.
+
 ## See also
 2026-09-29-stdlite-module.md, 2026-09-29-box-pointee-inference.md

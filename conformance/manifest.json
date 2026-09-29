@@ -476,9 +476,7 @@
         "line": 14
       },
       "miri_error": "deallocation .* tag does not exist in the borrow stack",
-      "rewrites": [
-        "ptr1.write(0) -> *ptr1 = 0"
-      ]
+      "rewrites": []
     },
     {
       "id": "fail/stacked_borrows/illegal_read3",
@@ -1104,9 +1102,7 @@
         "verdict": "ub",
         "line": 16
       },
-      "rewrites": [
-        "cast_mut().write((1, AtomicI32::new(0))) -> *(ptr as *mut _ as *mut i32) = 1"
-      ],
+      "rewrites": [],
       "miri_error": "that tag only grants SharedReadOnly permission",
       "note": "write shrunk to the frozen first field (same verdict/line); static hoisted uninitialized"
     },
@@ -2049,6 +2045,28 @@
       "notes": "<*T>::cast / cast_mut / cast_const shim: raw-to-raw casts perform no retag. Casting a pointer whose tag was already popped is fine when the result is unused (a retagging shim would report UB at the cast); the four casts also chain on a live pointer that stays usable."
     },
     {
+      "id": "local/ptr_write_ok",
+      "artifact": "local/ptr_write_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
+      "notes": "ptr::write / <*mut T>::write shim: stores into freshly allocated memory and into a tuple through a raw pointer."
+    },
+    {
+      "id": "local/ptr_write_popped",
+      "artifact": "local/ptr_write_popped.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 12
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
+      "miri_error": "attempting a write access using .* but that tag does not exist in the borrow stack",
+      "notes": "ptr::write shim: `p.write(2)` is a write access, so writing through a pointer whose tag a later `&mut` popped is UB (Miri, line 12)."
+    },
+    {
       "id": "fail/function_calls/arg_inplace_observe_after",
       "source": "corpus/tests/fail/function_calls/arg_inplace_observe_after.rs",
       "prep": "prep/arg_inplace_observe_after.rs",
@@ -2081,7 +2099,6 @@
       "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
       "rewrites": [
         "dropped //@revisions and //~ ERROR annotations",
-        "ptr.read()/ptr.write(v) -> derefs",
         "assert_eq! -> plain read"
       ],
       "notes": "Reads the caller's slot through a raw pointer DURING the call: pops the protected in-place reborrow."
@@ -2100,7 +2117,6 @@
       "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
       "rewrites": [
         "dropped //@revisions and //~ ERROR annotations",
-        "ptr.read()/ptr.write(v) -> derefs",
         "upstream asserts / += / match restored (certificate-guided lowering, 2026-09-23)"
       ],
       "notes": "Writes the caller's slot through a raw pointer during the call: pops the protected in-place reborrow.",
@@ -2157,7 +2173,6 @@
       "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
       "rewrites": [
         "dropped //@revisions and //~ ERROR annotations",
-        "ptr.read()/ptr.write(v) -> derefs",
         "assert_eq! -> plain read"
       ],
       "notes": "Reads the call's destination through a raw pointer inside the callee: the return place is protected for the call."
@@ -2176,7 +2191,6 @@
       "miri_error": "not granting access|does not exist in the borrow stack|uninitialized",
       "rewrites": [
         "dropped //@revisions and //~ ERROR annotations",
-        "ptr.read()/ptr.write(v) -> derefs",
         "assert_eq! -> plain read"
       ],
       "notes": "Writes the call's destination through a raw pointer inside the callee: the return place is protected for the call."

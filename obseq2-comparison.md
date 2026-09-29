@@ -22,7 +22,9 @@ does. Raw pointer casts written as method calls (`cast`, `cast_mut`,
 `cast_const`) are now understood as what they are, plain casts that
 leave the pointer's permissions alone; a new test checks that such a
 cast does not count as a use, and three corpus tests use their original
-spelling again.
+spelling again. `ptr::write` followed: a plain store through the pointer, and six
+more tests are back to their original code, several of which had been
+rewritten to write a single field where upstream writes the whole value.
 
 ---
 

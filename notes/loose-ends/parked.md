@@ -362,7 +362,11 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   DONE 2026-09-29 (`boxIntoRaw`: fn-entry Unique, `&mut **b`, raw retag);
   mixed_cell_deallocate runs its upstream Box code. `Box::leak` DONE
   2026-09-29 (`boxLeak` = `boxIntoRaw` + `&mut *`); the protector tests
-  use upstream `Box::leak(Box::new(..))` again.) Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
+  use upstream `Box::leak(Box::new(..))` again. `ptr::write` /
+  `<*mut T>::write` DONE 2026-09-29 (`ptrWrite`: a plain store) and
+  `Atomic::new` as `cellNew`; illegal_dealloc1, arg_inplace_mutate,
+  return_pointer_aliasing_{read,write}, arg_inplace_observe_during and
+  mixed_mutability_static run their upstream `ptr.read/write` again.) Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
   Unique then raw retag), `Layout::new::<T>`, `ptr.write`, `is_null`,
   `ManuallyDrop::new`, `Option::{as_ref,unwrap,is_some}`,
   `AddAssign::add_assign`, `Layout::from_size_align`+`unwrap`.

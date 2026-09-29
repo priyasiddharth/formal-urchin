@@ -348,6 +348,9 @@ Current entries:
   whose tag was already popped is fine when the result is unused (a
   retagging shim reports UB at line 14 — checked), and the four casts
   chain on a live pointer that stays usable. Miri: ok.
+- `local/ptr_write_ok` / `local/ptr_write_popped` — `ptr::write` and
+  `<*mut T>::write` (2026-09-29): stores into fresh and existing memory
+  (ok), and a write through a popped pointer is UB at line 12, as Miri.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

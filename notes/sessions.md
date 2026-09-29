@@ -4551,3 +4551,23 @@ corpus tests; parked a DONE, README, journal (appended to
 `Layout::new`, `null_mut`/`is_null`, `NonNull`); Box drop glue (item p);
 item m.
 
+## 2026-09-30 (early)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** the `ptr::write` shim.
+
+**Key outputs:** `ptrWrite` + 2 rows; `Atomic::new` row on `cellNew`;
+local/ptr_write_ok, local/ptr_write_popped (UB line 12); six corpus tests
+back on upstream `ptr.read/write` / `cast_mut().write(..)`; README,
+parked j, journal (appended to 2026-09-29-box-into-raw.md).
+
+**Critical corrections:** none.
+
+**Status:** complete, not committed. 123/0/29, osea 123, live 123/123,
+0 drift; existing lowering byte-identical.
+
+**Next-session pickup candidates:** remaining item-j rows (`Layout::new`,
+`size_of`, `null_mut`/`is_null`, `NonNull::*`, `ManuallyDrop::new`); Box
+drop glue (item p); item m.
+

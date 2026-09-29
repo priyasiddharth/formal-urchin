@@ -55,7 +55,9 @@ def layoutFromSizeAlignUnchecked : Shim := fun st args dest line => do
   | szOp :: _ => emitAssign st line dest (.use szOp)
   | _ => .error s!"unsupported: from_size_align_unchecked arity (line {line})"
 
-/-- UnsafeCell/Cell are layout-transparent: the constructor is identity -/
+/-- UnsafeCell/Cell are layout-transparent: the constructor is identity.
+    `Atomic<T>::new` too: an `Atomic*` is modelled as a cell around one
+    word (`parseTy`). -/
 def cellNew : Shim := fun st args dest line => do
   match dest.ty, args with
   | .cell _, [valOp] => emitAssign st line dest (.use valOp)
@@ -379,6 +381,19 @@ def ptrCast : Shim := fun st args dest line => do
   | [.copy p] | [.move p] => emitAssign st line dest (.use (.copy p))
   | _ => .error s!"unsupported: pointer cast argument is not a place (line {line})"
 
+/-- `ptr::write(dst, src)` / `<*mut T>::write(self, val)`: std checks
+    alignment and non-null (no memory access) and then `write_via_move`:
+    a plain store of `src` through `dst`, which neither reads nor drops
+    the old value and does not retag the raw `dst`. -/
+def ptrWrite : Shim := fun st args _dest line => do
+  match args with
+  | [.copy p, valOp] | [.move p, valOp] =>
+      let inner ← match p.ty with
+        | .raw _ i | .ref _ i => pure i
+        | _ => throw s!"unsupported: ptr::write through a non-pointer (line {line})"
+      emitAssign st line { pointee p with ty := inner } (.use valOp)
+  | _ => .error s!"unsupported: ptr::write arguments (line {line})"
+
 /-- mem::forget: no drop, no access; protectors end at fn return anyway -/
 def memForget : Shim := fun st _args _dest _line => return st
 
@@ -409,6 +424,7 @@ def table : List (List String × Shim) :=
   , (["core", "cell", "Cell", "new"], cellNew)
   , (["core", "cell", "UnsafeCell", "new"], cellNew)
   , (["core", "cell", "RefCell", "new"], cellNew)
+  , (["core", "sync", "atomic", "Atomic", "new"], cellNew)
   , (["core", "cell", "Cell", "get"], cellGet)
   , (["core", "cell", "UnsafeCell", "get"], unsafeCellGet)
   , (["core", "ptr", "read"], ptrRead)
@@ -440,6 +456,8 @@ def table : List (List String × Shim) :=
   , (["core", "ptr", "const_ptr", "*const T", "cast"], ptrCast)
   , (["core", "ptr", "const_ptr", "*const T", "cast_mut"], ptrCast)
   , (["core", "ptr", "mut_ptr", "*mut T", "cast_const"], ptrCast)
+  , (["core", "ptr", "write"], ptrWrite)
+  , (["core", "ptr", "mut_ptr", "*mut T", "write"], ptrWrite)
   , (["core", "slice", "index", "<[T] as Index>", "index"], (sliceIndex false))
   , (["core", "slice", "index", "<[T] as IndexMut>", "index_mut"], (sliceIndex true))
   , (["core", "slice", "[T]", "get_unchecked"], (sliceIndex false))
