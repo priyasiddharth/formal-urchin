@@ -181,6 +181,9 @@ structure UFun where
   locals : List UTy
   blocks : List UBlock
   hasBody : Bool
+  -- the monomorphised instantiation (`Instantiated` in the item name):
+  -- what a bodyless generic like `Layout::new::<T>()` is ABOUT
+  tyArgs : List UTy := []
 deriving Repr, Inhabited
 
 structure UGlobal where
@@ -1022,8 +1025,14 @@ def parseFun (ctx : ParseCtx) (j : Json) : UFun :=
   let defId := ((getK j "def_id") >>= asNat).getD 0
   let path := (ctx.funPaths.lookup defId).getD (itemName j)
   let name := path.getLast?.getD "?"
+  let tyArgs :=
+    (((getK j "item_meta" >>= (getK · "name")).map asArr).getD []).foldl
+      (fun acc e =>
+        match getK e "Instantiated" >>= (getK · "skip_binder") >>= (getK · "types") with
+        | some ts => acc ++ ((asArr ts).map (parseTy ctx 16))
+        | none => acc) []
   match getK j "body" >>= (getK · "Unstructured") with
-  | none => { defId, name, path, argCount := 0, locals := [], blocks := [], hasBody := false }
+  | none => { defId, name, path, argCount := 0, locals := [], blocks := [], hasBody := false, tyArgs }
   | some bodyJ =>
       let localsJ := getK bodyJ "locals"
       let argCount := (localsJ >>= (getK · "arg_count") >>= asNat).getD 0

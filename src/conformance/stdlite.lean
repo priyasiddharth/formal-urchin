@@ -413,6 +413,19 @@ def cellGetMut : Shim := fun st args dest line => do
         (.ref .mut false { pointee p with ty := inner }) line)
   | _ => .error s!"unsupported: Cell::get_mut argument is not a place (line {line})"
 
+/-- `Layout::new::<T>()`: the size word of `T` (a Layout is modelled as its
+    size, as in `layoutForValue`); `T` is the call's instantiation. -/
+def layoutNew (tyArgs : List UTy) : Shim := fun st _args dest line => do
+  match tyArgs with
+  | [t] => emitAssign st line dest (.use (.const (uSize t)))
+  | _ => .error s!"unsupported: Layout::new instantiation {reprStr tyArgs} (line {line})"
+
+/-- Shims that need the call's monomorphised type arguments (`UFun.tyArgs`),
+    for bodyless generics whose meaning is the type itself. -/
+def tyArgTable : List (List String × (List UTy → Shim)) :=
+  [ (["core", "alloc", "layout", "Layout", "new"], layoutNew)
+  ]
+
 /-- Every modelled std path and its shim. Paths are distinct, so the
     order is immaterial; grouped as the shims above. -/
 def table : List (List String × Shim) :=
@@ -484,6 +497,6 @@ namespace conformance
 /-- The shim for a call to fun `funIdx`, if its path is modelled. -/
 def shimCall (crate : UCrate) (funIdx : Nat) : Option stdlite.Shim := do
   let f ← crate.funs.find? (·.defId == funIdx)
-  stdlite.table.lookup f.path
+  stdlite.table.lookup f.path <|> (stdlite.tyArgTable.lookup f.path).map (· f.tyArgs)
 
 end conformance

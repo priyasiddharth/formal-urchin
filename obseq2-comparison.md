@@ -24,7 +24,10 @@ leave the pointer's permissions alone; a new test checks that such a
 cast does not count as a use, and three corpus tests use their original
 spelling again. `ptr::write` followed: a plain store through the pointer, and six
 more tests are back to their original code, several of which had been
-rewritten to write a single field where upstream writes the whole value.
+rewritten to write a single field where upstream writes the whole value. `Layout::new::<T>()` needed one more idea: a call with no arguments
+whose meaning is its type. The loader now keeps the type a generic call
+was instantiated at, and the model answers with that type's size; one
+corpus test is now free of any code rewrite.
 
 ---
 

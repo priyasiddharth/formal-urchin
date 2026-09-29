@@ -4571,3 +4571,26 @@ parked j, journal (appended to 2026-09-29-box-into-raw.md).
 `size_of`, `null_mut`/`is_null`, `NonNull::*`, `ManuallyDrop::new`); Box
 drop glue (item p); item m.
 
+## 2026-09-30
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** `Layout::new::<T>()` — the first shim that needs a type
+argument.
+
+**Key outputs:** `UFun.tyArgs` (from the `Instantiated` name element);
+`stdlite.tyArgTable` + `layoutNew`; local/layout_new_sizes_alloc (checked
+to fail with a wrong size); upstream `Layout::new` back in two corpus
+tests; README, parked j, journal.
+
+**Critical corrections:** a regression comparison against `.live/charon`
+was meaningless mid-run (live.py clears that dir; it held one artifact);
+the committed-artifact dump comparison is the check that counts.
+
+**Status:** complete, not committed. 124/0/29, osea 124, live 124/124,
+0 drift; existing lowering byte-identical.
+
+**Next-session pickup candidates:** `mem::size_of` (one tyArgTable row),
+`null_mut`/`is_null`, `NonNull::*`, `ManuallyDrop::new`; Box drop glue
+(item p); item m.
+

@@ -961,8 +961,7 @@
       "miri_error": "attempting deallocation using .* tag does not exist in the borrow stack",
       "rewrites": [
         "dropped //@ headers and error annotations",
-        "closure -> named fn free_it",
-        "Layout::new::<i32>() -> from_size_align_unchecked(4, 4)"
+        "closure -> named fn free_it"
       ]
     },
     {
@@ -1086,8 +1085,7 @@
       },
       "miri_error": "deallocation .* only grants SharedReadOnly permission",
       "rewrites": [
-        "dropped revisions and error annotation",
-        "Layout::new::<T>() -> Layout::for_value(x)"
+        "dropped revisions and error annotation"
       ],
       "certificate": "mixed_cell_deallocate.cert.json"
     },
@@ -2065,6 +2063,16 @@
       "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
       "miri_error": "attempting a write access using .* but that tag does not exist in the borrow stack",
       "notes": "ptr::write shim: `p.write(2)` is a write access, so writing through a pointer whose tag a later `&mut` popped is UB (Miri, line 12)."
+    },
+    {
+      "id": "local/layout_new_sizes_alloc",
+      "artifact": "local/layout_new_sizes_alloc.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
+      "notes": "Layout::new::<T>() shim: the size comes from the call's monomorphised type argument; alloc is sized from it, so writing both fields of an allocated pair is in bounds only if the size is 2 cells."
     },
     {
       "id": "fail/function_calls/arg_inplace_observe_after",

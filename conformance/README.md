@@ -351,6 +351,11 @@ Current entries:
 - `local/ptr_write_ok` / `local/ptr_write_popped` — `ptr::write` and
   `<*mut T>::write` (2026-09-29): stores into fresh and existing memory
   (ok), and a write through a popped pointer is UB at line 12, as Miri.
+- `local/layout_new_sizes_alloc` — `Layout::new::<T>()` (2026-09-29) is
+  `T`'s size, read off the call's monomorphised type argument; `alloc` is
+  sized from it, so writing both fields of an allocated pair is in bounds
+  only if the size is right (a constant-1 shim gives "write out of bounds"
+  at line 13 — checked). Miri: ok.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

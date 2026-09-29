@@ -72,5 +72,22 @@ value. mixed_mutability_static runs
 SharedReadOnly, as Miri. Old binary: all write/new users rejected; 144
 others byte-identical. Corpus 123/0/29, osea 123, live 123/123, 0 drift.
 
+## Later: `Layout::new::<T>()`
+
+[FACT] With `--monomorphize`, a bodyless generic's type arguments live
+only in its item name's `Instantiated` element, which the loader dropped.
+`parseFun` now keeps them as `UFun.tyArgs`; `stdlite.tyArgTable` (path ↦
+`List UTy → Shim`) holds shims that need them, consulted after `table`.
+`layoutNew [t]` = `uSize t`, the Layout-as-size-word convention of
+`layoutForValue`.
+
+[OBS] Witness local/layout_new_sizes_alloc (alloc a pair from
+`Layout::new`, write both fields): ok; with the shim forced to 1 it fails
+with "write out of bounds" at line 13 — pins the size. Upstream
+`Layout::new` restored in mixed_cell_deallocate (now only the annotation
+strip remains) and deallocate_against_protector2 (lines 18/21 kept). Old
+binary: all three "call to bodyless function new"; 150 others
+byte-identical. Corpus 124/0/29, osea 124, live 124/124, 0 drift.
+
 ## See also
 2026-09-29-stdlite-module.md, 2026-09-29-box-pointee-inference.md

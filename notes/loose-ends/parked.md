@@ -366,7 +366,10 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   `<*mut T>::write` DONE 2026-09-29 (`ptrWrite`: a plain store) and
   `Atomic::new` as `cellNew`; illegal_dealloc1, arg_inplace_mutate,
   return_pointer_aliasing_{read,write}, arg_inplace_observe_during and
-  mixed_mutability_static run their upstream `ptr.read/write` again.) Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
+  mixed_mutability_static run their upstream `ptr.read/write` again.
+  `Layout::new::<T>()` DONE 2026-09-29: `UFun.tyArgs` keeps the
+  monomorphised instantiation, `stdlite.tyArgTable` holds shims that need
+  it; mixed_cell_deallocate is now rewrite-free apart from annotations.) Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
   Unique then raw retag), `Layout::new::<T>`, `ptr.write`, `is_null`,
   `ManuallyDrop::new`, `Option::{as_ref,unwrap,is_some}`,
   `AddAssign::add_assign`, `Layout::from_size_align`+`unwrap`.
