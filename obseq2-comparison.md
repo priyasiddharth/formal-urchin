@@ -4,6 +4,23 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-29 — A Function Pointer Passed by Move
+
+The lowering never materialises a function pointer: it records which
+function a local holds and inlines that function when the local is
+called. The record followed a pointer through copies but not through a
+call argument passed by move, which is how Rust passes every argument
+it will not use again. So `inner(x, f)` with `f` called inside `inner`
+had no known target. One helper now carries the record through both
+forms. That alone brings in two upstream tests in which a callback frees
+the memory behind a reference that is protected for the duration of the
+call; with the closure written as a named function and the Box
+allocation written as a plain allocation, the model reports the same
+error on the same line as Miri. These are the first unsupported entries
+to become supported since the survey's quick wins: 29 remain.
+
+---
+
 ## 2026-09-28 (evening) — Reading a Matched Payload
 
 An enum is laid out as its discriminant followed by the payload, and the

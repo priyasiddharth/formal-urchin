@@ -327,7 +327,11 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   `safe::split_at_mut::<i32>` strips to `…::` and the last segment is
   `""`, so generic user fns get no certificate events. Fix:
   `p.rstrip(": ").split("::")[-1]`. [OBS]
-- e. fn-pointer tracking lost through MOVED call args (`emitSeamBind` →
+- e. **DONE 2026-09-29** — `propagateFnPtr` (lowering.lean) now runs on
+  the seam's `.move` rvalue as well as on copies. Witness
+  local/fn_ptr_moved_arg; deallocate_against_protector1/2 supported via
+  the prep below, lines 19/21 pinned (model = Miri). Unsupported 31 → 29.
+  Was: fn-pointer tracking lost through MOVED call args (`emitSeamBind` →
   `.move` branch doesn't propagate `fnPtrs`) → "indirect call with
   unknown target". With the prep (closure → named fn, leak → alloc,
   drop(Box) → dealloc) this alone unlocks dealloc_against_protector1/2. [OBS]

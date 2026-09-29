@@ -4429,3 +4429,23 @@ README local-witness entry; journal 2026-09-28-enum-payload-read.md.
 0 drift; units 18/18 + 129/129; both new entries fail on the old binary.
 
 **Next-session pickup candidates:** survey bugs e, f; item m.
+
+## 2026-09-29
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** survey bug e — fn-pointer tracking through moved call args.
+
+**Key outputs:** `propagateFnPtr` in lowering.lean; local/fn_ptr_moved_arg;
+preps + supported entries deallocate_against_protector1/2 (lines 19/21);
+README witness; journal 2026-09-29-fn-ptr-moved-arg.md.
+
+**Critical corrections:** none.
+
+**Status:** complete, not committed. 115/0/29 (first flips since the
+survey's Tier 0), osea 115, live 115/115 with 0 drift, units 18/18 +
+129/129; existing lowering byte-identical.
+
+**Next-session pickup candidates:** survey bug f (Box pointee inference);
+item m.
+

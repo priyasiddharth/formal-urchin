@@ -934,24 +934,41 @@
     {
       "id": "fail/both_borrows/deallocate_against_protector1",
       "source": "corpus/tests/fail/both_borrows/deallocate_against_protector1.rs",
-      "prep": null,
+      "prep": "prep/deallocate_against_protector1.rs",
       "artifact": "deallocate_against_protector1.ullbc.json",
-      "status": "unsupported",
-      "reason": "protectors + deallocation",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 19
+      },
+      "miri_error": "deallocating while item \\[Unique for .*\\] is strongly protected",
+      "rewrites": [
+        "dropped //@ headers and error annotations",
+        "closure -> named fn free_it",
+        "Box::leak(Box::new(0)) -> alloc + store",
+        "drop(Box::from_raw(raw)) -> dealloc (Box drop is not a dealloc yet, item p)"
+      ]
     },
     {
       "id": "fail/both_borrows/deallocate_against_protector2",
       "source": "corpus/tests/fail/both_borrows/deallocate_against_protector2.rs",
-      "prep": null,
+      "prep": "prep/deallocate_against_protector2.rs",
       "artifact": "deallocate_against_protector2.ullbc.json",
-      "status": "unsupported",
-      "reason": "protectors + deallocation",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 21
+      },
+      "miri_error": "attempting deallocation using .* tag does not exist in the borrow stack",
+      "rewrites": [
+        "dropped //@ headers and error annotations",
+        "closure -> named fn free_it",
+        "Box::leak(Box::new(0i32)) -> alloc + store",
+        "raw.cast() -> as *mut u8",
+        "Layout::new::<i32>() -> from_size_align_unchecked(4, 4)"
+      ]
     },
     {
       "id": "fail/both_borrows/drop_in_place_protector",
@@ -1962,6 +1979,16 @@
       "certificate": "local/enum_payload_read.cert.json",
       "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-28 via scripts/live.py",
       "notes": "enum variant field projection witness (survey item c): the `Some(r)` binding reads `(o as Some).0`, which is cell 1 of the enum (cell 0 is the discriminant). Before the fix the binding read the discriminant word and the write through `r` went wild."
+    },
+    {
+      "id": "local/fn_ptr_moved_arg",
+      "artifact": "local/fn_ptr_moved_arg.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
+      "notes": "fn-pointer tracking through a MOVED call argument (survey item e): `apply(&mut v, set_two)` passes the reified pointer as `move _k`, and `f(x)` inside `apply` must resolve to `set_two`. Before the fix: indirect call with unknown target."
     },
     {
       "id": "fail/function_calls/arg_inplace_observe_after",

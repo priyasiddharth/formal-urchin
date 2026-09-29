@@ -325,6 +325,10 @@ Current entries:
   discriminant is cell 0), and the program writes through `r`. Before
   the 2026-09-28 fix the loader read the discriminant word and rejected
   the program (type mismatch); Miri: ok.
+- `local/fn_ptr_moved_arg` — a fn pointer passed as a MOVED argument
+  (`apply(&mut v, set_two)`) and called in the callee. Fn pointers are
+  tracked statically; before the 2026-09-29 fix the moved argument lost
+  its target ("indirect call with unknown target"). Miri: ok.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

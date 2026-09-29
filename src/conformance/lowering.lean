@@ -457,6 +457,16 @@ def toBinOp (op : String) : Option String :=
   | "Eq" => some "eq" | "Ne" => some "ne"
   | _ => none
 
+/-- Static fn-pointer tracking follows a whole-local copy or move: `dst`
+    holds the function `src` held. -/
+def propagateFnPtr (st : LowerSt) (src dst : UPlace) : LowerSt :=
+  match src, dst with
+  | { root := .local s, projs := [], .. }, { root := .local d, projs := [], .. } =>
+      match st.fnPtrs.lookup s with
+      | some fid => { st with fnPtrs := (d, fid) :: st.fnPtrs }
+      | none => st
+  | _, _ => st
+
 /-- Append one lowered assignment, desugaring aggregates, applying the
     reference-load retag rule, and rejecting unsupported payloads.
     Places/rvalues must already be rebased. -/
@@ -526,19 +536,15 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
       if p.projs.contains .deref && containsRef p.ty then
         emitSeamCopy st line false dst p.ty p
       else
-        -- propagate static fn-pointer tracking through plain copies
-        let st :=
-          match p, dst with
-          | { root := .local s, projs := [], .. }, { root := .local d, projs := [], .. } =>
-              match st.fnPtrs.lookup s with
-              | some fid => { st with fnPtrs := (d, fid) :: st.fnPtrs }
-              | none => st
-          | _, _ => st
-        return pushOut st (.assign dst rv line)
+        return pushOut (propagateFnPtr st p dst) (.assign dst rv line)
   | .use op => do
       checkOperand line op
       return pushOut st (.assign dst rv line)
-  | .ref _ _ _ | .move _ | .uninit | .exposeAddr _ | .fromExposed _ =>
+  | .move p =>
+      -- a seam-bound moved call argument (`emitSeamBind`): the callee's
+      -- parameter holds the same fn pointer the caller's local did
+      return pushOut (propagateFnPtr st p dst) (.assign dst rv line)
+  | .ref _ _ _ | .uninit | .exposeAddr _ | .fromExposed _ =>
       return pushOut st (.assign dst rv line)
   | .discriminant p =>
       -- the variant index lives in payload slot 0 and is always exact
