@@ -370,6 +370,15 @@ def boxLeak : Shim := fun st args dest line => do
       return pushOut st (.assign dest (.ref .mut false { pointee raw with ty := inner }) line)
   | _ => .error s!"unsupported: Box::leak argument is not a place (line {line})"
 
+/-- `<*T>::cast`, `cast_mut`, `cast_const`: std's bodies are `self as _`,
+    a raw-to-raw cast, which performs no retag (and a raw argument is not
+    retagged at fn entry). A tag-preserving copy at the destination's
+    pointer type (a `ptrCast` at elaboration when the pointee differs). -/
+def ptrCast : Shim := fun st args dest line => do
+  match args with
+  | [.copy p] | [.move p] => emitAssign st line dest (.use (.copy p))
+  | _ => .error s!"unsupported: pointer cast argument is not a place (line {line})"
+
 /-- mem::forget: no drop, no access; protectors end at fn return anyway -/
 def memForget : Shim := fun st _args _dest _line => return st
 
@@ -427,6 +436,10 @@ def table : List (List String × Shim) :=
   , (["core", "ptr", "const_ptr", "*const T", "wrapping_add"], ptrOffset)
   , (["core", "ptr", "mut_ptr", "*mut T", "wrapping_offset"], ptrOffset)
   , (["core", "ptr", "const_ptr", "*const T", "wrapping_offset"], ptrOffset)
+  , (["core", "ptr", "mut_ptr", "*mut T", "cast"], ptrCast)
+  , (["core", "ptr", "const_ptr", "*const T", "cast"], ptrCast)
+  , (["core", "ptr", "const_ptr", "*const T", "cast_mut"], ptrCast)
+  , (["core", "ptr", "mut_ptr", "*mut T", "cast_const"], ptrCast)
   , (["core", "slice", "index", "<[T] as Index>", "index"], (sliceIndex false))
   , (["core", "slice", "index", "<[T] as IndexMut>", "index_mut"], (sliceIndex true))
   , (["core", "slice", "[T]", "get_unchecked"], (sliceIndex false))

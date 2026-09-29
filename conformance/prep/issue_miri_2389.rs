@@ -3,9 +3,8 @@
 // expected: ok
 // rewrites: dropped //@revisions and //@compile-flags lines (the stack
 //           revision's -Zmiri-permissive-provenance is the miri-flags
-//           line below); `wildcard.cast::<i32>()` -> `wildcard as *const
-//           i32` (exactly what `<*const T>::cast` does; raw args are not
-//           retagged)
+//           line below). The upstream `wildcard.cast::<i32>()` is kept
+//           (restored 2026-09-29 with the `<*T>::cast` shim).
 // miri-flags: -Zmiri-permissive-provenance
 use std::cell::Cell;
 
@@ -17,10 +16,10 @@ fn main() {
         let _ref0 = &*wildcard;
         // Do a non-SRW reborrow from wildcard to start building up a stack again.
         // Now new refs start being inserted at idx 0, pushing the unique_range up.
-        let _refn = &*&*&*&*&*(wildcard as *const i32);
+        let _refn = &*&*&*&*&*(wildcard.cast::<i32>());
         // empty the stack again, but this time with unique_range.start sitting at some high index.
         let _ref0 = &*wildcard;
         // and do a read which tries to clear the uniques
-        (wildcard as *const i32).read();
+        wildcard.cast::<i32>().read();
     }
 }

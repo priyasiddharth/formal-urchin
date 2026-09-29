@@ -964,7 +964,6 @@
       "rewrites": [
         "dropped //@ headers and error annotations",
         "closure -> named fn free_it",
-        "raw.cast() -> as *mut u8",
         "Layout::new::<i32>() -> from_size_align_unchecked(4, 4)"
       ]
     },
@@ -1444,8 +1443,7 @@
         "verdict": "ok"
       },
       "rewrites": [
-        "scenario extracted",
-        ".cast::<*mut i32>() -> as *const *mut i32"
+        "scenario extracted"
       ],
       "certificate": "basic_aliasing_model__write_does_not_invalidate_all_aliases.cert.json"
     },
@@ -1584,8 +1582,7 @@
         "verdict": "ok"
       },
       "rewrites": [
-        "dropped revisions; stack revision's -Zmiri-permissive-provenance kept as miri-flags",
-        "wildcard.cast::<i32>() -> wildcard as *const i32"
+        "dropped revisions; stack revision's -Zmiri-permissive-provenance kept as miri-flags"
       ],
       "certificate": "issue_miri_2389.cert.json"
     },
@@ -2040,6 +2037,16 @@
       "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
       "miri_error": "attempting a write access using .* but that tag does not exist in the borrow stack",
       "notes": "Box::leak shim: a raw pointer taken from the Box before leak is popped by leak's fn-entry Unique retag of the Box; the later write through it is UB (Miri, line 11)."
+    },
+    {
+      "id": "local/ptr_cast_keeps_tag",
+      "artifact": "local/ptr_cast_keeps_tag.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
+      "notes": "<*T>::cast / cast_mut / cast_const shim: raw-to-raw casts perform no retag. Casting a pointer whose tag was already popped is fine when the result is unused (a retagging shim would report UB at the cast); the four casts also chain on a live pointer that stays usable."
     },
     {
       "id": "fail/function_calls/arg_inplace_observe_after",

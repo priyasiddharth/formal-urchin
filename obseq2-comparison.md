@@ -18,7 +18,11 @@ test now runs its original box code instead of a hand-written allocation.
 `Box::leak`, which the standard library builds from the same steps plus
 one more reborrow, followed the same way, and the two tests in which a
 callback frees protected memory now leak their box exactly as upstream
-does.
+does. Raw pointer casts written as method calls (`cast`, `cast_mut`,
+`cast_const`) are now understood as what they are, plain casts that
+leave the pointer's permissions alone; a new test checks that such a
+cast does not count as a use, and three corpus tests use their original
+spelling again.
 
 ---
 

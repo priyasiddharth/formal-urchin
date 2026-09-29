@@ -4531,3 +4531,23 @@ protector preps back on upstream `Box::leak`; README, parked j, journal
 `write`, `Layout::new`, `null_mut`/`is_null`); Box drop glue (item p);
 item m.
 
+## 2026-09-29 (late night)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** the pointer cast shims (`cast`, `cast_mut`, `cast_const`).
+
+**Key outputs:** `ptrCast` + 4 table rows; local/ptr_cast_keeps_tag
+(checked to fail if the cast retags); upstream `.cast` back in three
+corpus tests; parked a DONE, README, journal (appended to
+2026-09-29-box-into-raw.md).
+
+**Critical corrections:** none.
+
+**Status:** complete, not committed. 121/0/29, osea 121, live 121/121,
+0 drift; existing lowering byte-identical.
+
+**Next-session pickup candidates:** remaining item-j rows (`write`,
+`Layout::new`, `null_mut`/`is_null`, `NonNull`); Box drop glue (item p);
+item m.
+

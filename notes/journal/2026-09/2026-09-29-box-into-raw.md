@@ -38,5 +38,20 @@ again; lines 19/21 unchanged. Old binary: all four "call to bodyless
 function leak"; 145 others byte-identical. Corpus 120/0/29, osea 120, live
 120/120, 0 drift.
 
+## Later: `<*T>::cast`, `cast_mut`, `cast_const` (survey item a)
+
+[FACT] std: `self as _` — a raw-to-raw cast, no retag; raw arguments are
+not retagged at fn entry. `ptrCast` emits a plain copy at the destination
+type (ptrCast at elaboration). Witness local/ptr_cast_keeps_tag: casting a
+pointer after its tag was popped is fine when unused. [OBS] Made the shim
+retag instead (`&raw mut *p`) as a check: the witness then fails with a
+false positive at line 14, the cast — so it pins the no-retag property.
+
+[OBS] Upstream `.cast` restored in issue-miri-2389,
+write_does_not_invalidate_all_aliases and deallocate_against_protector2
+(line 21 kept). Old binary: all four "call to bodyless function cast";
+146 others byte-identical. Corpus 121/0/29, osea 121, live 121/121, 0
+drift.
+
 ## See also
 2026-09-29-stdlite-module.md, 2026-09-29-box-pointee-inference.md

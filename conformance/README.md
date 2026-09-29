@@ -343,6 +343,11 @@ Current entries:
 - `local/box_leak_ok` / `local/box_leak_pops_prior_raw` — the same pair for
   `Box::leak` (2026-09-29: `into_raw`'s three retags, then `&mut *ptr`):
   ok, and UB at line 11 for a raw pointer taken before `leak`, as Miri.
+- `local/ptr_cast_keeps_tag` — `<*T>::cast` / `cast_mut` / `cast_const`
+  (2026-09-29) are raw-to-raw casts, which do not retag: casting a pointer
+  whose tag was already popped is fine when the result is unused (a
+  retagging shim reports UB at line 14 — checked), and the four casts
+  chain on a live pointer that stays usable. Miri: ok.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

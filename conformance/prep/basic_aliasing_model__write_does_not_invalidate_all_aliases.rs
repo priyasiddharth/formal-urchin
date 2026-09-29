@@ -3,9 +3,8 @@
 // copies the `&mut`'s tag into a static; a later write through `x` does
 // not invalidate that copy, so writing through the static is fine.
 // expected: ok
-// rewrites: scenario extracted; `(x as *const &mut i32).cast::<*mut i32>()`
-//           -> `x as *const &mut i32 as *const *mut i32` (exactly what
-//           `<*const T>::cast` does; raw args are not retagged)
+// rewrites: scenario extracted (the upstream `.cast::<*mut i32>()` is kept,
+//           restored 2026-09-29 with the `<*T>::cast` shim)
 
 fn main() {
     mod other {
@@ -14,7 +13,7 @@ fn main() {
 
         pub fn lib1(x: &&mut i32) {
             unsafe {
-                S = (x as *const &mut i32 as *const *mut i32).read();
+                S = (x as *const &mut i32).cast::<*mut i32>().read();
             }
         }
 

@@ -297,7 +297,11 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
 | drop_in_place_protector | only with a HEAVY prep (hand-inline drop_in_place) — prefer item q | [OBS] |
 
 **Tier 1 — small loader/tooling fixes (each ≲ a few dozen lines)**
-- a. `<*T>::cast`/`cast_mut`/`cast_const` shim (tag-preserving ptrCast) —
+- a. **DONE 2026-09-29** — `ptrCast` in stdlite.lean for `*mut T::cast`,
+  `*const T::cast`, `cast_mut`, `cast_const` (a tag-preserving copy; std is
+  `self as _`, no retag). issue-miri-2389, write_does_not_invalidate_all_aliases
+  and deallocate_against_protector2 use upstream `.cast` again. Witness
+  local/ptr_cast_keeps_tag. Was: `<*T>::cast`/`cast_mut`/`cast_const` shim (tag-preserving ptrCast) —
   would remove the `.cast` rewrites above; also needed by box_into_raw,
   basic::zst, drop_in_place_retag, dealloc_against_protector2, unsafe_pinned.
 - b. **DONE 2026-09-28** — function paths now keep impl blocks as

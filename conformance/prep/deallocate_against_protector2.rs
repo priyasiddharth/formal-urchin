@@ -4,7 +4,7 @@
 // the i32's bytes)
 // rewrites: dropped //@ headers and error annotations;
 //           the closure -> the named fn `free_it` (closures are not modelled);
-//           `raw.cast()` -> `raw as *mut u8`;
+//           (upstream `raw.cast()` restored 2026-09-29, `<*T>::cast` shim);
 //           `Layout::new::<i32>()` -> `Layout::from_size_align_unchecked(4, 4)`
 // (upstream `Box::leak(Box::new(0i32))` restored 2026-09-29)
 use std::alloc::{dealloc, Layout};
@@ -18,7 +18,7 @@ fn free_it(x: &mut ()) {
     unsafe {
         let raw = x as *mut _ as *mut i32;
         // Avoid ever creating a `Box`, we don't want any implicit accesses.
-        dealloc(raw as *mut u8, Layout::from_size_align_unchecked(4, 4));
+        dealloc(raw.cast(), Layout::from_size_align_unchecked(4, 4));
     }
 }
 
