@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-29 (later) — Where a Box's Contents Come From
+
+The Rust front end names every `Box<T>` as its own opaque type, so the
+loader has to work out `T` from how the box is used. It used to look only
+at dereferences, which left a box that is created and then handed on
+without ever being read through with no known contents, and the whole
+test was rejected. The loader now also reads `T` off the calls that make
+or unmake a box: `Box::new`, `Box::from_raw`, `Box::into_raw` and
+`Box::leak`. A new local test with two such boxes passes in agreement with
+Miri. The two upstream tests this was meant for now get further and stop
+at `Box::into_raw` itself, which the model does not yet translate; that
+is the next step for them.
+
+---
+
 ## 2026-09-29 — A Function Pointer Passed by Move
 
 The lowering never materialises a function pointer: it records which

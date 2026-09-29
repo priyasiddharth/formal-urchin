@@ -4449,3 +4449,22 @@ survey's Tier 0), osea 115, live 115/115 with 0 drift, units 18/18 +
 **Next-session pickup candidates:** survey bug f (Box pointee inference);
 item m.
 
+## 2026-09-29 (later)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** survey bug f — Box pointee inference beyond `*box`.
+
+**Key outputs:** `collectBoxPointees` reads Box::new / from_raw /
+into_raw / leak; local/box_never_derefed; README witness; journal
+2026-09-29-box-pointee-inference.md.
+
+**Critical corrections:** f unlocks nothing alone — both target tests
+next need the `Box::into_raw` shim (item j).
+
+**Status:** complete, not committed. 116/0/29, osea 116, live 116/116,
+0 drift; units 18/18 + 129/129; existing lowering byte-identical.
+
+**Next-session pickup candidates:** `Box::into_raw` shim (item j) →
+mixed_cell_deallocate unprepped + unsafe_cell_deallocate; item m.
+

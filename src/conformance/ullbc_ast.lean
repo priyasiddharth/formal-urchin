@@ -379,30 +379,76 @@ def parseDecls (j : Json) : List (Nat × DeclInfo) :=
           | _ => DeclKind.opaque
         pure (did, { path, kind })
 
-/-- Prescan: infer Box pointee types from deref projections
-    (`{kind: {Projection: [boxPlace, "Deref"]}, ty: pointee}`). -/
+/-- The type Json of an operand (place ty or const ty). -/
+def operandTyJson (op : Json) : Option Json :=
+  match sumKey op with
+  | some ("Copy", p) | some ("Move", p) => getK p "ty"
+  | some ("Const", c) => getK c "ty"
+  | _ => none
+
+/-- The decl id of a type Json when it is a (monomorphised, opaque) Box. -/
+def boxDeclId (tbl : TyTable) (decls : List (Nat × DeclInfo)) (j : Json) : Option Nat := do
+  let did ← adtDeclId tbl j
+  let info ← decls.lookup did
+  if info.path.getLast? == some "Box" then some did else none
+
+/-- The pointee type Json of a raw pointer or reference type Json. -/
+def ptrPointeeJson (tbl : TyTable) (j : Json) : Option Json :=
+  match sumKey (resolveTyJson tbl j) with
+  | some ("RawPtr", args) => (asArr args).head?
+  | some ("Ref", args) =>
+      match asArr args with
+      | [_, inner, _] => some inner
+      | _ => none
+  | _ => none
+
+/-- Prescan: infer Box pointee types. Charon monomorphises `Box<T>` into
+    an OPAQUE decl per `T`, so `T` has to be read off a use:
+    - a deref projection `{kind: {Projection: [boxPlace, "Deref"]}, ty: T}`;
+    - `Box::new(v: T) -> Box`;
+    - `Box::from_raw(p: *mut T) -> Box`;
+    - `Box::into_raw(b: Box) -> *mut T` and `Box::leak(b: Box) -> &mut T`.
+    The first use found wins (all uses of one decl agree on `T`). On the
+    corpus the constructors alone suffice (2026-09-29: dropping the deref
+    rule changes no lowering); the deref rule stays as the fallback for a
+    Box made by something not listed here (`new_uninit`, `clone`,
+    `into_boxed_slice`, std code). -/
 partial def collectBoxPointees (tbl : TyTable) (decls : List (Nat × DeclInfo))
-    (j : Json) (acc : List (Nat × Json)) : List (Nat × Json) :=
+    (paths : List (Nat × List String)) (j : Json) (acc : List (Nat × Json)) :
+    List (Nat × Json) :=
+  let add (acc : List (Nat × Json)) : Option Nat → Option Json → List (Nat × Json)
+    | some did, some t => if (acc.lookup did).isNone then (did, t) :: acc else acc
+    | _, _ => acc
   let acc :=
     match getK j "kind" >>= sumKey with
     | some ("Projection", payload) =>
         match asArr payload, getK j "ty" with
         | [inner, proj], some outerTy =>
             if (sumKey proj).map (·.1 == "Deref") |>.getD false then
-              match getK inner "ty" >>= (adtDeclId tbl ·) with
-              | some did =>
-                  match decls.lookup did with
-                  | some info =>
-                      if info.path.getLast? == some "Box" && (acc.lookup did).isNone
-                      then (did, outerTy) :: acc else acc
-                  | none => acc
-              | none => acc
+              add acc (getK inner "ty" >>= boxDeclId tbl decls) (some outerTy)
             else acc
         | _, _ => acc
     | _ => acc
+  let acc :=
+    match getK j "Call" >>= (getK · "call") with
+    | some callJ =>
+        let funIdx? :=
+          (getK callJ "func" >>= (getK · "Regular") >>= (getK · "kind")
+            >>= (getK · "Fun") >>= (getK · "Regular")) >>= asNat
+        let argTy? := (((getK callJ "args").map asArr).getD []).head? >>= operandTyJson
+        let destTy? := getK callJ "dest" >>= (getK · "ty")
+        match funIdx? >>= (paths.lookup ·) with
+        | some ["alloc", "boxed", "Box", "new"] =>
+            add acc (destTy? >>= boxDeclId tbl decls) argTy?
+        | some ["alloc", "boxed", "Box", "from_raw"] =>
+            add acc (destTy? >>= boxDeclId tbl decls) (argTy? >>= ptrPointeeJson tbl)
+        | some ["alloc", "boxed", "Box", "into_raw"] | some ["alloc", "boxed", "Box", "leak"] =>
+            add acc (argTy? >>= boxDeclId tbl decls) (destTy? >>= ptrPointeeJson tbl)
+        | _ => acc
+    | none => acc
   match j with
-  | .obj m => m.foldl (fun acc _ v => collectBoxPointees tbl decls v acc) acc
-  | .arr a => a.foldl (fun acc v => collectBoxPointees tbl decls v acc) acc
+  | .obj m => m.foldl (fun acc _ v => collectBoxPointees tbl decls paths v acc) acc
+  | .arr a => a.foldl (fun acc v => collectBoxPointees tbl decls paths v acc) acc
   | _ => acc
 
 def mkNameCtx (root : Json) (tbl : TyTable) (decls : List (Nat × DeclInfo)) : NameCtx :=
@@ -426,13 +472,6 @@ def funPaths (nc : NameCtx) (root : Json) : List (Nat × List String) :=
       (asArr funsJ).filterMap fun f => do
         let did ← getK f "def_id" >>= asNat
         pure (did, funName nc f)
-
-/-- The type Json of an operand (place ty or const ty). -/
-def operandTyJson (op : Json) : Option Json :=
-  match sumKey op with
-  | some ("Copy", p) | some ("Move", p) => getK p "ty"
-  | some ("Const", c) => getK c "ty"
-  | _ => none
 
 /-- Prescan: infer UnsafeCell/Cell inner types from calls to their
     (bodyless) constructors and accessors:
@@ -1002,8 +1041,8 @@ def parseGlobal (ctx : ParseCtx) (j : Json) : UGlobal :=
 def parseCrate (root : Json) : Except String UCrate := do
   let tbl := collectTable root []
   let decls := parseDecls root
-  let boxPointee := collectBoxPointees tbl decls root []
   let paths := funPaths (mkNameCtx root tbl decls) root
+  let boxPointee := collectBoxPointees tbl decls paths root []
   let cellPointee := collectCellPointees tbl paths root []
   let ctx : ParseCtx := { tbl, decls, boxPointee, cellPointee, funPaths := paths }
   let globals :=

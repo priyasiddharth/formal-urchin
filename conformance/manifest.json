@@ -1991,6 +1991,16 @@
       "notes": "fn-pointer tracking through a MOVED call argument (survey item e): `apply(&mut v, set_two)` passes the reified pointer as `move _k`, and `f(x)` inside `apply` must resolve to `set_two`. Before the fix: indirect call with unknown target."
     },
     {
+      "id": "local/box_never_derefed",
+      "artifact": "local/box_never_derefed.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
+      "notes": "Box pointee inference from constructors (survey item f): `Box<i32>` from `Box::new(5i32)` and `Box<u64>` from `Box::from_raw(p: *mut u64)`, neither ever dereferenced. Before the fix: Box with uninferred pointee."
+    },
+    {
       "id": "fail/function_calls/arg_inplace_observe_after",
       "source": "corpus/tests/fail/function_calls/arg_inplace_observe_after.rs",
       "prep": "prep/arg_inplace_observe_after.rs",

@@ -335,7 +335,13 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   `.move` branch doesn't propagate `fnPtrs`) → "indirect call with
   unknown target". With the prep (closure → named fn, leak → alloc,
   drop(Box) → dealloc) this alone unlocks dealloc_against_protector1/2. [OBS]
-- f. Box pointee inference only from `*box` (`collectBoxPointees`); also
+- f. **DONE 2026-09-29** — `collectBoxPointees` also reads `T` off
+  `Box::new(v: T)`, `Box::from_raw(p: *mut T)`, `Box::into_raw`/`Box::leak`
+  (`-> *mut T`/`&mut T`). Witness local/box_never_derefed. Flips nothing on
+  its own: mixed_cell_deallocate (unprepped) and unsafe_cell_deallocate now
+  stop at "call to bodyless function into_raw" — the `Box::into_raw` shim
+  of item j.
+  Was: Box pointee inference only from `*box` (`collectBoxPointees`); also
   infer from `Box::new`/`from_raw` argument types → mixed_cell_deallocate
   (no prep), dealloc_against_protector*, unsafe_cell_deallocate. [OBS]
 - g. Integer `as` casts (`Cast Scalar`) and BitAnd/BitOr/Shl/Shr;

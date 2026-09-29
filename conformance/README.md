@@ -329,6 +329,11 @@ Current entries:
   (`apply(&mut v, set_two)`) and called in the callee. Fn pointers are
   tracked statically; before the 2026-09-29 fix the moved argument lost
   its target ("indirect call with unknown target"). Miri: ok.
+- `local/box_never_derefed` — Boxes whose pointee type appears only at
+  their constructor (`Box::new(5i32)`, `Box::from_raw(p: *mut u64)`),
+  never through `*b`. Charon monomorphises each `Box<T>` into an opaque
+  decl, so `T` is read off those calls (2026-09-29); before, "Box with
+  uninferred pointee". Miri: ok.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc
