@@ -15,6 +15,10 @@ the call is invalidated by the first of them, so using it afterwards is
 undefined behaviour, on the same line and for the same reason as Miri
 reports. A plain copy of the pointer would have missed it. One corpus
 test now runs its original box code instead of a hand-written allocation.
+`Box::leak`, which the standard library builds from the same steps plus
+one more reborrow, followed the same way, and the two tests in which a
+callback frees protected memory now leak their box exactly as upstream
+does.
 
 ---
 

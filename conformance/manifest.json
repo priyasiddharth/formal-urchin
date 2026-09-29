@@ -946,7 +946,6 @@
       "rewrites": [
         "dropped //@ headers and error annotations",
         "closure -> named fn free_it",
-        "Box::leak(Box::new(0)) -> alloc + store",
         "drop(Box::from_raw(raw)) -> dealloc (Box drop is not a dealloc yet, item p)"
       ]
     },
@@ -965,7 +964,6 @@
       "rewrites": [
         "dropped //@ headers and error annotations",
         "closure -> named fn free_it",
-        "Box::leak(Box::new(0i32)) -> alloc + store",
         "raw.cast() -> as *mut u8",
         "Layout::new::<i32>() -> from_size_align_unchecked(4, 4)"
       ]
@@ -2020,6 +2018,28 @@
       "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
       "miri_error": "attempting a write access using .* but that tag does not exist in the borrow stack",
       "notes": "Box::into_raw shim: a raw pointer taken from the Box before into_raw is popped by into_raw's fn-entry Unique retag of the Box; the later write through it is UB (Miri, line 13)."
+    },
+    {
+      "id": "local/box_leak_ok",
+      "artifact": "local/box_leak_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
+      "notes": "Box::leak shim: the returned &mut may be written and read; the memory is returned via Box::from_raw."
+    },
+    {
+      "id": "local/box_leak_pops_prior_raw",
+      "artifact": "local/box_leak_pops_prior_raw.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 11
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
+      "miri_error": "attempting a write access using .* but that tag does not exist in the borrow stack",
+      "notes": "Box::leak shim: a raw pointer taken from the Box before leak is popped by leak's fn-entry Unique retag of the Box; the later write through it is UB (Miri, line 11)."
     },
     {
       "id": "fail/function_calls/arg_inplace_observe_after",

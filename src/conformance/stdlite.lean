@@ -349,6 +349,27 @@ def boxIntoRaw : Shim := fun st args dest line => do
       return pushOut st (.assign dest (.ref .rawMut false { pointee tmp2 with ty := inner }) line)
   | _ => .error s!"unsupported: Box::into_raw argument is not a place (line {line})"
 
+/-- Box::leak(b) -> &mut T. The std body is
+    `let (ptr, alloc) = Box::into_raw_with_allocator(b); mem::forget(alloc);
+    &mut *ptr`, and `into_raw_with_allocator` does `&raw mut **b`: under SB
+    the fn-entry Unique retags of the Box, the raw retag, then a Unique
+    reborrow of the raw pointer — `boxIntoRaw`'s three retags followed by
+    `&mut *`. (Any further layer, like the caller's retag of the returned
+    reference, derives from the shim's own fresh tags and cannot affect
+    any other pointer.) -/
+def boxLeak : Shim := fun st args dest line => do
+  match args with
+  | [.copy b] | [.move b] =>
+      let inner ← match b.ty with
+        | .boxT i => pure i
+        | _ => throw s!"unsupported: Box::leak on a non-Box argument (line {line})"
+      let r := st.locals.length
+      let raw : UPlace := { root := .local r, projs := [], ty := .raw true inner }
+      let st := { st with locals := st.locals ++ [.raw true inner] }
+      let st ← boxIntoRaw st args raw line
+      return pushOut st (.assign dest (.ref .mut false { pointee raw with ty := inner }) line)
+  | _ => .error s!"unsupported: Box::leak argument is not a place (line {line})"
+
 /-- mem::forget: no drop, no access; protectors end at fn return anyway -/
 def memForget : Shim := fun st _args _dest _line => return st
 
@@ -417,6 +438,7 @@ def table : List (List String × Shim) :=
   , (["core", "slice", "[T]", "as_mut_ptr"], (sliceAsPtr true))
   , (["alloc", "boxed", "Box", "from_raw"], boxFromRaw)
   , (["alloc", "boxed", "Box", "into_raw"], boxIntoRaw)
+  , (["alloc", "boxed", "Box", "leak"], boxLeak)
   , (["core", "mem", "forget"], memForget)
   , (["core", "mem", "drop"], memDrop)
   , (["core", "cell", "Cell", "get_mut"], cellGetMut)

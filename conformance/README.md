@@ -340,6 +340,9 @@ Current entries:
   `into_raw`'s fn-entry Unique retag of the Box, so writing through it is
   UB at line 13 — Miri's line and reason. A shim that merely copied the
   pointer would report ok there.
+- `local/box_leak_ok` / `local/box_leak_pops_prior_raw` — the same pair for
+  `Box::leak` (2026-09-29: `into_raw`'s three retags, then `&mut *ptr`):
+  ok, and UB at line 11 for a raw pointer taken before `leak`, as Miri.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

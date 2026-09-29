@@ -4511,3 +4511,23 @@ mixed_cell_deallocate restored to upstream Box code; README; journal
 `write`, `Layout::new`, `null_mut`/`is_null`); Box drop glue (item p) for
 unsafe_cell_deallocate and the newtype tests; item m.
 
+## 2026-09-29 (night)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** `Box::leak` shim.
+
+**Key outputs:** `boxLeak` (reuses `boxIntoRaw`, then `&mut *`);
+local/box_leak_ok, local/box_leak_pops_prior_raw (UB line 11); the two
+protector preps back on upstream `Box::leak`; README, parked j, journal
+(appended to 2026-09-29-box-into-raw.md).
+
+**Critical corrections:** none.
+
+**Status:** complete, not committed. 120/0/29, osea 120, live 120/120,
+0 drift; existing lowering byte-identical.
+
+**Next-session pickup candidates:** remaining item-j rows (`cast`,
+`write`, `Layout::new`, `null_mut`/`is_null`); Box drop glue (item p);
+item m.
+

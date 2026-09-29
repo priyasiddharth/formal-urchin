@@ -22,5 +22,21 @@ Miri 118/118, 0 drift. The unsupported tests that also call into_raw
 (newtype_*, unsafe_cell_deallocate) still need Box drop glue (item p) /
 closures / item m.
 
+## Later: `Box::leak`
+
+[FACT] std: `let (ptr, alloc) = Box::into_raw_with_allocator(b);
+mem::forget(alloc); &mut *ptr`, with `into_raw_with_allocator` doing
+`&raw mut **b` — fn-entry Unique retags, the raw retag, a Unique reborrow:
+`boxIntoRaw` then `&mut *`, which is what `boxLeak` emits. Layers beyond
+that (the caller's retag of the returned `&mut`) derive from the shim's own
+tags and cannot touch another pointer.
+
+[OBS] local/box_leak_ok (ok; frees via from_raw so Miri's leak check is
+quiet) and local/box_leak_pops_prior_raw (UB line 11, as Miri). The two
+deallocate_against_protector preps run upstream `Box::leak(Box::new(..))`
+again; lines 19/21 unchanged. Old binary: all four "call to bodyless
+function leak"; 145 others byte-identical. Corpus 120/0/29, osea 120, live
+120/120, 0 drift.
+
 ## See also
 2026-09-29-stdlite-module.md, 2026-09-29-box-pointee-inference.md
