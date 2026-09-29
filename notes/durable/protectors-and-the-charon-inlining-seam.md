@@ -267,7 +267,8 @@ inlined (:675). A fn pointer stored into a PROJECTION is rejected —
 the map is flat, not per-place.
 
 **Heap and interior mutability are shimmed, not modeled**
-(`shimCall`, :375). `Box::new` / `alloc::alloc` / `dealloc` become
+(`src/conformance/stdlite.lean`: one shim per modelled std path,
+looked up in `stdlite.table` by `shimCall`; 2026-09-29). `Box::new` / `alloc::alloc` / `dealloc` become
 dedicated `LStmt.alloc`/`.dealloc`; `Layout` is modeled as its size
 word; `UnsafeCell`/`Cell`/`RefCell` become type-directed freeze masks,
 with RefCell's borrow flag elided as SB-irrelevant.

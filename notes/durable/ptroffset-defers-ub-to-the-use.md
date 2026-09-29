@@ -9,7 +9,7 @@ paths — `add` / `offset` / `wrapping_add` / `wrapping_offset` ×
 `mut_ptr` / `const_ptr` — mapping all of them to the same
 `.ptrOffset p delta`, with the delta required to be a literal
 ("unsupported: runtime pointer offset" otherwise).
-→ src/conformance/lowering.lean:560-577
+→ src/conformance/stdlite.lean, `ptrOffset` (was lowering.lean until 2026-09-29)
 
 [FACT, 2026-09-14] **Neither machine checks the upper bound.** Both
 check only that the new offset is non-negative:

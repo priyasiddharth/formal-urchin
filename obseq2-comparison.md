@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-29 (evening) — The Standard-Library Models Get Their Own Module
+
+Calls into the Rust standard library that have no body in the extracted
+program are lowered by hand-written models of what they do to memory and
+the borrow stacks. Those models had grown into one long conditional in
+the middle of the lowering. They now live in their own module, one
+named definition per function and one table from library path to model,
+so adding a model is adding a definition and a row. A Rust library of
+models, compiled like the tests, was considered and set aside: Miri runs
+the real library, so a model written in Rust could not contain branches,
+and the models worth writing in Rust are exactly the ones that do. The
+move changes nothing observable: every lowered program is identical.
+
+---
+
 ## 2026-09-29 (later) — Where a Box's Contents Come From
 
 The Rust front end names every `Box<T>` as its own opaque type, so the

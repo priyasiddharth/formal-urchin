@@ -4468,3 +4468,26 @@ next need the `Box::into_raw` shim (item j).
 **Next-session pickup candidates:** `Box::into_raw` shim (item j) →
 mixed_cell_deallocate unprepped + unsafe_cell_deallocate; item m.
 
+## 2026-09-29 (later still)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** "libstdlite" — the std shims moved out of lowering.lean into a
+module, after weighing a Rust-models library (probed, rejected: generic
+bodies need loader instantiation; certificates force straight-line
+models).
+
+**Key outputs:** src/conformance/{emit,stdlite}.lean; lowering.lean now
+header + certificate checks + walker; stale line refs in two durable notes
+and parked.md replaced by file/function names; journal
+2026-09-29-stdlite-module.md.
+
+**Critical corrections:** my first split script cut paths at the `]` in
+`[T]`; caught by reading the table before building.
+
+**Status:** complete, not committed. Byte-identical to HEAD on every dump
+and record/osea run; live 116/116, 0 drift.
+
+**Next-session pickup candidates:** item-j shims as `stdlite.table` rows
+(`Box::into_raw`, `leak`, `cast`, `write`, `Layout::new`, …); item m.
+

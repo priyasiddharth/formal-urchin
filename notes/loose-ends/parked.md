@@ -347,13 +347,14 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
 - g. Integer `as` casts (`Cast Scalar`) and BitAnd/BitOr/Shl/Shr;
   offset shim should consult `constOf` for a const-tracked delta →
   buggy_split_at_mut, smallvec. [OBS]
-- h. Loop visit budget (lowering.lean ~1048) compares cumulative visits
+- h. Loop visit budget (`walkBlock`, lowering.lean) compares cumulative visits
   against REMAINING events, so long certified loops trip it: 3 iterations
   pass, 100 fail → unknown-bottom-gc (+ Range→`while` rewrite or shims). [OBS]
 - i. Zero-sized arrays expand to `List.replicate n` (Array type and
   Repeat) — `[(); usize::MAX]` HANGS the loader → keep ZST arrays zero
   cells; unlocks zst-field-retagging-terminates (passes at N=4). [OBS]
-- j. Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
+- j. (2026-09-29: shims now live in src/conformance/stdlite.lean — each
+  new one is a `def … : Shim` plus rows in `stdlite.table`.) Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
   Unique then raw retag), `Layout::new::<T>`, `ptr.write`, `is_null`,
   `ManuallyDrop::new`, `Option::{as_ref,unwrap,is_some}`,
   `AddAssign::add_assign`, `Layout::from_size_align`+`unwrap`.
@@ -366,7 +367,7 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
 - m. **By-value named-struct fields must be fn-entry retagged** →
   newtype_retagging, newtype_pair_retagging (both return "ok" today with
   the prep; the tuple variant passes). `containsRef (.structT _) = false`
-  (lowering.lean:321) cites fnentry_invalidation2, but that test passes
+  (emit.lean, `containsRef`) cites fnentry_invalidation2, but that test passes
   `&mut Thing` and retags never recurse through a reference, so it does
   not support the rule; newtype_retagging's own comment says "Make sure
   that we protect references inside structs". Re-run the corpus. [OBS+source]
