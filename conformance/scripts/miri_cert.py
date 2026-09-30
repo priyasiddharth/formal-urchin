@@ -111,7 +111,11 @@ def is_user_frame(path, user_fns):
         self_ty, trait = q
         if all(strip_generics(t).startswith(STD_CRATES) for t in (self_ty, trait) if t):
             return False
-    elif any(x in path for x in STD_CRATES):
+    elif strip_generics(path).startswith(STD_CRATES) or \
+            any(x in strip_generics(path) for x in STD_CRATES):
+        # judged on the path WITHOUT its generic arguments: a user method
+        # instantiated at a std type (`Option::<std::cell::RefCell<bool>>::as_ref`)
+        # is still user code
         return False
     return last_segment(path) in user_fns
 

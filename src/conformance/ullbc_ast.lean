@@ -45,6 +45,16 @@ inductive UTy
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
 
+/-- Does a reference (or Box, or reference-to-slice) occur ANYWHERE in the
+    type, struct fields and cells included? A conservative guard, unlike
+    the seam-retag rule `containsRef`. -/
+partial def containsRefTy : UTy → Bool
+  | .ref _ _ | .boxT _ | .slice false _ _ => true
+  | .tup tys | .structT tys => tys.any containsRefTy
+  | .enum variants => variants.any (·.any containsRefTy)
+  | .cell t => containsRefTy t
+  | _ => false  -- a raw pointer is not retagged, whatever it points to
+
 /-- Cell count of a type (mirrors `blockSize ∘ toLayout`). -/
 partial def uSize : UTy → Nat
   | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => 1
@@ -55,6 +65,14 @@ partial def uSize : UTy → Nat
       1 + (variants.map (fun fs => (fs.map uSize).foldl (· + ·) 0)).foldl Nat.max 0
   | .unsupported _ => 1
 
+/-- Is there an interior-mutable region in the value itself (not behind a
+    pointer)? The model's analogue of "not `Freeze`". -/
+partial def containsCell : UTy → Bool
+  | .cell _ => true
+  | .tup tys | .structT tys => tys.any containsCell
+  | .enum variants => variants.any (·.any containsCell)
+  | _ => false
+
 /-- UnsafeCell freeze mask: true for cells inside an interior-mutable
     region. Shared/raw-const retags give masked cells SharedReadWrite. -/
 partial def freezeMask : UTy → List Bool
@@ -62,7 +80,12 @@ partial def freezeMask : UTy → List Bool
   | .sliceData _ => []
   | .cell inner => List.replicate (uSize inner) true
   | .tup tys | .structT tys => tys.flatMap freezeMask
-  | .enum e => List.replicate (uSize (.enum e)) false
+  -- A multi-variant enum that is not `Freeze` is treated like a union by
+  -- Miri's `visit_freeze_sensitive` (vendor/miri/src/helpers.rs): the whole
+  -- value, discriminant included, is UnsafeCell, WITHOUT reading which
+  -- variant is active (that read would itself be subject to SB). So: all
+  -- cells interior-mutable if any variant holds a cell, else all frozen.
+  | .enum e => List.replicate (uSize (.enum e)) (containsCell (.enum e))
   | .unsupported _ => []
 
 /-- Array index resolution: constant, or a local whose (constant) value
@@ -254,7 +277,7 @@ deriving Inhabited
 structure ParseCtx where
   tbl : TyTable
   decls : List (Nat × DeclInfo)
-  boxPointee : List (Nat × Json)    -- Box decl id ↦ pointee type Json
+  boxPointee : List (Nat × Json)    -- Box/NonNull/ManuallyDrop decl id ↦ inner type Json
   cellPointee : List (Nat × Json)   -- UnsafeCell/Cell decl id ↦ inner type Json
   funPaths : List (Nat × List String) -- fun decl id ↦ path segments (`funName`)
 
@@ -389,11 +412,15 @@ def operandTyJson (op : Json) : Option Json :=
   | some ("Const", c) => getK c "ty"
   | _ => none
 
-/-- The decl id of a type Json when it is a (monomorphised, opaque) Box. -/
-def boxDeclId (tbl : TyTable) (decls : List (Nat × DeclInfo)) (j : Json) : Option Nat := do
+/-- The decl id of a type Json when it is a (monomorphised, opaque)
+    wrapper named `name` (`Box`, `NonNull`, `ManuallyDrop`). -/
+def wrapperDeclId (name : String) (tbl : TyTable) (decls : List (Nat × DeclInfo))
+    (j : Json) : Option Nat := do
   let did ← adtDeclId tbl j
   let info ← decls.lookup did
-  if info.path.getLast? == some "Box" then some did else none
+  if info.path.getLast? == some name then some did else none
+
+def boxDeclId := wrapperDeclId "Box"
 
 /-- The pointee type Json of a raw pointer or reference type Json. -/
 def ptrPointeeJson (tbl : TyTable) (j : Json) : Option Json :=
@@ -405,8 +432,13 @@ def ptrPointeeJson (tbl : TyTable) (j : Json) : Option Json :=
       | _ => none
   | _ => none
 
-/-- Prescan: infer Box pointee types. Charon monomorphises `Box<T>` into
-    an OPAQUE decl per `T`, so `T` has to be read off a use:
+/-- Prescan: infer the `T` of the opaque wrappers `Box<T>`, `NonNull<T>`
+    and `ManuallyDrop<T>` (one map, decl ids are distinct). Charon
+    monomorphises each into an OPAQUE decl per `T`, so `T` has to be read
+    off a use. For NonNull: `new_unchecked(p: *mut T)`, `From::from(r: &mut
+    T)`, `as_ptr(self) -> *mut T`, `as_mut(&mut self) -> &mut T`. For
+    ManuallyDrop: `new(v: T)`, `Deref::deref(&self) -> &T`,
+    `DerefMut::deref_mut`. For Box:
     - a deref projection `{kind: {Projection: [boxPlace, "Deref"]}, ty: T}`;
     - `Box::new(v: T) -> Box`;
     - `Box::from_raw(p: *mut T) -> Box`;
@@ -447,6 +479,20 @@ partial def collectBoxPointees (tbl : TyTable) (decls : List (Nat × DeclInfo))
             add acc (destTy? >>= boxDeclId tbl decls) (argTy? >>= ptrPointeeJson tbl)
         | some ["alloc", "boxed", "Box", "into_raw"] | some ["alloc", "boxed", "Box", "leak"] =>
             add acc (argTy? >>= boxDeclId tbl decls) (destTy? >>= ptrPointeeJson tbl)
+        | some ["core", "ptr", "non_null", "NonNull", "new_unchecked"]
+        | some ["core", "ptr", "non_null", "<NonNull as From>", "from"] =>
+            add acc (destTy? >>= wrapperDeclId "NonNull" tbl decls) (argTy? >>= ptrPointeeJson tbl)
+        | some ["core", "ptr", "non_null", "NonNull", "as_ptr"] =>
+            add acc (argTy? >>= wrapperDeclId "NonNull" tbl decls) (destTy? >>= ptrPointeeJson tbl)
+        | some ["core", "ptr", "non_null", "NonNull", "as_mut"] =>
+            add acc (argTy? >>= ptrPointeeJson tbl >>= wrapperDeclId "NonNull" tbl decls)
+              (destTy? >>= ptrPointeeJson tbl)
+        | some ["core", "mem", "manually_drop", "ManuallyDrop", "new"] =>
+            add acc (destTy? >>= wrapperDeclId "ManuallyDrop" tbl decls) argTy?
+        | some ["core", "mem", "manually_drop", "<ManuallyDrop as Deref>", "deref"]
+        | some ["core", "mem", "manually_drop", "<ManuallyDrop as DerefMut>", "deref_mut"] =>
+            add acc (argTy? >>= ptrPointeeJson tbl >>= wrapperDeclId "ManuallyDrop" tbl decls)
+              (destTy? >>= ptrPointeeJson tbl)
         | _ => acc
     | none => acc
   match j with
@@ -616,6 +662,21 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     match ctx.boxPointee.lookup did with
                     | some pointee => .boxT (parseTy ctx (fuel - 1) pointee)
                     | none => .unsupported "Box with uninferred pointee"
+                  else if last == "NonNull" then
+                    -- repr(transparent) over `*const T`: a raw pointer
+                    match ctx.boxPointee.lookup did with
+                    | some pointee => .raw true (parseTy ctx (fuel - 1) pointee)
+                    | none => .unsupported "NonNull with uninferred pointee"
+                  else if last == "ManuallyDrop" then
+                    -- transparent over `T` (through `MaybeDangling`, whose
+                    -- inner references Miri does NOT retag): only a `T`
+                    -- without references is the same thing as `T`
+                    match ctx.boxPointee.lookup did with
+                    | some inner =>
+                        let t := parseTy ctx (fuel - 1) inner
+                        if containsRefTy t then .unsupported "ManuallyDrop around a reference (MaybeDangling)"
+                        else t
+                    | none => .unsupported "ManuallyDrop with uninferred inner type"
                   else if last == "Layout" then
                     .nat  -- Layout carries only its size (constructor is shimmed)
                   else if last == "UnsafeCell" || last == "Cell" || last == "RefCell" then

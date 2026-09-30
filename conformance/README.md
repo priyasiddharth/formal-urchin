@@ -356,6 +356,17 @@ Current entries:
   sized from it, so writing both fields of an allocated pair is in bounds
   only if the size is right (a constant-1 shim gives "write out of bounds"
   at line 13 — checked). Miri: ok.
+- `local/std_wrappers_ok` / `local/nonnull_from_shared_write` — the
+  pointer-wrapper shims (2026-09-30): `NonNull` (both `From` impls,
+  `clone`, `as_ptr`, `cast`, `new_unchecked`, `as_mut`), `ManuallyDrop`
+  (`new`, `deref`, `deref_mut`), `size_of` and `UnsafeCell::raw_get` (ok);
+  and `NonNull::from(&T)` keeps SharedReadOnly, so a write through it is
+  UB at line 12 (a shim taking the `&mut` path fails at line 11 — checked).
+- `local/enum_cell_shared_retag` — a shared retag of an `Option<Cell<i32>>`
+  keeps a live `&mut` into the payload usable: Miri treats a non-`Freeze`
+  multi-variant enum as interior-mutable as a whole, without reading the
+  variant (2026-09-30); a frozen enum mask gives false UB at line 18 —
+  checked. Miri: ok.
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

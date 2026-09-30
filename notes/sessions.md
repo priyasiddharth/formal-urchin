@@ -4594,3 +4594,51 @@ the committed-artifact dump comparison is the check that counts.
 `null_mut`/`is_null`, `NonNull::*`, `ManuallyDrop::new`; Box drop glue
 (item p); item m.
 
+## 2026-09-30 (later)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** "add the remaining shims" — the data-movement ones done; the
+rest need a failure path or a model change.
+
+**Key outputs:** NonNull/ManuallyDrop types (inferred like Box; guard for
+MaybeDangling) and 12 shim rows (`size_of`, `raw_get`, NonNull ×6,
+ManuallyDrop ×3); witnesses local/std_wrappers_ok and
+local/nonnull_from_shared_write (checked to pin the shared From branch);
+mut_exclusive_violation2 upstream again (line 18); journal
+2026-09-30-wrapper-shims.md.
+
+**Critical corrections:** `ManuallyDrop` wraps `MaybeDangling` in this
+std — treating it as `T` is only exact without references, so it is
+guarded.
+
+**Status:** complete, not committed. 126/0/29, osea 126, live 126/126,
+0 drift; existing lowering byte-identical.
+
+**Next-session pickup candidates:** the Option/Result failure-path design;
+null/addr (item o); Box drop glue (item p); item m.
+
+## 2026-09-30 (evening)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** the user's idea — user-written Option in preps so Miri records
+the frames; it exposed the enum freeze-mask bug.
+
+**Key outputs:** `containsCell` + enum case of `freezeMask`;
+`miri_cert.py` plain-path generic stripping; local/enum_cell_shared_retag;
+rust_issue_68303 back to its upstream body with a shadowing Option; parked
+B5 + j, README, journal (appended to 2026-09-30-wrapper-shims.md).
+
+**Critical corrections:** I told the user Miri picks the payload
+permission by the active variant; the pinned source says the opposite
+(whole non-Freeze enum = UnsafeCell, variant never read). Checked before
+coding.
+
+**Status:** complete, not committed (together with the wrapper shims).
+127/0/29, osea 127, live 127/127, 0 drift; units unchanged.
+
+**Next-session pickup candidates:** apply the Option/Result prelude where
+upstream code is rewritten around them; null/addr (item o); Box drop glue
+(item p); item m.
+

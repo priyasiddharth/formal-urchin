@@ -394,6 +394,67 @@ def ptrWrite : Shim := fun st args _dest line => do
       emitAssign st line { pointee p with ty := inner } (.use valOp)
   | _ => .error s!"unsupported: ptr::write arguments (line {line})"
 
+/-- `NonNull::from(r)`: std is `from_mut(r)` = `transmute(r as *mut T)`
+    (or `from_ref`/`*const T` for a shared `r`; both impls render as
+    `<NonNull as From>::from`, so the argument's type decides): the
+    fn-entry retags of `r` in `from` and `from_mut`, then the raw retag of
+    the cast — `boxIntoRaw`'s shape, from a reference. Protectors omitted
+    as there: the only accesses during the calls are these reborrows. -/
+def nonNullFrom : Shim := fun st args dest line => do
+  match args with
+  | [.copy r] | [.move r] =>
+      let (mutbl, inner) ← match r.ty with
+        | .ref m i => pure (m, i)
+        | _ => throw s!"unsupported: NonNull::from of a non-reference (line {line})"
+      let (kind, rawKind) : URefKind × URefKind :=
+        if mutbl then (.mut, .rawMut) else (.shared, .rawConst)
+      let t1 := st.locals.length
+      let st := { st with locals := st.locals ++ [.ref mutbl inner, .ref mutbl inner] }
+      let tmp1 : UPlace := { root := .local t1, projs := [], ty := .ref mutbl inner }
+      let tmp2 : UPlace := { root := .local (t1 + 1), projs := [], ty := .ref mutbl inner }
+      let st := pushOut st (.assign tmp1 (.ref kind false { pointee r with ty := inner }) line)
+      let st := pushOut st (.assign tmp2 (.ref kind false { pointee tmp1 with ty := inner }) line)
+      return pushOut st (.assign dest (.ref rawKind false { pointee tmp2 with ty := inner }) line)
+  | _ => .error s!"unsupported: NonNull::from argument is not a place (line {line})"
+
+/-- `<NonNull as Clone>::clone(&self)`: `*self`, a copy of the pointer. -/
+def nonNullClone : Shim := fun st args dest line => do
+  match args with
+  | [.copy p] | [.move p] => emitAssign st line dest (.use (.copy { pointee p with ty := dest.ty }))
+  | _ => .error s!"unsupported: NonNull::clone argument is not a place (line {line})"
+
+/-- `NonNull::as_mut(&mut self)`: `&mut *self.as_ptr()`, a Unique reborrow
+    through the stored pointer. -/
+def nonNullAsMut : Shim := fun st args dest line => do
+  match args with
+  | [.copy p] | [.move p] =>
+      let (nn, inner) ← match p.ty with
+        | .ref _ (.raw m i) => pure (UTy.raw m i, i)
+        | _ => throw s!"unsupported: NonNull::as_mut receiver (line {line})"
+      return pushOut st (.assign dest
+        (.ref .mut false { pointee { pointee p with ty := nn } with ty := inner }) line)
+  | _ => .error s!"unsupported: NonNull::as_mut argument is not a place (line {line})"
+
+/-- `ManuallyDrop::new(v)`: the value itself (ManuallyDrop<T> is `T` in the
+    model, for a `T` without references; see `parseTy`). -/
+def manuallyDropNew : Shim := fun st args dest line => do
+  match args with
+  | [v] => emitAssign st line dest (.use v)
+  | _ => .error s!"unsupported: ManuallyDrop::new arity (line {line})"
+
+/-- `<ManuallyDrop as Deref>::deref` / `DerefMut::deref_mut`: std is
+    `self.value.as_ref()` / `as_mut()`, a shared / unique reborrow of the
+    value. -/
+def manuallyDropDeref (mutbl : Bool) : Shim := fun st args dest line => do
+  match args with
+  | [.copy p] | [.move p] =>
+      let inner ← match p.ty with
+        | .ref _ i => pure i
+        | _ => throw s!"unsupported: ManuallyDrop deref receiver (line {line})"
+      return pushOut st (.assign dest
+        (.ref (if mutbl then .mut else .shared) false { pointee p with ty := inner }) line)
+  | _ => .error s!"unsupported: ManuallyDrop deref argument is not a place (line {line})"
+
 /-- mem::forget: no drop, no access; protectors end at fn return anyway -/
 def memForget : Shim := fun st _args _dest _line => return st
 
@@ -420,10 +481,18 @@ def layoutNew (tyArgs : List UTy) : Shim := fun st _args dest line => do
   | [t] => emitAssign st line dest (.use (.const (uSize t)))
   | _ => .error s!"unsupported: Layout::new instantiation {reprStr tyArgs} (line {line})"
 
+/-- `mem::size_of::<T>()`: `T`'s size in cells (the model's unit, as for
+    `Layout::new`). -/
+def sizeOf (tyArgs : List UTy) : Shim := fun st _args dest line => do
+  match tyArgs with
+  | [t] => emitAssign st line dest (.use (.const (uSize t)))
+  | _ => .error s!"unsupported: size_of instantiation {reprStr tyArgs} (line {line})"
+
 /-- Shims that need the call's monomorphised type arguments (`UFun.tyArgs`),
     for bodyless generics whose meaning is the type itself. -/
 def tyArgTable : List (List String × (List UTy → Shim)) :=
   [ (["core", "alloc", "layout", "Layout", "new"], layoutNew)
+  , (["core", "mem", "size_of"], sizeOf)
   ]
 
 /-- Every modelled std path and its shim. Paths are distinct, so the
@@ -471,6 +540,16 @@ def table : List (List String × Shim) :=
   , (["core", "ptr", "mut_ptr", "*mut T", "cast_const"], ptrCast)
   , (["core", "ptr", "write"], ptrWrite)
   , (["core", "ptr", "mut_ptr", "*mut T", "write"], ptrWrite)
+  , (["core", "cell", "UnsafeCell", "raw_get"], ptrCast)
+  , (["core", "ptr", "non_null", "NonNull", "new_unchecked"], ptrCast)
+  , (["core", "ptr", "non_null", "NonNull", "as_ptr"], ptrCast)
+  , (["core", "ptr", "non_null", "NonNull", "cast"], ptrCast)
+  , (["core", "ptr", "non_null", "<NonNull as From>", "from"], nonNullFrom)
+  , (["core", "ptr", "non_null", "<NonNull as Clone>", "clone"], nonNullClone)
+  , (["core", "ptr", "non_null", "NonNull", "as_mut"], nonNullAsMut)
+  , (["core", "mem", "manually_drop", "ManuallyDrop", "new"], manuallyDropNew)
+  , (["core", "mem", "manually_drop", "<ManuallyDrop as Deref>", "deref"], (manuallyDropDeref false))
+  , (["core", "mem", "manually_drop", "<ManuallyDrop as DerefMut>", "deref_mut"], (manuallyDropDeref true))
   , (["core", "slice", "index", "<[T] as Index>", "index"], (sliceIndex false))
   , (["core", "slice", "index", "<[T] as IndexMut>", "index_mut"], (sliceIndex true))
   , (["core", "slice", "[T]", "get_unchecked"], (sliceIndex false))

@@ -1130,12 +1130,11 @@
       "reason": null,
       "expected": {
         "verdict": "ub",
-        "line": 17
+        "line": 18
       },
       "miri_error": "read access .* tag does not exist in the borrow stack",
       "rewrites": [
-        "dropped revisions and error annotations",
-        "NonNull<i32> -> *mut i32 (from -> cast, clone -> copy, as_mut -> &mut *p)"
+        "dropped revisions and error annotations"
       ],
       "certificate": "mut_exclusive_violation2.cert.json"
     },
@@ -1818,8 +1817,7 @@
       },
       "rewrites": [
         "scenario extracted",
-        "as_ref().unwrap() -> match &optional",
-        "is_some() -> matches!"
+        "prelude Option shadowed by a user-written Option with std's as_ref/unwrap/is_some bodies (frames recorded by Miri)"
       ],
       "certificate": "interior_mutability__rust_issue_68303.cert.json"
     },
@@ -2073,6 +2071,39 @@
       },
       "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
       "notes": "Layout::new::<T>() shim: the size comes from the call's monomorphised type argument; alloc is sized from it, so writing both fields of an allocated pair is in bounds only if the size is 2 cells."
+    },
+    {
+      "id": "local/std_wrappers_ok",
+      "artifact": "local/std_wrappers_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-30 via scripts/live.py",
+      "notes": "NonNull (from &mut / &, clone, as_ptr, cast, new_unchecked, as_mut), ManuallyDrop (new, deref, deref_mut), size_of (sizes an allocation) and UnsafeCell::raw_get shims."
+    },
+    {
+      "id": "local/nonnull_from_shared_write",
+      "artifact": "local/nonnull_from_shared_write.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 12
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-30 via scripts/live.py",
+      "miri_error": "attempting a write access using .* only grants SharedReadOnly permission",
+      "notes": "NonNull::from(&T) keeps the shared reference's SharedReadOnly permission: writing through it is UB (Miri, line 12). Pins the shared branch of the From shim."
+    },
+    {
+      "id": "local/enum_cell_shared_retag",
+      "artifact": "local/enum_cell_shared_retag.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/enum_cell_shared_retag.cert.json",
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-30 via scripts/live.py",
+      "notes": "freeze mask of a multi-variant enum holding a cell: Miri treats the whole enum as UnsafeCell without reading the variant, so the shared retag `&*op` does no read and the live `&mut` into the payload survives. A frozen enum mask would pop it (false UB at r.set)."
     },
     {
       "id": "fail/function_calls/arg_inplace_observe_after",

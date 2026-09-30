@@ -369,7 +369,23 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   mixed_mutability_static run their upstream `ptr.read/write` again.
   `Layout::new::<T>()` DONE 2026-09-29: `UFun.tyArgs` keeps the
   monomorphised instantiation, `stdlite.tyArgTable` holds shims that need
-  it; mixed_cell_deallocate is now rewrite-free apart from annotations.) Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
+  it; mixed_cell_deallocate is now rewrite-free apart from annotations.
+  2026-09-30: `size_of`, `UnsafeCell::raw_get`, `NonNull::{from,
+  clone, as_ptr, cast, new_unchecked, as_mut}`, `ManuallyDrop::{new,
+  deref, deref_mut}` DONE (NonNull = raw pointer, ManuallyDrop = its `T`
+  when `T` has no references — MaybeDangling — inferred like Box's
+  pointee); mut_exclusive_violation2 runs upstream NonNull code.
+  `Option`/`Result` methods: NOT shimmed — a prep shadows the prelude
+  `Option` with a user-written one carrying std's bodies, so Charon
+  translates them and Miri's certificate records their frames and the
+  `None` arm is an ordinary untaken branch (2026-09-30, pilot
+  interior_mutability::rust_issue_68303, now upstream body). Needs
+  `miri_cert.py` to judge plain paths without their generic arguments.
+  Does not reach an Option/Result RETURNED by std (`Layout::from_size_align`).
+  STILL OPEN: `null_mut` / `is_null`
+  / `addr` / `without_provenance_mut` (a pointer without provenance and a
+  NON-exposing address read — a mirlite/oseair change, item o);
+  `slice::from_raw_parts_mut` (item r).) Std shims, each small: `Box::leak`, `Box::into_raw` (fn-entry
   Unique then raw retag), `Layout::new::<T>`, `ptr.write`, `is_null`,
   `ManuallyDrop::new`, `Option::{as_ref,unwrap,is_some}`,
   `AddAssign::add_assign`, `Layout::from_size_align`+`unwrap`.
@@ -460,7 +476,14 @@ a+j (small shims), h i, then q, p, t, w.
    own EXTENT (2026-09-23), and `sliceLen` reads the length off it in
    elements (2026-09-24). Zero-sized elements have no length in the
    extent. No sub-slices yet (range indexing).
-5. **Enum layout**: discriminant word + prefix-merged payload — no
+5. **Enum freeze mask** (2026-09-30, was: every enum frozen): an enum
+   holding a cell in any variant is interior-mutable as a WHOLE,
+   discriminant included — exactly Miri's `visit_freeze_sensitive`,
+   which treats a non-`Freeze` multi-variant enum like a union and does
+   not read the variant. Remaining gap: Miri walks SINGLE-variant layouts
+   field by field; the model's enum always has a discriminant cell.
+   Witness local/enum_cell_shared_retag.
+   **Enum layout**: discriminant word + prefix-merged payload — no
    niche optimization; incompatible variant layouts and nested refs in
    payloads are unsupported; payload seam retags are assignIf-guarded;
    [SUPERSEDED → durable/assignif-reads-its-discriminant.md, 2026-09-17]

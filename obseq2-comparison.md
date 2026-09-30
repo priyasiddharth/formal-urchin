@@ -4,6 +4,40 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-30 — Pointer Wrappers, and Where Shims Stop
+
+`NonNull` and `ManuallyDrop` are thin wrappers, one around a raw pointer
+and one around a value, and the loader now treats them as what they
+wrap, working out the wrapped type from how each is built or used, as it
+already does for `Box`. Their methods follow the standard library's own
+bodies: making a `NonNull` from a reference reborrows it and takes a raw
+pointer, exactly as `Box::into_raw` does; reading one back reborrows
+through the stored pointer. A corpus test that juggles two `NonNull`s to
+the same integer runs its original code again, and a new test checks
+that a `NonNull` made from a shared reference cannot be written through.
+`ManuallyDrop` is accepted only around values without references, because
+in this version of the library its contents are deliberately exempt from
+the retagging that references normally get.
+
+What remains on the list is not more of the same. `Option::unwrap` and
+its relatives can fail, and the model has no honest way yet to say "this
+call panicked" for library code Miri's recording does not show;
+null pointers and reading a pointer's address without exposing it need
+new operations in the modelled language itself.
+
+A better answer for `Option` came from turning the question around: a
+test's rewritten copy can declare its own `Option`, with the standard
+library's method bodies, so the methods are ordinary program code that
+Miri's recording does see. The first test to use it immediately showed a
+real modelling error. When a shared reference is taken to an enum that
+contains a cell, the model treated the whole enum as read-only; Miri,
+unable to tell which variant is present without reading memory it is
+still checking, treats the whole enum as mutable-through-sharing
+instead. The model now does the same, and that test runs its original
+code.
+
+---
+
 ## 2026-09-29 (night) — `Box::into_raw`
 
 `Box::into_raw` gives up a box and returns the raw pointer inside it. The

@@ -1,0 +1,40 @@
+{
+ "version": 1,
+ "source": "local/enum_cell_shared_retag.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _7",
+     "cases": [
+      [
+       0,
+       3
+      ],
+      [
+       1,
+       4
+      ]
+     ],
+     "otherwise": 2,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _7) -> [0: bb3, 1: bb4, otherwise: bb2]",
+     "next": 4,
+     "arm": "1"
+    }
+   ]
+  }
+ ]
+}
