@@ -3,4 +3,5 @@
 	url = https://github.com/AeneasVerif/charon.git
 [submodule "conformance/vendor/miri"]
 	path = conformance/vendor/miri
-	url = https://github.com/rust-lang/miri.git
+	url = https://github.com/priyasiddharth/miri.git
+	branch = formal-urchin

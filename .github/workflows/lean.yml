@@ -93,7 +93,8 @@ jobs:
       - name: Tool cache key (submodule commits + bootstrap script)
         id: pins
         run: |
-          echo "miri=$(git rev-parse HEAD:conformance/vendor/miri)" >> "$GITHUB_OUTPUT"
+          # the Miri TOOL pin (vendor/miri is a fork adding only tests on top)
+          echo "miri=$(sed -n 's/^miri_commit: *//p' conformance/PIN)" >> "$GITHUB_OUTPUT"
           echo "charon=$(git rev-parse HEAD:conformance/vendor/charon)" >> "$GITHUB_OUTPUT"
           echo "charon_tc=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' conformance/vendor/charon/rust-toolchain)" >> "$GITHUB_OUTPUT"
 

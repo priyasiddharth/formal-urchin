@@ -1,6 +1,6 @@
 {
  "version": 1,
- "source": "prep/interior_mutability__rust_issue_68303.rs",
+ "source": "corpus/tests/formal-urchin/interior_mutability__rust_issue_68303.rs",
  "miri": {
   "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
   "flags": [

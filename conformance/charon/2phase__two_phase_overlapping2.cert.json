@@ -1,6 +1,6 @@
 {
  "version": 1,
- "source": "prep/2phase__two_phase_overlapping2.rs",
+ "source": "corpus/tests/formal-urchin/2phase__two_phase_overlapping2.rs",
  "miri": {
   "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
   "flags": [

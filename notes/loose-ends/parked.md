@@ -513,7 +513,12 @@ a+j (small shims), h i, then q, p, t, w.
 
 ### C. Prep rewrites
 Recorded per-test in conformance/manifest.json `rewrites` and in each
-prep header. The assert/`+=`/`match` rewrites were REVERTED 2026-09-23
+prep header. (2026-09-30: the rewrites that REPLACE std code with
+user-written code live in the Miri fork, `corpus/tests/formal-urchin/`;
+the rest stay in conformance/prep/. Candidates to restore upstream now
+that shims exist: illegal_write2 `drop`, illegal_read7 `get_mut`,
+cell_inside_struct `Cell::set`, unsafe_cell_invalidate `transmute`,
+arg_inplace_observe_after / locals_alias(_ret) `ptr.read/write` notes.) The assert/`+=`/`match` rewrites were REVERTED 2026-09-23
 (20 entries now run upstream code under a certificate); what remains is
 method/intrinsic avoidance (ptr1.write → *ptr1, transmute → cast chains
 where noted), `println!`, RefCell's flag probe, and one tuple

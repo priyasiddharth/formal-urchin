@@ -932,7 +932,7 @@
     {
       "id": "fail/both_borrows/deallocate_against_protector1",
       "source": "corpus/tests/fail/both_borrows/deallocate_against_protector1.rs",
-      "prep": "prep/deallocate_against_protector1.rs",
+      "prep": "corpus/tests/formal-urchin/deallocate_against_protector1.rs",
       "artifact": "deallocate_against_protector1.ullbc.json",
       "status": "supported",
       "reason": null,
@@ -950,7 +950,7 @@
     {
       "id": "fail/both_borrows/deallocate_against_protector2",
       "source": "corpus/tests/fail/both_borrows/deallocate_against_protector2.rs",
-      "prep": "prep/deallocate_against_protector2.rs",
+      "prep": "corpus/tests/formal-urchin/deallocate_against_protector2.rs",
       "artifact": "deallocate_against_protector2.ullbc.json",
       "status": "supported",
       "reason": null,
@@ -1524,7 +1524,7 @@
     {
       "id": "pass/both_borrows/2phase::two_phase_overlapping2",
       "source": "corpus/tests/pass/both_borrows/2phase.rs",
-      "prep": "prep/2phase__two_phase_overlapping2.rs",
+      "prep": "corpus/tests/formal-urchin/2phase__two_phase_overlapping2.rs",
       "artifact": "2phase__two_phase_overlapping2.ullbc.json",
       "status": "supported",
       "reason": null,
@@ -1808,7 +1808,7 @@
     {
       "id": "pass/both_borrows/interior_mutability::rust_issue_68303",
       "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
-      "prep": "prep/interior_mutability__rust_issue_68303.rs",
+      "prep": "corpus/tests/formal-urchin/interior_mutability__rust_issue_68303.rs",
       "artifact": "interior_mutability__rust_issue_68303.ullbc.json",
       "status": "supported",
       "reason": null,

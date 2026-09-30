@@ -4642,3 +4642,26 @@ coding.
 upstream code is rewritten around them; null/addr (item o); Box drop glue
 (item p); item m.
 
+## 2026-09-30 (night)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** "a fork of miri (tests) … can be a submodule" — the fork now IS
+the Miri submodule; std-replacing rewrites live in it.
+
+**Key outputs:** github.com/priyasiddharth/miri (fork), branch
+formal-urchin (5944a797a: tests/formal-urchin/); .gitmodules url+branch;
+bootstrap builds the tool from PIN's commit and guards the fork's scope;
+live.py/CI read the pin from PIN; four preps moved; README/PIN/parked C;
+journal 2026-09-30-miri-fork.md.
+
+**Critical corrections:** `git submodule update` in the bootstrap undid
+the submodule move until the gitlink was staged.
+
+**Status:** complete locally, not committed; the fork BRANCH is not yet
+pushed (must be pushed before the superproject commit, or CI cannot
+check the submodule out).
+
+**Next-session pickup candidates:** restore the obsolete std-deleting
+rewrites listed in parked § C; item o; item p; item m.
+

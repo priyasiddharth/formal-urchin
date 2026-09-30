@@ -160,8 +160,10 @@ def main():
     entries = [e for e in manifest["tests"] if a.filter in e["id"]]
 
     # The pin guard: the Miri doing the judging must be the submodule's.
-    rev = subprocess.run(["git", "-C", os.path.join(HERE, "vendor/miri"), "rev-parse", "HEAD"],
-                         capture_output=True, text=True).stdout.strip()
+    # the TOOL pin: upstream Miri at PIN's miri_commit (vendor/miri is our
+    # fork, which adds only tests/formal-urchin on top of it)
+    rev = next(l.split(":", 1)[1].strip() for l in open(os.path.join(HERE, "PIN"))
+               if l.startswith("miri_commit:"))
     ver = subprocess.run(["cargo", f"+{TOOLCHAIN}", "miri", "--version"],
                          capture_output=True, text=True).stdout.strip()
     if f"({rev[:10]} " not in ver:

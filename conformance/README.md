@@ -6,14 +6,25 @@ pass tests must run clean. Design: `plans/sb_conformance_obseq3.md`.
 
 ## Layout
 
-- `vendor/miri`, `vendor/charon` — git SUBMODULES; their commits ARE the
-  pins (`PIN` restates them). `scripts/bootstrap_tools.sh` builds both
-  from source into `.tools/` and the rustup toolchain `miri`
-  (idempotent; CI caches the result keyed on the two commits).
-- `corpus` — symlink to `vendor/miri`, so `corpus/tests/…` is the
-  pristine Miri corpus at the pinned commit.
-- `prep/` — curated single-scenario Rust sources, one per supported
-  manifest entry. Each carries a header naming the upstream test and
+- `vendor/miri` — git SUBMODULE on OUR FORK, github.com/priyasiddharth/miri
+  branch `formal-urchin`: upstream Miri at `PIN`'s `miri_commit` plus
+  `tests/formal-urchin/` (the rewrites that REPLACE std code with
+  user-written code — a local `Option` with std's bodies, a local trait
+  for a std operator, named `fn`s for closures, `dealloc` for a Box drop).
+  The Miri TOOL is built from `miri_commit` itself (a worktree in
+  `.tools/miri-src`), so editing those tests never rebuilds Miri or
+  misses the CI cache; the bootstrap refuses a fork that differs from
+  `miri_commit` anywhere else.
+- `vendor/charon` — git submodule; its commit is the Charon pin.
+  `scripts/bootstrap_tools.sh` builds both tools into `.tools/` and the
+  rustup toolchain `miri` (idempotent; CI caches the result keyed on the
+  two pins).
+- `corpus` — symlink to `vendor/miri`: `corpus/tests/{pass,fail,…}` is the
+  pristine upstream corpus, `corpus/tests/formal-urchin/` our std-replacing
+  rewrites.
+- `prep/` — the other curated single-scenario Rust sources (rewrites that
+  only strip annotations, extract a scenario or drop a std call). Each
+  file, here or in the fork, carries a header naming the upstream test and
   every rewrite applied.
 - `charon/` — ULLBC JSON artifacts and Miri certificates (committed, so
   the Lean suite runs without a Rust toolchain). Regenerated and checked

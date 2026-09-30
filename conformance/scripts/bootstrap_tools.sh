@@ -23,7 +23,19 @@ export MIRI_AUTO_OPS=no   # ./miri: no automatic toolchain/fmt/clippy runs
 
 git -C "$REPO" submodule update --init conformance/vendor/miri conformance/vendor/charon
 charon_rev="$(git -C "$HERE/vendor/charon" rev-parse HEAD)"
-miri_rev="$(git -C "$HERE/vendor/miri" rev-parse HEAD)"
+# vendor/miri is the formal-urchin FORK (branch formal-urchin): upstream Miri
+# at the PIN commit plus our tests under tests/formal-urchin/. The TOOL is
+# built from the pinned upstream commit, so test edits never rebuild Miri
+# (or miss the CI cache); the fork may differ from it only in that dir.
+miri_rev="$(sed -n 's/^miri_commit: *//p' "$HERE/PIN")"
+git -C "$HERE/vendor/miri" cat-file -e "$miri_rev^{commit}" 2>/dev/null ||
+  git -C "$HERE/vendor/miri" fetch -q --depth=1 origin "$miri_rev"
+outside="$(git -C "$HERE/vendor/miri" diff --name-only "$miri_rev" HEAD -- . ':!tests/formal-urchin')"
+if [ -n "$outside" ]; then
+  echo "bootstrap: vendor/miri differs from the pinned $miri_rev outside tests/formal-urchin:" >&2
+  echo "$outside" >&2
+  exit 1
+fi
 
 # --- Charon --------------------------------------------------------------
 dest="$HERE/.tools/charon"
@@ -55,7 +67,10 @@ if ! cargo +miri miri --version 2>/dev/null | grep -q "($short "; then
   echo "bootstrap: building Miri $miri_rev"
   command -v rustup-toolchain-install-master >/dev/null ||
     cargo install rustup-toolchain-install-master
-  ( cd "$HERE/vendor/miri" && ./miri toolchain && ./miri install )
+  src="$HERE/.tools/miri-src"   # a worktree of the fork at the pinned commit
+  [ -d "$src" ] || git -C "$HERE/vendor/miri" worktree add -q --detach "$src" "$miri_rev"
+  git -C "$src" checkout -q --detach "$miri_rev"
+  ( cd "$src" && ./miri toolchain && ./miri install )
 else
   echo "bootstrap: Miri $miri_rev (cached)"
 fi

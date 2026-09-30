@@ -4,6 +4,20 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-09-30 (night) — Our Own Miri Checkout
+
+Some of the tests the suite runs are not Miri's originals but copies
+rewritten to replace library code with ordinary program code, like the
+user-written `Option` above. Those copies now live in a fork of Miri's
+repository, in a directory of their own beside the upstream tests they
+derive from, so each is one `git diff` away from its original. The fork
+is the project's Miri checkout. Miri itself is still built from the
+exact upstream commit the suite is pinned to, and the build refuses a fork
+that differs from that commit anywhere but the new directory, so the tool
+that judges the tests cannot drift with them.
+
+---
+
 ## 2026-09-30 — Pointer Wrappers, and Where Shims Stop
 
 `NonNull` and `ManuallyDrop` are thin wrappers, one around a raw pointer
