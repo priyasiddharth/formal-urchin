@@ -410,11 +410,12 @@
       "source": "corpus/tests/fail/stacked_borrows/drop_in_place_retag.rs",
       "prep": null,
       "artifact": "drop_in_place_retag.ullbc.json",
-      "status": "unsupported",
-      "reason": "protectors + drop glue",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ub"
-      }
+      },
+      "miri_error": "retag .* for Unique permission .* only grants SharedReadOnly permission"
     },
     {
       "id": "fail/stacked_borrows/exposed_only_ro",
@@ -969,7 +970,7 @@
       "prep": null,
       "artifact": "drop_in_place_protector.ullbc.json",
       "status": "unsupported",
-      "reason": "protectors + drop glue",
+      "reason": "user Drop impl: the loader rejects crates with a local `impl Drop` (its glue is not run); needs Charon's drop_glue (--precise-drops), parked item q",
       "expected": {
         "verdict": "ub"
       }
@@ -2062,6 +2063,16 @@
       },
       "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-29 via scripts/live.py",
       "notes": "ptr::write / <*mut T>::write shim: stores into freshly allocated memory and into a tuple through a raw pointer."
+    },
+    {
+      "id": "local/drop_in_place_ok",
+      "artifact": "local/drop_in_place_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-01 via scripts/live.py",
+      "notes": "drop_in_place shim: the protected Unique retag on a glue-less tuple through a &mut-derived raw pointer, then reuse of the pointer and the owner; Box glue through a *mut Box<i32>."
     },
     {
       "id": "local/ptr_write_popped",

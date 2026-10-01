@@ -1113,7 +1113,26 @@ def parseGlobal (ctx : ParseCtx) (j : Json) : UGlobal :=
   let name := (itemName j).getLast?.getD "?"
   { gid, name, ty := parseTy ctx 16 ((getK j "ty").getD Json.null) }
 
+/-- A local `impl Drop`: drop glue runs only Boxes (`emitDropGlue`), so a
+    crate with a user destructor is rejected rather than lowered with its
+    `drop` silently skipped (at `Drop` terminators and in
+    `ptr::drop_in_place`). -/
+def userDropImpl? (root : Json) : Option String := do
+  let tr ← getK root "translated"
+  let traits := ((getK tr "trait_decls").map asArr).getD []
+  let dropIds := traits.filterMap fun t => do
+    if itemName t == ["core", "ops", "drop", "Drop"] then getK t "def_id" >>= asNat else none
+  let impls := ((getK tr "trait_impls").map asArr).getD []
+  let hit ← impls.find? fun ti =>
+    let tid := getK ti "impl_trait" >>= (getK · "id") >>= asNat
+    let isLocal := (getK ti "item_meta" >>= (getK · "is_local")) == some (.bool true)
+    isLocal && tid.any dropIds.contains
+  let src := (getK hit "item_meta" >>= (getK · "source_text") >>= asStr).getD "impl Drop"
+  pure (String.mk (src.toList.takeWhile (· != '\n')))
+
 def parseCrate (root : Json) : Except String UCrate := do
+  if let some d := userDropImpl? root then
+    throw s!"unsupported: user Drop impl ({d}): its drop glue is not modelled"
   let tbl := collectTable root []
   let decls := parseDecls root
   let paths := funPaths (mkNameCtx root tbl decls) root

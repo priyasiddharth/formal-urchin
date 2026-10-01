@@ -4712,3 +4712,21 @@ The fork file change needs a fork commit before the superproject commit.
 **Next-session pickup candidates:** user `Drop` + `drop_in_place`
 (item q); the paper's protector description; item m.
 
+
+## 2026-10-01 (drop_in_place)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** item q step 1 — `ptr::drop_in_place`.
+
+**Key outputs:** `stdlite.dropInPlace` (protected Unique retag of `*p`,
+Box glue); `ullbc_ast.userDropImpl?` (a crate with a local `impl Drop` is
+unsupported, not lowered with its destructor skipped); drop_in_place_retag
+supported; witness local/drop_in_place_ok; drop_in_place_protector stays
+unsupported with an accurate reason (needs Charon drop_glue).
+
+**Status:** complete, not committed. Corpus 134/0/28, osea 134, live
+134/134 0 drift; units 19/19 + 129/129. Proofs untouched.
+
+**Next-session pickup candidates:** item q step 2 (user Drop glue via
+`--precise-drops`); CLAUDE.md's suite counts are stale (says 82/41/123).

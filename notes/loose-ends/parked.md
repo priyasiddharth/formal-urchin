@@ -425,7 +425,18 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   Box protectors (B2 becomes exercised) and the `&mut !Unpin` →
   SRW/no-protector rule → not_unpin_not_protected, basic::zst freed case,
   interior_mutability::unsafe_cell_deallocate. [HYP]
-- q. `drop_in_place` shim (protected Unique retag of `*p`) + drop glue
+- q. **STEP 1 DONE 2026-10-01** — `dropInPlace` shim (stdlite.lean):
+  pushProt; protected Unique retag of `*p`; Box glue; popProt.
+  drop_in_place_retag supported (verdict-only: Miri's UB span is in std;
+  `miri_local.sh` reports line 9 from the "created by" help span, the call
+  is line 10); witness local/drop_in_place_ok. The loader now REJECTS any
+  crate with a local `impl Drop` (`userDropImpl?`): no supported artifact
+  had one, and the glue silently skipped it. STEP 2 (open): Charon
+  `--precise-drops` emits `drop_in_place` still opaque but per-type
+  `{Destruct}::drop_glue` bodies + the user `drop` — the shim (and Drop
+  terminators) must find T's glue fn and inline it [OBS]; the flag changes
+  every artifact (MIR level ≥ elaborated), so cost the drift first.
+  Was: `drop_in_place` shim (protected Unique retag of `*p`) + drop glue
   (Drop terminators call Charon's `drop_glue`; flags static on the
   single certified path) → drop_in_place_retag (also `cast_mut`),
   drop_in_place_protector, maybe_dangling::boxy, drop_after_sharing. [OBS]

@@ -469,6 +469,27 @@ def memDrop : Shim := fun st args _dest line => do
   | [.move p] | [.copy p] => emitDropGlue st line p
   | _ => return st
 
+/-- `ptr::drop_in_place(p)`: Miri retags the drop shim's raw argument as
+    if it were `&mut T` at fn entry — a PROTECTED Unique retag of `*p`
+    over the whole place, even for a `T` with no drop glue (so `*p` must
+    be writeable through `p`) — and the protector lasts while the glue
+    runs. The glue is `emitDropGlue`'s (Boxes only; a user `Drop` impl is
+    not run). -/
+def dropInPlace : Shim := fun st args _dest line => do
+  match args with
+  | [.copy p] | [.move p] =>
+      let inner ← match p.ty with
+        | .raw _ i | .ref _ i => pure i
+        | _ => throw s!"unsupported: drop_in_place of a non-pointer (line {line})"
+      let tmpIdx := st.locals.length
+      let st := { st with locals := st.locals ++ [.ref true inner] }
+      let tmp : UPlace := { root := .local tmpIdx, projs := [], ty := .ref true inner }
+      let st := pushOut st (.pushProt line)
+      let st ← emitAssign st line tmp (.ref .mut true { pointee p with ty := inner })
+      let st ← emitDropGlue st line { pointee tmp with ty := inner }
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: drop_in_place argument is not a place (line {line})"
+
 /-- Cell::get_mut(&mut self) -> &mut T: a unique reborrow of the cell -/
 def cellGetMut : Shim := fun st args dest line => do
   match args with
@@ -571,6 +592,7 @@ def table : List (List String × Shim) :=
   , (["alloc", "boxed", "Box", "leak"], boxLeak)
   , (["core", "mem", "forget"], memForget)
   , (["core", "mem", "drop"], memDrop)
+  , (["core", "ptr", "drop_in_place"], dropInPlace)
   , (["core", "cell", "Cell", "get_mut"], cellGetMut)
   , (["core", "cell", "UnsafeCell", "get_mut"], cellGetMut)
   , (["core", "cell", "RefCell", "get_mut"], cellGetMut)
