@@ -31,6 +31,11 @@
      "descr": "rustc_const_eval::interpret::step assert(!move (_12.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_10), const 1_i32) -> [success: bb7, unwind: bb10]",
      "next": 7,
      "outcome": "success"
+    },
+    {
+     "k": "drop",
+     "ty": "Box<&mut std::cell::RefCell<i32>>",
+     "descr": "<std::boxed::Box<&mut std::cell::RefCell<i32>> as std::ops::Drop>::drop"
     }
    ]
   }

@@ -651,14 +651,16 @@ def TagListSim (ρt : TagRenameMap) (src tgt : List Tag) : Prop :=
   ListRel (fun t t' => ρt t = some t') src tgt
 
 /-- The v3 permission relation: ρt-renamed stacks (position- and
-    constructor-preserving), renamed protector frames and exposed set, and a
+    constructor-preserving), renamed protector frames and exposed set, a
     target counter at least the source's (the target mints extra tags for
-    its internal borrows; `Die` pops the items but not the counter). -/
+    its internal borrows; `Die` pops the items but not the counter), and
+    the renamed weak-protector set. -/
 def PermSim (ρt : TagRenameMap) (src tgt : AccessPerms) : Prop :=
   StackMapSim ρt src.StackMap tgt.StackMap ∧
   ListRel (TagListSim ρt) src.protFrames tgt.protFrames ∧
   TagListSim ρt src.exposed tgt.exposed ∧
-  src.NextTag ≤ tgt.NextTag
+  src.NextTag ≤ tgt.NextTag ∧
+  TagListSim ρt src.weakProt tgt.weakProt
 
 /-- `PermSim` transports along rename growth (renames only appear
     positively). -/
@@ -667,12 +669,13 @@ theorem PermSim.rename_mono
     (h_incr : TagRenameIncr ρt ρt')
     (h_sim : PermSim ρt src tgt) :
     PermSim ρt' src tgt := by
-  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
-  refine ⟨?_, ?_, ?_, h_next⟩
+  obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk⟩ := h_sim
+  refine ⟨?_, ?_, ?_, h_next, ?_⟩
   · exact StackMapSim.imp (fun i i' => ItemSim.mono h_incr i i') h_stacks
   · exact ListRel.imp (fun f f' hf =>
       ListRel.imp (fun t t' ht => h_incr _ _ ht) hf) h_prot
   · exact ListRel.imp (fun t t' ht => h_incr _ _ ht) h_exp
+  · exact ListRel.imp (fun t t' ht => h_incr _ _ ht) h_wk
 
 /-- Every local reached while structurally traversing `p` already has a
     compiler mapping in `placeRegMap`. -/

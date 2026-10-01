@@ -4,6 +4,47 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-01 (later) — Boxes Are Freed
+
+Until now the model never freed a box: when a `Box` went out of scope,
+or was passed to `drop`, nothing happened, and tests that free memory
+through a box were quietly checking less than they appeared to. The
+lowering now follows ownership along the path it walks — a value moved
+somewhere else is not dropped where it was — and a box that is dropped
+frees its allocation exactly as the standard library does, through its
+own pointer, using the weak protector added earlier the same day. Every
+such free is also checked against Miri's: the recording of Miri's run
+now notes each box it freed, and the lowering must free the same boxes
+at the same points between branches or the test is rejected. New tests
+read through a pointer after its box was freed, in place or when the
+function it was moved into returns, and are flagged exactly where Miri
+flags them. Ten existing tests now really free their boxes, all with
+unchanged results; one test runs its original `drop(Box::from_raw(..))`
+again, and a further interior-mutability scenario joins the corpus.
+
+---
+
+## 2026-10-01 — Two Strengths of Protector
+
+While a function runs, the references passed to it are protected: any
+other access that would invalidate them is undefined behaviour, and so
+is freeing their memory. Miri protects a `Box` argument more weakly: it
+may not be invalidated either, but it may be freed, because a function
+that takes ownership of a box is allowed to drop it. The model had only
+the strong kind, which was harmless while nothing freed a box. Before
+box drops can be modelled, the difference has to exist, so the aliasing
+semantics shared by the source and target languages now records which
+protected tags belong to boxes, and deallocation follows Miri's rule:
+anything the deallocation's own write would remove must be unprotected,
+and of what remains only strongly protected items stand in the way. The
+correctness proof carries the new set across compilation like the other
+protector state; it still rests on the same three standard axioms and no
+unproved steps. A new test that frees a box inside the function it was
+passed to, which Miri accepts, used to be reported as a violation and
+now passes.
+
+---
+
 ## 2026-09-30 (night) — Our Own Miri Checkout
 
 Some of the tests the suite runs are not Miri's originals but copies

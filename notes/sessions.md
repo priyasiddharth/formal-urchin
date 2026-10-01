@@ -4665,3 +4665,50 @@ check the submodule out).
 **Next-session pickup candidates:** restore the obsolete std-deleting
 rewrites listed in parked § C; item o; item p; item m.
 
+## 2026-10-01
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** Box drop glue, step 1 — weak Box protectors in the verified
+SB semantics.
+
+**Key outputs:** `RefKind.BoxMut`, `AccessPerms.weakProt`, new
+`sb_dealloc`; PermSim 5th conjunct and the proof repairs (permsim_transport,
+keystone ×2, spine ×3, dealloc, protectors, common, compiler); unit t19;
+loader `URefKind.boxMut`; witness local/box_arg_dealloc_weak; parked B2
+superseded; journal 2026-10/2026-10-01-weak-box-protectors.md.
+
+**Critical corrections:** none; one design switch mid-way (BoxMut kind
+instead of a protector-kind type for `prot`, far fewer sites).
+
+**Status:** complete, not committed. Audit 3 axioms / 0 sorries;
+128/0/29, osea 128, live 128/128; units 19/19 + 129/129.
+
+**Next-session pickup candidates:** item p step 2 (track initialised
+places; Box drop glue at `Drop` terminators and `mem::drop`); the paper's
+protector description.
+
+## 2026-10-01 (later)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** item p step 2 — Box drop glue, checked against Miri's
+certificates.
+
+**Key outputs:** `UTerm.drop`; moved-place tracking; `emitDropGlue`;
+`mem::drop` real; `checkDrops` on with `allConsumed` for UB prefixes;
+`certLineBase`/`natLocal`/`emitPoison` moved to emit.lean; miri_cert.py
+drop-flag fix; witnesses box_drop_{use_after_free,at_callee_end,
+conditional}; protector1 upstream drop (fork file); split
+interior_mutability::unsafe_cell_deallocate.
+
+**Critical corrections:** the drop-flag classifier in miri_cert.py had
+never worked (regex on the wrong substring).
+
+**Status:** complete, not committed (with step 1 and the drop-event
+recording). 132/0/29, osea 132, live 132/132; audit 3 axioms / 0 sorries.
+The fork file change needs a fork commit before the superproject commit.
+
+**Next-session pickup candidates:** user `Drop` + `drop_in_place`
+(item q); the paper's protector description; item m.
+

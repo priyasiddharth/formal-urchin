@@ -139,6 +139,7 @@ inductive URefKind
 | twoPhase
 | rawMut
 | rawConst
+| boxMut   -- a Box's retag: `mut` per cell, WEAK protector when protected
 deriving Repr, BEq, Inhabited
 
 /-- `ref`'s `prot` marks a protected (inline-seam) retag; the parser
@@ -184,6 +185,10 @@ inductive UTerm
 -- `cases := [(0, else)], otherwise := then`; `SwitchInt` keeps its cases
 | switch (discr : UOperand) (cases : List (Nat × Nat)) (otherwise : Nat)
 | goto (target : Nat)
+-- `Drop` (built MIR emits one for every place with drop glue going out of
+-- scope or being overwritten; whether it runs depends on whether the place
+-- is still initialised, which the lowering tracks)
+| drop (place : UPlace) (target : Nat)
 | ret
 | unwindResume
 | abort
@@ -1049,11 +1054,11 @@ def parseTerm (ctx : ParseCtx) (j : Json) : UTerm :=
             | _ => .unsupported "malformed SwitchInt"
         | _ => .unsupported "malformed Switch targets"
     | some ("Drop", payload) =>
-        -- drops are no-ops for SB verdicts (heap frees go through the
-        -- dealloc shim; leaks are not checked)
-        match getK payload "target" >>= asNat with
-        | some t => .goto t
-        | none => .unsupported "Drop without target"
+        match getK payload "target" >>= asNat,
+              (getK payload "place").map (parsePlace ctx) with
+        | some t, some (.ok p) => .drop p t
+        | some t, _ => .goto t   -- an unparsable place: not a Box we model
+        | none, _ => .unsupported "Drop without target"
     | some ("Call", payload) =>
         let callJ := (getK payload "call").getD Json.null
         let target? := getK payload "target" >>= asNat

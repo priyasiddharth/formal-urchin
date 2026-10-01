@@ -151,6 +151,33 @@ def pairL := obseq.LayoutTy.TupL [natL, natL]
 def run (Γ : Ctx) (prog : Prog Γ) : Result M Γ :=
   runN M (prog.length + 1) (State.initial M Γ) prog
 
+
+/-- Weak (Box) vs strong protectors, as Miri's `Stack::dealloc`: a Box
+    passed to a function (`BoxMut`, protected) may be deallocated through
+    its own tag or a tag derived from it; a protected `&mut` may not; and
+    deallocating through a PARENT pops the Box item, which is UB even for
+    a weak protector. Ordinary accesses popping the Box item stay UB. -/
+def t19_weak_box_protector : IO Unit := do
+  -- dealloc through the weakly protected Box tag itself
+  let (ap, root) ← expectOkE (sb_own AccessPerms.init 700 1) "t19 own"
+  let ap := sb_push_frame ap
+  let (ap, b) ← expectOkE (sb_ref ap 700 1 root .BoxMut true) "t19 protected box retag"
+  expectErrE (sb_read ap 700 1 root) "t19 read popping the box" "protected"
+  let _ ← expectOkE (sb_dealloc ap 700 1 b) "t19 dealloc through the weak box"
+  -- ... and through a raw pointer derived from it
+  let (ap, r) ← expectOkE (sb_ref ap 700 1 b (.Raw true)) "t19 raw from box"
+  let _ ← expectOkE (sb_dealloc ap 700 1 r) "t19 dealloc through a raw below-weak"
+  -- through the PARENT: the box item is popped by the write — UB
+  expectErrE (sb_dealloc ap 700 1 root) "t19 dealloc popping the weak box" "is protected"
+  -- a protected &mut is STRONG: no dealloc through it
+  let (ap, root2) ← expectOkE (sb_own AccessPerms.init 800 1) "t19 own 2"
+  let ap := sb_push_frame ap
+  let (ap, m) ← expectOkE (sb_ref ap 800 1 root2 .Mut true) "t19 protected ref mut"
+  expectErrE (sb_dealloc ap 800 1 m) "t19 dealloc through strong" "strongly protected"
+  let ap ← expectOkE (sb_pop_frame ap) "t19 pop frame"
+  let _ ← expectOkE (sb_dealloc ap 800 1 m) "t19 dealloc after the frame"
+  pure ()
+
 /-- outdated-local shape: x = 7; p = &mut x; *p = 8; read x via owner;
     then *p again is UB. -/
 def ΓA : Ctx := [natL, ptrNat, natL]
@@ -351,6 +378,7 @@ def allTests : List (IO Unit) := [
   t11_protected_item_blocks_pop,
   t12_protected_shared_blocks_write,
   t13_freeze_mask_and_weak_protection,
+  t19_weak_box_protector,
   t14_deref_read_disables_sibling,
   t15_deref_oob_pointer,
   t16_junk_sized_pointer_retag,

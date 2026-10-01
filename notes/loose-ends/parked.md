@@ -408,7 +408,19 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
 - o. Zero-sized retag = no access, no bounds/liveness check; plus
   no-provenance pointers (`without_provenance_mut`) → basic::zst.
   Touches mirlite, oseair and the `ref` proof leaf. [HYP]
-- p. Box drop → dealloc (Drop terminators and `mem::drop` are no-ops
+- p. [STEP 1 DONE 2026-10-01: weak Box protectors — see § B2. STEP 2 DONE
+  2026-10-01: `UTerm.drop`; moved-place tracking (`LowerSt.moved`, keys
+  as the trackers'; a move operand moves, an assignment/call destination
+  re-initialises); `emitDropGlue` (Box: contents, then the certificate's
+  `drop` event, then `dealloc` unless zero-sized; tuples/structs by field;
+  enum holding a Box → unsupported); `mem::drop` drops its argument;
+  `checkDrops` on — every Box drop in a certified test is matched against
+  Miri's (`consumeDrop` / `missedDrop?`), past a UB prefix's end a drop is
+  poison, not an error (`allConsumed`). 10 existing entries now really
+  free their Boxes; deallocate_against_protector1 runs its upstream
+  `drop(Box::from_raw(raw))` (verdict-only: Miri raises in std);
+  unsafe_cell_deallocate split out. Still: drop glue of user `Drop` types,
+  `drop_in_place` (item q), Vec/String.] Box drop → dealloc (Drop terminators and `mem::drop` are no-ops
   today, so several "ok" verdicts would be vacuous) — MUST land with weak
   Box protectors (B2 becomes exercised) and the `&mut !Unpin` →
   SRW/no-protector rule → not_unpin_not_protected, basic::zst freed case,
@@ -464,9 +476,13 @@ a+j (small shims), h i, then q, p, t, w.
    `compile_correct` says the compiled program preserves THIS rule's
    verdicts. Both machines run the same rule, so the simulation is
    honest; the gap to Miri is the determinization, not the compiler.
-2. **Box protector strength**: modeled with strong-style pop-blocking;
-   miri's WEAK protector differs only in allowing dealloc during the
-   call (unexercised). Plain Box-typed assignments (`let b2 = b`) are
+2. **Box protector strength**: [SUPERSEDED 2026-10-01] a Box's fn-entry
+   retag is `RefKind.BoxMut` (per cell = `Mut`); when protected its tag
+   also goes into `AccessPerms.weakProt`, and `sb_dealloc` follows Miri's
+   `Stack::dealloc`: protected items ABOVE the tag's item (popped by the
+   write) are UB, weak or not; at/below it only strongly protected ones
+   are. Witness local/box_arg_dealloc_weak; unit t19. Was: strong-style
+   pop-blocking, weak protector's dealloc allowance unexercised. Plain Box-typed assignments (`let b2 = b`) are
    not retagged (miri's AddRetag would; unexercised).
 3. **RefCell flag elision**: borrow/borrow_mut/deref/replace shims skip
    the borrow flag — valid only for conflict-free executions (all the

@@ -44,6 +44,7 @@ def toRefKind : URefKind → obseq3.RefKind
   | .twoPhase => .TwoPhase
   | .rawMut => .Raw true
   | .rawConst => .Raw false
+  | .boxMut => .BoxMut
 
 def elabRoot (Γ : Ctx) : URoot → Except String ((τ : LayoutTy) × Place Γ τ)
   | .local n =>

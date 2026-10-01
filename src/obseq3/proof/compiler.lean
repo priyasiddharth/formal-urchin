@@ -577,8 +577,8 @@ theorem CompilerInv_initial {Γ : Ctx} (prog : obseq3.Prog Γ) :
   · -- SourceMemSim: the initial memory holds nothing
     intro addr value h_find
     simp [mirlite.Mem.find?, mirlite.Mem.empty, mirlite.State.initial] at h_find
-  · -- PermSim: empty stacks, no protector frames, nothing exposed
-    refine ⟨?_, trivial, trivial, Nat.le_refl _⟩
+  · -- PermSim: empty stacks, no protector frames, nothing exposed, no weak tags
+    refine ⟨?_, trivial, trivial, Nat.le_refl _, trivial⟩
     intro a
     simp [SB.find?, mirlite.State.initial, oseair.State.initial, MSB,
       PermissionModel.stackedBorrows, AccessPerms.init]

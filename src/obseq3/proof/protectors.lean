@@ -58,8 +58,8 @@ theorem runN_PopProt_step (compProg : oseair.Prog) (s : oseair.State MSB)
     `ListRel` of `[]` with `[]` is `True`. Nothing else moves. -/
 theorem PermSim.pushFrame {sp tp : AccessPerms} (h : PermSim ρt sp tp) :
     PermSim ρt (MSB.pushFrame sp) (MSB.pushFrame tp) := by
-  obtain ⟨h_st, h_pf, h_ex, h_nt⟩ := h
-  exact ⟨h_st, ⟨trivial, h_pf⟩, h_ex, h_nt⟩
+  obtain ⟨h_st, h_pf, h_ex, h_nt, h_wk⟩ := h
+  exact ⟨h_st, ⟨trivial, h_pf⟩, h_ex, h_nt, h_wk⟩
 
 /-- Popping succeeds on the target whenever it does on the source — the
     lists are positionally related, so the target's is non-empty too —
@@ -68,7 +68,7 @@ theorem PermSim.popFrame {sp sp' tp : AccessPerms} (h : PermSim ρt sp tp)
     (h_src : MSB.popFrame sp = .ok sp') :
     ∃ tp', MSB.popFrame tp = .ok tp' ∧ PermSim ρt sp' tp' ∧
       sp'.NextTag = sp.NextTag ∧ tp'.NextTag = tp.NextTag := by
-  obtain ⟨h_st, h_pf, h_ex, h_nt⟩ := h
+  obtain ⟨h_st, h_pf, h_ex, h_nt, h_wk⟩ := h
   change sb_pop_frame sp = .ok sp' at h_src
   cases hs : sp.protFrames with
   | nil => simp [sb_pop_frame, hs] at h_src
@@ -80,7 +80,7 @@ theorem PermSim.popFrame {sp sp' tp : AccessPerms} (h : PermSim ρt sp tp)
       injection h_src with h_src
       subst h_src
       rw [hs, ht] at h_pf
-      refine ⟨{ tp with protFrames := rest' }, ?_, ⟨h_st, h_pf.2, h_ex, h_nt⟩, rfl, rfl⟩
+      refine ⟨{ tp with protFrames := rest' }, ?_, ⟨h_st, h_pf.2, h_ex, h_nt, h_wk⟩, rfl, rfl⟩
       change sb_pop_frame tp = _
       simp [sb_pop_frame, ht]
 

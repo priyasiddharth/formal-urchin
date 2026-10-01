@@ -62,9 +62,15 @@ inductive RefKind
 | Shared
 /-- `&mut T`, a unique reference. Per cell: write access via the parent
     (pops everything above it), then push `Item.MutRef` (Unique) on top.
-    Also the kind used for Box retags and for every compiler-internal
-    borrow minted while lowering assignment destinations. -/
+    Also the kind used for every compiler-internal borrow minted while
+    lowering assignment destinations. -/
 | Mut
+/-- A `Box`'s retag: per cell exactly `Mut`. It differs only when
+    PROTECTED (a Box passed to a function): Miri gives a Box a WEAK
+    protector (`from_box_ty`, stacked_borrows/mod.rs) where a reference
+    gets a strong one, and a weakly protected item may be deallocated
+    (`sb_dealloc`). `sb_ref` records such tags in `weakProt`. -/
+| BoxMut
 /-- Raw pointers. `Raw true` (`*mut T`, `&raw mut`): NO parent access —
     the SharedReadWrite `RawPtr true` item is inserted directly above the
     granting item, so sibling mutable raws join one group instead of
@@ -126,7 +132,7 @@ end Item
 
 def RefKind.toItem : RefKind → Tag → Item
 | .Shared => .Ref
-| .Mut => .MutRef
+| .Mut | .BoxMut => .MutRef
 | .Raw mutbl => .RawPtr mutbl
 | .TwoPhase => .RawPtr true
 
@@ -160,6 +166,10 @@ structure AccessPerms where
   NextTag : Tag
   protFrames : List (List Tag) := []
   exposed : List Tag := []
+  /-- Protected tags whose protector is WEAK (Box fn-entry retags). Only
+      `sb_dealloc` reads it; a tag here counts only while it is also in
+      `protFrames`, so it is never removed. -/
+  weakProt : List Tag := []
 deriving Inhabited, Repr, BEq
 
 def AccessPerms.init : AccessPerms := { StackMap := [], NextTag := 1 }
@@ -394,7 +404,7 @@ def sb_write (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
 def refCellOp (tag : Tag) (kind : RefKind) (newTag : Tag) (mask : List Bool) :
     AccessPerms → Word → Nat → Except String AccessPerms :=
   match kind with
-  | .Mut => fun ap a _ => do pushCell (← writeCell ap a tag) a (Item.MutRef newTag)
+  | .Mut | .BoxMut => fun ap a _ => do pushCell (← writeCell ap a tag) a (Item.MutRef newTag)
   | .Shared => fun ap a i =>
       if mask.getD i false then insertAboveCell ap a tag (.RawPtr true newTag)
       else do pushCell (← readCell ap a tag) a (Item.Ref newTag)
@@ -418,7 +428,8 @@ def refCellOp (tag : Tag) (kind : RefKind) (newTag : Tag) (mask : List Bool) :
     get a SharedReadWrite item inserted above the granting item with NO
     access (interior mutability), instead of the frozen item + read.
     With `prot := true` (function-entry retags at inline seams), the fresh
-    tag is registered in the innermost protector frame. -/
+    tag is registered in the innermost protector frame; for `BoxMut` it
+    is also recorded as WEAKLY protected (`weakProt`). -/
 def sb_ref (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) (kind : RefKind)
     (prot : Bool := false) (mask : List Bool := []) :
     Except String (AccessPerms × Tag) := do
@@ -427,7 +438,9 @@ def sb_ref (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) (kind : RefK
   if prot then
     match ap.protFrames with
     | [] => .error "sb-ref: protected retag outside any protector frame"
-    | frame :: rest => return ({ ap with protFrames := (newTag :: frame) :: rest }, newTag)
+    | frame :: rest =>
+        let ap := { ap with protFrames := (newTag :: frame) :: rest }
+        return (if kind = .BoxMut then { ap with weakProt := newTag :: ap.weakProt } else ap, newTag)
   else
     return (ap, newTag)
 
@@ -443,9 +456,13 @@ def sb_pop_frame (ap : AccessPerms) : Except String AccessPerms :=
   | _ :: rest => .ok { ap with protFrames := rest }
 
 /-- Deallocate a range through `tag`: at each cell the tag must exist and
-    grant write access, no item anywhere in the stack may be protected,
-    and the whole stack is then removed (later accesses at these cells
-    fail with "no borrow stack"). -/
+    grant write access, and the whole stack is then removed (later
+    accesses at these cells fail with "no borrow stack"). Protection, as
+    Miri's `Stack::dealloc`: the write access pops the items ABOVE the
+    tag's item, so any protected one there is UB, weakly protected or
+    not; of the items that remain (the tag's own and those below), only
+    a STRONGLY protected one is UB — a weakly protected one (a Box passed
+    to the running function) may be deallocated. -/
 def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
     Except String AccessPerms :=
   foldCells
@@ -455,14 +472,18 @@ def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
       | some stack =>
         match splitStack stack tag with
         | none => .error s!"deallocation through tag {tag}: that tag does not exist in the borrow stack at {a}"
-        | some (_, item, _) =>
+        | some (above, item, below) =>
           if !item.grantsWrite then
             .error s!"sb-dealloc: tag {tag} (a read-only item) does not grant deallocation at {a}"
           else
-            match firstProtected ap stack with
-            | some p =>
+            match firstProtected ap above,
+                  (item :: below).find? (fun k => (firstProtected ap [k]).isSome &&
+                                                  !ap.weakProt.contains k.tag) with
+            | some p, _ =>
+                .error s!"deallocating while item for tag {p.tag} is protected"
+            | none, some p =>
                 .error s!"deallocating while item for tag {p.tag} is strongly protected"
-            | none =>
+            | none, none =>
                 .ok { ap with StackMap := ap.StackMap.filter (fun (x, _) => x != a) })
     ap addr len
 

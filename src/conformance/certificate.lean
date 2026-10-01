@@ -40,9 +40,20 @@ structure CertEvent where
   descr : String := ""       -- Miri's terminator text, for messages
 deriving Repr, Inhabited
 
+/-- One Box destructor Miri ran (`<Box<T> as Drop>::drop`), attributed to
+    the innermost user frame. `after` = how many real (non-drop-flag)
+    branch events of that frame precede it: the lowering must drop the
+    same Box at the same point between branches. -/
+structure CertDrop where
+  after : Nat
+  ty : String := ""       -- Miri's `Box<T>` type text, for messages
+  descr : String := ""
+deriving Repr, Inhabited
+
 structure CertFrame where
   fn : String
   events : Array CertEvent
+  drops : Array CertDrop := #[]
 deriving Repr, Inhabited
 
 structure Cert where
@@ -87,8 +98,19 @@ def parseCert (j : Json) : Except String Cert := do
     let fn ← match getK fj "fn" >>= asStr with
       | some s => pure s
       | none => .error "certificate: frame without fn"
-    let events ← ((getK fj "events").map asArr |>.getD []).mapM parseCertEvent
-    pure ({ fn, events := events.toArray } : CertFrame)
+    let evsJ := (getK fj "events").map asArr |>.getD []
+    -- drop events are matched separately (`consumeDrop`), each positioned
+    -- by the real branch events before it
+    let mut events : Array CertEvent := #[]
+    let mut drops : Array CertDrop := #[]
+    for ej in evsJ do
+      if (getK ej "k" >>= asStr) == some "drop" then
+        drops := drops.push { after := (events.filter (!·.dropFlag)).size,
+                              ty := (getK ej "ty" >>= asStr).getD "",
+                              descr := (getK ej "descr" >>= asStr).getD "" }
+      else
+        events := events.push (← parseCertEvent ej)
+    pure ({ fn, events, drops } : CertFrame)
   return { outcome, frames := frames.toArray }
 
 /-- What the lowering did with a certificate, for the harness report. -/
@@ -106,6 +128,10 @@ structure CertCursor where
   cert : Cert
   nextFrame : Nat := 0
   stack : List (Nat × Nat) := []   -- (frame index, next event index)
+  dropsDone : List Nat := []        -- per open frame (innermost first): drops consumed
+  -- match Box drops against Miri's: on once the lowering models Box drop
+  -- glue (until then it emits no drops, and drop events are ignored)
+  checkDrops : Bool := false
   checked : Nat := 0   -- T1 cross-checks + T2 runtime checks emitted
   runtime : Nat := 0   -- of those, the T2 ones (emitted check statements)
   pinned : Nat := 0    -- arms followed on Miri's word alone: 0 since `binOp`
@@ -121,7 +147,8 @@ def openFrame (c : CertCursor) (fn : String) : Except String CertCursor :=
       if fr.fn != fn then
         .error s!"certificate: frame {c.nextFrame} is {fr.fn}, lowering entered {fn}"
       else
-        .ok { c with nextFrame := c.nextFrame + 1, stack := (c.nextFrame, 0) :: c.stack }
+        .ok { c with nextFrame := c.nextFrame + 1, stack := (c.nextFrame, 0) :: c.stack,
+                     dropsDone := 0 :: c.dropsDone }
 
 /-- Remaining non-drop-flag events of the innermost open frame. -/
 def remaining (c : CertCursor) : Nat :=
@@ -132,7 +159,59 @@ def remaining (c : CertCursor) : Nat :=
       | none => 0
   | [] => 0
 
-/-- Leave the innermost frame; every real event must have been consumed. -/
+/-- Real branch events of the innermost frame consumed so far. -/
+def realConsumed (c : CertCursor) : Nat :=
+  match c.stack with
+  | (fi, ei) :: _ =>
+      match c.cert.frames[fi]? with
+      | some fr => ((fr.events.toList.take ei).filter (!·.dropFlag)).length
+      | none => 0
+  | [] => 0
+
+/-- The innermost frame's next unconsumed Miri drop, if any. -/
+def nextDrop? (c : CertCursor) : Option CertDrop :=
+  match c.stack, c.dropsDone with
+  | (fi, _) :: _, d :: _ => c.cert.frames[fi]? >>= (·.drops[d]?)
+  | _, _ => none
+
+/-- Nothing of the certificate is left: no later frame, and every open
+    frame has consumed all its real branch events and all its drops. For a
+    UB/panic certificate this is the end of Miri's prefix. -/
+def allConsumed (c : CertCursor) : Bool :=
+  c.nextFrame ≥ c.cert.frames.size &&
+  (c.stack.zip c.dropsDone).all fun ((fi, ei), d) =>
+    match c.cert.frames[fi]? with
+    | some fr => (fr.events.toList.drop ei).all (·.dropFlag) && d ≥ fr.drops.size
+    | none => true
+
+/-- With `checkDrops`: a Miri drop that should already have happened (it
+    precedes the branch about to be taken, or the end of the frame or of
+    the UB prefix) but the lowering has not emitted. -/
+def missedDrop? (c : CertCursor) (fn : String) : Option String :=
+  if !c.checkDrops then none else
+  match c.nextDrop? with
+  | some dr =>
+      if dr.after ≤ c.realConsumed then
+        some s!"certificate: Miri dropped a {dr.ty} in {fn} after {dr.after} branches; the lowering did not drop it there"
+      else none
+  | none => none
+
+/-- The lowering drops a Box here: with `checkDrops`, it must be Miri's
+    next drop in this frame, at the same point between branches. -/
+def consumeDrop (c : CertCursor) (fn : String) : Except String CertCursor :=
+  if !c.checkDrops then .ok c else
+  match c.stack, c.dropsDone with
+  | _ :: _, d :: ds =>
+      match c.nextDrop? with
+      | none => .error s!"certificate: the lowering drops a Box in {fn} that Miri did not drop"
+      | some dr =>
+          if dr.after != c.realConsumed then
+            .error s!"certificate: the lowering drops a Box in {fn} after {c.realConsumed} branches; Miri's next drop ({dr.ty}) came after {dr.after}"
+          else .ok { c with dropsDone := (d + 1) :: ds }
+  | _, _ => .error s!"certificate: drop in {fn} with no open frame"
+
+/-- Leave the innermost frame; every real event must have been consumed
+    (and, with `checkDrops`, every Miri drop). -/
 def closeFrame (c : CertCursor) (fn : String) : Except String CertCursor :=
   match c.stack with
   | [] => .error s!"certificate: closing {fn} with no open frame"
@@ -140,7 +219,9 @@ def closeFrame (c : CertCursor) (fn : String) : Except String CertCursor :=
       let k := c.remaining
       if k > 0 then
         .error s!"certificate: frame for {fn} has {k} unconsumed events (lowering took fewer branches than Miri)"
-      else .ok { c with stack := rest }
+      else match c.missedDrop? fn with
+        | some msg => .error msg
+        | none => .ok { c with stack := rest, dropsDone := c.dropsDone.drop 1 }
 
 /-- The next real event of the innermost frame, if any. -/
 partial def nextEvent (c : CertCursor) : Option (CertEvent × CertCursor) :=

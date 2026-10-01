@@ -54,6 +54,9 @@ structure LowerSt where
   certBad : Nat := 0     -- scratch NatL local the checks poison
   certTmp : Nat := 0     -- scratch NatL local the checks read into
   halted : Bool := false -- the certificate's UB/panic prefix ended here
+  -- places MOVED OUT (local, field path): a `Drop` of such a place, or of
+  -- a place inside it, does nothing; assigning a place re-initialises it
+  moved : List ConstKey := []
 
 /-- The place an operand reads, when it reads one. -/
 def operandPlace? : UOperand → Option UPlace
@@ -159,6 +162,97 @@ def fld (p : UPlace) (i : Nat) : UPlace :=
 
 def pushOut (st : LowerSt) (s : LStmt) : LowerSt :=
   { st with out := s :: st.out }
+
+/-- Lines ≥ this mark certificate checks; ≥ 2× mark the poison at the end
+    of a UB/panic prefix. -/
+def certLineBase : Nat := 1000000
+
+def natLocal (i : Nat) : UPlace := { root := .local i, projs := [], ty := .nat }
+
+/-- The end of a UB/panic certificate prefix: mirlite must have failed
+    before reaching this; reaching it is the distinct verdict
+    `certExhausted`. -/
+def emitPoison (st : LowerSt) (line : Nat) : LowerSt :=
+  let bad := natLocal st.certBad
+  let tmp := natLocal st.certTmp
+  let l := 2 * certLineBase + line
+  let st := pushOut st (.assign bad .uninit l)
+  { pushOut st (.assign tmp (.use (.copy bad)) l) with halted := true }
+
+/-! ## Initialisation tracking and Box drop glue (2026-10-01)
+
+Built MIR emits a `Drop` for every place with drop glue that goes out of
+scope or is overwritten, and leaves it to drop elaboration to skip the
+moved-out ones. The lowering walks ONE path, so whether a place is still
+initialised there is static: a `move` operand of a whole local or field
+path moves it out, an assignment (or a call writing its destination)
+re-initialises it. -/
+
+def keyPrefix (k k' : ConstKey) : Bool := k.1 == k'.1 && k.2.isPrefixOf k'.2
+
+/-- Moved out: the place itself or a place enclosing it was moved. -/
+def isMoved (st : LowerSt) (p : UPlace) : Bool :=
+  match fieldPath? p with
+  | some k => st.moved.any (keyPrefix · k)
+  | none => false
+
+def markMoved (st : LowerSt) (p : UPlace) : LowerSt :=
+  match fieldPath? p with
+  | some k => { st with moved := k :: st.moved }
+  | none => st
+
+/-- Writing `p` initialises it and everything inside it. -/
+def markInit (st : LowerSt) (p : UPlace) : LowerSt :=
+  match fieldPath? p with
+  | some k => { st with moved := st.moved.filter (fun k' => !keyPrefix k k') }
+  | none => st
+
+/-- The places an rvalue moves out of. -/
+def URvalue.movedPlaces : URvalue → List UPlace
+  | .use (.move p) | .move p => [p]
+  | .aggregate _ ops => ops.filterMap fun o => match o with | .move p => some p | _ => none
+  | _ => []
+
+def markMovedOps (st : LowerSt) (ops : List UOperand) : LowerSt :=
+  ops.foldl (fun st o => match o with | .move p => markMoved st p | _ => st) st
+
+/-- A Box somewhere in the value itself (not behind a pointer). -/
+partial def containsBox : UTy → Bool
+  | .boxT _ => true
+  | .tup tys | .structT tys => tys.any containsBox
+  | .enum vs => vs.any (·.any containsBox)
+  | .cell t => containsBox t
+  | _ => false
+
+/-- Drop the value at `p`, as far as Boxes go: a Box drops its contents and
+    then frees its allocation through its own pointer (std's
+    `<Box as Drop>::drop`: `if layout.size() != 0 { deallocate }`); a tuple
+    or struct drops its fields in order; everything else has no drop glue
+    the model needs. With a certificate, each Box drop must be the one
+    Miri made next in this frame (`consumeDrop`). -/
+partial def emitDropGlue (st : LowerSt) (line : Nat) (p : UPlace) : Except String LowerSt := do
+  if st.halted || isMoved st p || !containsBox p.ty then return st
+  match p.ty with
+  | .boxT inner =>
+      let st ← emitDropGlue st line { pointee p with ty := inner }
+      match st.cert with
+      | some c =>
+          -- past the end of a UB/panic certificate (nothing left of it at
+          -- all): Miri never got here, and mirlite must fail first
+          if c.cert.outcome != .ok && c.allConsumed then
+            return emitPoison st line
+          let c ← c.consumeDrop s!"the frame at line {line}"
+          let st := { st with cert := some c }
+          let st := if uSize inner == 0 then st else pushOut st (.dealloc p line)
+          return markMoved st p
+      | none =>
+          let st := if uSize inner == 0 then st else pushOut st (.dealloc p line)
+          return markMoved st p
+  | .tup tys | .structT tys =>
+      tys.zipIdx.foldlM (fun st (t, i) => emitDropGlue st line { fld p i with ty := t }) st
+  | .cell t => emitDropGlue st line { p with ty := t }
+  | .enum _ => .error s!"unsupported: drop of an enum holding a Box (line {line})"
+  | _ => return st
 
 /-- Resolve array-index projections to static field indices using the
     tracked constant values of index locals. -/
@@ -305,10 +399,11 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
       let rv : URvalue := .ref (if mutbl then .mut else .shared) prot { pointee src with ty := inner }
       return pushOut (if dst == src then st else trackAssign st dst rv) (.assign dst rv line)
   | .boxT inner =>
-      -- miri's box retag: a Unique reborrow of the pointee. Protection is
-      -- weak in miri (dealloc allowed during the call) — our protector
-      -- blocks pops identically; the dealloc difference is unexercised.
-      let rv : URvalue := .ref .mut prot { pointee src with ty := inner }
+      -- miri's box retag: a Unique reborrow of the pointee, and at a
+      -- fn-entry seam a WEAK protector (`BoxMut`, 2026-10-01): pops are
+      -- blocked as for `&mut`, but the Box may be deallocated during the
+      -- call (`sb_dealloc`), as Miri's `from_box_ty` allows.
+      let rv : URvalue := .ref .boxMut prot { pointee src with ty := inner }
       return pushOut (if dst == src then st else trackAssign st dst rv) (.assign dst rv line)
   | .slice false mutbl _ =>
       -- reference-to-slice: runtime-length retag via the fat value

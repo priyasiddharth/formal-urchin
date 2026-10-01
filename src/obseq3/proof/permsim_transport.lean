@@ -985,7 +985,7 @@ def refCellContent (pf : List (List Tag)) (ex : List Tag) (a : Word) (tag : Tag)
     (kind : RefKind) (newTag : Tag) (mask : List Bool) (i : Nat)
     (stack : BorrowStack) : Except String BorrowStack :=
   match kind with
-  | .Mut =>
+  | .Mut | .BoxMut =>
       match writeCellContent pf ex a tag stack with
       | .error e => .error e
       | .ok v => .ok (Item.MutRef newTag :: v)
@@ -1016,7 +1016,7 @@ def refCellStep (pf : List (List Tag)) (ex : List Tag) (a : Word) (tag : Tag)
     Option BorrowStack → Except String BorrowStack
   | none =>
       match kind with
-      | .Mut => .error s!"sb-write: no borrow stack at address {a}"
+      | .Mut | .BoxMut => .error s!"sb-write: no borrow stack at address {a}"
       | .Shared | .Raw false =>
           if mask.getD i false then .error s!"sb-insert: no borrow stack at address {a}"
           else .error s!"sb-read: no borrow stack at address {a}"
@@ -1045,7 +1045,7 @@ theorem refCellOp_content_form
   cases h_find : SB.find? ap.StackMap (addr + i) with
   | none =>
       cases kind with
-      | Mut =>
+      | Mut | BoxMut =>
           simp only [refCellOp, refCellStep, h_find,
             writeCell_content_form tag ap (addr + i) h_pf h_ex, bind, Except.bind]
       | Shared =>
@@ -1085,7 +1085,7 @@ theorem refCellOp_content_form
         | ok v =>
             simp only [bind, Except.bind, pushCell, SB.find?_set_self, SB.set_set]
       cases kind with
-      | Mut =>
+      | Mut | BoxMut =>
           simp only [refCellOp, refCellStep, refCellContent, h_find,
             writeCell_content_form tag ap (addr + i) h_pf h_ex]
           cases h_c : writeCellContent P E (addr + i) tag stack with
@@ -1166,7 +1166,7 @@ theorem refCellContent_transport
     exact insertAboveContent_transport (itS := Item.RawPtr true newS)
       (itT := Item.RawPtr true newT) h_wf h_ex h_t ⟨rfl, h_new⟩ h_u h
   cases kind with
-  | Mut =>
+  | Mut | BoxMut =>
       simp only [refCellContent] at h_ok ⊢
       cases h_c : writeCellContent pfS exS a tagS v with
       | error e => rw [h_c] at h_ok; simp at h_ok
@@ -1398,7 +1398,7 @@ theorem freshTag_not_protected {ρt : TagRenameMap} {src tgt : AccessPerms}
     (h_sim : PermSim ρt src tgt)
     (h_bd : TagRenameBounded ρt src.NextTag tgt.NextTag) :
     isProtectedIn tgt.protFrames tgt.NextTag = false := by
-  obtain ⟨-, h_prot, -, -⟩ := h_sim
+  obtain ⟨-, h_prot, -, -, -⟩ := h_sim
   simp only [isProtectedIn, List.any_eq_false]
   intro f h_mem_f h_c
   have h_mem_t : tgt.NextTag ∈ f := by simpa using h_c
@@ -1438,7 +1438,7 @@ theorem sb_ref_Mut_ok_of_sb_write_ok {ap ap' : AccessPerms}
               (chain (fun j => Item.MutRef ap.NextTag :: W j) addr 0 len),
             NextTag := ap.NextTag + 1,
             protFrames := ap.protFrames,
-            exposed := ap.exposed }, ?_⟩
+            exposed := ap.exposed, weakProt := ap.weakProt }, ?_⟩
   simp only [sb_ref, freshTag, bind, Except.bind, pure, Except.pure, h_fold,
     Bool.false_eq_true, if_false, Except.ok.injEq, Prod.mk.injEq, and_true]
 
@@ -1480,7 +1480,7 @@ theorem sb_ref_Shared_ok_of_sb_read_ok {ap ap' : AccessPerms}
               (chain (fun j => Item.Ref ap.NextTag :: W j) addr 0 len),
             NextTag := ap.NextTag + 1,
             protFrames := ap.protFrames,
-            exposed := ap.exposed }, ?_⟩
+            exposed := ap.exposed, weakProt := ap.weakProt }, ?_⟩
   simp only [sb_ref, freshTag, bind, Except.bind, pure, Except.pure, h_fold,
     Bool.false_eq_true, if_false, Except.ok.injEq, Prod.mk.injEq, and_true]
 
@@ -1498,7 +1498,7 @@ theorem sb_write_respects_PermSim
     (h_tag : ρt tagS = some tagT)
     (h_src : sb_write src addr len tagS = .ok src') :
     ∃ tgt', sb_write tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' := by
-  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
+  obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk⟩ := h_sim
   have h_src0 : foldCells (fun ap a => writeCell ap a tagS) src (addr + 0) len
       = .ok src' := h_src
   obtain ⟨V, W, h_cells, h_src'⟩ :=
@@ -1544,7 +1544,7 @@ theorem sb_write_respects_PermSim
   rw [show (0 : Nat) + len = len from Nat.zero_add len]
   exact ⟨setChain_chain_respects h_stacks
       (fun j h1 h2 => (h_pkg' j h2).2.2),
-    h_prot, h_exp, h_next⟩
+    h_prot, h_exp, h_next, h_wk⟩
 
 
 /-- BRIDGE 3 family, `sb_read` member: a successful source read through
@@ -1558,7 +1558,7 @@ theorem sb_read_respects_PermSim
     (h_tag : ρt tagS = some tagT)
     (h_src : sb_read src addr len tagS = .ok src') :
     ∃ tgt', sb_read tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' := by
-  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
+  obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk⟩ := h_sim
   have h_src0 : foldCells (fun ap a => readCell ap a tagS) src (addr + 0) len
       = .ok src' := h_src
   obtain ⟨V, W, h_cells, h_src'⟩ :=
@@ -1604,7 +1604,7 @@ theorem sb_read_respects_PermSim
   rw [show (0 : Nat) + len = len from Nat.zero_add len]
   exact ⟨setChain_chain_respects h_stacks
       (fun j h1 h2 => (h_pkg' j h2).2.2),
-    h_prot, h_exp, h_next⟩
+    h_prot, h_exp, h_next, h_wk⟩
 
 theorem sb_ref_respects_PermSim
     {ρt : TagRenameMap} {src tgt src' : AccessPerms}
@@ -1630,7 +1630,7 @@ theorem sb_ref_respects_PermSim
     h_incr _ _ h_tag
   have h_newpair : (ρt.extend src.NextTag tgt.NextTag) src.NextTag
       = some tgt.NextTag := TagRenameMap.extend_self ρt src.NextTag tgt.NextTag
-  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := PermSim.rename_mono h_incr h_sim
+  obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk⟩ := PermSim.rename_mono h_incr h_sim
   simp only [sb_ref, freshTag] at h_src
   cases h_go : foldCellsIdx (refCellOp tagS kind src.NextTag mask)
       { src with NextTag := src.NextTag + 1 } addr 0 len with
@@ -1652,6 +1652,7 @@ theorem sb_ref_respects_PermSim
             = src.StackMap from rfl] at h_cells
       have h_apR_pf : apR.protFrames = src.protFrames := by rw [h_apR]
       have h_apR_ex : apR.exposed = src.exposed := by rw [h_apR]
+      have h_apR_wk : apR.weakProt = src.weakProt := by rw [h_apR]
       have h_apR_nt : apR.NextTag = src.NextTag + 1 := by rw [h_apR]
       have h_apR_sm : apR.StackMap = setChain src.StackMap (chain W addr 0 len) := by
         rw [h_apR]
@@ -1715,22 +1716,52 @@ theorem sb_ref_respects_PermSim
             | cons frameT restT =>
                 rw [h_pfT] at h_prot
                 simp only [ListRel] at h_prot
-                refine ⟨{ StackMap := setChain tgt.StackMap (chain W' addr 0 len),
-                          NextTag := tgt.NextTag + 1,
-                          protFrames := (tgt.NextTag :: frameT) :: restT,
-                          exposed := tgt.exposed },
-                        ?_, h_newTag_eq.symm, h_incr, h_wf', ?_, ?_⟩
-                · simp only [sb_ref, freshTag, h_goT, bind, Except.bind, pure,
-                    Except.pure, if_pos h_p]
-                  rw [h_pfT]
-                · rw [← h_src'_eq]
-                  simpa [h_apR_nt] using h_bd_res
-                · rw [← h_src'_eq]
-                  refine ⟨?_, ?_, ?_, ?_⟩
-                  · simpa [h_apR_sm] using h_stacks_res
-                  · exact ⟨⟨h_newpair, h_prot.1⟩, h_prot.2⟩
-                  · simpa [h_apR_ex] using h_exp
-                  · simpa [h_apR_nt] using Nat.succ_le_succ h_next
+                -- A Box retag also records the fresh tag as WEAKLY protected,
+                -- on both sides; the fresh pair is related by `h_newpair`.
+                by_cases h_k : kind = RefKind.BoxMut
+                · subst h_k
+                  refine ⟨{ StackMap := setChain tgt.StackMap (chain W' addr 0 len),
+                            NextTag := tgt.NextTag + 1,
+                            protFrames := (tgt.NextTag :: frameT) :: restT,
+                            exposed := tgt.exposed,
+                            weakProt := tgt.NextTag :: tgt.weakProt },
+                          ?_, h_newTag_eq.symm, h_incr, h_wf', ?_, ?_⟩
+                  · simp only [sb_ref, freshTag, h_goT, bind, Except.bind, pure,
+                      Except.pure, if_pos h_p]
+                    rw [h_pfT]
+                    rfl
+                  · rw [← h_src'_eq]
+                    simpa [h_apR_nt] using h_bd_res
+                  · rw [← h_src'_eq]
+                    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+                    · simpa [h_apR_sm] using h_stacks_res
+                    · exact ⟨⟨h_newpair, h_prot.1⟩, h_prot.2⟩
+                    · simpa [h_apR_ex] using h_exp
+                    · simpa [h_apR_nt] using Nat.succ_le_succ h_next
+                    · show TagListSim (ρt.extend src.NextTag tgt.NextTag)
+                          (src.NextTag :: apR.weakProt) (tgt.NextTag :: tgt.weakProt)
+                      rw [h_apR_wk]
+                      exact ⟨h_newpair, h_wk⟩
+                · refine ⟨{ StackMap := setChain tgt.StackMap (chain W' addr 0 len),
+                            NextTag := tgt.NextTag + 1,
+                            protFrames := (tgt.NextTag :: frameT) :: restT,
+                            exposed := tgt.exposed, weakProt := tgt.weakProt },
+                          ?_, h_newTag_eq.symm, h_incr, h_wf', ?_, ?_⟩
+                  · simp only [sb_ref, freshTag, h_goT, bind, Except.bind, pure,
+                      Except.pure, if_pos h_p]
+                    rw [h_pfT]
+                    simp [h_k]
+                  · rw [← h_src'_eq]
+                    simpa [h_apR_nt, h_k] using h_bd_res
+                  · rw [← h_src'_eq]
+                    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+                    · simpa [h_apR_sm, h_k] using h_stacks_res
+                    · simpa [h_k] using (⟨⟨h_newpair, h_prot.1⟩, h_prot.2⟩ :
+                        ListRel (TagListSim (ρt.extend src.NextTag tgt.NextTag))
+                          ((src.NextTag :: frameS) :: restS) ((tgt.NextTag :: frameT) :: restT))
+                    · simpa [h_apR_ex, h_k] using h_exp
+                    · simpa [h_apR_nt, h_k] using Nat.succ_le_succ h_next
+                    · simpa [h_apR_wk, h_k] using h_wk
       · -- Unprotected retag: the fold result is the whole answer.
         simp only [if_neg h_p] at h_src
         simp only [Except.ok.injEq, Prod.mk.injEq] at h_src
@@ -1738,18 +1769,19 @@ theorem sb_ref_respects_PermSim
         refine ⟨{ StackMap := setChain tgt.StackMap (chain W' addr 0 len),
                   NextTag := tgt.NextTag + 1,
                   protFrames := tgt.protFrames,
-                  exposed := tgt.exposed },
+                  exposed := tgt.exposed, weakProt := tgt.weakProt },
                 ?_, h_newTag_eq.symm, h_incr, h_wf', ?_, ?_⟩
         · simp only [sb_ref, freshTag, h_goT, bind, Except.bind, pure, Except.pure,
             if_neg h_p]
         · rw [← h_src'_eq]
           simpa [h_apR_nt] using h_bd_res
         · rw [← h_src'_eq]
-          refine ⟨?_, ?_, ?_, ?_⟩
+          refine ⟨?_, ?_, ?_, ?_, ?_⟩
           · simpa [h_apR_sm] using h_stacks_res
           · simpa [h_apR_pf] using h_prot
           · simpa [h_apR_ex] using h_exp
           · simpa [h_apR_nt] using Nat.succ_le_succ h_next
+          · simpa [h_apR_wk] using h_wk
 
 /-- BRIDGE 3 family, `sb_own` member — the second and last minting op.
 
@@ -1779,7 +1811,7 @@ theorem sb_own_respects_PermSim
     TagRenameWF.extend h_wf h_bd (Nat.le_refl _) (Nat.le_refl _)
   have h_newpair : (ρt.extend src.NextTag tgt.NextTag) src.NextTag
       = some tgt.NextTag := TagRenameMap.extend_self ρt src.NextTag tgt.NextTag
-  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := PermSim.rename_mono h_incr h_sim
+  obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk⟩ := PermSim.rename_mono h_incr h_sim
   simp only [sb_own, freshTag] at h_src
   cases h_go : foldCells (fun ap a => ownCell ap a src.NextTag)
       { src with NextTag := src.NextTag + 1 } addr len with
@@ -1808,6 +1840,7 @@ theorem sb_own_respects_PermSim
             = src.StackMap from rfl] at h_cells
       have h_apR_pf : apR.protFrames = src.protFrames := by rw [h_apR]
       have h_apR_ex : apR.exposed = src.exposed := by rw [h_apR]
+      have h_apR_wk : apR.weakProt = src.weakProt := by rw [h_apR]
       have h_apR_nt : apR.NextTag = src.NextTag + 1 := by rw [h_apR]
       have h_apR_sm : apR.StackMap = setChain src.StackMap (chain W addr 0 len) := by
         rw [h_apR]
@@ -1844,7 +1877,7 @@ theorem sb_own_respects_PermSim
                   (chain (fun _ => [Item.Own tgt.NextTag]) addr 0 len),
                 NextTag := tgt.NextTag + 1,
                 protFrames := tgt.protFrames,
-                exposed := tgt.exposed },
+                exposed := tgt.exposed, weakProt := tgt.weakProt },
               ?_, h_newTag_eq.symm, h_incr, h_wf', ?_, ?_⟩
       · simp only [sb_own, freshTag, h_goT, bind, Except.bind, pure, Except.pure]
       · rw [← h_src'_eq]
@@ -1852,12 +1885,13 @@ theorem sb_own_respects_PermSim
           (TagRenameBounded.extend h_bd (Nat.le_succ _) (Nat.le_succ _)
             (Nat.lt_succ_self _) (Nat.lt_succ_self _))
       · rw [← h_src'_eq]
-        refine ⟨?_, ?_, ?_, ?_⟩
+        refine ⟨?_, ?_, ?_, ?_, ?_⟩
         · simpa [h_apR_sm] using
             setChain_chain_respects h_stacks (fun j _ h2 => (h_pkg j h2).2)
         · simpa [h_apR_pf] using h_prot
         · simpa [h_apR_ex] using h_exp
         · simpa [h_apR_nt] using Nat.succ_le_succ h_next
+        · simpa [h_apR_wk] using h_wk
 
 
 /-- BRIDGE 1S, packaged. Given a source read already transported to the
@@ -1891,14 +1925,14 @@ theorem bridge1S_of_read {ρt : TagRenameMap} {src tgt src' tgtAcc : AccessPerms
   have h_unprot := freshTag_not_protected h_sim h_bd
   have h0 : wildcardTag < tgt.NextTag := (h_bd _ _ h_wf.2).2
   have h_ntw : (tgt.NextTag == wildcardTag) = false := by grind
-  obtain ⟨q2, q3, qAcc, h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle⟩ :=
+  obtain ⟨q2, q3, qAcc, h_rd1, h_die1, h_rd2, h_sm, h_exq, h_pfq, h_ntle, h_wkq⟩ :=
     sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
   have h_qAcc : qAcc = tgtAcc := by grind
   subst h_qAcc
   refine ⟨q1, q2, q3, h_ref_tgt, h_rd1, h_die1, ?_, h_ntle⟩
-  obtain ⟨hs, hp, he, hn⟩ := h_psim2
+  obtain ⟨hs, hp, he, hn, hw⟩ := h_psim2
   exact ⟨by rw [h_sm]; exact hs, by rw [h_pfq]; exact hp,
-         by rw [h_exq]; exact he, Nat.le_trans hn h_ntle⟩
+         by rw [h_exq]; exact he, Nat.le_trans hn h_ntle, by rw [h_wkq]; exact hw⟩
 
 /-! ## Exposure and the `exposed` list
 
@@ -2150,7 +2184,7 @@ theorem sb_die_respects_PermSim
     (h_src : sb_die src addr len tagS = .ok src') :
     ∃ tgt', sb_die tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' ∧
       src'.NextTag = src.NextTag ∧ tgt'.NextTag = tgt.NextTag := by
-  obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
+  obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk⟩ := h_sim
   have h_src0 : foldCells
       (fun ap a =>
         match ap.StackMap.find? a with
@@ -2211,7 +2245,7 @@ theorem sb_die_respects_PermSim
     rw [show (0 : Nat) + len = len from Nat.zero_add len]
     exact ⟨setChain_chain_respects h_stacks
         (fun j h1 h2 => (h_pkg' j h2).2.2),
-      h_prot, h_exp, h_next⟩
+      h_prot, h_exp, h_next, h_wk⟩
   · rw [h_src']
 
 end obseq3.proof

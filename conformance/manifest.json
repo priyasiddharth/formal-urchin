@@ -937,15 +937,14 @@
       "status": "supported",
       "reason": null,
       "expected": {
-        "verdict": "ub",
-        "line": 19
+        "verdict": "ub"
       },
       "miri_error": "deallocating while item \\[Unique for .*\\] is strongly protected",
       "rewrites": [
         "dropped //@ headers and error annotations",
-        "closure -> named fn free_it",
-        "drop(Box::from_raw(raw)) -> dealloc (Box drop is not a dealloc yet, item p)"
-      ]
+        "closure -> named fn free_it"
+      ],
+      "note": "verdict-only since 2026-10-01: with the upstream drop(Box::from_raw(raw)) Miri raises the error inside std's Box drop (upstream's error-in-other-file); the model reports the drop's line, 19"
     },
     {
       "id": "fail/both_borrows/deallocate_against_protector2",
@@ -1822,6 +1821,20 @@
       "certificate": "interior_mutability__rust_issue_68303.cert.json"
     },
     {
+      "id": "pass/both_borrows/interior_mutability::unsafe_cell_deallocate",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__unsafe_cell_deallocate.rs",
+      "artifact": "interior_mutability__unsafe_cell_deallocate.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted"
+      ]
+    },
+    {
       "id": "local/deref_read_disables_sibling",
       "artifact": "local/deref_read_disables_sibling.ullbc.json",
       "status": "supported",
@@ -2104,6 +2117,51 @@
       "certificate": "local/enum_cell_shared_retag.cert.json",
       "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-09-30 via scripts/live.py",
       "notes": "freeze mask of a multi-variant enum holding a cell: Miri treats the whole enum as UnsafeCell without reading the variant, so the shared retag `&*op` does no read and the live `&mut` into the payload survives. A frozen enum mask would pop it (false UB at r.set)."
+    },
+    {
+      "id": "local/box_arg_dealloc_weak",
+      "artifact": "local/box_arg_dealloc_weak.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-01 via scripts/live.py",
+      "notes": "weak Box protector: a Box passed to a function may be deallocated by the callee (Miri's from_box_ty gives a Box only a WEAK protector). With every protector strong the model reported 'deallocating while item ... is strongly protected'."
+    },
+    {
+      "id": "local/box_drop_use_after_free",
+      "artifact": "local/box_drop_use_after_free.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 11
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-01 via scripts/live.py",
+      "miri_error": "memory access failed: .* has been freed",
+      "notes": "Box drop glue: drop(b) frees the allocation; a read through a pointer taken from b is a use after free (Miri line 11). Without drops the read succeeded."
+    },
+    {
+      "id": "local/box_drop_at_callee_end",
+      "artifact": "local/box_drop_at_callee_end.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 13
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-01 via scripts/live.py",
+      "miri_error": "memory access failed: .* has been freed",
+      "notes": "Box drop glue: a Box moved into peek is dropped when peek returns; the pointer it returns dangles (Miri line 13)."
+    },
+    {
+      "id": "local/box_drop_conditional",
+      "artifact": "local/box_drop_conditional.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/box_drop_conditional.cert.json",
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-01 via scripts/live.py",
+      "notes": "Box drops matched against the certificate: b is dropped by drop() on the taken branch, c at the end of main; the lowering must make exactly these two drops at the same points (not b again at scope end)."
     },
     {
       "id": "fail/function_calls/arg_inplace_observe_after",

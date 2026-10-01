@@ -1250,7 +1250,7 @@ theorem ptrChain_lowering_sim
                 have h0 : wildcardTag < s_mid.perms.NextTag := (h_tbd_mid _ _ h_wf_t.2).2
                 have h_ntw : (s_mid.perms.NextTag == wildcardTag) = false := by grind
                 -- BRIDGE 1S: ref(Shared); read(t'); die(t') ≡ the parent read
-                obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_ex, h_pf, h_ntle⟩ :=
+                obtain ⟨q2, q3, qAcc', h_rd1, h_die1, h_rd2, h_sm, h_ex, h_pf, h_ntle, h_wkq⟩ :=
                   sb_ref_read_die_cancels h_ntw h_unprot h_ref_tgt
                 have h_qAcc : qAcc' = p2 := by grind
                 subst h_qAcc
@@ -1444,7 +1444,8 @@ theorem ptrChain_lowering_sim
                 · exact ⟨by rw [h_sm]; exact h_psim2.1,
                     by rw [h_pf]; exact h_psim2.2.1,
                     by rw [h_ex]; exact h_psim2.2.2.1,
-                    Nat.le_trans h_psim2.2.2.2 h_ntle⟩
+                    Nat.le_trans h_psim2.2.2.2.1 h_ntle,
+                    by rw [h_wkq]; exact h_psim2.2.2.2.2⟩
                 · rw [sb_read_NextTag h_qread]
                   exact h_bnt1
                 · show s_osea.perms.NextTag ≤ q3.NextTag
@@ -2502,7 +2503,7 @@ theorem copy_freshproj_write_after_read
   have h_unprot := freshTag_not_protected h_psimR h_tbdR
   have h2 : wildcardTag < sR.perms.NextTag := (h_tbdR _ _ h_wf_t'.2).2
   have h_ntw' : (sR.perms.NextTag == wildcardTag) = false := by grind
-  obtain ⟨q2, q3, qAcc', h_wr1, h_die1, h_wr2, h_sm, h_ex, h_pf, h_ntle⟩ :=
+  obtain ⟨q2, q3, qAcc', h_wr1, h_die1, h_wr2, h_sm, h_ex, h_pf, h_ntle, h_wkq⟩ :=
     sb_ref_use_die_cancels h_ntw' h_unprot h_ref_dst
   have h_qAcc : qAcc' = qW := by grind
   subst h_qAcc
@@ -2589,9 +2590,9 @@ theorem copy_freshproj_write_after_read
       h_run2) h_run3
   -- BRIDGE 1 collapses the triple to the parent's write
   have h_psim4 : PermSim ρt' perms₃ q3 := by
-    obtain ⟨hs, hp, he, hn⟩ := h_psim3
+    obtain ⟨hs, hp, he, hn, hw⟩ := h_psim3
     exact ⟨by rw [h_sm]; exact hs, by rw [h_pf]; exact hp,
-           by rw [h_ex]; exact he, Nat.le_trans hn h_ntle⟩
+           by rw [h_ex]; exact he, Nat.le_trans hn h_ntle, by rw [h_wkq]; exact hw⟩
   -- rebuild the invariant
   refine ⟨_, _, _, _, h_incr_a, h_incr_t, h_run, ?_⟩
   obtain ⟨csNext, h_next, h_nl, h_nr, h_np⟩ := F.next
@@ -2926,7 +2927,7 @@ theorem copy_boundproj_write_after_read
   have h_unprot := freshTag_not_protected h_psimR h_tbdR
   have h2 : wildcardTag < sR.perms.NextTag := (h_tbdR _ _ h_wf_t.2).2
   have h_ntw' : (sR.perms.NextTag == wildcardTag) = false := by grind
-  obtain ⟨q2, q3, qAcc', h_wr1, h_die1, h_wr2, h_sm, h_ex, h_pf, h_ntle⟩ :=
+  obtain ⟨q2, q3, qAcc', h_wr1, h_die1, h_wr2, h_sm, h_ex, h_pf, h_ntle, h_wkq⟩ :=
     sb_ref_use_die_cancels h_ntw' h_unprot h_ref_dst
   have h_qAcc : qAcc' = qW := by grind
   subst h_qAcc
@@ -3004,9 +3005,9 @@ theorem copy_boundproj_write_after_read
     (oseair_runN_trans (oseair_runN_trans h_runR h_run1) h_run2) h_run3
   -- BRIDGE 1 collapses the triple to the parent's write
   have h_psim4 : PermSim ρt perms₃ q3 := by
-    obtain ⟨hs, hp, he, hn⟩ := h_psim2
+    obtain ⟨hs, hp, he, hn, hw⟩ := h_psim2
     exact ⟨by rw [h_sm]; exact hs, by rw [h_pf]; exact hp,
-           by rw [h_ex]; exact he, Nat.le_trans hn h_ntle⟩
+           by rw [h_ex]; exact he, Nat.le_trans hn h_ntle, by rw [h_wkq]; exact hw⟩
   -- rebuild the invariant
   refine ⟨_, _, h_run, ?_⟩
   obtain ⟨csNext, h_next, h_nl, h_nr, h_np⟩ := F.next

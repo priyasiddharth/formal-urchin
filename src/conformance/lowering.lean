@@ -109,12 +109,6 @@ the pin is wrong. The check statements carry a SENTINEL line so the
 harness reports a failure as "certificate rejected", not as a program
 verdict. -/
 
-/-- Lines ≥ this mark certificate checks; ≥ 2× mark the poison at the end
-    of a UB/panic prefix. -/
-def certLineBase : Nat := 1000000
-
-def natLocal (i : Nat) : UPlace := { root := .local i, projs := [], ty := .nat }
-
 /-- Count one checked branch. `pinned` — a branch followed on Miri's
     word alone — has no lowering path left since `binOp` (2026-09-24):
     the counter stays in the report as the standing witness that it is
@@ -144,22 +138,15 @@ def emitCheckNotIn (st : LowerSt) (line : Nat) (discr : UPlace) (vs : List Nat) 
   let st := vs.foldl (fun st v => pushOut st (.assignIf discr v tmp (.use (.copy bad)) l)) st
   certBump st 1 1
 
-/-- The end of a UB/panic certificate prefix: mirlite must have failed
-    before reaching this; reaching it is the distinct verdict
-    `certExhausted`. -/
-def emitPoison (st : LowerSt) (line : Nat) : LowerSt :=
-  let bad := natLocal st.certBad
-  let tmp := natLocal st.certTmp
-  let l := 2 * certLineBase + line
-  let st := pushOut st (.assign bad .uninit l)
-  { pushOut st (.assign tmp (.use (.copy bad)) l) with halted := true }
-
 /-- Take the next recorded event. `none` with `halted` set means the
     certificate's UB/panic prefix ended here. -/
 def consumeEvent (st : LowerSt) (line : Nat) : Except String (Option CertEvent × LowerSt) :=
   match st.cert with
   | none => .ok (none, st)
   | some c =>
+      -- a Box Miri dropped before this branch (or before the end of its
+      -- UB prefix) must already have been dropped by the lowering
+      if let some msg := c.missedDrop? s!"the frame at line {line}" then .error msg else
       match c.nextEvent with
       | some (e, c') => .ok (some e, { st with cert := some c' })
       | none =>
@@ -199,11 +186,17 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
       | .storage => pure ()
       | .unsupported d => throw s!"unsupported: {d} (line {s.line})"
       | .assign dst rv =>
-          st ← emitAssign st s.line (rebasePlace offset dst) (rebaseRvalue offset rv)
+          let dst := rebasePlace offset dst
+          let rv := rebaseRvalue offset rv
+          st ← emitAssign st s.line dst rv
+          st := markInit (rv.movedPlaces.foldl markMoved st) dst
     let line := blk.termLine
     match blk.term with
     | .ret => return st
     | .goto t => walkBlock crate depth st f offset t (bb :: visited)
+    | .drop p t => do
+        st ← emitDropGlue st line (rebasePlace offset p)
+        walkBlock crate depth st f offset t (bb :: visited)
     | .assert cond expected t kind =>
         let c := rebaseOperand offset cond
         let expectedW : Nat := if expected then 1 else 0
@@ -289,6 +282,9 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
           match shimCall crate funIdx with
           | some shim => shim st args dest blk.termLine
           | none => inlineCall crate depth st funIdx args dest blk.termLine
+        -- moved arguments now belong to the callee (which drops them);
+        -- the destination is written
+        let st' := markInit (markMovedOps st' args) dest
         walkBlock crate depth st' f offset target (bb :: visited)
     | .callDyn fp args dest target => do
         -- indirect call: resolve the statically-tracked fn pointer
@@ -303,6 +299,7 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
                   match shimCall crate funIdx with
                   | some shim => shim st args dest blk.termLine
                   | none => inlineCall crate depth st funIdx args dest blk.termLine
+                let st' := markInit (markMovedOps st' args) dest
                 walkBlock crate depth st' f offset target (bb :: visited)
             | none => .error s!"unsupported: indirect call with unknown target (line {blk.termLine})"
         | _ => .error s!"unsupported: indirect call through a projection (line {blk.termLine})"
@@ -447,7 +444,7 @@ def lowerCrate (crate : UCrate) (cert? : Option Cert := none) : Except String LP
       let st0 : LowerSt ← match cert? with
         | none => pure { locals := main.locals ++ crate.globals.map (·.ty), out := hoistInit }
         | some cert => do
-            let c ← ({ cert } : CertCursor).openFrame main.name
+            let c ← ({ cert, checkDrops := true } : CertCursor).openFrame main.name
             pure { locals := main.locals ++ crate.globals.map (·.ty) ++ [.nat, .nat],
                    out := hoistInit, cert := some c,
                    certBad := base + nGlob, certTmp := base + nGlob + 1 }

@@ -62,29 +62,62 @@ def deallocCellOp (tag : Tag) (ap : AccessPerms) (a : Word) : Except String Acce
   | some stack =>
     match splitStack stack tag with
     | none => .error s!"deallocation through tag {tag}: that tag does not exist in the borrow stack at {a}"
-    | some (_, item, _) =>
+    | some (above, item, below) =>
       if !item.grantsWrite then
         .error s!"sb-dealloc: tag {tag} (a read-only item) does not grant deallocation at {a}"
       else
-        match firstProtected ap stack with
-        | some p =>
+        match firstProtected ap above,
+              (item :: below).find? (fun k => (firstProtected ap [k]).isSome &&
+                                              !ap.weakProt.contains k.tag) with
+        | some p, _ =>
+            .error s!"deallocating while item for tag {p.tag} is protected"
+        | none, some p =>
             .error s!"deallocating while item for tag {p.tag} is strongly protected"
-        | none =>
+        | none, none =>
             .ok { ap with StackMap := ap.StackMap.filter (fun (x, _) => x != a) }
+
+/-- "Protected and not weakly": the items that block a deallocation from
+    below the popped part (`sb_dealloc`). -/
+abbrev strongProt (pf : List (List Tag)) (wk : List Tag) (k : Item) : Bool :=
+  (firstProtectedIn pf [k]).isSome && !wk.contains k.tag
+
+theorem firstProtectedIn_singleton_isSome (pf : List (List Tag)) (k : Item) :
+    (firstProtectedIn pf [k]).isSome = (!k.isSrw && isProtectedIn pf k.tag) := by
+  cases k with
+  | RawPtr m t =>
+      cases m <;> simp only [firstProtectedIn, List.find?, Item.isSrw, Item.tag] <;>
+        cases isProtectedIn pf t <;> rfl
+  | Own t | MutRef t | Ref t | Disabled t =>
+      simp only [firstProtectedIn, List.find?, Item.isSrw, Item.tag] <;>
+        cases isProtectedIn pf t <;> rfl
+
+/-- `strongProt` is the same on ρt-related items of related states. -/
+theorem strongProt_eq {ρt : TagRenameMap} (h_wf : TagRenameWF ρt)
+    {pfS pfT : List (List Tag)} (h_pf : ListRel (TagListSim ρt) pfS pfT)
+    {wkS wkT : List Tag} (h_wk : TagListSim ρt wkS wkT)
+    {k k' : Item} (hk : ItemSim ρt k k') :
+    strongProt pfT wkT k' = strongProt pfS wkS k := by
+  have ht := ItemSim.tag_rel hk
+  simp only [strongProt]
+  rw [firstProtectedIn_singleton_isSome, firstProtectedIn_singleton_isSome,
+    ItemSim.isSrw_eq hk, isProtectedIn_transport h_wf ht h_pf,
+    TagListSim.contains_eq h_wf ht h_wk]
 
 theorem sb_dealloc_eq (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
     sb_dealloc ap addr len tag = foldCells (deallocCellOp tag) ap addr len := rfl
 
 /-- One cell of `sb_dealloc`, inverted: the stack is there, the tag
-    splits it at a write-granting item, nothing is protected, and the
-    cell is removed. -/
+    splits it at a write-granting item, nothing above it is protected,
+    nothing at or below it is STRONGLY protected, and the cell is
+    removed. -/
 theorem deallocCellOp_ok_inv {ap ap' : AccessPerms} {a : Word} {tag : Tag}
     (h : deallocCellOp tag ap a = .ok ap') :
     ∃ stack ab item bl,
       ap.StackMap.find? a = some stack ∧
       splitStack stack tag = some (ab, item, bl) ∧
       item.grantsWrite = true ∧
-      firstProtectedIn ap.protFrames stack = none ∧
+      firstProtectedIn ap.protFrames ab = none ∧
+      (item :: bl).find? (strongProt ap.protFrames ap.weakProt) = none ∧
       ap' = { ap with StackMap := ap.StackMap.filter (fun (x, _) => x != a) } := by
   simp only [deallocCellOp] at h
   split at h
@@ -97,9 +130,10 @@ theorem deallocCellOp_ok_inv {ap ap' : AccessPerms} {a : Word} {tag : Tag}
   · rw [if_neg (by simp [h_gw])] at h
     split at h
     · simp at h
-    rename_i h_fp
+    · simp at h
+    rename_i h_fp h_sp
     cases h
-    exact ⟨stack, ab, item, bl, h_find, h_split, h_gw, h_fp, rfl⟩
+    exact ⟨stack, ab, item, bl, h_find, h_split, h_gw, h_fp, h_sp, rfl⟩
   · rw [if_pos (by simpa using h_gw)] at h
     simp at h
 
@@ -109,10 +143,11 @@ theorem deallocCellOp_ok_eq (ap : AccessPerms) (a : Word) (tag : Tag)
     (h_find : ap.StackMap.find? a = some stack)
     (h_split : splitStack stack tag = some (ab, item, bl))
     (h_gw : item.grantsWrite = true)
-    (h_fp : firstProtectedIn ap.protFrames stack = none) :
+    (h_fp : firstProtectedIn ap.protFrames ab = none)
+    (h_sp : (item :: bl).find? (strongProt ap.protFrames ap.weakProt) = none) :
     deallocCellOp tag ap a
       = .ok { ap with StackMap := ap.StackMap.filter (fun (x, _) => x != a) } := by
-  simp only [deallocCellOp, h_find, h_split, firstProtected, h_fp]
+  simp only [deallocCellOp, h_find, h_split, firstProtected, h_fp, h_sp]
   rw [if_neg (by simp [h_gw])]
 
 /-- The cell removed is gone. -/
@@ -160,29 +195,32 @@ theorem sb_dealloc_respects_PermSim
       exact ⟨tgt, rfl, h_sim, rfl, rfl⟩
   | succ n ih =>
       intro addr src tgt src' h_sim h_src
-      obtain ⟨h_stacks, h_prot, h_exp, h_next⟩ := h_sim
+      obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk⟩ := h_sim
       rw [sb_dealloc_eq] at h_src ⊢
       simp only [foldCells] at h_src
       split at h_src
       · simp at h_src
       rename_i src1 h_cell
-      obtain ⟨stack, ab, item, bl, h_find, h_split, h_gw, h_fp, rfl⟩ :=
+      obtain ⟨stack, ab, item, bl, h_find, h_split, h_gw, h_fp, h_sp, rfl⟩ :=
         deallocCellOp_ok_inv h_cell
       obtain ⟨stack', h_find', h_ss⟩ := SB.find?_transport h_stacks h_find
-      obtain ⟨ab', item', bl', h_split', -, h_item, -⟩ :=
+      obtain ⟨ab', item', bl', h_split', h_ab, h_item, h_bl⟩ :=
         splitStack_some_transport h_wf h_tag h_ss h_split
       have h_gw' : item'.grantsWrite = true := by
         rw [ItemSim.grantsWrite_eq h_item]; exact h_gw
-      have h_fp' : firstProtectedIn tgt.protFrames stack' = none :=
-        firstProtectedIn_none_transport h_wf h_prot h_ss h_fp
+      have h_fp' : firstProtectedIn tgt.protFrames ab' = none :=
+        firstProtectedIn_none_transport h_wf h_prot h_ab h_fp
+      have h_sp' : (item' :: bl').find? (strongProt tgt.protFrames tgt.weakProt) = none :=
+        ListRel.find?_none (fun k k' hk => strongProt_eq h_wf h_prot h_wk hk)
+          (show StackSim ρt (item :: bl) (item' :: bl') from ⟨h_item, h_bl⟩) h_sp
       have h_sim1 : PermSim ρt
           { src with StackMap := src.StackMap.filter (fun (x, _) => x != addr) }
           { tgt with StackMap := tgt.StackMap.filter (fun (x, _) => x != addr) } :=
-        ⟨StackMapSim.filter_cell h_stacks addr, h_prot, h_exp, h_next⟩
+        ⟨StackMapSim.filter_cell h_stacks addr, h_prot, h_exp, h_next, h_wk⟩
       obtain ⟨tgt', h_tgt, h_sim', h_ns, h_nt⟩ := ih (addr + 1) h_sim1 h_src
       refine ⟨tgt', ?_, h_sim', h_ns, h_nt⟩
       simp only [foldCells]
-      rw [deallocCellOp_ok_eq tgt addr tagT h_find' h_split' h_gw' h_fp']
+      rw [deallocCellOp_ok_eq tgt addr tagT h_find' h_split' h_gw' h_fp' h_sp']
       rw [sb_dealloc_eq] at h_tgt
       exact h_tgt
 

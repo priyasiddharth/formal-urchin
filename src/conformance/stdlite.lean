@@ -458,9 +458,16 @@ def manuallyDropDeref (mutbl : Bool) : Shim := fun st args dest line => do
 /-- mem::forget: no drop, no access; protectors end at fn return anyway -/
 def memForget : Shim := fun st _args _dest _line => return st
 
-/-- mem::drop: consumes the value; drop glue for modeled types is
-    either nothing or elided flag maintenance (RefCell guards) -/
-def memDrop : Shim := fun st _args _dest _line => return st
+/-- mem::drop: consumes the value and drops it — real for Boxes
+    (`emitDropGlue`); for the other modelled types drop glue is nothing or
+    elided flag maintenance (RefCell guards). -/
+def memDrop : Shim := fun st args _dest line => do
+  -- `fn drop<T>(_x: T) {}`: the argument is moved in and dropped when the
+  -- call returns — for a Box, its drop glue (the caller then counts it
+  -- moved out)
+  match args with
+  | [.move p] | [.copy p] => emitDropGlue st line p
+  | _ => return st
 
 /-- Cell::get_mut(&mut self) -> &mut T: a unique reborrow of the cell -/
 def cellGetMut : Shim := fun st args dest line => do

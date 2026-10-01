@@ -178,6 +178,16 @@ class Frame:
                 ev["drop_flag"] = True
 
 
+def is_box_drop_frame(path):
+    """`<std::boxed::Box<T> as std::ops::Drop>::drop`: one Box's destructor
+    (after its contents were dropped; it frees the allocation unless T is
+    zero-sized)."""
+    q = qualified_self(path)
+    return (q is not None and q[0].startswith("std::boxed::Box<")
+            and strip_generics(q[1]) == "std::ops::Drop"
+            and last_segment(path) == "drop")
+
+
 def parse_log(lines, user_fns):
     stack = []
     frames = []          # user frame instances in entry order
@@ -188,6 +198,15 @@ def parse_log(lines, user_fns):
         m = RE_FRAME.search(line)
         if m:
             path = m.group(1).strip()
+            if is_box_drop_frame(path):
+                # a `drop` event in the innermost USER frame (a drop inside
+                # `mem::drop` or other std code belongs to its user caller);
+                # nested Boxes drop innermost first
+                owner = next((f for f in reversed(stack) if f.user), None)
+                if owner is not None:
+                    q = qualified_self(path)
+                    owner.events.append({"k": "drop", "ty": q[0][len("std::boxed::"):],
+                                         "descr": path})
             fr = Frame(path, is_user_frame(path, user_fns))
             if stack and stack[-1].pending is not None:
                 # a call cannot follow a switch/assert directly except via the
@@ -230,7 +249,11 @@ def parse_log(lines, user_fns):
                                        "success": int(m.group(2)),
                                        "descr": line.strip().split("INFO")[-1].strip()})
             continue
-        m = RE_ASSIGN.match(line.split("INFO", 1)[-1] if "INFO" in line else line)
+        # the statement text follows the module path (`INFO
+        # rustc_const_eval::interpret::step _9 = const false`); matching on
+        # the text after `INFO` alone never matched, so until 2026-10-01 no
+        # drop-flag switch was ever classified
+        m = RE_ASSIGN.match(line.split("interpret::step", 1)[-1] if "interpret::step" in line else line)
         if m:
             top.record_assign(m.group(1), m.group(2))
     # the log ended: whatever is still open ended with Miri

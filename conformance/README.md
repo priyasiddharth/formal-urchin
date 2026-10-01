@@ -378,6 +378,18 @@ Current entries:
   multi-variant enum as interior-mutable as a whole, without reading the
   variant (2026-09-30); a frozen enum mask gives false UB at line 18 —
   checked. Miri: ok.
+- `local/box_arg_dealloc_weak` — a Box passed to a function may be
+  deallocated by the callee (here via `Box::into_raw` + `dealloc`): Miri
+  gives a Box a WEAK protector (2026-10-01, `RefKind.BoxMut` +
+  `weakProt`). With only strong protectors the model reported
+  "deallocating while item … is strongly protected". Miri: ok.
+- `local/box_drop_use_after_free` / `local/box_drop_at_callee_end` /
+  `local/box_drop_conditional` — Box drop glue (2026-10-01): `drop(b)` and
+  a Box moved into a callee really free the allocation (use after free:
+  UB at lines 11 / 13, as Miri), and a Box dropped on one branch is not
+  dropped again at scope end. The last carries a certificate whose `drop`
+  events the lowering must match one for one — a no-op `mem::drop` or an
+  extra drop of the moved Box are rejected (checked).
 - `local/unassigned_local_addr` (`unsupported: unions`) — a probe of
   whether a local can be borrowed before it is ever written (the lowering
   drops `StorageLive/Dead` and allocates at first assignment). rustc

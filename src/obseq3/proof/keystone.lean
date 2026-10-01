@@ -561,7 +561,8 @@ theorem sb_ref_use_die_cancels
       s3.StackMap = sAcc.StackMap ∧
       s3.exposed = sAcc.exposed ∧
       s3.protFrames = sAcc.protFrames ∧
-      sAcc.NextTag ≤ s3.NextTag := by
+      sAcc.NextTag ≤ s3.NextTag ∧
+      s3.weakProt = sAcc.weakProt := by
   -- Unpack sb_ref: mint, run the per-cell fold, no protector registration.
   simp only [sb_ref, freshTag, refCellOp, RefKind.toItem] at h_ref
   cases h_go : foldCellsIdx
@@ -676,6 +677,7 @@ theorem sb_ref_use_die_cancels
       -- Fields of apR.
       have h_apR_pf : apR.protFrames = s.protFrames := by rw [h_apR]
       have h_apR_ex : apR.exposed = s.exposed := by rw [h_apR]
+      have h_apR_wk : apR.weakProt = s.weakProt := by rw [h_apR]
       have h_apR_nt : apR.NextTag = s.NextTag + 1 := by rw [h_apR]
       have h_apR_sm : apR.StackMap = setChain s.StackMap (chain W₁ addr 0 len) := by
         rw [h_apR]
@@ -738,7 +740,7 @@ theorem sb_ref_use_die_cancels
         rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
         exact this
       -- Assemble.
-      refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_⟩
+      refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_, ?_⟩
       · -- StackMap: collapse the three chains onto the source's one.
         show setChain (setChain apR.StackMap (chain W₁ addr 0 len))
             (chain W addr 0 len)
@@ -750,6 +752,7 @@ theorem sb_ref_use_die_cancels
       · exact h_apR_pf
       · rw [h_apR_nt]
         exact Nat.le_succ s.NextTag
+      · exact h_apR_wk
 
 /-- BRIDGE 1S (the read-side keystone): the compiled pointer-place pattern
     `Borrow(Shared) ; read via the fresh tag ; Die` has exactly the stack
@@ -771,7 +774,8 @@ theorem sb_ref_read_die_cancels
       s3.StackMap = sAcc.StackMap ∧
       s3.exposed = sAcc.exposed ∧
       s3.protFrames = sAcc.protFrames ∧
-      sAcc.NextTag ≤ s3.NextTag := by
+      sAcc.NextTag ≤ s3.NextTag ∧
+      s3.weakProt = sAcc.weakProt := by
   -- Unpack sb_ref: mint, run the per-cell fold, no protector registration.
   simp only [sb_ref, freshTag, refCellOp, RefKind.toItem] at h_ref
   cases h_go : foldCellsIdx
@@ -887,6 +891,7 @@ theorem sb_ref_read_die_cancels
       -- Fields of apR.
       have h_apR_pf : apR.protFrames = s.protFrames := by rw [h_apR]
       have h_apR_ex : apR.exposed = s.exposed := by rw [h_apR]
+      have h_apR_wk : apR.weakProt = s.weakProt := by rw [h_apR]
       have h_apR_nt : apR.NextTag = s.NextTag + 1 := by rw [h_apR]
       have h_apR_sm : apR.StackMap = setChain s.StackMap (chain W₁ addr 0 len) := by
         rw [h_apR]
@@ -949,7 +954,7 @@ theorem sb_ref_read_die_cancels
         rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
         exact this
       -- Assemble.
-      refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_⟩
+      refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_, ?_⟩
       · -- StackMap: collapse the three chains onto the source's one.
         show setChain (setChain apR.StackMap (chain W₁ addr 0 len))
             (chain W addr 0 len)
@@ -961,6 +966,7 @@ theorem sb_ref_read_die_cancels
       · exact h_apR_pf
       · rw [h_apR_nt]
         exact Nat.le_succ s.NextTag
+      · exact h_apR_wk
 
 /-! ## Disjoint-range commutation (2026-08-28)
 
