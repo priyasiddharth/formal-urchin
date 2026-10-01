@@ -259,12 +259,12 @@ def sliceIndex (mutbl : Bool) : Shim := fun st args dest line => do
         | none => .error s!"unsupported: slice index argument is not a place (line {line})"
         | some rp =>
             match rp.ty with
-            | .tup [] | .structT [] =>
+            | .tup [] =>
                 -- RangeFull: the whole slice, so `0 .. len`
                 let lenIdx := st.locals.length
                 pure (UOperand.const 0, UOperand.copy
                   { root := .local lenIdx, projs := [], ty := .nat })
-            | .tup [_, _] | .structT [_, _] =>
+            | .tup [_, _] =>
                 pure (UOperand.copy (fld rp 0), UOperand.copy (fld rp 1))
             | _ => .error s!"unsupported: slice index by {reprStr rp.ty} (line {line})"
       -- a RangeFull needs the length materialised first
@@ -272,7 +272,7 @@ def sliceIndex (mutbl : Bool) : Shim := fun st args dest line => do
         match rangeOp with
         | .copy rp | .move rp =>
             match rp.ty with
-            | .tup [] | .structT [] =>
+            | .tup [] =>
                 let lenIdx := st.locals.length
                 let st := { st with locals := st.locals ++ [UTy.nat] }
                 pure (pushOut st (.assign

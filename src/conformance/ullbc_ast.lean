@@ -36,7 +36,6 @@ inductive UTy
 | ref (mutbl : Bool) (inner : UTy)
 | raw (mutbl : Bool) (inner : UTy)
 | tup (tys : List UTy)
-| structT (tys : List UTy)   -- named struct: fields are NOT retagged at seams
 | enum (variants : List (List UTy))
 | cell (inner : UTy)     -- UnsafeCell/Cell/Atomic*: interior-mutable region
 | boxT (inner : UTy)     -- Box<T>: unique-retagged at seams (miri's box retag)
@@ -46,11 +45,11 @@ inductive UTy
 deriving Repr, BEq, Inhabited
 
 /-- Does a reference (or Box, or reference-to-slice) occur ANYWHERE in the
-    type, struct fields and cells included? A conservative guard, unlike
-    the seam-retag rule `containsRef`. -/
+    type, cells included? A conservative guard, unlike the seam-retag
+    rule `containsRef`, which skips cells. -/
 partial def containsRefTy : UTy → Bool
   | .ref _ _ | .boxT _ | .slice false _ _ => true
-  | .tup tys | .structT tys => tys.any containsRefTy
+  | .tup tys => tys.any containsRefTy
   | .enum variants => variants.any (·.any containsRefTy)
   | .cell t => containsRefTy t
   | _ => false  -- a raw pointer is not retagged, whatever it points to
@@ -60,7 +59,7 @@ partial def uSize : UTy → Nat
   | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => 1
   | .sliceData _ => 0
   | .cell inner => uSize inner
-  | .tup tys | .structT tys => (tys.map uSize).foldl (· + ·) 0
+  | .tup tys => (tys.map uSize).foldl (· + ·) 0
   | .enum variants =>
       1 + (variants.map (fun fs => (fs.map uSize).foldl (· + ·) 0)).foldl Nat.max 0
   | .unsupported _ => 1
@@ -69,7 +68,7 @@ partial def uSize : UTy → Nat
     pointer)? The model's analogue of "not `Freeze`". -/
 partial def containsCell : UTy → Bool
   | .cell _ => true
-  | .tup tys | .structT tys => tys.any containsCell
+  | .tup tys => tys.any containsCell
   | .enum variants => variants.any (·.any containsCell)
   | _ => false
 
@@ -79,7 +78,7 @@ partial def freezeMask : UTy → List Bool
   | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => [false]
   | .sliceData _ => []
   | .cell inner => List.replicate (uSize inner) true
-  | .tup tys | .structT tys => tys.flatMap freezeMask
+  | .tup tys => tys.flatMap freezeMask
   -- A multi-variant enum that is not `Freeze` is treated like a union by
   -- Miri's `visit_freeze_sensitive` (vendor/miri/src/helpers.rs): the whole
   -- value, discriminant included, is UnsafeCell, WITHOUT reading which
@@ -703,7 +702,7 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     .cell .nat  -- Atomic* = UnsafeCell around one word
                   else
                     match info.kind with
-                    | .struct fields => .structT (fields.map (parseTy ctx (fuel - 1)))
+                    | .struct fields => .tup (fields.map (parseTy ctx (fuel - 1)))
                     | .enum variants =>
                         .enum (variants.map (·.map (parseTy ctx (fuel - 1))))
                     | .opaque => .unsupported s!"opaque adt {String.intercalate "::" info.path}"

@@ -100,7 +100,7 @@ branches and loops are lowered along a Miri-derived CERTIFICATE (see
 | two-phase reserved borrows | pass_invalid_mut (TwoPhaseMut seams) |
 | protectors (strong) | aliasing_mut1-4, invalidate_against_protector1/2/3, illegal_write6 |
 | protectors (weak on SRW) | unsafe_cell_invalidate, ref_protector |
-| fn-entry retags: args/returns, tuple fields yes, struct fields no | pass/return_invalid_* family, fnentry_invalidation2 |
+| fn-entry retags: args/returns, tuple and struct fields (not through pointers) | pass/return_invalid_* family, newtype_retagging, newtype_pair_retagging, fnentry_invalidation2 |
 | in-place argument/return-place protection (Miri's `protect_in_place_function_argument`) | fail/function_calls/arg_inplace_*, return_pointer_aliasing_read/write |
 | typed read of uninitialized memory is UB | fail/function_calls/arg_inplace_observe_after; compile_tests d9b |
 | retag on reference loads | load_invalid_mut/shr |
@@ -241,8 +241,8 @@ retags (`RExpr.refSlice` retags `size − offset` cells via the fat
 value's tag), unsize coercions are value copies, and
 `as_ptr`/`as_mut_ptr` shims reproduce the receiver's fn-entry retag
 before the raw data retag (the invalidation fnentry_invalidation2
-tests). Named-struct fields are NOT retagged at seams (miri's behavior,
-also per that test) — tuples are. Since 2026-09-23 a pointer value
+tests). Struct and tuple fields are retagged alike at seams (one `UTy.tup`
+since 2026-10-01; nothing behind a pointer is). Since 2026-09-23 a pointer value
 carries its EXTENT (the slice's length in cells), so a slice retag covers
 exactly its slice. Remaining exclusions: slice lengths (`.len()`/metadata)
 and range sub-slicing, Vec/String, threads, general closures, drop glue,

@@ -4730,3 +4730,25 @@ unsupported with an accurate reason (needs Charon drop_glue).
 
 **Next-session pickup candidates:** item q step 2 (user Drop glue via
 `--precise-drops`); CLAUDE.md's suite counts are stale (says 82/41/123).
+
+## 2026-10-01 (structs are tuples)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** item m — by-value struct fields are fn-entry retagged.
+
+**Key outputs:** `UTy.structT` removed (loader parses structs to `.tup`;
+every other site already treated the two alike, and `elab` erased the
+difference); fork commit with tests/formal-urchin/newtype{,_pair}_retagging.rs;
+both entries supported (verdict-only); README rows corrected.
+
+**Critical corrections:** the 2026-08-14 rule "Miri does not retag
+named-struct fields" was never what fnentry_invalidation2 pins (it passes
+`&mut Thing`; nothing is retagged through a pointer). It made the model
+miss the newtype UB.
+
+**Status:** complete. 136/0/26, osea 136, live 136/136 0 drift; units
+19/19 + 129/129. Proofs untouched. The fork commit is local, not pushed.
+
+**Next-session pickup candidates:** push the fork commit;
+local/unassigned_local_addr (MaybeUninit shim, item t); item q step 2.

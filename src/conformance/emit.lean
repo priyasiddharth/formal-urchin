@@ -219,7 +219,7 @@ def markMovedOps (st : LowerSt) (ops : List UOperand) : LowerSt :=
 /-- A Box somewhere in the value itself (not behind a pointer). -/
 partial def containsBox : UTy → Bool
   | .boxT _ => true
-  | .tup tys | .structT tys => tys.any containsBox
+  | .tup tys => tys.any containsBox
   | .enum vs => vs.any (·.any containsBox)
   | .cell t => containsBox t
   | _ => false
@@ -248,7 +248,7 @@ partial def emitDropGlue (st : LowerSt) (line : Nat) (p : UPlace) : Except Strin
       | none =>
           let st := if uSize inner == 0 then st else pushOut st (.dealloc p line)
           return markMoved st p
-  | .tup tys | .structT tys =>
+  | .tup tys =>
       tys.zipIdx.foldlM (fun st (t, i) => emitDropGlue st line { fld p i with ty := t }) st
   | .cell t => emitDropGlue st line { p with ty := t }
   | .enum _ => .error s!"unsupported: drop of an enum holding a Box (line {line})"
@@ -321,17 +321,19 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
       return .binOp op (← resolveIdxOperand st line a) (← resolveIdxOperand st line b)
   | rv => pure rv
 
-/-- Does this type contain a reference (transitively through tuples and
-    enum payloads)? Raw pointers don't count — not retagged at seams.
+/-- Does this type contain a reference (transitively through tuples,
+    structs and enum payloads)? Raw pointers don't count — not retagged at seams.
     UnsafeCell contents don't count either: Miri's retag visitor does
     not descend into interior-mutable regions. -/
 partial def containsRef : UTy → Bool
   | .ref _ _ => true
   | .boxT _ => true            -- Box: unique-retagged at seams (miri box retag)
   | .slice false _ _ => true   -- reference-to-slice: seam-retagged (runtime length)
+  -- a tuple or struct VALUE: its fields (Miri's retag visitor walks
+  -- every aggregate the same way; newtype_retagging). Behind a pointer
+  -- nothing is retagged — the `.ref` case stops there, which is what
+  -- fnentry_invalidation2 (`inner(t: &mut Thing)`) pins.
   | .tup tys => tys.any containsRef
-  | .structT _ => false  -- miri does NOT fn-entry-retag named-struct fields
-                         -- (fnentry_invalidation2's point); tuples ARE retagged
   | .enum variants => variants.any (·.any containsRef)
   | .cell _ => false
   | _ => false

@@ -395,7 +395,13 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   → c_variadics. [HYP]
 
 **Tier 2 — model / retag-rule changes (touch semantics, maybe proofs)**
-- m. **By-value named-struct fields must be fn-entry retagged** →
+- m. **DONE 2026-10-01** — `UTy.structT` deleted: struct decls parse to
+  `UTy.tup`, so struct fields retag exactly as tuple fields (args,
+  returns, loads); it had been the ONLY place the two differed (`elab`
+  already erased it to `TupL`). Fork rewrites newtype_retagging /
+  newtype_pair_retagging (closure → `fn free_it`, captured ptr → static
+  `PTR`), verdict-only; no other verdict moved. Was:
+  **By-value named-struct fields must be fn-entry retagged** →
   newtype_retagging, newtype_pair_retagging (both return "ok" today with
   the prep; the tuple variant passes). `containsRef (.structT _) = false`
   (emit.lean, `containsRef`) cites fnentry_invalidation2, but that test passes

@@ -28,7 +28,6 @@ partial def toLayout : UTy → Except String LayoutTy
   | .ref _ inner => do return .PtrL (← toLayout inner)
   | .raw _ inner => do return .PtrL (← toLayout inner)
   | .tup tys => do return .TupL (← tys.mapM toLayout)
-  | .structT tys => do return .TupL (← tys.mapM toLayout)
   | .cell inner => toLayout inner   -- interior-mutable wrapper is layout-transparent
   | .boxT inner => do return .PtrL (← toLayout inner)
   | .slice _ _ elem => do return .PtrL (← toLayout elem)  -- one-cell fat value

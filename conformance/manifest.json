@@ -1141,24 +1141,36 @@
     {
       "id": "fail/both_borrows/newtype_pair_retagging",
       "source": "corpus/tests/fail/both_borrows/newtype_pair_retagging.rs",
-      "prep": null,
+      "prep": "corpus/tests/formal-urchin/newtype_pair_retagging.rs",
       "artifact": "newtype_pair_retagging.ullbc.json",
-      "status": "unsupported",
-      "reason": "protectors + Box + closures",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ub"
-      }
+      },
+      "miri_error": "not granting access to tag .* because that would remove \\[Unique for .*\\] which is strongly protected",
+      "rewrites": [
+        "dropped //@ headers, error annotations and #[rustfmt::skip]",
+        "closure -> named fn free_it; captured ptr -> static PTR"
+      ],
+      "note": "verdict-only: Miri raises the error inside std's Box drop (upstream's error-in-other-file); the model reports the dealloc in free_it"
     },
     {
       "id": "fail/both_borrows/newtype_retagging",
       "source": "corpus/tests/fail/both_borrows/newtype_retagging.rs",
-      "prep": null,
+      "prep": "corpus/tests/formal-urchin/newtype_retagging.rs",
       "artifact": "newtype_retagging.ullbc.json",
-      "status": "unsupported",
-      "reason": "protectors + Box + closures",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ub"
-      }
+      },
+      "miri_error": "not granting access to tag .* because that would remove \\[Unique for .*\\] which is strongly protected",
+      "rewrites": [
+        "dropped //@ headers, error annotations and #[rustfmt::skip]",
+        "closure -> named fn free_it; captured ptr -> static PTR"
+      ],
+      "note": "verdict-only: Miri raises the error inside std's Box drop (upstream's error-in-other-file); the model reports the dealloc in free_it"
     },
     {
       "id": "fail/both_borrows/pass_invalid_shr_option",

@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-01 (evening) — A Struct Is a Tuple
+
+When a function is called, every reference passed to it is re-tagged and
+protected until the call returns, including references sitting inside a
+tuple. The model had made an exception for references inside a named
+struct, on the strength of a Miri test that turns out to pass the struct
+behind a reference, where nothing inside is re-tagged for any type. Two
+Miri tests that hand a struct holding a `&mut` to a function, which then
+frees the memory it points to, showed the model calling the program fine
+where Miri reports undefined behaviour. Structs and tuples are now one
+type in the loader, so they are treated alike everywhere; the two tests
+join the corpus and flag the free, and no other test changed its result.
+In the same session `ptr::drop_in_place` became supported: it protects
+the place it drops for the whole drop, and a program with its own
+`Drop` implementation is now refused rather than run with its destructor
+silently skipped.
+
+---
+
 ## 2026-10-01 (later) — Boxes Are Freed
 
 Until now the model never freed a box: when a `Box` went out of scope,
