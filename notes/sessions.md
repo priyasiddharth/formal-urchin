@@ -4741,6 +4741,7 @@ unsupported with an accurate reason (needs Charon drop_glue).
 every other site already treated the two alike, and `elab` erased the
 difference); fork commit with tests/formal-urchin/newtype{,_pair}_retagging.rs;
 both entries supported (verdict-only); README rows corrected.
+Durable note: durable/retagging-does-not-follow-references.md.
 
 **Critical corrections:** the 2026-08-14 rule "Miri does not retag
 named-struct fields" was never what fnentry_invalidation2 pins (it passes
@@ -4748,7 +4749,7 @@ named-struct fields" was never what fnentry_invalidation2 pins (it passes
 miss the newtype UB.
 
 **Status:** complete. 136/0/26, osea 136, live 136/136 0 drift; units
-19/19 + 129/129. Proofs untouched. The fork commit is local, not pushed.
+19/19 + 129/129. Proofs untouched. Fork commit 9740df5de pushed.
 
-**Next-session pickup candidates:** push the fork commit;
+**Next-session pickup candidates:**
 local/unassigned_local_addr (MaybeUninit shim, item t); item q step 2.
