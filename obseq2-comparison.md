@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-01 (night) — Counting the Right Tests
+
+The suite had been scored against Miri's four Stacked Borrows test
+directories, 89 files. Miri checks Stacked Borrows in more places: 9
+undefined-behaviour tests elsewhere, and 38 programs that upstream runs
+under both aliasing models, 137 files in all. All 38 were run: Miri
+accepts every one, and six now load and agree with it. Getting there
+fixed three things in how programs are read: constants now get their
+values before `main` runs (one test was being flagged for reading a
+constant that had never been set); indexing into the elements of a slice
+now reaches the right element (a read of the second element of a slice
+of pairs used to land on the first element's second field); and the
+hidden borrow rustc inserts to read a slice's length no longer counts as
+an access. Most of the remaining programs need standard-library
+containers, threads, or integer addresses without provenance, which the
+model does not have.
+
+---
+
 ## 2026-10-01 (evening) — A Struct Is a Tuple
 
 When a function is called, every reference passed to it is re-tagged and

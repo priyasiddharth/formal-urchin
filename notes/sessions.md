@@ -4753,3 +4753,28 @@ miss the newtype UB.
 
 **Next-session pickup candidates:**
 local/unassigned_local_addr (MaybeUninit shim, item t); item q step 2.
+
+## 2026-10-01 (pass tests outside the SB directories)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** the denominator — 137 SB-relevant Miri files, not 89 — and the
+38 `pass` tests upstream runs under both models.
+
+**Key outputs:** all 38 run (scratch): Miri ok 38/38 (`vec`'s caught panic
+misread by miri_local.sh), Charon 37/38 (`slices`: layout_for_ptr). Six
+now supported (associated-const, disable-alignment-check,
+disjoint-array-accesses, issue-miri-3473, many_shr_bor, memleak_ignored).
+Fixes: global initializers inlined before main (associated-const was a
+false UB); `(*s)[k]` on slice data is an offset of `s`, not field k (a
+silent wrong-cell read for k > 0 on tuple elements); rustc's
+FakeForPtrMetadata bounds-check borrow (Charon renders it `Shared`)
+recovered by shape and not retagged; `mem::swap`, `Default::default`
+shims; miri_cert.py: `<primitive as std Trait>` frames are std.
+
+**Status:** complete, not committed. 142/0/26 (168), osea 142, live
+142/142 0 drift; units 19/19 + 129/129. Proofs untouched.
+
+**Next-session pickup candidates:** parked 12 (integer addresses —
+needs semantics); `atomic` (37 std fns); raw_ref_to_part (item n);
+box_into_raw_allows_interior_mutable_alias (passes as-is, needs a split).

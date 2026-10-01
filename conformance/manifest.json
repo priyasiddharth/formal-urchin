@@ -2342,6 +2342,84 @@
       "expected": {
         "verdict": "ub"
       }
+    },
+    {
+      "id": "pass/associated-const",
+      "source": "corpus/tests/pass/associated-const.rs",
+      "prep": null,
+      "artifact": "associated-const.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01",
+      "certificate": "associated-const.cert.json",
+      "note": "associated const: its initializer now runs before main (was read as uninit: false UB)"
+    },
+    {
+      "id": "pass/disable-alignment-check",
+      "source": "corpus/tests/pass/disable-alignment-check.rs",
+      "prep": null,
+      "artifact": "disable-alignment-check.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01"
+    },
+    {
+      "id": "pass/disjoint-array-accesses",
+      "source": "corpus/tests/pass/disjoint-array-accesses.rs",
+      "prep": null,
+      "artifact": "disjoint-array-accesses.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01",
+      "certificate": "disjoint-array-accesses.cert.json",
+      "note": "slice element places (`(*s)[k]`), the fake bounds-check borrow, mem::swap shim"
+    },
+    {
+      "id": "pass/issues/issue-miri-3473",
+      "source": "corpus/tests/pass/issues/issue-miri-3473.rs",
+      "prep": null,
+      "artifact": "issue-miri-3473.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01",
+      "certificate": "issue-miri-3473.cert.json",
+      "note": "Default::default shims; certificate classifier treats <usize as Default> as std"
+    },
+    {
+      "id": "pass/many_shr_bor",
+      "source": "corpus/tests/pass/many_shr_bor.rs",
+      "prep": null,
+      "artifact": "many_shr_bor.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01"
+    },
+    {
+      "id": "pass/memleak_ignored",
+      "source": "corpus/tests/pass/memleak_ignored.rs",
+      "prep": null,
+      "artifact": "memleak_ignored.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01"
     }
   ]
 }

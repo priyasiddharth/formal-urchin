@@ -265,8 +265,20 @@ feature-level view.
 8. **Unions** (illegal_read3).
 9. **Misc std/lang**: MaybeUninit, coroutines, C variadics, trait
    objects/dyn, Pin/UnsafePinned, custom allocators (pass files).
-10. **Static initializers** — hoisted statics start undef; a test
-    READING a static's initial value would need initializer inlining.
+10. **Static initializers** — DONE 2026-10-01: every global's
+    initializer is inlined before `main` (outside certificate frames, the
+    value stored through a scratch local so the global's stack is just
+    its base item). A const whose initializer does not lower is
+    unsupported; a static falls back to uninit (`null_mut()`,
+    `without_provenance`: bodyless). Was: hoisted statics start undef.
+12. **Integer addresses without provenance** — `transmute` ptr↔int,
+    `with_addr`, `addr()`, int literals as pointers, byte-wise pointer
+    copies: transmute_ptr, ptr_int_transmute, ptr_int_casts,
+    ptr_int_from_exposed, provenance, option_box_transmute_ptr,
+    strange_references (pass/, outside the SB dirs). mirlite has
+    `exposeAddr` only; a provenance-stripping `addr` rvalue is new
+    semantics + proof leaves, and the byte-level ones need a byte-level
+    pointer representation the cell model does not have. [OBS 2026-10-01]
 11. **Miri-internal tests**: stack-printing, unknown-bottom-gc,
     zst-field-retagging-terminates.
 

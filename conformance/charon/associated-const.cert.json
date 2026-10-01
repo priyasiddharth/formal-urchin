@@ -1,0 +1,37 @@
+{
+ "version": 1,
+ "source": "corpus/tests/pass/associated-const.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "ID",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _9",
+     "cases": [
+      [
+       0,
+       2
+      ]
+     ],
+     "otherwise": 1,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _9) -> [0: bb2, otherwise: bb1]",
+     "next": 1,
+     "arm": "otherwise"
+    }
+   ]
+  }
+ ]
+}

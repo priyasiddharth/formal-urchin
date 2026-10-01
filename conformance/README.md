@@ -117,9 +117,18 @@ protector is modeled with the same pop-blocking as strong protectors
 the call — unexercised by any reachable test); plain Box-typed
 assignments (`let b2 = b`) are not retagged (no test exercises it);
 wildcard resolution is determinized (topmost exposed granting item) vs
-miri's angelic reading; RefCell shims elide the borrow flag; hoisted
-statics start uninitialized; the retag×data-race interaction (threads)
-is out of scope.
+miri's angelic reading; RefCell shims elide the borrow flag; globals
+are initialized by inlining their initializer before `main` (a const
+whose initializer does not lower is unsupported; such a static starts
+uninitialized, e.g. `null_mut()`); the retag×data-race interaction
+(threads) is out of scope.
+
+Scope (2026-10-01): the corpus is Miri's four Stacked Borrows test
+directories (89 files, all in the manifest), 9 SB `fail` tests from
+other directories, and the `pass` tests elsewhere that upstream runs
+under both models (`//@revisions: stack tree`) as far as they load —
+137 SB-relevant Miri files in all, plus split-out scenarios and local
+witnesses.
 
 The single consolidated inventory of everything unimplemented or
 approximated lives in `notes/loose-ends/parked.md` (MASTER INVENTORY);

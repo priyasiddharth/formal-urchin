@@ -482,11 +482,49 @@ def propagateFnPtr (st : LowerSt) (src dst : UPlace) : LowerSt :=
       | none => st
   | _, _ => st
 
+/-- An element of a SLICE's data, `(*s)[k]…` with `s` a slice-pointer
+    local: the data has the element's layout (the pointer's extent covers
+    the rest), so the index is not a field. Miri reaches element `k`
+    through `s` itself at an offset — same tag, no retag — so `k = 0`
+    drops the index and `k > 0` goes through `tmp := ptrOffset s k`. -/
+def sliceElemPlace (st : LowerSt) (line : Nat) (p : UPlace) :
+    Except String (LowerSt × UPlace) := do
+  match p.root, p.projs with
+  | .local n, .deref :: .index ix :: rest =>
+      match st.locals[n]? with
+      | some (.slice isRaw mutbl elem) =>
+          let k ← match ix with
+            | .const k => pure k
+            | .fromLocal l =>
+                match constLookup st (l, []) with
+                | some k => pure k
+                | none => throw s!"unsupported: runtime slice index (line {line})"
+            | .unsupported d => throw s!"unsupported: slice index: {d} (line {line})"
+          if k == 0 then return (st, { p with projs := .deref :: rest })
+          let sty := UTy.slice isRaw mutbl elem
+          let t := st.locals.length
+          let tmp : UPlace := { root := .local t, projs := [], ty := sty }
+          let st := { st with locals := st.locals ++ [sty] }
+          let st := pushOut st (.assign tmp
+            (.ptrOffset { root := .local n, projs := [], ty := sty } (Int.ofNat k)) line)
+          return (st, { p with root := .local t, projs := .deref :: rest })
+      | _ => return (st, p)
+  | _, _ => return (st, p)
+
+def sliceElemRvalue (st : LowerSt) (line : Nat) : URvalue → Except String (LowerSt × URvalue)
+  | .use (.copy p) => do let (st, p) ← sliceElemPlace st line p; return (st, .use (.copy p))
+  | .use (.move p) => do let (st, p) ← sliceElemPlace st line p; return (st, .use (.move p))
+  | .move p => do let (st, p) ← sliceElemPlace st line p; return (st, .move p)
+  | .ref kind prot p => do let (st, p) ← sliceElemPlace st line p; return (st, .ref kind prot p)
+  | rv => return (st, rv)
+
 /-- Append one lowered assignment, desugaring aggregates, applying the
     reference-load retag rule, and rejecting unsupported payloads.
     Places/rvalues must already be rebased. -/
 partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue) :
     Except String LowerSt := do
+  let (st, dst) ← sliceElemPlace st line dst
+  let (st, rv) ← sliceElemRvalue st line rv
   let dst ← resolveIdxPlace st line dst
   let rv ← resolveIdxRvalue st line rv
   let st := trackAssign st dst rv

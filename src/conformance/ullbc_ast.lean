@@ -217,6 +217,9 @@ structure UGlobal where
   gid : Nat
   name : String
   ty : UTy
+  -- the initializer: Charon's `value` is a call to a fun computing it
+  init : Option Nat := none
+  isStatic : Bool := false
 deriving Repr, Inhabited
 
 structure UCrate where
@@ -1086,6 +1089,54 @@ def parseBlock (ctx : ParseCtx) (j : Json) : UBlock :=
   let termJ := (getK j "terminator").getD Json.null
   { stmts, term := parseTerm ctx termJ, termLine := spanLine termJ }
 
+def UOperand.places : UOperand → List UPlace
+  | .copy p | .move p => [p]
+  | _ => []
+
+def URvalue.places : URvalue → List UPlace
+  | .use op => op.places
+  | .move p | .ref _ _ p | .exposeAddr p | .fromExposed p | .ptrOffset p _
+  | .refSlice _ _ p | .sliceLen p | .discriminant p => [p]
+  | .aggregate _ ops => ops.flatMap (·.places)
+  | .subSlice p lo hi => p :: lo.places ++ hi.places
+  | .binOp _ a b => a.places ++ b.places
+  | _ => []
+
+def UTerm.places : UTerm → List UPlace
+  | .call _ args dest _ => dest :: args.flatMap (·.places)
+  | .callDyn fp args dest _ => fp :: dest :: args.flatMap (·.places)
+  | .assert c _ _ _ => c.places
+  | .switch d _ _ => d.places
+  | .drop p _ => [p]
+  | _ => []
+
+/-- rustc's bounds check reads a slice's length through
+    `_t = &raw const (fake) (*_s); _n = PtrMetadata(copy _t)`. A FAKE raw
+    borrow is not retagged (Miri: `RawPtr` skips the retag when
+    `kind.is_fake()`), but Charon renders `FakeForPtrMetadata` as `Shared`.
+    Recovered by shape: a raw shared slice borrow into a local whose every
+    other use is its `PtrMetadata` (surface Rust cannot write that
+    projection) becomes a tag-preserving copy of the fat pointer. -/
+def elideFakeMetadataBorrows (f : UFun) : UFun := Id.run do
+  let stmtPlaces := f.blocks.flatMap fun b =>
+    b.stmts.flatMap (fun s => match s.kind with
+      | .assign d rv => (d, true) :: rv.places.map ((·, false))
+      | _ => []) ++ b.term.places.map ((·, false))
+  let isFake (l : Nat) : Bool :=
+    let uses := stmtPlaces.filter fun (p, isDst) =>
+      !isDst && p.root == .local l
+    !uses.isEmpty && uses.all (fun (p, _) => p.projs == [.ptrMetadata])
+  let blocks := f.blocks.map fun b =>
+    { b with stmts := b.stmts.map fun s =>
+        match s.kind with
+        | .assign d (.refSlice .rawConst false src) =>
+            match d with
+            | { root := .local l, projs := [], .. } =>
+                if isFake l then { s with kind := .assign d (.use (.copy src)) } else s
+            | _ => s
+        | _ => s }
+  return { f with blocks }
+
 def parseFun (ctx : ParseCtx) (j : Json) : UFun :=
   let defId := ((getK j "def_id") >>= asNat).getD 0
   let path := (ctx.funPaths.lookup defId).getD (itemName j)
@@ -1105,12 +1156,15 @@ def parseFun (ctx : ParseCtx) (j : Json) : UFun :=
         ((localsJ >>= (getK · "locals")).map asArr).getD []
           |>.map (fun l => parseTy ctx 16 ((getK l "ty").getD Json.null))
       let blocks := ((getK bodyJ "body").map asArr).getD [] |>.map (parseBlock ctx)
-      { defId, name, path, argCount, locals, blocks, hasBody := true }
+      elideFakeMetadataBorrows { defId, name, path, argCount, locals, blocks, hasBody := true }
 
 def parseGlobal (ctx : ParseCtx) (j : Json) : UGlobal :=
   let gid := ((getK j "def_id") >>= asNat).getD 0
   let name := (itemName j).getLast?.getD "?"
-  { gid, name, ty := parseTy ctx 16 ((getK j "ty").getD Json.null) }
+  let init := getK j "value" >>= (getK · "kind") >>= (getK · "Call") >>= (·.getArrVal? 0 |>.toOption)
+    >>= (getK · "kind") >>= (getK · "Fun") >>= (getK · "Regular") >>= asNat
+  let isStatic := (getK j "global_kind" >>= asStr) == some "Static"
+  { gid, name, ty := parseTy ctx 16 ((getK j "ty").getD Json.null), init, isStatic }
 
 /-- A local `impl Drop`: drop glue runs only Boxes (`emitDropGlue`), so a
     crate with a user destructor is rejected rather than lowered with its

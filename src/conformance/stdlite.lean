@@ -490,6 +490,54 @@ def dropInPlace : Shim := fun st args _dest line => do
       return pushOut st (.popProt line)
   | _ => .error s!"unsupported: drop_in_place argument is not a place (line {line})"
 
+/-- `mem::swap(x, y)`: the fn-entry retags of the two `&mut T` arguments
+    (protected for the call), then std's typed swap through them: read
+    both, write both. -/
+def memSwap : Shim := fun st args _dest line => do
+  match args with
+  | [a, b] =>
+      let some pa := operandPlace? a
+        | .error s!"unsupported: mem::swap argument is not a place (line {line})"
+      let some pb := operandPlace? b
+        | .error s!"unsupported: mem::swap argument is not a place (line {line})"
+      let inner ← match pa.ty with
+        | .ref true i => pure i
+        | _ => throw s!"unsupported: mem::swap of a non-&mut (line {line})"
+      let t := st.locals.length
+      let st := { st with locals := st.locals ++ [.ref true inner, .ref true inner, inner] }
+      let ta : UPlace := { root := .local t, projs := [], ty := .ref true inner }
+      let tb : UPlace := { root := .local (t + 1), projs := [], ty := .ref true inner }
+      let tmp : UPlace := { root := .local (t + 2), projs := [], ty := inner }
+      let st := pushOut st (.pushProt line)
+      let st ← emitAssign st line ta (.ref .mut true { pointee pa with ty := inner })
+      let st ← emitAssign st line tb (.ref .mut true { pointee pb with ty := inner })
+      let st ← emitAssign st line tmp (.use (.copy { pointee ta with ty := inner }))
+      let st ← emitAssign st line { pointee ta with ty := inner } (.use (.copy { pointee tb with ty := inner }))
+      let st ← emitAssign st line { pointee tb with ty := inner } (.use (.copy tmp))
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: mem::swap arity (line {line})"
+
+/-- A value `Default::default` gives as all-zero words: integers, cells and
+    tuples of them. -/
+partial def zeroDefault : UTy → Bool
+  | .nat => true
+  | .cell t => zeroDefault t
+  | .tup tys => tys.all zeroDefault
+  | _ => false
+
+partial def emitZeros (line : Nat) (st : LowerSt) (p : UPlace) : UTy → Except String LowerSt
+  | .nat => emitAssign st line { p with ty := .nat } (.use (.const 0))
+  | .cell t => emitZeros line st p t
+  | .tup tys => tys.zipIdx.foldlM (fun st (t, i) => emitZeros line st { fld p i with ty := t } t) st
+  | _ => pure st
+
+/-- `Default::default()` for integers and cells of integers (`UnsafeCell`'s
+    `default` is `UnsafeCell::new(T::default())`): zero in every word. -/
+def defaultZero : Shim := fun st _args dest line => do
+  if !zeroDefault dest.ty then
+    throw s!"unsupported: Default::default for {reprStr dest.ty} (line {line})"
+  emitZeros line st dest dest.ty
+
 /-- Cell::get_mut(&mut self) -> &mut T: a unique reborrow of the cell -/
 def cellGetMut : Shim := fun st args dest line => do
   match args with
@@ -592,6 +640,15 @@ def table : List (List String × Shim) :=
   , (["alloc", "boxed", "Box", "leak"], boxLeak)
   , (["core", "mem", "forget"], memForget)
   , (["core", "mem", "drop"], memDrop)
+  , (["core", "mem", "swap"], memSwap)
+  , (["core", "cell", "<UnsafeCell as Default>", "default"], defaultZero)
+  , (["core", "cell", "<Cell as Default>", "default"], defaultZero)
+  , (["core", "default", "<usize as Default>", "default"], defaultZero)
+  , (["core", "default", "<u8 as Default>", "default"], defaultZero)
+  , (["core", "default", "<u32 as Default>", "default"], defaultZero)
+  , (["core", "default", "<u64 as Default>", "default"], defaultZero)
+  , (["core", "default", "<i32 as Default>", "default"], defaultZero)
+  , (["core", "default", "<i64 as Default>", "default"], defaultZero)
   , (["core", "ptr", "drop_in_place"], dropInPlace)
   , (["core", "cell", "Cell", "get_mut"], cellGetMut)
   , (["core", "cell", "UnsafeCell", "get_mut"], cellGetMut)
