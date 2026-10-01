@@ -4775,6 +4775,35 @@ shims; miri_cert.py: `<primitive as std Trait>` frames are std.
 **Status:** complete, not committed. 142/0/26 (168), osea 142, live
 142/142 0 drift; units 19/19 + 129/129. Proofs untouched.
 
+Durable note: durable/miri-is-rustcs-mir-interpreter-plus-a-machine.md.
+
 **Next-session pickup candidates:** parked 12 (integer addresses —
 needs semantics); `atomic` (37 std fns); raw_ref_to_part (item n);
 box_into_raw_allows_interior_mutable_alias (passes as-is, needs a split).
+
+## 2026-10-01 (byte-addressing probe)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** measure, not estimate, the proof repair for a byte-addressed
+memory model; scope what the seven representation tests would need.
+
+**Key outputs:** journal/2026-10/2026-10-01-byte-probe.md (stage 1: one
+type-level break — `values_len`; stage 2: `slotCount` split, Obseq3 green,
+68 mechanical sites + 20 broken theorems ≈ 3.5k lines, by module; three
+breakage buckets; revised C0 estimate). Plan file
+~/.claude/plans/can-we-move-to-stateless-lemur.md: the 137-file
+denominator, tiers A/B/E/F/G/C/D per scenario, ranked parity roadmap.
+Durable note miri-is-rustcs-mir-interpreter-plus-a-machine.md. Parked 12
+updated. Worktree removed, nothing committed from the probe.
+
+**Critical corrections:** Miri stores one borrow stack per BYTE range
+(`DedupRangeMap<Stack>`, structural equality on `borrows` +
+`unknown_bottom`), `exposed_tags` per allocation.
+
+**Status:** probe complete. Tree: 4b1afea + uncommitted notes (this entry,
+the journal, parked 12, the two durable notes from earlier today).
+
+**Next-session pickup candidates:** roadmap step 1–2 (split-outs; `&raw`
+through a raw base, parked n); the store-width item ([HYP] in the probe
+journal) as a cell-model prerequisite for any later C0.

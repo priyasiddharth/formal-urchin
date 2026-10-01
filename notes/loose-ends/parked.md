@@ -279,6 +279,11 @@ feature-level view.
     `exposeAddr` only; a provenance-stripping `addr` rvalue is new
     semantics + proof leaves, and the byte-level ones need a byte-level
     pointer representation the cell model does not have. [OBS 2026-10-01]
+    Byte-addressing cost MEASURED (journal/2026-10/2026-10-01-byte-probe.md):
+    splitting byte size from slot count breaks 20 theorems / ~3.5k proof
+    lines (68 mechanical sites besides), SB layer untouched; a faithful
+    C0 adds the layout-directed `readWordSeq` rework (unmeasured, est.
+    20–40 more). Flips no Miri file by itself. Not before the paper.
 11. **Miri-internal tests**: stack-printing, unknown-bottom-gc,
     zst-field-retagging-terminates.
 
