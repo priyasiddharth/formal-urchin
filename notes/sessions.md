@@ -4804,6 +4804,9 @@ updated. Worktree removed, nothing committed from the probe.
 **Status:** probe complete. Tree: 4b1afea + uncommitted notes (this entry,
 the journal, parked 12, the two durable notes from earlier today).
 
+[EMP] inventory of every unsupported Miri test and its blocker, over the
+137-file denominator: notes/empirical/unsupported-miri-tests.md (new dir).
+
 **Next-session pickup candidates:** roadmap step 1–2 (split-outs; `&raw`
 through a raw base, parked n); the store-width item ([HYP] in the probe
 journal) as a cell-model prerequisite for any later C0.
