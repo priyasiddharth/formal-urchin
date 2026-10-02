@@ -1,3 +1,4 @@
+import obseq3.oseair_bytes
 import obseq3.compile
 import obseq3.tests
 
@@ -265,6 +266,46 @@ where
                 | some i => .ub i
                 | none => .ub 999999
 
+/-- The source run on byte-addressed memory (`mirlite_bytes.lean`). -/
+def srcRunB (Γ : Ctx) (prog : Prog Γ) : DiffOut :=
+  go (prog.length + 2) (mirliteB.State.initial M Γ)
+where
+  go : Nat → mirliteB.State M Γ → DiffOut
+    | 0, _ => .stuck
+    | n + 1, st =>
+        match prog[st.pc]? with
+        | none => .ok
+        | some .halt => .ok
+        | some stmt =>
+            match mirliteB.stepStmt M st stmt with
+            | .ok st' => go n st'
+            | .err _ => .ub st.pc
+
+/-- The compiled program run on byte-addressed memory (`oseair_bytes.lean`). -/
+def tgtRunB (Γ : Ctx) (prog : Prog Γ) : Except String DiffOut :=
+  match compileProg prog with
+  | .error e => .error s!"compile error: {reprStr e}"
+  | .ok tp =>
+      .ok (go tp (stmtLabelRanges prog) (emittedLabels prog + 2) (oseairB.State.initial M))
+where
+  go (tp : oseair.Prog) (ranges : List (Nat × Nat)) :
+      Nat → oseairB.State M → DiffOut
+    | 0, _ => .stuck
+    | n + 1, st =>
+        match tp st.pc with
+        | none => .ok
+        | some .Halt => .ok
+        | some _ =>
+            match oseairB.step M st tp with
+            | .Ok st' => go tp ranges n st'
+            | .Err _ =>
+                match ranges.findIdx? (fun r => r.1 ≤ st.pc && st.pc < r.2) with
+                | some i => .ub i
+                | none => .ub 999999
+
+/-- Every differential program runs on FOUR machines — the cell source
+    and target, and both again on byte-addressed memory — and all four
+    must reach the expected verdict. -/
 def expectDiff (Γ : Ctx) (prog : Prog Γ) (expected : DiffOut) (label : String) : IO Unit := do
   let src := srcRun Γ prog
   assert (src == expected) s!"{label}: source verdict {reprStr src}, expected {reprStr expected}"
@@ -273,6 +314,14 @@ def expectDiff (Γ : Ctx) (prog : Prog Γ) (expected : DiffOut) (label : String)
   | .ok tgt =>
       assert (tgt == expected)
         s!"{label}: target verdict {reprStr tgt}, expected {reprStr expected} (source agrees)"
+  let srcB := srcRunB Γ prog
+  assert (srcB == expected)
+    s!"{label}: byte source verdict {reprStr srcB}, expected {reprStr expected}"
+  match tgtRunB Γ prog with
+  | .error e => throw (IO.userError s!"{label}: {e}")
+  | .ok tgtB =>
+      assert (tgtB == expected)
+        s!"{label}: byte target verdict {reprStr tgtB}, expected {reprStr expected}"
 
 def ΓA : Ctx := [natL, ptrNat, natL]
 def xA : Place ΓA natL := .local ⟨⟨0, by decide⟩, rfl⟩

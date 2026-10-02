@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-02 (overnight) — Both Machines on Bytes
+
+The compiled programs now also run on bytes: a second version of the
+target machine executes exactly the code the compiler produces, with
+memory kept as bytes the way the byte version of the source machine keeps
+it. Each of the hundred-odd hand-written compiler test programs now runs
+on four machines — source and target, each on cells and on bytes — and
+all four reach the expected outcome; on the 133 conformance programs the
+byte target agrees with the byte source statement by statement. The
+correctness proof still concerns the cell machines; what remains before
+it can move is to give the model real integer widths, so that bytes are
+counted per field rather than eight per cell.
+
+---
+
 ## 2026-10-02 (late night) — Negative Numbers
 
 A negative constant used to be stored as zero, on the argument that the

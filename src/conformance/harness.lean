@@ -1,6 +1,7 @@
 import conformance.elab
 import obseq3.compile
 import obseq3.mirlite_bytes
+import obseq3.oseair_bytes
 
 /-!
 Conformance harness: reads a manifest of Miri-derived tests, loads each
@@ -97,6 +98,21 @@ inductive BytesStatus
 | mismatch (why : String)
 deriving Repr
 
+/-- The compiled program on the byte target (`oseair_bytes.lean`). -/
+def runOseaProgBytes (tprog : obseq3.oseair.Prog) (fuel : Nat) : Verdict :=
+  go fuel (oseairB.State.initial M)
+where
+  go : Nat → oseairB.State M → Verdict
+    | 0, _ => .fuelExhausted
+    | n + 1, st =>
+        match tprog st.pc with
+        | none => .ok
+        | some .Halt => .ok
+        | some _ =>
+            match oseairB.step M st tprog with
+            | .Ok st' => go n st'
+            | .Err msg => .ub st.pc 0 msg
+
 /-- The statement a verdict blames, if any. -/
 def Verdict.stmt? : Verdict → Option Nat
   | .ub i _ _ | .certRejected i _ | .certExhausted i _ => some i
@@ -104,15 +120,34 @@ def Verdict.stmt? : Verdict → Option Nat
 
 def bytesStatus (l : Loaded) (cell : Verdict) : BytesStatus :=
   let b := runLoadedBytes l
-  match cell, b with
-  | .ok, .ok => .matched
-  | .fuelExhausted, .fuelExhausted => .matched
-  | c, b =>
-      match c.stmt?, b.stmt? with
-      | some i, some j =>
-          if i == j then .matched
-          else .mismatch s!"bytes {b.render} at stmt {j}, cells {c.render} at stmt {i}"
-      | _, _ => .mismatch s!"bytes {b.render}, cells {c.render}"
+  let srcCheck : BytesStatus := match cell, b with
+    | .ok, .ok => .matched
+    | .fuelExhausted, .fuelExhausted => .matched
+    | c, b =>
+        match c.stmt?, b.stmt? with
+        | some i, some j =>
+            if i == j then .matched
+            else .mismatch s!"bytes {b.render} at stmt {j}, cells {c.render} at stmt {i}"
+        | _, _ => .mismatch s!"bytes {b.render}, cells {c.render}"
+  match srcCheck with
+  | .mismatch w => .mismatch w
+  | .matched =>
+  -- the byte TARGET against the byte source, as `--osea` does for cells;
+  -- a program the compiler does not cover is checked on the source only
+  match compile.compileProg l.prog with
+  | .error _ => .matched
+  | .ok tprog =>
+      let ranges := compile.stmtLabelRanges l.prog
+      let fuel := compile.emittedLabels l.prog + 2
+      match runOseaProgBytes tprog fuel, b with
+      | .ok, .ok => .matched
+      | .ub label _ msg, _ =>
+          match ranges.findIdx? (fun r => r.1 ≤ label && label < r.2), b.stmt? with
+          | some i, some j =>
+              if i == j then .matched
+              else .mismatch s!"byte target UB at stmt {i} ({msg}), byte source at stmt {j}"
+          | _, _ => .mismatch s!"byte target UB (label {label}: {msg}), byte source {b.render}"
+      | t, _ => .mismatch s!"byte target {t.render}, byte source {b.render}"
 
 /-! ## Differential mode (`--osea`)
 

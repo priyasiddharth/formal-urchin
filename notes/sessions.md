@@ -4807,3 +4807,22 @@ checks, 11 at runtime). No model or proof change.
 
 **Status:** corpus 133/0/29, osea 133, bytes 133, live 133/133 0 drift;
 units 30/30 + 131/131; audit unchanged.
+
+## 2026-10-02 (byte-addressed memory, stage 3)
+
+**Session:** `formal-urchin` (continued), branch `byteaddress`.
+
+**Key outputs:** `src/obseq3/oseair_bytes.lean` (the target on bytes, same
+compiled programs, cell immediates scaled ×8); `expectDiff` now runs four
+machines (cell/byte × source/target); harness `--bytes` also checks byte
+target vs byte source.
+
+**Status:** stage 3 done. 114 differential compiler programs agree on all
+four machines; corpus `--bytes` 133/133 (both checks); units 30/30 +
+131/131; corpus 133/0/29, osea 133; audit unchanged.
+
+**Next-session pickup candidates:** the switch. With both byte machines
+validated, stage 4 is the proof on bytes — or, first, stage 5 (real
+widths: `BLayout` in the syntax and the compiler emitting byte offsets),
+which is what stops the ×8 scaling and makes the byte model do work the
+cell model cannot (u8/u32 fields, padding, partial reads).

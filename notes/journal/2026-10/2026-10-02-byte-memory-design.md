@@ -111,7 +111,21 @@ other features (A/B/E/F/G in the 2026-10-01 plan).
    bytes; SB ranges in bytes. Executable tests and the conformance corpus
    must still agree with Miri at every step (`--unit`, corpus, `--osea`
    cannot run until stage 3, so only the mirlite side is checked here).
-3. **oseair + compiler on bytes.** Same memory; `Load`/`Store` carry a
+3. **oseair on bytes — DONE 2026-10-02, as a PARALLEL target**
+   (`src/obseq3/oseair_bytes.lean`, `obseq3.oseairB`). It runs the SAME
+   compiled programs (`compileProg` unchanged) and, like the byte source,
+   reads the compiler's cell-unit immediates as 8 bytes per cell (`Borrow`
+   offsets/lengths, `Die` lengths, `PtrOffset` deltas, allocation sizes,
+   masks); registers keep `List Val`; memory encodes/decodes through
+   `mirliteB.encodeV`/`decodeV`; `Memcpy` is a raw byte copy (provenance
+   travels). Checked on FOUR machines: every `expectDiff` compiler test
+   (114) now requires cell source, cell target, byte source and byte
+   target to reach the expected verdict; the harness's `--bytes` compares
+   byte source with cell source AND byte target with byte source —
+   133/133 on the corpus. Because the compiler still emits cell units,
+   the store-width question (probe bucket 2) does not arise yet: it
+   arrives with real widths (stage 5), when the compiler itself must emit
+   byte offsets from `BLayout`. Original plan text: Same memory; `Load`/`Store` carry a
    scalar type; the store's SB width comes from the TYPE, not from the
    number of values (probe bucket 2: `writeThroughPtr` used
    `vals.length`); `Borrow`/`Die` lengths and offsets in bytes; the 19

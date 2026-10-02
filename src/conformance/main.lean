@@ -17,8 +17,9 @@ Usage:
   golden-check / curation aid).
 - --unit: run the obseq3 unit tests first.
 - --bytes: differential mode — additionally run each loaded program under
-  mirlite on byte-addressed memory and require the same verdict
-  (statement-level) as the cell semantics.
+  mirlite on byte-addressed memory (same verdict, statement-level, as the
+  cell semantics), and its compiled form on OSEA-IR on bytes (same
+  verdict as the byte source).
 - --osea: differential mode — additionally compile each loaded program to
   OSEA-IR-v3 and require the same verdict as mirlite (mismatch = failure;
   compiler-unsupported constructs are reported as skipped).
