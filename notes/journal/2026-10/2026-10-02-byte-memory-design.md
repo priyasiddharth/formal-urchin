@@ -526,3 +526,25 @@ deref chain}; rvalues {constInit, uninit, copy from a chain, ref of a
 chain/field}. Not yet: nested projections (reassociation) and derefs of
 non-chain places (flatten); move, casts, ptrOffset, binOp, alloc, slices;
 dealloc, assignIf, protectors; the program theorem.
+
+### Move, one-leaf rvalues, register reads, arithmetic (same day)
+
+- `move.lean`: `move_pkg_core` on the anchor contract; the three SB
+  events (Mut retag, read via the fresh tag, die) transport one by one
+  under the grown renaming — no cancellation needed, the source does the
+  same three. `BorrowAnchorShape` now pins the borrow's cleanup too.
+- `leafops.lean`: `leaf_pkg_core` + per-op `LeafOpB` for ptrCast,
+  exposeAddr, fromExposed, ptrOffset (`readCell_inv`,
+  `readCellThrough_sim`).
+- `readreg.lean`: `readToReg_simB` with `InvAtB` at both ends, so reads
+  chain. Needed `UnboundLocalsUnmappedB` in `ValuePkgB`'s hypotheses
+  (mechanical, all packages/leaves updated).
+- `binop.lean`: `binOp_pkg`.
+238 byteproof declarations, axioms unchanged.
+
+Remaining: sliceLen/subSlice (readToReg + register op — same pattern as
+binOp), alloc (const/dyn: `sb_own` like the fresh root), refSlice (Load +
+`Borrow … none`, the post-mint); statements dealloc, assignIf (SkipIf +
+reserved label), push/pop protectors, halt; nested projections and
+non-chain derefs (reassociation / flatten equations); then the program
+theorem (prefix compile states, `StmtFrame`, the run induction).

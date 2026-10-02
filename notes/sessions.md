@@ -5050,3 +5050,8 @@ byteproof place lowering (`places.lean`), pointer-chain destinations
 (`derefdst.lean`), copy from any chain (`copy_chain.lean`); 158 byteproof
 declarations, axioms unchanged. Next: fresh-root and projected destinations,
 then the remaining rvalue packages (ref first).
+Later: first-assignment, field and pointer destinations; packages for
+ref, move, the one-leaf rvalues and binOp; `readToReg_simB`. 238
+byteproof declarations, axioms unchanged (last commit cbf17e4). Next:
+sliceLen/subSlice/alloc/refSlice, then the non-assign statements, then the
+program theorem.
