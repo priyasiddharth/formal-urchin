@@ -2,6 +2,8 @@ import obseq3.byteproof.memsim
 import obseq3.byteproof.const_write
 import obseq3.byteproof.copy
 import obseq3.byteproof.places
+import obseq3.byteproof.derefdst
+import obseq3.byteproof.copy_chain
 open Lean Elab Command
 
 -- The byte-level proof (obseq3.byteproof, branch `byteaddress`) may rest

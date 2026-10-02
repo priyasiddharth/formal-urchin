@@ -5045,3 +5045,8 @@ Same session, later: A step 2's first leaf — `src/obseq3/byteproof/const_write
 (`InvAtB`, `compileStmt_constInit_local`, `constWrite_local_sim`), sorry-free,
 byteproof axioms unchanged (86 declarations). Next: port `ValuePkg` (one leaf
 per destination shape), then fresh-root / projection / deref regimes.
+Later still: witness local/deref_straddles_end (corpus 147/26/173, reasons 82 + 3);
+byteproof place lowering (`places.lean`), pointer-chain destinations
+(`derefdst.lean`), copy from any chain (`copy_chain.lean`); 158 byteproof
+declarations, axioms unchanged. Next: fresh-root and projected destinations,
+then the remaining rvalue packages (ref first).

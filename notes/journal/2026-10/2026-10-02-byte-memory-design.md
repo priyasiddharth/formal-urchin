@@ -474,3 +474,29 @@ that only appears as `s.pc` in a hypothesis must be given explicitly
 
 Next: use `LoweredB` for deref destinations (the cell `storereg_chaindst_simulation`)
 and deref/projected sources (copy package beyond locals).
+
+### Pointer destinations and chain sources (same day)
+
+- `byteproof/derefdst.lean`: `storereg_chaindst_simB` — `*P := rhs` for any
+  `PtrChain (.deref P)` destination and any rvalue with a package. Shape
+  lemmas `ensurePlaceRoot_noop` (from the source's pure `resolvePlace?`,
+  which `preparePlaceAssign` already established — the post-rvalue
+  resolution can't be used, its env equality only arrives with the
+  package's second half), `assign_dst_incr`, `compileStmt_storereg_dst`.
+- `byteproof/copy_chain.lean`: `ptrChain_compiles` (compile-only: a chain
+  with a bound root lowers with no cleanup and an unchanged place map —
+  needed BEFORE code inclusion, for the package's ungated half),
+  `readRhsPre_shape`, `copy_chain_pkg` (any chain source), and the leaves
+  `copy_chain_local_sim`, `copy_chain_chaindst_sim`.
+158 byteproof declarations, axioms unchanged.
+
+Witness `local/deref_straddles_end` (commit 26a0956): Miri's partial-OOB
+wording ("only N bytes from the end of the allocation") now classifies as
+out-of-bounds; against the old deref check the verdict matched but the
+reason check failed the suite.
+
+Coverage now: destinations {bound local, pointer chain}; rvalues
+{constInit, uninit, copy from any chain}. Remaining, in the cell proof's
+order: fresh-root and projected destinations; the ref/move/cast/ptrarith/
+binop/alloc/slice packages; dealloc, assignIf, protectors; the program
+theorem (prefix states, frames).
