@@ -4,6 +4,24 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-02 (morning after) — Real Widths
+
+The byte machine now knows how big things are. A byte is one byte, a
+32-bit number four, a pointer eight, and a structure's fields sit at the
+positions Rust's C layout gives them, with padding between. Two new test
+programs show what that buys. In the first, a reference to a one-byte field
+is used through a two-byte pointer, which writes into the neighbouring
+field without permission: Miri reports undefined behaviour, the cell
+machine (where every number is one cell) misses it, and the byte machine
+reports it at the same line as Miri. In the second, a single byte is
+written into a four-byte number and the result is checked against the
+values Miri computed: the cell machine gets them wrong, the byte machine
+gets them right. On every other conformance program the byte machine
+agrees with the cell machine. The correctness proof is unchanged; it still
+concerns the cell machines, and moving it is the remaining step.
+
+---
+
 ## 2026-10-02 (overnight) — Both Machines on Bytes
 
 The compiled programs now also run on bytes: a second version of the

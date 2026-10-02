@@ -194,3 +194,48 @@ Miri, 11 at runtime.
 
 Open: `Cmp` and `Offset` are still unsupported; a 128-bit value does not fit a
 byte-model leaf (8 bytes) until leaves get widths (stage 5).
+
+## Stage 5, byte machines first (2026-10-02, later)
+
+Decision (user): widths go into the BYTE machines first; the typed syntax,
+compiler, cell machines and proof stay on cell layouts, so the audit stays
+green. The core-syntax switch is a separate later step.
+
+Done:
+- Loader: `UTy.int (t : UIntTy)` for Rust integers, `bool` (8 bits) and
+  `char` (32); `.nat` stays the model word. `conformance.toBLayout`: each
+  type's byte layout — integers at their width, 8-byte pointers (pointee
+  kept), structs/tuples in C layout (DEVIATION: rustc may reorder
+  `repr(Rust)`; Charon's `field_offsets` not read yet), enums as the
+  model's own 8-byte discriminant + longest variant (cell shape, so leaves
+  line up with values). `Loaded.blay`: one per local.
+- Opaque std cells: `UnsafeCell<T>`/`Cell`/`RefCell`/`Atomic*` with no
+  constructor call take `T` from the declaration's `Instantiated` type
+  arguments (`DeclInfo.tyArgs`) — the old one-word fallback was harmless
+  with cells but made `&UnsafeCell<i32>` an 8-byte (out-of-bounds) retag.
+- `size_of`/`Layout::new`/`Layout::for_value` return BYTES; the cell
+  machine allocates one cell per byte from them (more than it needs).
+- `mirlite_bytes.lean` rewritten over a layout environment (`LayEnv`):
+  a place's layout is static (local, field path, pointee); sizes, field
+  offsets, strides, SB ranges and leaf widths come from it; writes encode
+  each leaf at its width and make padding uninit; freeze masks per byte
+  (padding takes the preceding leaf's bit). `uniformEnv` is stage 2's.
+- The lowering's constant tracker no longer follows a pointer through a
+  type-punning cast (`punsPointee`): a `u8` write through a cast `u32`
+  pointer is not a write of the whole `u32`.
+- Harness `--bytes`: the byte source on the REAL layouts vs the cell
+  source; the byte target (still cell immediates) vs the byte source on
+  the UNIFORM layout; for an `xfail-model` entry the byte source must match
+  MIRI's verdict instead. live.py checks `xfail-model` entries against
+  Miri like supported ones.
+- Witnesses (`xfail-model` for cells, matched for bytes):
+  local/narrow_ref_wide_write (`&mut s.a` as `*mut u16`: UB at line 21 —
+  cells miss it) and local/narrow_fields_ok (repr(C) {u8,u32,u16}:
+  `size_of` 12, a byte written into and read out of a u32, 6 checks
+  certified, 5 at runtime — cells reject the certificate).
+
+Result: corpus 133 pass + 2 xfail, osea 135, bytes 135, live 135/135.
+
+Open: Charon `field_offsets` for repr(Rust) types; rustc's tuple
+reordering; enum layouts (niches, tag width); the compiler emitting byte
+offsets (core syntax switch) — then the byte target runs real layouts too.

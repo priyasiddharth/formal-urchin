@@ -88,7 +88,10 @@ def run_entry(e, env):
 
 def run_entry_(e, env):
     src = source_of(e)
-    res = {"id": e["id"], "supported": e["status"] == "supported", "problems": [],
+    # an xfail-model entry is checked against Miri like a supported one;
+    # only the MODEL's verdict is the documented divergence
+    res = {"id": e["id"], "supported": e["status"] in ("supported", "xfail-model"),
+           "problems": [],
            "notes": []}
     if not src or not os.path.exists(os.path.join(HERE, src)):
         res["notes"].append(f"no source ({src})")

@@ -4826,3 +4826,21 @@ validated, stage 4 is the proof on bytes — or, first, stage 5 (real
 widths: `BLayout` in the syntax and the compiler emitting byte offsets),
 which is what stops the ×8 scaling and makes the byte model do work the
 cell model cannot (u8/u32 fields, padding, partial reads).
+
+## 2026-10-02 (byte-addressed memory, stage 5: widths in the byte machines)
+
+**Session:** `formal-urchin` (continued), branch `byteaddress`.
+
+**Key outputs:** `UTy.int`; `toBLayout` + `Loaded.blay`; cell inner types
+from declaration instantiations; byte-sized size shims; `mirlite_bytes`
+over a per-local layout environment (widths, padding, offsets, strides);
+`punsPointee` in the constant tracker; `--bytes` judges `xfail-model`
+entries against Miri; two witnesses where bytes match Miri and cells do
+not.
+
+**Status:** corpus 133 + 2 xfail, osea 135, bytes 135, live 135/135;
+units 30/30 + 131/131; audit unchanged (0 sorries).
+
+**Next-session pickup candidates:** Charon `field_offsets` for
+`repr(Rust)` structs; the core-syntax switch (compiler emits byte
+offsets; proof repair) when the user decides to.

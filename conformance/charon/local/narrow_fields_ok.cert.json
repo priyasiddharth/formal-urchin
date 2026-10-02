@@ -1,0 +1,125 @@
+{
+ "version": 1,
+ "source": "local/narrow_fields_ok.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "check",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_12.1: bool)",
+     "success": 3,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_12.1: bool), \"attempt to compute `{} + {}`, which would overflow\", const 16909056_u32, move _11) -> [success: bb3, unwind continue]",
+     "next": 3,
+     "outcome": "success"
+    },
+    {
+     "k": "switch",
+     "discr": "move _33",
+     "cases": [
+      [
+       0,
+       10
+      ]
+     ],
+     "otherwise": 9,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _33) -> [0: bb10, otherwise: bb9]",
+     "next": 9,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "check",
+   "miri_path": "check",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _2",
+     "cases": [
+      [
+       0,
+       1
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "check",
+   "miri_path": "check",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _2",
+     "cases": [
+      [
+       0,
+       1
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "check",
+   "miri_path": "check",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _2",
+     "cases": [
+      [
+       0,
+       1
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "check",
+   "miri_path": "check",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _2",
+     "cases": [
+      [
+       0,
+       1
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    }
+   ]
+  }
+ ]
+}

@@ -24,7 +24,7 @@ def mergeVariantLayouts (variants : List (List LayoutTy)) :
     []
 
 partial def toLayout : UTy → Except String LayoutTy
-  | .nat => .ok .NatL
+  | .nat | .int _ => .ok .NatL
   | .ref _ inner => do return .PtrL (← toLayout inner)
   | .raw _ inner => do return .PtrL (← toLayout inner)
   | .tup tys => do return .TupL (← tys.mapM toLayout)
@@ -219,6 +219,9 @@ structure Loaded where
   prog : Prog Γ
   lines : List Nat
   stats : CertStats := {}
+  /-- Each local's BYTE layout (widths, offsets, padding), for the byte
+      machines; the typed program itself is on cell layouts. -/
+  blay : List obseq3.bytes.BLayout := []
 
 /-- The places a lowered statement mentions (for the opaque-local check). -/
 def operandPlaces : UOperand → List UPlace
@@ -260,7 +263,8 @@ def elabProg (lp : LProg) : Except String Loaded := do
           | _ => pure ()
       | .global _ => pure ()
   let stmts ← lp.stmts.mapM (elabStmt Γ)
-  return { Γ, prog := stmts ++ [.halt], lines := lp.stmts.map (·.line) ++ [0], stats := lp.stats }
+  return { Γ, prog := stmts ++ [.halt], lines := lp.stmts.map (·.line) ++ [0], stats := lp.stats,
+           blay := lp.locals.map toBLayout }
 
 /-- Full pipeline: ULLBC JSON → parsed crate → lowered (along the
     certificate, if any) → elaborated. -/

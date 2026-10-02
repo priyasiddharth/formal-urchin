@@ -277,7 +277,7 @@ where
         | none => .ok
         | some .halt => .ok
         | some stmt =>
-            match mirliteB.stepStmt M st stmt with
+            match mirliteB.stepStmt M (mirliteB.uniformEnv Γ) st stmt with
             | .ok st' => go n st'
             | .err _ => .ub st.pc
 

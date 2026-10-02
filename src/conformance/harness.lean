@@ -75,7 +75,12 @@ at the same source statement (the message may differ). The byte semantics
 is meant to agree with the cell one on everything the cell one supports;
 a mismatch is a hard failure of the suite. -/
 
-def runLoadedBytes (l : Loaded) : Verdict :=
+/-- The loader's byte layouts as an environment (a local without one — none
+    should be missing — falls back to the uniform layout). -/
+def Loaded.layEnv (l : Loaded) : mirliteB.LayEnv l.Γ :=
+  fun i => l.blay.getD i.val (bytes.ofLayoutTy (l.Γ.get i))
+
+def runLoadedBytes (l : Loaded) (L : mirliteB.LayEnv l.Γ) : Verdict :=
   go (l.prog.length + 2) (mirliteB.State.initial M l.Γ)
 where
   go : Nat → mirliteB.State M l.Γ → Verdict
@@ -85,7 +90,7 @@ where
         | none => .ok
         | some .halt => .ok
         | some stmt =>
-            match mirliteB.stepStmt M st stmt with
+            match mirliteB.stepStmt M L st stmt with
             | .ok st' => go fuel st'
             | .err msg =>
                 let line := l.lines[st.pc]?.getD 0
@@ -118,9 +123,17 @@ def Verdict.stmt? : Verdict → Option Nat
   | .ub i _ _ | .certRejected i _ | .certExhausted i _ => some i
   | _ => none
 
-def bytesStatus (l : Loaded) (cell : Verdict) : BytesStatus :=
-  let b := runLoadedBytes l
-  let srcCheck : BytesStatus := match cell, b with
+def bytesStatus (l : Loaded) (cell : Verdict) (fixes? : Option (Verdict → Bool) := none) :
+    BytesStatus :=
+  -- the byte SOURCE on the program's real layouts (widths, padding)
+  let b := runLoadedBytes l l.layEnv
+  let srcCheck : BytesStatus :=
+    -- an entry the CELL model is known to get wrong (`xfail-model`) is
+    -- judged against Miri's expected verdict instead of the cells
+    match fixes? with
+    | some ok => if ok b then .matched else .mismatch s!"byte model {b.render}, Miri's verdict differs"
+    | none =>
+    match cell, b with
     | .ok, .ok => .matched
     | .fuelExhausted, .fuelExhausted => .matched
     | c, b =>
@@ -133,7 +146,11 @@ def bytesStatus (l : Loaded) (cell : Verdict) : BytesStatus :=
   | .mismatch w => .mismatch w
   | .matched =>
   -- the byte TARGET against the byte source, as `--osea` does for cells;
-  -- a program the compiler does not cover is checked on the source only
+  -- a program the compiler does not cover is checked on the source only.
+  -- The compiler still emits cell units, so the target runs on the
+  -- UNIFORM layout (8 bytes per cell) and is compared with the byte
+  -- source on that same layout
+  let b := runLoadedBytes l (mirliteB.uniformEnv l.Γ)
   match compile.compileProg l.prog with
   | .error _ => .matched
   | .ok tprog =>
@@ -333,8 +350,11 @@ def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) (bytes : Bool :=
             | .error err => pure (Verdict.loadError err, none, none, {})
             | .ok loaded =>
                 let v := runLoaded loaded
+                let fixes? : Option (Verdict → Bool) := match e.status with
+                  | .xfailModel _ => some (verdictMatches e)
+                  | _ => none
                 pure (v, if osea then some (oseaStatus loaded v) else none,
-                  if bytes then some (bytesStatus loaded v) else none, loaded.stats)
+                  if bytes then some (bytesStatus loaded v fixes?) else none, loaded.stats)
     catch ex =>
       pure (Verdict.loadError s!"io: {ex}", none, none, {})
   return { entry := e, verdict, outcome := judge e verdict, osea := oseaSt, bytes := bytesSt,

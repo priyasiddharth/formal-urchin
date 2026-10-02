@@ -27,12 +27,20 @@ namespace conformance
 
 open Lean (Json)
 
+/-- An integer operation's type: width in bits and signedness, from the
+    operand's Charon type (pointers and anything non-integer: `u64`). -/
+structure UIntTy where
+  bits : Nat := 64
+  signed : Bool := false
+deriving Repr, BEq, Inhabited
+
 /-- Untyped types. `ref`/`raw` both erase to a pointer layout, but the
     distinction drives inline-seam retag synthesis (refs are retagged at
     function boundaries, raws are not). `enum` lowers to a discriminant
     word followed by payload cells. -/
 inductive UTy
-| nat
+| nat                  -- a model word (`usize`-wide): sizes, fn placeholders, …
+| int (t : UIntTy)     -- a Rust integer, `bool` or `char`, at its width (2026-10-02)
 | ref (mutbl : Bool) (inner : UTy)
 | raw (mutbl : Bool) (inner : UTy)
 | tup (tys : List UTy)
@@ -57,7 +65,7 @@ partial def containsRefTy : UTy → Bool
 
 /-- Cell count of a type (mirrors `blockSize ∘ toLayout`). -/
 partial def uSize : UTy → Nat
-  | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => 1
+  | .nat | .int _ | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => 1
   | .sliceData _ => 0
   | .cell inner => uSize inner
   | .tup tys | .structT tys => (tys.map uSize).foldl (· + ·) 0
@@ -76,7 +84,7 @@ partial def containsCell : UTy → Bool
 /-- UnsafeCell freeze mask: true for cells inside an interior-mutable
     region. Shared/raw-const retags give masked cells SharedReadWrite. -/
 partial def freezeMask : UTy → List Bool
-  | .nat | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => [false]
+  | .nat | .int _ | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => [false]
   | .sliceData _ => []
   | .cell inner => List.replicate (uSize inner) true
   | .tup tys | .structT tys => tys.flatMap freezeMask
@@ -140,13 +148,6 @@ inductive URefKind
 | rawMut
 | rawConst
 | boxMut   -- a Box's retag: `mut` per cell, WEAK protector when protected
-deriving Repr, BEq, Inhabited
-
-/-- An integer operation's type: width in bits and signedness, from the
-    operand's Charon type (pointers and anything non-integer: `u64`). -/
-structure UIntTy where
-  bits : Nat := 64
-  signed : Bool := false
 deriving Repr, BEq, Inhabited
 
 /-- `ref`'s `prot` marks a protected (inline-seam) retag; the parser
@@ -284,6 +285,10 @@ deriving Inhabited
 structure DeclInfo where
   path : List String
   kind : DeclKind
+  -- the monomorphised instantiation (`Instantiated` in the item name):
+  -- `UnsafeCell<i32>`'s `[i32]`, for opaque std types whose inner type no
+  -- constructor call reveals
+  tyArgs : List Json := []
 deriving Inhabited
 
 structure ParseCtx where
@@ -407,6 +412,12 @@ def parseDecls (j : Json) : List (Nat × DeclInfo) :=
       (asArr declsJ).filterMap fun td => do
         let did ← getK td "def_id" >>= asNat
         let path := itemName td
+        let tyArgs :=
+          (((getK td "item_meta" >>= (getK · "name")).map asArr).getD []).foldl
+            (fun acc e =>
+              match getK e "Instantiated" >>= (getK · "skip_binder") >>= (getK · "types") with
+              | some ts => acc ++ asArr ts
+              | none => acc) []
         let kind :=
           match getK td "kind" >>= sumKey with
           | some ("Struct", fieldsJ) =>
@@ -415,7 +426,7 @@ def parseDecls (j : Json) : List (Nat × DeclInfo) :=
               DeclKind.enum ((asArr variantsJ).map fun v =>
                 ((getK v "fields").map asArr).getD [] |>.filterMap (getK · "ty"))
           | _ => DeclKind.opaque
-        pure (did, { path, kind })
+        pure (did, { path, kind, tyArgs })
 
 /-- The type Json of an operand (place ty or const ty). -/
 def operandTyJson (op : Json) : Option Json :=
@@ -699,11 +710,11 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
   match sumKey j with
   | some ("Literal", lit) =>
       match sumKey lit with
-      | some ("Int", _) | some ("UInt", _) => .nat
-      | some ("Bool", _) | some ("Char", _) => .nat
+      | some ("Float", _) => .unsupported s!"literal type {lit.compress}"
       | _ =>
-          if lit == Json.str "Bool" || lit == Json.str "Char" then .nat
-          else .unsupported s!"literal type {lit.compress}"
+          match intTyOfLiteral lit with
+          | some t => .int t
+          | none => .unsupported s!"literal type {lit.compress}"
   | some ("Ref", args) =>
       match asArr args with
       | [_region, inner, mutbl] =>
@@ -756,9 +767,11 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                   else if last == "UnsafeCell" || last == "Cell" || last == "RefCell" then
                     -- RefCell is flag-elided: modeled as its value region
                     -- (the borrow-flag discipline is orthogonal to SB)
-                    match ctx.cellPointee.lookup did with
-                    | some inner => .cell (parseTy ctx (fuel - 1) inner)
-                    | none => .cell .nat  -- fallback: one interior-mutable word
+                    match ctx.cellPointee.lookup did, info.tyArgs with
+                    | some inner, _ => .cell (parseTy ctx (fuel - 1) inner)
+                    -- no constructor call reveals it: the instantiation does
+                    | none, [inner] => .cell (parseTy ctx (fuel - 1) inner)
+                    | none, _ => .cell .nat  -- fallback: one interior-mutable word
                   else if info.path == ["core", "cell", "Ref"] ||
                           info.path == ["core", "cell", "RefMut"] then
                     -- RefCell guards: a raw-layout pointer to the value region
@@ -769,7 +782,10 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     | some inner => .raw mutbl (parseTy ctx (fuel - 1) inner)
                     | none => .raw mutbl .nat
                   else if last.startsWith "Atomic" then
-                    .cell .nat  -- Atomic* = UnsafeCell around one word
+                    -- Atomic* = UnsafeCell around its integer
+                    match info.tyArgs with
+                    | [inner] => .cell (parseTy ctx (fuel - 1) inner)
+                    | _ => .cell .nat
                   else
                     match info.kind with
                     | .struct fields => .structT (fields.map (parseTy ctx (fuel - 1)))

@@ -2175,6 +2175,30 @@
       "notes": "negative constants (two's complement at their width), Neg, Not (bool: one bit), sign/zero extension and truncation casts, a checked add, a signed compare — each value certified against the arm Miri took."
     },
     {
+      "id": "local/narrow_ref_wide_write",
+      "artifact": "local/narrow_ref_wide_write.ullbc.json",
+      "status": "xfail-model",
+      "reason": "cell model: one cell per scalar, so a narrow reference used through a wider pointer, or a byte written into a wider integer, is not represented; the byte model (--bytes) matches Miri",
+      "expected": {
+        "verdict": "ub",
+        "line": 21
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-02 via scripts/live.py",
+      "notes": "&mut s.a (u8) written through *mut u16: b's byte is not covered by the tag."
+    },
+    {
+      "id": "local/narrow_fields_ok",
+      "artifact": "local/narrow_fields_ok.ullbc.json",
+      "status": "xfail-model",
+      "reason": "cell model: one cell per scalar, so a narrow reference used through a wider pointer, or a byte written into a wider integer, is not represented; the byte model (--bytes) matches Miri",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/narrow_fields_ok.cert.json",
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-02 via scripts/live.py",
+      "notes": "repr(C) {u8, u32, u16}: size_of 12; a byte write into a u32 and a byte read out of it, certified against Miri."
+    },
+    {
       "id": "fail/function_calls/arg_inplace_observe_after",
       "source": "corpus/tests/fail/function_calls/arg_inplace_observe_after.rs",
       "prep": "prep/arg_inplace_observe_after.rs",

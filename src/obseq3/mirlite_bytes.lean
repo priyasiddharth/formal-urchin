@@ -2,36 +2,37 @@ import obseq3.mirlite_semantics
 import obseq3.bytelayout
 
 /-!
-# mirlite on byte-addressed memory — stage 2
+# mirlite on byte-addressed memory — stages 2 and 5
 
 The same language, permission model and evaluation order as
 `mirlite_semantics.lean`, with the memory replaced by `bytes.Mem`
 (MiniRust-style abstract bytes, provenance on every pointer byte). It runs
 ALONGSIDE the cell semantics: the compiler-correctness proof is still
-about the cell semantics, and the conformance harness's `--bytes` mode
-runs both on every program and requires the same verdict. When oseair and
-the proof have moved too (stages 3–4), this file replaces the cell one.
+about the cell semantics; the conformance harness's `--bytes` mode runs
+both and requires the same verdict.
 
-Values are still `List MemValue` (one per cell of the layout), so the
-evaluation code is the cell code with memory access swapped; what changes:
+Values are still `List MemValue`, one per LEAF (scalar or pointer) of the
+value's layout. Every size, offset and range comes from a per-local BYTE
+LAYOUT (`LayEnv`, stage 5, 2026-10-02): integers at their width, 8-byte
+pointers, aggregates with padding. The loader supplies the real layouts
+(`conformance.toBLayout`); `uniformEnv` is the stage-2 layout (every cell
+an 8-byte leaf), which the compiled-code target (`oseair_bytes.lean`)
+still uses. A place's layout is computed statically: a local's from the
+environment, a field's by its index path, a deref's from the pointer's
+pointee.
 
-- a cell of layout `τ` is an 8-byte LEAF of `bytes.ofLayoutTy τ` (a word
-  is a `usize`; `ofLayoutTy_leaves_length`: one leaf per cell), so every
-  address, offset, size and permission range is in BYTES (`B * cells`);
-- a write ENCODES each value (a word little-endian without provenance, a
-  pointer with its provenance on all 8 bytes, `undef` as uninit bytes);
-- a read DECODES each leaf at the leaf's scalar type: an integer leaf
-  strips provenance (reading a pointer's bytes as a word yields its
-  address — the cell model handed back the pointer itself), a pointer
-  leaf keeps provenance only if all its bytes agree, and any uninit byte
-  makes the leaf `undef`;
+- a WRITE encodes each value at its leaf's width (a word little-endian
+  without provenance — it must fit; a pointer with its provenance on all
+  its bytes; `undef` as uninit bytes) and makes the PADDING uninit, as a
+  typed copy does in MiniRust;
+- a READ decodes each leaf at its scalar type: an integer leaf strips
+  provenance, a pointer leaf keeps it only if all its bytes agree, and any
+  uninit byte makes the leaf `undef`;
 - a pointer value's fields (`base`, `offset`, `extent`, `size`) are in
   bytes; its `extent` travels in the stored provenance until fat pointers
   are two words (see `bytes.Prov.extent`);
 - a pointer without provenance (decoded from integer bytes) becomes a
-  degenerate pointer over a zero-sized allocation at its address: any
-  non-zero-sized access through it is out of bounds, as in Miri;
-- words must fit in 64 bits (a larger one is an error at the store).
+  degenerate pointer over a zero-sized allocation at its address.
 -/
 
 namespace obseq3.mirliteB
@@ -101,6 +102,71 @@ def writeVals (m : bytes.Mem) (addr : Nat) (vs : List MemValue) :
 /-- A per-cell UnsafeCell mask, per byte. -/
 def expandMask (mask : List Bool) : List Bool := mask.flatMap fun b => List.replicate B b
 
+abbrev LayEnv (Γ : Ctx) := Fin Γ.length → BLayout
+
+/-- Stage 2's layout: every cell an 8-byte leaf. -/
+def uniformEnv (Γ : Ctx) : LayEnv Γ := fun i => ofLayoutTy (Γ.get i)
+
+/-- The layout reached by a path of field indices. -/
+def fieldLayout : BLayout → List Nat → BLayout
+  | b, [] => b
+  | .tup fs _ _ _, i :: is => fieldLayout (fs.getD i default) is
+  | b, _ :: _ => b
+
+/-- The byte offset of a path of field indices. -/
+def fieldOffset : BLayout → List Nat → Nat
+  | _, [] => 0
+  | .tup fs os _ _, i :: is => os.getD i 0 + fieldOffset (fs.getD i default) is
+  | _, _ :: _ => 0
+
+/-- A place's layout, statically: a local's from the environment, a
+    field's by its path, a deref's from the pointer's pointee. -/
+def placeLayout (L : LayEnv Γ) {τ : LayoutTy} : Place Γ τ → BLayout
+  | .local loc => L loc.idx
+  | .proj base path => fieldLayout (placeLayout L base) path.indices
+  | .deref p =>
+      match placeLayout L p with
+      | .ptr q => q
+      | _ => ofLayoutTy τ
+
+/-- The scalar a one-leaf layout holds (a pointer's own leaf, a word's). -/
+def leafKind (l : BLayout) : Scalar := ((l.leaves.head?).map (·.2)).getD (.int B)
+
+/-- A value's bytes at a scalar of `k.size` bytes. -/
+def encodeAt (k : Scalar) : MemValue → Except String (List AbstractByte)
+  | .undef => .ok (List.replicate k.size .uninit)
+  | .word w =>
+      if w < 256 ^ k.size then .ok (encodeInt k.size w)
+      else .error s!"value {w} does not fit in {k.size} bytes"
+  | .ptrVal b o e s t =>
+      if b + o < 256 ^ ptrSize then
+        .ok ((encodePtr ⟨b + o, some { base := b, size := s, tag := t, extent := e }⟩).take k.size)
+      else .error "address does not fit in 64 bits"
+
+/-- Read every leaf of layout `lay` at `addr`. -/
+def readL (m : bytes.Mem) (addr : Nat) (lay : BLayout) : List MemValue :=
+  lay.leaves.map fun (o, k) => decodeV k (m.read (addr + o) k.size)
+
+/-- Write `vals` to the leaves of `lay` at `addr`: the padding becomes
+    uninit. -/
+def writeL (m : bytes.Mem) (addr : Nat) (lay : BLayout) (vals : List MemValue) :
+    Except String bytes.Mem := do
+  if vals.length != lay.leaves.length then
+    throw s!"layout mismatch: {vals.length} values for {lay.leaves.length} leaves"
+  let buf ← (lay.leaves.zip vals).foldlM (init := List.replicate lay.size AbstractByte.uninit)
+    fun buf ((o, k), v) => do
+      let bs ← encodeAt k v
+      pure (buf.take o ++ bs ++ buf.drop (o + bs.length))
+  pure (m.write addr buf)
+
+/-- A per-leaf UnsafeCell mask, per byte (a padding byte takes the mask of
+    the leaf before it). -/
+def maskBytes (lay : BLayout) (mask : List Bool) : List Bool :=
+  (List.range lay.size).map fun i =>
+    match (lay.leaves.zipIdx.filter fun ((o, _), _) => o ≤ i).getLast? with
+    | some (_, j) => mask.getD j false
+    | none => false
+
 structure State (M : PermissionModel) (Γ : Ctx) where
   pc : Nat
   env : Env Γ
@@ -114,26 +180,29 @@ inductive Result (M : PermissionModel) (Γ : Ctx) where
   | ok (state : State M Γ)
   | err (msg : String)
 
-structure EvalOutput (M : PermissionModel) (Γ : Ctx) (τ : LayoutTy) where
-  values     : List MemValue
-  values_len : values.length = blockSize τ
-  state      : State M Γ
+structure EvalOutput (M : PermissionModel) (Γ : Ctx) where
+  values : List MemValue
+  state  : State M Γ
 
-inductive EvalResult (M : PermissionModel) (Γ : Ctx) (τ : LayoutTy) where
-  | ok (output : EvalOutput M Γ τ)
+inductive EvalResult (M : PermissionModel) (Γ : Ctx) where
+  | ok (output : EvalOutput M Γ)
   | err (msg : String)
 
-def resolvePlace? (state : State M Γ) : Place Γ τ → Option PlaceRes
+section
+variable (M : PermissionModel) (L : LayEnv Γ)
+
+def resolvePlace? (state : State M Γ) {τ : LayoutTy} : Place Γ τ → Option PlaceRes
   | .local loc =>
       match state.env.lookup loc with
       | some binding =>
           some { addr := binding.addr, tag := binding.tag,
-                 allocBase := binding.addr, allocSize := bsize τ }
+                 allocBase := binding.addr, allocSize := (L loc.idx).size }
       | none => none
   | .proj base path =>
       match resolvePlace? state base with
       | none => none
-      | some res => some { res with addr := res.addr + B * PathTo.offset path }
+      | some res =>
+          some { res with addr := res.addr + fieldOffset (placeLayout L base) path.indices }
   | .deref ptrPlace =>
       match resolvePlace? state ptrPlace with
       | none => none
@@ -143,27 +212,28 @@ def resolvePlace? (state : State M Γ) : Place Γ τ → Option PlaceRes
               some { addr := base + offset, tag := tag, allocBase := base, allocSize := size }
           | _ => none
 
-def resolvePlaceAcc (M : PermissionModel) (state : State M Γ) :
+def resolvePlaceAcc (state : State M Γ) {τ : LayoutTy} :
     Place Γ τ → Except String (PlaceRes × M.State)
   | .local loc =>
       match state.env.lookup loc with
       | some binding =>
           .ok ({ addr := binding.addr, tag := binding.tag,
-                 allocBase := binding.addr, allocSize := bsize τ }, state.perms)
+                 allocBase := binding.addr, allocSize := (L loc.idx).size }, state.perms)
       | none => .error "place root local not allocated"
   | .proj base path =>
-      match resolvePlaceAcc M state base with
+      match resolvePlaceAcc state base with
       | .error e => .error e
-      | .ok (res, perms') => .ok ({ res with addr := res.addr + B * PathTo.offset path }, perms')
+      | .ok (res, perms') =>
+          .ok ({ res with addr := res.addr + fieldOffset (placeLayout L base) path.indices }, perms')
   | .deref ptrPlace =>
-      match resolvePlaceAcc M state ptrPlace with
+      match resolvePlaceAcc state ptrPlace with
       | .error e => .error e
       | .ok (ptrRes, perms') =>
           if ptrRes.addr < ptrRes.allocBase ∨
              ptrRes.addr ≥ ptrRes.allocBase + ptrRes.allocSize then
             .error "deref of an out-of-bounds pointer"
           else
-          match M.read perms' ptrRes.addr B ptrRes.tag with
+          match M.read perms' ptrRes.addr ptrSize ptrRes.tag with
           | .error e => .error s!"read access failed: {e}"
           | .ok perms'' =>
               match readOne state.mem ptrRes.addr .ptr with
@@ -172,171 +242,174 @@ def resolvePlaceAcc (M : PermissionModel) (state : State M Γ) :
                          allocBase := base, allocSize := size }, perms'')
               | _ => .error "deref of a non-pointer value"
 
-def writeResolvedPlace (M : PermissionModel) (state : State M Γ) (dst : PlaceRes)
+def writeResolvedPlace (state : State M Γ) (dst : PlaceRes) (lay : BLayout)
     (values : List MemValue) : Result M Γ :=
-  if dst.addr + B * values.length > dst.allocBase + dst.allocSize then
+  if dst.addr + lay.size > dst.allocBase + dst.allocSize then
     .err "write out of bounds"
   else
-    match M.useMut state.perms dst.addr (B * values.length) dst.tag with
+    match M.useMut state.perms dst.addr lay.size dst.tag with
     | .ok perms' =>
-        match writeVals state.mem dst.addr values with
+        match writeL state.mem dst.addr lay values with
         | .ok mem' => .ok { state with perms := perms', mem := mem', pc := state.pc + 1 }
         | .error e => .err e
     | .error e => .err s!"write access failed: {e}"
 
-def allocateBase (M : PermissionModel) (state : State M Γ) (loc : Local Γ τ) : Result M Γ :=
-  let (addr, mem') := state.mem.allocate (bsize τ) B
-  match M.own state.perms addr (bsize τ) with
+def allocateBase (state : State M Γ) {τ : LayoutTy} (loc : Local Γ τ) : Result M Γ :=
+  let lay := L loc.idx
+  let (addr, mem') := state.mem.allocate lay.size (max 1 lay.align)
+  match M.own state.perms addr lay.size with
   | .error e => .err s!"allocation failed: {e}"
   | .ok (permsOwned, tag) =>
       let env' := state.env.set loc { addr := addr, tag := tag }
       .ok { state with env := env', mem := mem', perms := permsOwned }
 
-def allocateRoot (M : PermissionModel) (state : State M Γ) : Place Γ τ → Result M Γ
-  | .local loc => allocateBase M state loc
-  | .proj base _ => allocateRoot M state base
+def allocateRoot (state : State M Γ) {τ : LayoutTy} : Place Γ τ → Result M Γ
+  | .local loc => allocateBase M L state loc
+  | .proj base _ => allocateRoot state base
   | .deref _ => .err "destination pointer place not allocated or not a pointer"
 
-def preparePlaceAssign (M : PermissionModel) (state : State M Γ) (dst : Place Γ τ) :
-    Result M Γ :=
-  match resolvePlace? state dst with
+def preparePlaceAssign (state : State M Γ) {τ : LayoutTy} (dst : Place Γ τ) : Result M Γ :=
+  match resolvePlace? M L state dst with
   | some _ => .ok state
-  | none => allocateRoot M state dst
+  | none => allocateRoot M L state dst
 
-def ensureRoot (M : PermissionModel) (state : State M Γ) : Place Γ τ → Result M Γ
+def ensureRoot (state : State M Γ) {τ : LayoutTy} : Place Γ τ → Result M Γ
   | .local loc =>
       match state.env.lookup loc with
       | some _ => .ok state
-      | none => allocateBase M state loc
-  | .proj base _ => ensureRoot M state base
-  | .deref ptrPlace => ensureRoot M state ptrPlace
+      | none => allocateBase M L state loc
+  | .proj base _ => ensureRoot state base
+  | .deref ptrPlace => ensureRoot state ptrPlace
 
-def evalCopy (M : PermissionModel) (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) :
-    EvalResult M Γ τ :=
-  match resolvePlaceAcc M state src with
+def evalCopy (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) : EvalResult M Γ :=
+  let lay := placeLayout L src
+  match resolvePlaceAcc M L state src with
   | .error e => .err e
   | .ok (resolved, permsR) =>
-      if resolved.addr + bsize τ > resolved.allocBase + resolved.allocSize then
+      if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
         .err "copy of an out-of-bounds range"
       else
-      match M.read permsR resolved.addr (bsize τ) resolved.tag with
+      match M.read permsR resolved.addr lay.size resolved.tag with
       | .error e => .err s!"read access failed: {e}"
       | .ok perms' =>
-          let state' := { state with perms := perms' }
-          if (readAt state'.mem resolved.addr τ).any (fun v => v == .undef) then
-            .err "read of uninitialized memory"
-          else
-          .ok { values := readAt state'.mem resolved.addr τ
-                values_len := readAt_length _ _ _
-                state := state' }
+          let vals := readL state.mem resolved.addr lay
+          if vals.any (fun v => v == .undef) then .err "read of uninitialized memory"
+          else .ok { values := vals, state := { state with perms := perms' } }
 
-def evalAllocLen (M : PermissionModel) (state : State M Γ) :
-    AllocLen Γ → Except String (Nat × State M Γ)
+def evalAllocLen (state : State M Γ) : AllocLen Γ → Except String (Nat × State M Γ)
   | .const n => .ok (n, state)
   | .fromPlace p =>
-      match evalCopy M state p with
+      match evalCopy M L state p with
       | .err e => .error e
       | .ok out =>
           match out.values with
           | [.word n] => .ok (n, out.state)
           | _ => .error "allocation size is not a concrete word"
 
-/-- A one-cell read through a place, for the pointer/integer rvalues:
-    resolve for access, bounds, SB read, the leaf decoded at `k`. -/
-def readCell (M : PermissionModel) (state : State M Γ) (src : Place Γ τ) (k : Scalar)
-    (what : String) : Except String (MemValue × M.State) :=
-  match resolvePlaceAcc M state src with
+/-- One leaf read through a place, for the pointer/integer rvalues:
+    resolve for access, bounds, SB read, the leaf decoded at its kind. -/
+def readCell (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) (what : String) :
+    Except String (MemValue × M.State) :=
+  let k := leafKind (placeLayout L src)
+  match resolvePlaceAcc M L state src with
   | .error e => .error e
   | .ok (resolved, permsR) =>
-      if resolved.addr + B > resolved.allocBase + resolved.allocSize then
+      if resolved.addr + k.size > resolved.allocBase + resolved.allocSize then
         .error s!"{what} of an out-of-bounds place"
       else
-      match M.read permsR resolved.addr B resolved.tag with
+      match M.read permsR resolved.addr k.size resolved.tag with
       | .error e => .error s!"read access failed: {e}"
       | .ok perms' => .ok (readOne state.mem resolved.addr k, perms')
 
-def evalRExpr (M : PermissionModel) (state : State M Γ) {τ : LayoutTy} (expr : RExpr Γ τ) :
-    EvalResult M Γ τ :=
+/-- The pointee layout of a pointer place. -/
+def pointeeLayout {σ : LayoutTy} (p : Place Γ (obseq.LayoutTy.PtrL σ)) : BLayout :=
+  match placeLayout L p with
+  | .ptr q => q
+  | _ => ofLayoutTy σ
+
+/-- Evaluate an rvalue; `dstL` is the destination's layout (an `alloc`'s
+    pointee, an `uninit`'s leaves). -/
+def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExpr Γ τ) :
+    EvalResult M Γ :=
   match expr with
-  | .constInit value => .ok { values := [MemValue.word value], values_len := rfl, state := state }
-  | .copy src => evalCopy M state src
-  | .move (τ := τ) src =>
-      match resolvePlaceAcc M state src with
+  | .constInit value => .ok { values := [MemValue.word value], state := state }
+  | .copy src => evalCopy M L state src
+  | .move src =>
+      let lay := placeLayout L src
+      match resolvePlaceAcc M L state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
-          if resolved.addr + bsize τ > resolved.allocBase + resolved.allocSize then
+          if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
             .err "move of an out-of-bounds range"
           else
-          match M.ref permsR resolved.addr (bsize τ) resolved.tag .Mut false [] with
+          match M.ref permsR resolved.addr lay.size resolved.tag .Mut false [] with
           | .error e => .err s!"move retag failed: {e}"
           | .ok (permsM, tmpTag) =>
-          match M.read permsM resolved.addr (bsize τ) tmpTag with
+          match M.read permsM resolved.addr lay.size tmpTag with
           | .error e => .err s!"read access failed: {e}"
           | .ok permsRd =>
-          match M.die permsRd resolved.addr (bsize τ) tmpTag with
+          match M.die permsRd resolved.addr lay.size tmpTag with
           | .error e => .err s!"move retire failed: {e}"
           | .ok perms' =>
-              let state' := { state with perms := perms' }
-              if (readAt state'.mem resolved.addr τ).any (fun v => v == .undef) then
-                .err "read of uninitialized memory"
-              else
-              .ok { values := readAt state'.mem resolved.addr τ
-                    values_len := readAt_length _ _ _
-                    state := state' }
-  | .alloc (τ := τ) len =>
-      match evalAllocLen M state len with
+              let vals := readL state.mem resolved.addr lay
+              if vals.any (fun v => v == .undef) then .err "read of uninitialized memory"
+              else .ok { values := vals, state := { state with perms := perms' } }
+  | .alloc (τ := σ) len =>
+      let pointee := match dstL with
+        | .ptr q => q
+        | _ => ofLayoutTy σ
+      match evalAllocLen M L state len with
       | .error e => .err e
       | .ok (n, state) =>
-          let units := n * bsize τ
-          let (base, mem') := state.mem.allocate units B
+          let units := n * pointee.size
+          let (base, mem') := state.mem.allocate units (max 1 pointee.align)
           match M.own state.perms base units with
           | .error e => .err s!"heap allocation failed: {e}"
           | .ok (perms', tag) =>
-              .ok { values := [MemValue.ptrVal base 0 units units tag]
-                    values_len := rfl
+              .ok { values := [MemValue.ptrVal base 0 units units tag],
                     state := { state with mem := mem', perms := perms' } }
-  | .sliceLen (σ := σ) src =>
-      match evalCopy M state src with
+  | .sliceLen src =>
+      let elem := pointeeLayout L src
+      match evalCopy M L state src with
       | .err e => .err e
       | .ok out =>
           match out.values with
           | [.ptrVal _ _ extent _ _] =>
-              .ok { values := [MemValue.word (extent / bsize σ)], values_len := rfl,
-                    state := out.state }
+              .ok { values := [MemValue.word (extent / elem.size)], state := out.state }
           | _ => .err "slice length of a non-pointer value"
-  | .subSlice (σ := σ) src lo hi =>
-      match evalCopy M state src with
+  | .subSlice src lo hi =>
+      let esz := (pointeeLayout L src).size
+      match evalCopy M L state src with
       | .err e => .err e
       | .ok out1 =>
           match out1.values with
           | [.ptrVal base offset extent size tag] =>
-              match evalCopy M out1.state lo with
+              match evalCopy M L out1.state lo with
               | .err e => .err e
               | .ok out2 =>
                   match out2.values with
                   | [.word l] =>
-                      match evalCopy M out2.state hi with
+                      match evalCopy M L out2.state hi with
                       | .err e => .err e
                       | .ok out3 =>
                           match out3.values with
                           | [.word h] =>
-                              if h < l || h * bsize σ > extent then
+                              if h < l || h * esz > extent then
                                 .err "sub-slice range out of bounds"
                               else
-                                .ok { values := [MemValue.ptrVal base (offset + l * bsize σ)
-                                        ((h - l) * bsize σ) size tag]
-                                      values_len := rfl
+                                .ok { values := [MemValue.ptrVal base (offset + l * esz)
+                                        ((h - l) * esz) size tag],
                                       state := out3.state }
                           | _ => .err "sub-slice bound is not a concrete word"
                   | _ => .err "sub-slice bound is not a concrete word"
           | _ => .err "sub-slice of a non-pointer value"
   | .binOp op a b =>
-      match evalCopy M state a with
+      match evalCopy M L state a with
       | .err e => .err e
       | .ok out1 =>
           match out1.values with
           | [.word x] =>
-              match evalCopy M out1.state b with
+              match evalCopy M L out1.state b with
               | .err e => .err e
               | .ok out2 =>
                   match out2.values with
@@ -344,109 +417,104 @@ def evalRExpr (M : PermissionModel) (state : State M Γ) {τ : LayoutTy} (expr :
                       match binOpUB op x y with
                       | some e => .err e
                       | none =>
-                      .ok { values := [MemValue.word (evalBinOp op x y)], values_len := rfl,
-                            state := out2.state }
+                      .ok { values := [MemValue.word (evalBinOp op x y)], state := out2.state }
                   | _ => .err "binOp operand is not a concrete word"
           | _ => .err "binOp operand is not a concrete word"
-  | .uninit =>
-      .ok { values := List.replicate (blockSize τ) MemValue.undef
-            values_len := List.length_replicate
-            state := state }
+  | .uninit => .ok { values := List.replicate dstL.leaves.length MemValue.undef, state := state }
   | .ptrCast src =>
-      match readCell M state src .ptr "ptr-to-ptr cast" with
+      match readCell M L state src "ptr-to-ptr cast" with
       | .error e => .err e
       | .ok (v, perms') =>
           if v == .undef then .err "read of uninitialized memory"
-          else .ok { values := [v], values_len := rfl, state := { state with perms := perms' } }
-  | .ptrOffset (σ := σ) src delta =>
-      match readCell M state src .ptr "pointer offset" with
+          else .ok { values := [v], state := { state with perms := perms' } }
+  | .ptrOffset src delta =>
+      let stride := (pointeeLayout L src).size
+      match readCell M L state src "pointer offset" with
       | .error e => .err e
       | .ok (.ptrVal base offset extent size tag, perms') =>
-          let newOff : Int := (offset : Int) + delta * (bsize σ : Int)
+          let newOff : Int := (offset : Int) + delta * (stride : Int)
           if newOff < 0 then .err "pointer offset before the allocation base"
-          else .ok { values := [MemValue.ptrVal base newOff.toNat extent size tag]
-                     values_len := rfl
+          else .ok { values := [MemValue.ptrVal base newOff.toNat extent size tag],
                      state := { state with perms := perms' } }
       | .ok _ => .err "pointer offset of a non-pointer value"
   | .refSlice kind prot src =>
-      match readCell M state src .ptr "slice retag" with
+      match readCell M L state src "slice retag" with
       | .error e => .err e
       | .ok (.ptrVal base offset extent size tag, perms') =>
           match M.ref perms' (base + offset) extent tag kind prot [] with
           | .error e => .err s!"retag failed: {e}"
           | .ok (perms'', newTag) =>
-              .ok { values := [MemValue.ptrVal base offset extent size newTag]
-                    values_len := rfl
+              .ok { values := [MemValue.ptrVal base offset extent size newTag],
                     state := { state with perms := perms'' } }
       | .ok _ => .err "slice value is not a pointer"
   | .exposeAddr src =>
-      match readCell M state src .ptr "ptr-to-int cast" with
+      match readCell M L state src "ptr-to-int cast" with
       | .error e => .err e
       | .ok (.ptrVal base offset _ _ tag, perms') =>
-          .ok { values := [MemValue.word (base + offset)], values_len := rfl
+          .ok { values := [MemValue.word (base + offset)],
                 state := { state with perms := M.expose perms' tag } }
       | .ok _ => .err "ptr-to-int cast of a non-pointer value"
   | .fromExposed src =>
-      match readCell M state src (.int B) "int-to-ptr cast" with
+      match readCell M L state src "int-to-ptr cast" with
       | .error e => .err e
       | .ok (.word n, perms') =>
           let (base, size) := (state.mem.allocOf n).getD (n, 0)
           let off := n - base
-          .ok { values := [MemValue.ptrVal base off (size - off) size wildcardTag]
-                values_len := rfl
+          .ok { values := [MemValue.ptrVal base off (size - off) size wildcardTag],
                 state := { state with perms := perms' } }
       | .ok _ => .err "int-to-ptr cast of a non-integer value"
-  | .ref (τ := σ) kind prot mask src =>
-      match resolvePlaceAcc M state src with
+  | .ref kind prot mask src =>
+      let lay := placeLayout L src
+      match resolvePlaceAcc M L state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
-          if resolved.addr + bsize σ > resolved.allocBase + resolved.allocSize then
+          if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
             .err "retag of an out-of-bounds range"
           else
-          match M.ref permsR resolved.addr (bsize σ) resolved.tag kind prot (expandMask mask) with
+          match M.ref permsR resolved.addr lay.size resolved.tag kind prot (maskBytes lay mask) with
           | .ok (perms', freshTag) =>
               .ok { values := [MemValue.ptrVal resolved.allocBase
                                  (resolved.addr - resolved.allocBase)
-                                 (bsize σ) resolved.allocSize freshTag]
-                    values_len := rfl
+                                 lay.size resolved.allocSize freshTag],
                     state := { state with perms := perms' } }
           | .error e => .err s!"retag failed: {e}"
 
-def doAssign (M : PermissionModel) (state : State M Γ) (dst : Place Γ τ) (rhs : RExpr Γ τ) :
+def doAssign (state : State M Γ) {τ : LayoutTy} (dst : Place Γ τ) (rhs : RExpr Γ τ) :
     Result M Γ :=
-  match preparePlaceAssign M state dst with
+  let dstL := placeLayout L dst
+  match preparePlaceAssign M L state dst with
   | .err msg => .err msg
   | .ok s1 =>
-  match evalRExpr M s1 rhs with
+  match evalRExpr M L s1 dstL rhs with
   | .err msg => .err msg
   | .ok output =>
-  match resolvePlaceAcc M output.state dst with
+  match resolvePlaceAcc M L output.state dst with
   | .error e => .err e
   | .ok (resolved, permsD) =>
-  writeResolvedPlace M { output.state with perms := permsD } resolved output.values
+  writeResolvedPlace M { output.state with perms := permsD } resolved dstL output.values
 
-def stepStmt (M : PermissionModel) (state : State M Γ) : Stmt Γ → Result M Γ
+def stepStmt (state : State M Γ) : Stmt Γ → Result M Γ
   | .halt => .ok state
   | .pushProtectors => .ok { state with perms := M.pushFrame state.perms, pc := state.pc + 1 }
   | .popProtectors =>
       match M.popFrame state.perms with
       | .ok perms' => .ok { state with perms := perms', pc := state.pc + 1 }
       | .error e => .err s!"popProtectors failed: {e}"
-  | .assign dst rhs => doAssign M state dst rhs
+  | .assign dst rhs => doAssign M L state dst rhs
   | .assignIf discr val dst rhs =>
-      match ensureRoot M state dst with
+      match ensureRoot M L state dst with
       | .err msg => .err msg
       | .ok s0 =>
-      match evalRExpr M s0 (.copy discr) with
+      match evalCopy M L s0 discr with
       | .err e => .err e
       | .ok output =>
           match output.values with
           | [.word v] =>
-              if v == val then doAssign M output.state dst rhs
+              if v == val then doAssign M L output.state dst rhs
               else .ok { output.state with pc := output.state.pc + 1 }
           | _ => .err "assignIf discriminant is not a concrete word"
   | .dealloc dst =>
-      match evalCopy M state dst with
+      match evalCopy M L state dst with
       | .err e => .err s!"dealloc pointer read failed: {e}"
       | .ok out =>
           match out.values with
@@ -457,23 +525,23 @@ def stepStmt (M : PermissionModel) (state : State M Γ) : Stmt Γ → Result M �
                 match M.dealloc out.state.perms base size tag with
                 | .error e => .err s!"deallocation failed: {e}"
                 | .ok permsD =>
-                    -- the bytes become uninit; the bump allocator never
-                    -- reuses the range, so dangling pointers keep failing
                     .ok { out.state with perms := permsD,
                                          mem := out.state.mem.write base
                                            (List.replicate size .uninit),
                                          pc := out.state.pc + 1 }
           | _ => .err "dealloc argument is not a pointer value"
 
-def runN (M : PermissionModel) : Nat → State M Γ → Prog Γ → Result M Γ
+def runN : Nat → State M Γ → Prog Γ → Result M Γ
   | 0, state, _ => .ok state
   | n + 1, state, prog =>
       match prog.get? state.pc with
       | some .halt => .ok state
       | none => .ok state
       | some stmt =>
-          match stepStmt M state stmt with
-          | .ok state' => runN M n state' prog
+          match stepStmt M L state stmt with
+          | .ok state' => runN n state' prog
           | .err msg => .err msg
+
+end
 
 end obseq3.mirliteB

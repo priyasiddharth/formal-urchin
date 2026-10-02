@@ -40,13 +40,15 @@ def dealloc : Shim := fun st args _dest line => do
   | .copy p :: _ | .move p :: _ => return pushOut st (.dealloc p line)
   | _ => .error s!"unsupported: dealloc argument is not a place (line {line})"
 
-/-- Layout::for_value(&T): the size word, statically from the pointee -/
+/-- Layout::for_value(&T): the size word in BYTES, statically from the
+    pointee (2026-10-02; was the cell count). The cell machine allocates
+    one cell per byte from it — more than it needs, never fewer. -/
 def layoutForValue : Shim := fun st args dest line => do
   match args with
   | [.copy p] | [.move p] =>
       let sz := match p.ty with
-        | .ref _ i | .raw _ i => uSize i
-        | _ => 1
+        | .ref _ i | .raw _ i => byteSize i
+        | _ => 8
       emitAssign st line dest (.use (.const sz))
   | _ => .error s!"unsupported: for_value argument is not a place (line {line})"
 
@@ -481,18 +483,18 @@ def cellGetMut : Shim := fun st args dest line => do
         (.ref .mut false { pointee p with ty := inner }) line)
   | _ => .error s!"unsupported: Cell::get_mut argument is not a place (line {line})"
 
-/-- `Layout::new::<T>()`: the size word of `T` (a Layout is modelled as its
-    size, as in `layoutForValue`); `T` is the call's instantiation. -/
+/-- `Layout::new::<T>()`: the size of `T` in BYTES (a Layout is modelled
+    as its size, as in `layoutForValue`); `T` is the call's instantiation. -/
 def layoutNew (tyArgs : List UTy) : Shim := fun st _args dest line => do
   match tyArgs with
-  | [t] => emitAssign st line dest (.use (.const (uSize t)))
+  | [t] => emitAssign st line dest (.use (.const (byteSize t)))
   | _ => .error s!"unsupported: Layout::new instantiation {reprStr tyArgs} (line {line})"
 
-/-- `mem::size_of::<T>()`: `T`'s size in cells (the model's unit, as for
-    `Layout::new`). -/
+/-- `mem::size_of::<T>()`: `T`'s size in BYTES, as Rust reports it (for a
+    C-layout aggregate). -/
 def sizeOf (tyArgs : List UTy) : Shim := fun st _args dest line => do
   match tyArgs with
-  | [t] => emitAssign st line dest (.use (.const (uSize t)))
+  | [t] => emitAssign st line dest (.use (.const (byteSize t)))
   | _ => .error s!"unsupported: size_of instantiation {reprStr tyArgs} (line {line})"
 
 /-- Shims that need the call's monomorphised type arguments (`UFun.tyArgs`),

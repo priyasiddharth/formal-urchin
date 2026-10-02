@@ -466,7 +466,7 @@ end bytes
 /-! ## mirlite on bytes (`mirlite_bytes.lean`) -/
 
 def runB (Γ : Ctx) (prog : Prog Γ) : mirliteB.Result M Γ :=
-  mirliteB.runN M (prog.length + 1) (mirliteB.State.initial M Γ) prog
+  mirliteB.runN M (mirliteB.uniformEnv Γ) (prog.length + 1) (mirliteB.State.initial M Γ) prog
 
 def expectOkB (r : mirliteB.Result M Γ) (label : String) : IO (mirliteB.State M Γ) :=
   match r with

@@ -1,6 +1,7 @@
 import conformance.ullbc_ast
 import conformance.certificate
 import obseq3.types
+import obseq3.bytelayout
 
 /-!
 The lowering state and its statement emitters: `LowerSt`, `emitAssign`,
@@ -288,6 +289,29 @@ def constOf (st : LowerSt) : UOperand → Option Int
   | .move p => constOfPlace st p
   | _ => none
 
+/-- A type's BYTE layout (x86_64): an integer at its width (`bool` 1,
+    `char` 4), a model word 8, every pointer 8 (pointee kept for strides
+    and extents), a tuple or struct in C layout (rustc may reorder a
+    `repr(Rust)` aggregate — documented deviation until Charon's
+    `field_offsets` are read), and an enum as the MODEL lays it out: an
+    8-byte discriminant, then the longest variant's fields (the cell
+    layout's shape, so values line up leaf for leaf). -/
+partial def toBLayout : UTy → obseq3.bytes.BLayout
+  | .nat => .int 8
+  | .int t => .int (max 1 (t.bits / 8))
+  | .ref _ i | .raw _ i | .boxT i => .ptr (toBLayout i)
+  | .slice _ _ e => .ptr (toBLayout e)
+  | .sliceData e => toBLayout e
+  | .cell t => toBLayout t
+  | .tup tys | .structT tys => obseq3.bytes.reprC (tys.map toBLayout)
+  | .enum vs =>
+      let longest := vs.foldl (fun a f => if f.length > a.length then f else a) []
+      obseq3.bytes.reprC (.int 8 :: longest.map toBLayout)
+  | .unsupported _ => .int 8
+
+/-- A type's size in BYTES (`size_of`, `Layout::new`, `Layout::for_value`). -/
+def byteSize (t : UTy) : Nat := (toBLayout t).size
+
 def UIntTy.toIntTy (t : UIntTy) : obseq3.IntTy := ⟨t.bits, t.signed⟩
 
 /-- The obseq3 operation an ULLBC op denotes at integer type `t`, as MIR
@@ -362,6 +386,21 @@ partial def containsRef : UTy → Bool
   | .cell _ => false
   | _ => false
 
+/-- The pointee of a pointer type. -/
+def pointeeTy? : UTy → Option UTy
+  | .ref _ i | .raw _ i | .boxT i => some i
+  | _ => none
+
+/-- A copy of a pointer that changes its POINTEE type (a type-punning cast,
+    `&mut s.b as *mut u32 as *mut u8`) does not carry "points at that
+    place" (2026-10-02): through the new type an access covers different
+    bytes — a `u8` write is not a write of the whole `u32` — so the
+    tracker must forget, not fold, what such a write changes. -/
+def punsPointee (src dst : UTy) : Bool :=
+  match pointeeTy? src, pointeeTy? dst with
+  | some a, some b => a != b
+  | _, _ => false
+
 /-- The static trackers, updated for one assignment `dst := rv` (already
     rebased and index-resolved): constants and tracked references per
     (local, field path). A write through a pointer resolves to the place
@@ -389,6 +428,8 @@ def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
       match rv with
       | .use (.const n) => { st with constVals := ((d, path), n) :: st.constVals }
       | .use (.copy sp) | .use (.move sp) | .move sp =>
+          if punsPointee sp.ty dst.ty then st
+          else
           match resolveKey st 8 sp with
           | some sk => copyUnder sk
           | none => st
