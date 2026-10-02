@@ -168,7 +168,15 @@ that would be UB, so the run raises it at its statement; negative
 constant OPERANDS are two's complement at the op's type. The old
 "`sub` truncates at 0" is gone (t18, d100 updated).
 
-Open: negative constants in plain value positions still clamp to 0 (the
-destination's width is not on `UTy.nat` yet — stage 5); unary `Neg`/`Not`,
-`Cmp` and `Offset` are still unsupported; a 128-bit value does not fit a
+Negative numbers (later the same day): a negative constant is stored as
+its two's-complement pattern at its OWN width (Charon's scalar carries it:
+`{"Signed": ["I32", "-1"]}`); `Neg` is `0 - x` (wrapping, MIR `Neg`);
+`Not` is `x ^ all-ones` (one bit for `bool`); integer casts (`Cast(Scalar)`,
+rejected before) narrow by masking, sign-extend a signed source with
+`(x ^ s) - s`, otherwise keep the pattern, and a cast of a constant is
+computed while loading. All are existing typed ops — no model or proof
+change. Witness local/negative_ints_ok: 12 value checks certified against
+Miri, 11 at runtime.
+
+Open: `Cmp` and `Offset` are still unsupported; a 128-bit value does not fit a
 byte-model leaf (8 bytes) until leaves get widths (stage 5).

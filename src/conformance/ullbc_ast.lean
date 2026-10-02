@@ -128,7 +128,7 @@ inductive UOperand
 | copy (p : UPlace)
 | move (p : UPlace)
 | const (v : Nat)
-| constNeg (n : Nat)   -- negative scalar constant, magnitude n
+| constNeg (n : Nat) (bits : Nat := 64)  -- negative scalar constant, magnitude n, of a `bits`-wide type
 | constUnit
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
@@ -427,23 +427,64 @@ def operandTyJson (op : Json) : Option Json :=
 /-- The integer type of a Charon type: `I8`…`I128`/`Isize` signed,
     `U8`…`U128`/`Usize` unsigned (x86_64: size types are 64-bit), `bool` a
     `u8`, `char` a `u32`; anything else `u64`. -/
+def intWidth : Option String → Nat
+  | some "I8" | some "U8" => 8
+  | some "I16" | some "U16" => 16
+  | some "I32" | some "U32" => 32
+  | some "I128" | some "U128" => 128
+  | _ => 64
+
+/-- The integer type of a Charon `LiteralTy` (`{"Int": "I32"}`,
+    `{"UInt": "Usize"}`, `"Bool"`, `"Char"`); `none` for floats. -/
+def intTyOfLiteral (lit : Json) : Option UIntTy :=
+  match sumKey lit with
+  | some ("Int", k) => some { bits := intWidth (asStr k), signed := true }
+  | some ("UInt", k) => some { bits := intWidth (asStr k), signed := false }
+  | _ =>
+      if lit == Json.str "Bool" then some { bits := 8 }
+      else if lit == Json.str "Char" then some { bits := 32 }
+      else none
+
 def intTyOfJson (tbl : TyTable) (j : Json) : UIntTy :=
-  let width : Option String → Nat
-    | some "I8" | some "U8" => 8
-    | some "I16" | some "U16" => 16
-    | some "I32" | some "U32" => 32
-    | some "I128" | some "U128" => 128
-    | _ => 64
   match sumKey (resolveTyJson tbl j) with
-  | some ("Literal", lit) =>
-      match sumKey lit with
-      | some ("Int", k) => { bits := width (asStr k), signed := true }
-      | some ("UInt", k) => { bits := width (asStr k), signed := false }
-      | _ =>
-          if lit == Json.str "Bool" then { bits := 8 }
-          else if lit == Json.str "Char" then { bits := 32 }
-          else {}
+  | some ("Literal", lit) => (intTyOfLiteral lit).getD {}
   | _ => {}
+
+/-- Is a Charon type `bool`? (`!b` flips one bit, not eight.) -/
+def isBoolTy (tbl : TyTable) (j : Json) : Bool :=
+  match sumKey (resolveTyJson tbl j) with
+  | some ("Literal", lit) => lit == Json.str "Bool"
+  | _ => false
+
+/-- The mathematical value of an integer constant operand, read at the
+    type it has (a `const` is a bit pattern of `t`; a `constNeg` is its
+    negative magnitude). -/
+def constIntValue (t : UIntTy) : UOperand → Option Int
+  | .constNeg n _ => some (-(Int.ofNat n))
+  | .const k =>
+      let m := 2 ^ t.bits
+      let k := k % m
+      some (if t.signed && 2 * k ≥ m then (k : Int) - m else k)
+  | _ => none
+
+/-- The bit pattern of `v` at type `t`, as a constant operand. -/
+def constOfInt (t : UIntTy) (v : Int) : UOperand :=
+  .const (v % ((2 ^ t.bits : Nat) : Int)).toNat
+
+/-- An integer cast `x as dst` from `src` (MIR `IntToInt`): a constant is
+    converted while loading; otherwise narrowing keeps the low `dst.bits`
+    (a `BitAnd`), widening a SIGNED source sign-extends (`SExt.<bits>`,
+    lowered as `(x ^ s) - s` with `s` the source's sign bit), and every
+    other cast keeps the bit pattern. -/
+def intCast (src dst : UIntTy) (a : UOperand) : URvalue :=
+  match constIntValue src a with
+  | some v => .use (constOfInt dst v)
+  | none =>
+      if dst.bits < src.bits then
+        .binOp "BitAnd" dst a (.const (2 ^ dst.bits - 1))
+      else if src.signed && src.bits < dst.bits then
+        .binOp s!"SExt.{src.bits}" dst a (.const 0)
+      else .use a
 
 /-- The decl id of a type Json when it is a (monomorphised, opaque)
     wrapper named `name` (`Box`, `NonNull`, `ManuallyDrop`). -/
@@ -840,7 +881,14 @@ def parseConst (j : Json) : UOperand :=
         match sumKey lit with
         | some ("Scalar", sc) =>
             match parseScalarInt sc with
-            | some v => if v < 0 then .constNeg v.natAbs else .const v.toNat
+            | some v =>
+                if v < 0 then
+                  -- the width is the scalar's own type: `{"Signed": ["I32", "-1"]}`
+                  let bits := match sumKey sc with
+                    | some (_, payload) => intWidth ((asArr payload).head? >>= asStr)
+                    | none => 64
+                  .constNeg v.natAbs bits
+                else .const v.toNat
             | none => .unsupported s!"scalar constant {sc.compress}"
         | some ("Bool", b) => .const (if b == Json.bool true then 1 else 0)
         | _ => .unsupported s!"literal constant {lit.compress}"
@@ -904,6 +952,13 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
   | some ("UnaryOp", payload) =>
       match asArr payload with
       | [opJ, operand] =>
+          if opJ == Json.str "Not" then
+            -- MIR `Not`: flip every bit of the type (one bit for `bool`)
+            let tyJ := (operandTyJson operand).getD Json.null
+            let t := intTyOfJson ctx.tbl tyJ
+            let mask := if isBoolTy ctx.tbl tyJ then 1 else 2 ^ t.bits - 1
+            .binOp "BitXor" t (parseOperand ctx operand) (.const mask)
+          else
           match sumKey opJ with
           | some ("Cast", castJ) =>
               match sumKey castJ with
@@ -940,8 +995,22 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
                       | some fid => .fnRef fid
                       | none => .unsupported "reify of unknown fn"
                   | _ => .unsupported "reify of non-const fn"
+              | some ("Scalar", tys) =>
+                  match asArr tys with
+                  | [srcJ, dstJ] =>
+                      match intTyOfLiteral srcJ, intTyOfLiteral dstJ with
+                      | some src, some dst => intCast src dst (parseOperand ctx operand)
+                      | _, _ => .unsupported "non-integer scalar cast"
+                  | _ => .unsupported "malformed scalar cast"
               | some (k, _) => .unsupported s!"cast {k}"
               | none => .unsupported "malformed cast"
+          | some ("Neg", mode) =>
+              -- MIR `Neg`: `0 - x`, wrapping (`-i32::MIN` wraps; a debug
+              -- build asserts `x != MIN` before it, as for `Sub`)
+              let t := intTyOfJson ctx.tbl ((operandTyJson operand).getD Json.null)
+              match asStr mode with
+              | some m => .binOp s!"Sub.{m}" t (.const 0) (parseOperand ctx operand)
+              | none => .unsupported "malformed Neg"
           | some (k, _) => .unsupported s!"unary op {k}"
           | none => .unsupported "malformed unary op"
       | _ => .unsupported "malformed UnaryOp"

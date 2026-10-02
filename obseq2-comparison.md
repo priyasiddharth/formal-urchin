@@ -4,6 +4,23 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-02 (late night) — Negative Numbers
+
+A negative constant used to be stored as zero, on the argument that the
+aliasing rules never look at such values. Now it is stored as Rust stores
+it, as the two's-complement pattern of its own width, and the operations
+around negative numbers are in: negation, bitwise not (flipping a single
+bit for a boolean), and conversions between integer types, which cut off
+high bits when narrowing and copy the sign bit when widening a signed
+number. A new test program computes a negative number from a value only
+known at runtime and checks a dozen derived values (its negation,
+complement, widened and narrowed forms, a sum, signed comparisons); Miri's
+run records which way each check went, and the model must compute the
+same values to follow it. It does, on both machines, and every existing
+program keeps its verdict.
+
+---
+
 ## 2026-10-02 (night) — Arithmetic as MIR Does It
 
 The model's numbers were unbounded: subtraction stopped at zero instead of

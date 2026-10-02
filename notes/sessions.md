@@ -4795,3 +4795,15 @@ semantics.
 **Status:** units 30/30 + 131/131; corpus 132/0/29, osea 132, bytes 132;
 4 corpus programs now compute overflow flags at runtime; audit unchanged
 (0 sorries).
+
+## 2026-10-02 (negative numbers)
+
+**Session:** `formal-urchin` (continued), branch `byteaddress`.
+
+**Key outputs:** negative constants at their own width; `Neg`, `Not`
+(bool: one bit); integer casts (truncate / sign-extend / keep); constant
+casts folded at load; witness local/negative_ints_ok (12 certified value
+checks, 11 at runtime). No model or proof change.
+
+**Status:** corpus 133/0/29, osea 133, bytes 133, live 133/133 0 drift;
+units 30/30 + 131/131; audit unchanged.

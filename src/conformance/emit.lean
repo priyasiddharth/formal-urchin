@@ -283,7 +283,7 @@ def constOfPlace (st : LowerSt) (p : UPlace) : Option Int :=
 
 def constOf (st : LowerSt) : UOperand → Option Int
   | .const n => some (Int.ofNat n)
-  | .constNeg n => some (-(Int.ofNat n))
+  | .constNeg n _ => some (-(Int.ofNat n))
   | .copy p => constOfPlace st p
   | .move p => constOfPlace st p
   | _ => none
@@ -325,7 +325,7 @@ def overflowOpOf (op : String) : Option String :=
 /-- A constant operand as a bit pattern of `t` (a negative constant in
     two's complement). -/
 def constWord (t : obseq3.IntTy) : UOperand → UOperand
-  | .constNeg n => .const (t.ofInt (-(Int.ofNat n)))
+  | .constNeg n _ => .const (t.ofInt (-(Int.ofNat n)))
   | .const n => .const (t.ofInt n)
   | op => op
 
@@ -478,7 +478,11 @@ def materialiseWord (st : LowerSt) (line : Nat) (op : UOperand) :
       let p : UPlace := { root := .local st.locals.length, projs := [], ty := .nat }
       .ok (pushOut { st with locals := st.locals ++ [UTy.nat] }
         (.assign p (.use (.const n)) line), p)
-  | .constNeg _ => .error s!"unsupported: negative arithmetic operand (line {line})"
+  | .constNeg n bits =>
+      -- two's complement at the constant's own width
+      let p : UPlace := { root := .local st.locals.length, projs := [], ty := .nat }
+      .ok (pushOut { st with locals := st.locals ++ [UTy.nat] }
+        (.assign p (.use (.const ((⟨bits, true⟩ : obseq3.IntTy).ofInt (-(Int.ofNat n))))) line), p)
   | .constUnit => .error s!"unsupported: unit arithmetic operand (line {line})"
   | .unsupported d => .error s!"unsupported: {d} (line {line})"
 
@@ -504,9 +508,10 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
   | .unsupported d => .error s!"unsupported: {d} (line {line})"
   | .use .constUnit =>
       return st  -- unit value: no memory access
-  | .use (.constNeg _) =>
-      -- negative constants clamp to 0 in value positions (SB-irrelevant)
-      return pushOut st (.assign dst (.use (.const 0)) line)
+  | .use (.constNeg n bits) =>
+      -- a negative constant is stored as its two's-complement bit pattern
+      -- at its own width (was: clamped to 0)
+      emitAssign st line dst (.use (.const ((⟨bits, true⟩ : obseq3.IntTy).ofInt (-(Int.ofNat n)))))
   | .ptrOffset _ _ | .refSlice _ _ _ | .sliceLen _ =>
       return pushOut st (.assign dst rv line)
   | .subSlice p lo hi => do
@@ -524,6 +529,17 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
       -- statement), it is EMITTED: mirlite's `binOp` reads two word places
       -- and computes the word at runtime (2026-09-24).
       let t := ity.toIntTy
+      if op.startsWith "SExt." then
+        -- sign extension of a `srcBits`-wide pattern to `t`: flip the
+        -- source sign bit, then subtract it (wrapping at `t`)
+        let srcBits := (op.drop 5).toNat!
+        let s := 2 ^ (srcBits - 1)
+        let tmpIdx := st.locals.length
+        let tmp : UPlace := { root := .local tmpIdx, projs := [], ty := .nat }
+        let st := { st with locals := st.locals ++ [UTy.nat] }
+        let st ← emitAssign st line tmp (.binOp "BitXor" ity a (.const s))
+        emitAssign st line dst (.binOp "Sub.Wrap" ity (.copy tmp) (.const s))
+      else
       let some bop := binOpOf op t
         | .error s!"unsupported: binary op {op} (line {line})"
       let a := constWord t a

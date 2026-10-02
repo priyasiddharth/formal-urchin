@@ -104,7 +104,7 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
       match τ, pl with
       | .PtrL _, pl => return ⟨.NatL, .exposeAddr pl⟩
       | _, _ => .error "ptr-to-int cast of a non-pointer place"
-  | .use (.constNeg _) => .error "negative constant not clamped by lowering"
+  | .use (.constNeg _ _) => .error "negative constant not encoded by lowering"
   | .fromExposed _ => .error "fromExposed is elaborated against the destination type"
   | .ptrOffset _ _ => .error "ptrOffset is elaborated against the destination type"
   | .sliceLen p => do

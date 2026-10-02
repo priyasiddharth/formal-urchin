@@ -227,7 +227,7 @@ def ptrOffset : Shim := fun st args dest line => do
   | [.copy p, d] | [.move p, d] =>
       let delta ← match d with
         | .const n => pure (Int.ofNat n)
-        | .constNeg n => pure (-(Int.ofNat n))
+        | .constNeg n _ => pure (-(Int.ofNat n))
         | _ => throw s!"unsupported: runtime pointer offset (line {line})"
       return pushOut st (.assign dest (.ptrOffset p delta) line)
   | _ => .error s!"unsupported: pointer offset arguments (line {line})"

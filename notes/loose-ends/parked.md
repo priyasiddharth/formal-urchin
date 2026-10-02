@@ -512,7 +512,10 @@ a+j (small shims), h i, then q, p, t, w.
    argument (uses the allocation's size).
 8. **Value fidelity**: 1 cell per scalar (no bytes/padding — relative
    aliasing preserved, absolute sizes differ); negative constants clamp
-   to 0 in value positions; `+=`-style rewrites store wrong values —
+   to 0 in value positions [SUPERSEDED 2026-10-02 on `byteaddress`: they
+   are their two's-complement pattern at their own width; integer
+   arithmetic, Neg/Not and int casts follow MIR — local/negative_ints_ok];
+   `+=`-style rewrites store wrong values —
    sound because stored words re-enter the aliasing model only as
    addresses (fromExposed), discriminants (assignIf), or sizes
    (AllocLen), each of which is exact or rejected; pass tests do not

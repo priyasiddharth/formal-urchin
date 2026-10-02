@@ -2164,6 +2164,17 @@
       "notes": "Box drops matched against the certificate: b is dropped by drop() on the taken branch, c at the end of main; the lowering must make exactly these two drops at the same points (not b again at scope end)."
     },
     {
+      "id": "local/negative_ints_ok",
+      "artifact": "local/negative_ints_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/negative_ints_ok.cert.json",
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-02 via scripts/live.py",
+      "notes": "negative constants (two's complement at their width), Neg, Not (bool: one bit), sign/zero extension and truncation casts, a checked add, a signed compare — each value certified against the arm Miri took."
+    },
+    {
       "id": "fail/function_calls/arg_inplace_observe_after",
       "source": "corpus/tests/fail/function_calls/arg_inplace_observe_after.rs",
       "prep": "prep/arg_inplace_observe_after.rs",
