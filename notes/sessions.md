@@ -4751,3 +4751,26 @@ audit unchanged.
 
 **Next-session pickup candidates:** stage 2 (mirlite on bytes), starting
 with path byte offsets = first-leaf offset, and wrapping `binOp`.
+
+## 2026-10-02 (byte-addressed memory, stage 2)
+
+**Session:** `formal-urchin` (continued), branch `byteaddress`.
+
+**Theme:** the source machine on byte memory.
+
+**Key outputs:** `src/obseq3/mirlite_bytes.lean` — mirlite on `bytes.Mem`
+as a parallel semantics (the proof stays on the cell one until oseair
+moves); `bytes.Prov.extent` (temporary); harness `--bytes` differential
+mode; units t28–t29.
+
+**Critical corrections:** chose a parallel semantics over editing mirlite
+in place (the compiler simulation relates the two machines' memories, so
+an in-place switch breaks the proof for all of stages 2–4).
+
+**Status:** stage 2 done. `--bytes` 132/132 matched (52 ok, 80 UB); units
+29/29 + 129/129; corpus 132/0/29, osea 132; audit unchanged.
+
+**Next-session pickup candidates:** stage 3 — oseair + compiler on bytes
+(type-directed store width; Borrow/Die lengths and offsets in bytes; the
+19 golden tests), likewise as a parallel target first, with `--osea`
+comparing the byte target against the byte source.

@@ -52,6 +52,11 @@ structure Prov where
   base : Nat
   size : Nat
   tag : Tag
+  /-- TEMPORARY (stage 2): the bytes the pointer claims from its address —
+      the cell model's `extent`, which a slice uses as its length. Miri
+      keeps a slice's length as fat-pointer METADATA (a second word), not
+      in provenance; this field goes when fat pointers become two words. -/
+  extent : Nat := 0
 deriving Repr, BEq, DecidableEq, Inhabited
 
 /-- One byte of memory (MiniRust `AbstractByte`). -/

@@ -4,6 +4,23 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-02 (evening) — The Source Machine Runs on Bytes
+
+The source machine now has a second implementation that keeps its memory
+as bytes. It runs the same programs with the same rules for borrows; what
+changes is that every number and pointer is stored as eight bytes, and
+reading memory interprets those bytes at the type being read. That is
+where the two implementations are meant to differ: reading a pointer's
+bytes as a plain number gives its address and drops its permission to
+access memory, as in Miri, whereas the cell memory handed back the
+pointer itself. Everywhere else they must agree, and they do: on all 132
+conformance programs the byte version reaches the same verdict, at the
+same statement, as the original (52 run cleanly, 80 are flagged). The
+correctness proof still concerns the cell version; the target machine
+moves next, and then the proof.
+
+---
+
 ## 2026-10-02 (later) — Where Each Field Lives
 
 With bytes in place, the model now also knows where a value's parts sit:

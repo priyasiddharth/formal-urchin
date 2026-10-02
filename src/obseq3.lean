@@ -6,6 +6,7 @@ import obseq3.context
 import obseq3.syntax
 import obseq3.permission
 import obseq3.mirlite_semantics
+import obseq3.mirlite_bytes
 import obseq3.oseair
 import obseq3.compile
 import obseq3.tests

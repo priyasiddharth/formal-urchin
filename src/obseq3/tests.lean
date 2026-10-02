@@ -1,6 +1,7 @@
 import obseq3.mirlite_semantics
 import obseq3.bytemem
 import obseq3.bytelayout
+import obseq3.mirlite_bytes
 
 /-!
 Unit tests for the obseq3 SB model and mirlite semantics, following the
@@ -375,7 +376,7 @@ open obseq3.bytes
 private def bytesSetup : IO (bytes.Mem × Nat × Pointer) := do
   let (target, m) := (({} : bytes.Mem)).allocate 4 4          -- an i32
   let (slot, m) := m.allocate ptrSize ptrSize           -- a *const i32 slot
-  let p : Pointer := ⟨target, some ⟨target, 4, 7⟩⟩
+  let p : Pointer := ⟨target, some { base := target, size := 4, tag := 7 }⟩
   let some m := m.store slot .ptr (.ptr p)
     | throw (IO.userError "bytes setup: pointer store failed")
   pure (m, slot, p)
@@ -420,7 +421,7 @@ def t23_bytes_int_copy_strips_provenance : IO Unit := do
 def t24_bytes_mixed_and_uninit : IO Unit := do
   let (m, slot, _) ← bytesSetup
   let (slot2, m) := m.allocate ptrSize ptrSize
-  let some m := m.store slot2 .ptr (.ptr ⟨slot, some ⟨slot, 8, 9⟩⟩)
+  let some m := m.store slot2 .ptr (.ptr ⟨slot, some { base := slot, size := 8, tag := 9 }⟩)
     | throw (IO.userError "t24 store failed")
   let m := m.copyBytes slot slot2 1                      -- one byte from the other pointer
   match m.load slot .ptr with
@@ -452,7 +453,7 @@ def t26_bytes_of_cell_layout : IO Unit := do
 def t27_bytes_tuple_roundtrip : IO Unit := do
   let L := reprC [.int 1, .ptr (.int 4), .int 2]
   let (base, m) := (({} : bytes.Mem)).allocate L.size L.align
-  let p : Pointer := ⟨base, some ⟨base, L.size, 3⟩⟩
+  let p : Pointer := ⟨base, some { base := base, size := L.size, tag := 3 }⟩
   let vs := [SVal.int 200, SVal.ptr p, SVal.int 65000]
   let some m := m.storeL base L vs
     | throw (IO.userError "t27 store failed")
@@ -460,6 +461,71 @@ def t27_bytes_tuple_roundtrip : IO Unit := do
   assert (m.read (base + 1) 7 == List.replicate 7 .uninit) "t27 padding after the u8 is uninit"
 
 end bytes
+
+/-! ## mirlite on bytes (`mirlite_bytes.lean`) -/
+
+def runB (Γ : Ctx) (prog : Prog Γ) : mirliteB.Result M Γ :=
+  mirliteB.runN M (prog.length + 1) (mirliteB.State.initial M Γ) prog
+
+def expectOkB (r : mirliteB.Result M Γ) (label : String) : IO (mirliteB.State M Γ) :=
+  match r with
+  | .ok s => pure s
+  | .err e => throw (IO.userError s!"{label}: expected ok, got err: {e}")
+
+def expectErrB (r : mirliteB.Result M Γ) (label : String) (substr : String := "") : IO Unit :=
+  match r with
+  | .ok _ => throw (IO.userError s!"{label}: expected err, got ok")
+  | .err e =>
+      if substr.isEmpty || (e.splitOn substr).length > 1 then pure ()
+      else throw (IO.userError s!"{label}: error ⟨{e}⟩ does not mention ⟨{substr}⟩")
+
+/-- The cell tests t6 (write through a popped `&mut`) and t15 (deref of an
+    out-of-bounds pointer) are UB on bytes too, for the same reason. -/
+def t28_bytes_mirlite_same_ub : IO Unit := do
+  expectErrB (runB ΓA [
+    .assign xA (.constInit 7),
+    .assign pA (.ref .Mut false [] xA),
+    .assign (.deref pA) (.constInit 8),
+    .assign tA (.copy xA),
+    .assign (.deref pA) (.constInit 9)]) "t28 popped &mut" "does not exist"
+  expectErrB (runB ΓE' [
+    .assign xE' (.constInit 1),
+    .assign pE' (.ref .Mut false [] xE'),
+    .assign qE' (.ref .Mut false [] pE'),
+    .assign qE' (.ptrOffset qE' 7),
+    .assign tE' (.copy (.deref (.deref qE')))]) "t28 oob deref" "out-of-bounds"
+
+def ΓR : Ctx := [natL, ptrNat, obseq.LayoutTy.PtrL ptrNat, ptrNat, natL]
+def xR : Place ΓR natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pR : Place ΓR ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def qR : Place ΓR (obseq.LayoutTy.PtrL ptrNat) := .local ⟨⟨2, by decide⟩, rfl⟩
+def rR : Place ΓR ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+def yR : Place ΓR natL := .local ⟨⟨4, by decide⟩, rfl⟩
+
+/-- Reading a pointer's bytes at integer type (`*(&raw const p as *const
+    usize)`): on bytes the result is the ADDRESS, provenance stripped (Miri,
+    MiniRust); the cell model hands back the pointer itself. Byte addresses
+    are 8 per cell, so `x` (the first local) sits at a nonzero, 8-aligned
+    address. -/
+def t29_bytes_pointer_read_as_word : IO Unit := do
+  let prog : Prog ΓR := [
+    .assign xR (.constInit 7),
+    .assign pR (.ref .Mut false [] xR),
+    .assign qR (.ref (.Raw false) false [] pR),
+    .assign rR (.ptrCast qR),
+    .assign yR (.copy (.deref rR))]
+  let sB ← expectOkB (runB ΓR prog) "t29 bytes"
+  let some bx := sB.env ⟨0, by decide⟩ | throw (IO.userError "t29: x unbound")
+  let some byB := sB.env ⟨4, by decide⟩ | throw (IO.userError "t29: y unbound")
+  match mirliteB.readOne sB.mem byB.addr (.int 8) with
+  | .word a =>
+      assert (a == bx.addr && a % 8 == 0 && a != 0) s!"t29 bytes: y = {a}, x at {bx.addr}"
+  | v => throw (IO.userError s!"t29 bytes: y should be a word, got {reprStr v}")
+  let sC ← expectOk (run ΓR prog) "t29 cells"
+  let some byC := sC.env ⟨4, by decide⟩ | throw (IO.userError "t29: y unbound (cells)")
+  match sC.mem.find? byC.addr with
+  | some (.ptrVal ..) => pure ()
+  | v => throw (IO.userError s!"t29 cells: y should hold the pointer cell, got {reprStr v}")
 
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
@@ -488,7 +554,9 @@ def allTests : List (IO Unit) := [
   t24_bytes_mixed_and_uninit,
   t25_bytes_reprC_layout,
   t26_bytes_of_cell_layout,
-  t27_bytes_tuple_roundtrip]
+  t27_bytes_tuple_roundtrip,
+  t28_bytes_mirlite_same_ub,
+  t29_bytes_pointer_read_as_word]
 
 def runAll : IO Unit := do
   allTests.forM id

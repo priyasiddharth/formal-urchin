@@ -7,7 +7,7 @@ import obseq3.compile_tests
 
 Usage:
   sb_conformance --manifest <path> --charon-dir <path> [--filter <substr>]
-                 [--record] [--dump <test-id>] [--unit] [--osea]
+                 [--record] [--dump <test-id>] [--unit] [--osea] [--bytes]
 
 - default: run the manifest, print per-test outcomes and a summary;
   exit 1 on any FAIL/XPASS.
@@ -16,6 +16,9 @@ Usage:
 - --dump <id>: print the lowered untyped program of one test (loader
   golden-check / curation aid).
 - --unit: run the obseq3 unit tests first.
+- --bytes: differential mode — additionally run each loaded program under
+  mirlite on byte-addressed memory and require the same verdict
+  (statement-level) as the cell semantics.
 - --osea: differential mode — additionally compile each loaded program to
   OSEA-IR-v3 and require the same verdict as mirlite (mismatch = failure;
   compiler-unsupported constructs are reported as skipped).
@@ -31,6 +34,7 @@ structure Args where
   dump : Option String := none
   unit : Bool := false
   osea : Bool := false
+  bytes : Bool := false
 
 def parseArgs : List String → Except String Args
   | [] => .ok {}
@@ -41,6 +45,7 @@ def parseArgs : List String → Except String Args
   | "--dump" :: v :: rest => do return { ← parseArgs rest with dump := some v }
   | "--unit" :: rest => do return { ← parseArgs rest with unit := true }
   | "--osea" :: rest => do return { ← parseArgs rest with osea := true }
+  | "--bytes" :: rest => do return { ← parseArgs rest with bytes := true }
   | arg :: _ => .error s!"unknown argument {arg}"
 
 def dumpTest (charonDir : String) (m : Manifest) (id : String) : IO UInt32 := do
@@ -113,7 +118,7 @@ def realMain (args : List String) : IO UInt32 := do
                       | none => m.tests
                     let mut results := []
                     for e in tests do
-                      let r ← runEntry cDir a.osea e
+                      let r ← runEntry cDir a.osea e a.bytes
                       reportResult r a.record
                       results := r :: results
                     summarize results.reverse

@@ -1,5 +1,6 @@
 import conformance.elab
 import obseq3.compile
+import obseq3.mirlite_bytes
 
 /-!
 Conformance harness: reads a manifest of Miri-derived tests, loads each
@@ -64,6 +65,54 @@ where
                 if line ≥ 2 * certLineBase then .certExhausted st.pc (line - 2 * certLineBase)
                 else if line ≥ certLineBase then .certRejected st.pc (line - certLineBase)
                 else .ub st.pc line msg
+
+/-! ## Differential mode (`--bytes`)
+
+Run the program again under mirlite on byte-addressed memory
+(`obseq3/mirlite_bytes.lean`) and require the same verdict: ok↔ok, or UB
+at the same source statement (the message may differ). The byte semantics
+is meant to agree with the cell one on everything the cell one supports;
+a mismatch is a hard failure of the suite. -/
+
+def runLoadedBytes (l : Loaded) : Verdict :=
+  go (l.prog.length + 2) (mirliteB.State.initial M l.Γ)
+where
+  go : Nat → mirliteB.State M l.Γ → Verdict
+    | 0, _ => .fuelExhausted
+    | fuel + 1, st =>
+        match l.prog[st.pc]? with
+        | none => .ok
+        | some .halt => .ok
+        | some stmt =>
+            match mirliteB.stepStmt M st stmt with
+            | .ok st' => go fuel st'
+            | .err msg =>
+                let line := l.lines[st.pc]?.getD 0
+                if line ≥ 2 * certLineBase then .certExhausted st.pc (line - 2 * certLineBase)
+                else if line ≥ certLineBase then .certRejected st.pc (line - certLineBase)
+                else .ub st.pc line msg
+
+inductive BytesStatus
+| matched
+| mismatch (why : String)
+deriving Repr
+
+/-- The statement a verdict blames, if any. -/
+def Verdict.stmt? : Verdict → Option Nat
+  | .ub i _ _ | .certRejected i _ | .certExhausted i _ => some i
+  | _ => none
+
+def bytesStatus (l : Loaded) (cell : Verdict) : BytesStatus :=
+  let b := runLoadedBytes l
+  match cell, b with
+  | .ok, .ok => .matched
+  | .fuelExhausted, .fuelExhausted => .matched
+  | c, b =>
+      match c.stmt?, b.stmt? with
+      | some i, some j =>
+          if i == j then .matched
+          else .mismatch s!"bytes {b.render} at stmt {j}, cells {c.render} at stmt {i}"
+      | _, _ => .mismatch s!"bytes {b.render}, cells {c.render}"
 
 /-! ## Differential mode (`--osea`)
 
@@ -214,6 +263,7 @@ structure TestResult where
   verdict : Verdict
   outcome : Outcome
   osea : Option OseaStatus := none
+  bytes : Option BytesStatus := none
   stats : CertStats := {}
 
 /-- Read and parse an entry's certificate, if it names one. -/
@@ -232,25 +282,28 @@ def loadCert (charonDir : String) (e : TestEntry) : IO (Except String (Option Ce
       catch ex =>
         return .error s!"certificate io: {ex}"
 
-def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) : IO TestResult := do
+def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) (bytes : Bool := false) :
+    IO TestResult := do
   let path := s!"{charonDir}/{e.artifact}"
-  let (verdict, oseaSt, stats) ←
+  let (verdict, oseaSt, bytesSt, stats) ←
     try
       let content ← IO.FS.readFile path
       match Json.parse content with
-      | .error err => pure (Verdict.loadError s!"json parse: {err}", none, {})
+      | .error err => pure (Verdict.loadError s!"json parse: {err}", none, none, {})
       | .ok json =>
           match ← loadCert charonDir e with
-          | .error err => pure (Verdict.loadError err, none, {})
+          | .error err => pure (Verdict.loadError err, none, none, {})
           | .ok cert? =>
             match loadCrate json cert? with
-            | .error err => pure (Verdict.loadError err, none, {})
+            | .error err => pure (Verdict.loadError err, none, none, {})
             | .ok loaded =>
                 let v := runLoaded loaded
-                pure (v, if osea then some (oseaStatus loaded v) else none, loaded.stats)
+                pure (v, if osea then some (oseaStatus loaded v) else none,
+                  if bytes then some (bytesStatus loaded v) else none, loaded.stats)
     catch ex =>
-      pure (Verdict.loadError s!"io: {ex}", none, {})
-  return { entry := e, verdict, outcome := judge e verdict, osea := oseaSt, stats }
+      pure (Verdict.loadError s!"io: {ex}", none, none, {})
+  return { entry := e, verdict, outcome := judge e verdict, osea := oseaSt, bytes := bytesSt,
+           stats }
 
 def outcomeLabel : Outcome → String
   | .pass => "PASS"
@@ -275,6 +328,10 @@ def reportResult (r : TestResult) (record : Bool) : IO Unit := do
   | some (.mismatch why) => IO.println s!"        OSEA MISMATCH: {why}"
   | some (.skipped reason) =>
       if record then IO.println s!"        [osea: skipped — {reason}]"
+  | none => pure ()
+  match r.bytes with
+  | some .matched => if record then IO.println s!"        [bytes: matched]"
+  | some (.mismatch why) => IO.println s!"        BYTES MISMATCH: {why}"
   | none => pure ()
 
 def summarize (rs : List TestResult) : IO UInt32 := do
@@ -313,6 +370,11 @@ def summarize (rs : List TestResult) : IO UInt32 := do
       let skipped := cnt (fun s => match s with | .skipped _ => true | _ => false)
       IO.println s!"osea: matched {matched} | mismatch {mism} | skipped {skipped}"
       pure mism
-  return if fails > 0 || xpasses > 0 || oseaMismatches > 0 then 1 else 0
+  let bytesSts := rs.filterMap (·.bytes)
+  let bytesMismatches :=
+    bytesSts.filter (fun s => match s with | .mismatch _ => true | _ => false) |>.length
+  if !bytesSts.isEmpty then
+    IO.println s!"bytes: matched {bytesSts.length - bytesMismatches} | mismatch {bytesMismatches}"
+  return if fails > 0 || xpasses > 0 || oseaMismatches > 0 || bytesMismatches > 0 then 1 else 0
 
 end conformance

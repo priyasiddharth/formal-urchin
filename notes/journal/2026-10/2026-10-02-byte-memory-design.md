@@ -78,7 +78,24 @@ other features (A/B/E/F/G in the 2026-10-01 plan).
    tuples, or taken from Charon's `layout` field (present in 62/111
    artifacts) for user ADTs. A "leaf list" view (offset × scalar) gives
    the flat value shape the semantics already works with.
-2. **mirlite on bytes.** Concretely, from stage 1: a value of layout `τ`
+2. **mirlite on bytes — DONE 2026-10-02, as a PARALLEL semantics**
+   (`src/obseq3/mirlite_bytes.lean`, namespace `obseq3.mirliteB`). Not an
+   in-place edit: the compiler proof relates the cell mirlite to the cell
+   oseair, so switching mirlite alone would break it until stages 3–4.
+   Same syntax, permission model and evaluation order; values stay
+   `List MemValue` (one per cell); each cell is an 8-byte leaf of
+   `ofLayoutTy` (so addresses, offsets, sizes, SB ranges are `8 ×` cells;
+   freeze masks expanded per byte); writes encode, reads decode at the
+   leaf's scalar type — an integer read of pointer bytes yields the
+   address without provenance (t29: the cell model returns the pointer
+   cell), a pointer read without provenance gives a degenerate zero-size
+   pointer. `extent` rides in the stored provenance
+   (`bytes.Prov.extent`, TEMPORARY until fat pointers are two words).
+   Harness `--bytes` runs both semantics and requires the same verdict at
+   the same statement: **132/132 matched (52 ok, 80 UB)**. Unit tests
+   t28–t29. Words above 2^64 error at the store (binOp does not wrap yet;
+   no corpus program reaches it).
+   Original plan text — concretely, from stage 1: a value of layout `τ`
    is the list of its `ofLayoutTy τ` leaves (same length as today's
    `List MemValue`, `ofLayoutTy_leaves_length`); `MemValue.word w` ↦
    `SVal.int w` (needs `w < 2^64`: the bounded-word decision bites here —
