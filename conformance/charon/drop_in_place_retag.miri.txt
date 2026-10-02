@@ -1,0 +1,2 @@
+error: Undefined Behavior: trying to retag from <369> for Unique permission at alloc158[0x0], but that tag only grants SharedReadOnly permission for this location
+this error occurs as part of retag at alloc158[0x0..0x1]

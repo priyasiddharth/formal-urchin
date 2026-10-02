@@ -410,11 +410,12 @@
       "source": "corpus/tests/fail/stacked_borrows/drop_in_place_retag.rs",
       "prep": null,
       "artifact": "drop_in_place_retag.ullbc.json",
-      "status": "unsupported",
-      "reason": "protectors + drop glue",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ub"
-      }
+      },
+      "miri_error": "retag .* for Unique permission .* only grants SharedReadOnly permission"
     },
     {
       "id": "fail/stacked_borrows/exposed_only_ro",
@@ -972,7 +973,7 @@
       "prep": null,
       "artifact": "drop_in_place_protector.ullbc.json",
       "status": "unsupported",
-      "reason": "protectors + drop glue",
+      "reason": "user Drop impl: the loader rejects crates with a local `impl Drop` (its glue is not run); needs Charon's drop_glue (--precise-drops), parked item q",
       "expected": {
         "verdict": "ub"
       }
@@ -1143,24 +1144,36 @@
     {
       "id": "fail/both_borrows/newtype_pair_retagging",
       "source": "corpus/tests/fail/both_borrows/newtype_pair_retagging.rs",
-      "prep": null,
+      "prep": "corpus/tests/formal-urchin/newtype_pair_retagging.rs",
       "artifact": "newtype_pair_retagging.ullbc.json",
-      "status": "unsupported",
-      "reason": "protectors + Box + closures",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ub"
-      }
+      },
+      "miri_error": "not granting access to tag .* because that would remove \\[Unique for .*\\] which is strongly protected",
+      "rewrites": [
+        "dropped //@ headers, error annotations and #[rustfmt::skip]",
+        "closure -> named fn free_it; captured ptr -> static PTR"
+      ],
+      "note": "verdict-only: Miri raises the error inside std's Box drop (upstream's error-in-other-file); the model reports the dealloc in free_it"
     },
     {
       "id": "fail/both_borrows/newtype_retagging",
       "source": "corpus/tests/fail/both_borrows/newtype_retagging.rs",
-      "prep": null,
+      "prep": "corpus/tests/formal-urchin/newtype_retagging.rs",
       "artifact": "newtype_retagging.ullbc.json",
-      "status": "unsupported",
-      "reason": "protectors + Box + closures",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ub"
-      }
+      },
+      "miri_error": "not granting access to tag .* because that would remove \\[Unique for .*\\] which is strongly protected",
+      "rewrites": [
+        "dropped //@ headers, error annotations and #[rustfmt::skip]",
+        "closure -> named fn free_it; captured ptr -> static PTR"
+      ],
+      "note": "verdict-only: Miri raises the error inside std's Box drop (upstream's error-in-other-file); the model reports the dealloc in free_it"
     },
     {
       "id": "fail/both_borrows/pass_invalid_shr_option",
@@ -2067,6 +2080,16 @@
       "notes": "ptr::write / <*mut T>::write shim: stores into freshly allocated memory and into a tuple through a raw pointer."
     },
     {
+      "id": "local/drop_in_place_ok",
+      "artifact": "local/drop_in_place_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-01 via scripts/live.py",
+      "notes": "drop_in_place shim: the protected Unique retag on a glue-less tuple through a &mut-derived raw pointer, then reuse of the pointer and the owner; Box glue through a *mut Box<i32>."
+    },
+    {
       "id": "local/ptr_write_popped",
       "artifact": "local/ptr_write_popped.ullbc.json",
       "status": "supported",
@@ -2372,6 +2395,84 @@
       "expected": {
         "verdict": "ub"
       }
+    },
+    {
+      "id": "pass/associated-const",
+      "source": "corpus/tests/pass/associated-const.rs",
+      "prep": null,
+      "artifact": "associated-const.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01",
+      "certificate": "associated-const.cert.json",
+      "note": "associated const: its initializer now runs before main (was read as uninit: false UB)"
+    },
+    {
+      "id": "pass/disable-alignment-check",
+      "source": "corpus/tests/pass/disable-alignment-check.rs",
+      "prep": null,
+      "artifact": "disable-alignment-check.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01"
+    },
+    {
+      "id": "pass/disjoint-array-accesses",
+      "source": "corpus/tests/pass/disjoint-array-accesses.rs",
+      "prep": null,
+      "artifact": "disjoint-array-accesses.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01",
+      "certificate": "disjoint-array-accesses.cert.json",
+      "note": "slice element places (`(*s)[k]`), the fake bounds-check borrow, mem::swap shim"
+    },
+    {
+      "id": "pass/issues/issue-miri-3473",
+      "source": "corpus/tests/pass/issues/issue-miri-3473.rs",
+      "prep": null,
+      "artifact": "issue-miri-3473.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01",
+      "certificate": "issue-miri-3473.cert.json",
+      "note": "Default::default shims; certificate classifier treats <usize as Default> as std"
+    },
+    {
+      "id": "pass/many_shr_bor",
+      "source": "corpus/tests/pass/many_shr_bor.rs",
+      "prep": null,
+      "artifact": "many_shr_bor.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01"
+    },
+    {
+      "id": "pass/memleak_ignored",
+      "source": "corpus/tests/pass/memleak_ignored.rs",
+      "prep": null,
+      "artifact": "memleak_ignored.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01"
     }
   ]
 }

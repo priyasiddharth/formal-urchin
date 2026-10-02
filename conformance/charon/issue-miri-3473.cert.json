@@ -1,0 +1,53 @@
+{
+ "version": 1,
+ "source": "corpus/tests/pass/issues/issue-miri-3473.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "default",
+  "main",
+  "value"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _18",
+     "cases": [
+      [
+       0,
+       8
+      ]
+     ],
+     "otherwise": 7,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _18) -> [0: bb8, otherwise: bb7]",
+     "next": 7,
+     "arm": "otherwise"
+    },
+    {
+     "k": "drop",
+     "ty": "Box<Node>",
+     "descr": "<std::boxed::Box<Node> as std::ops::Drop>::drop"
+    }
+   ]
+  },
+  {
+   "fn": "default",
+   "miri_path": "<Node as std::default::Default>::default",
+   "events": []
+  },
+  {
+   "fn": "value",
+   "miri_path": "Node::value",
+   "events": []
+  }
+ ]
+}

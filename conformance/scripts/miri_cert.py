@@ -98,6 +98,17 @@ def user_fns_of(ullbc):
 
 
 STD_CRATES = ("std::", "core::", "alloc::", "libc::")
+PRIMITIVES = {"bool", "char", "str", "u8", "u16", "u32", "u64", "u128", "usize",
+              "i8", "i16", "i32", "i64", "i128", "isize", "f32", "f64", "!"}
+
+
+def is_std_type(t):
+    """A std path, or a primitive / builtin type constructor (`usize`,
+    `[T]`, `[T; N]`, `&T`, `*const T`, `(A, B)`, `fn(..)`): no user impl
+    can be keyed on it alone."""
+    t = strip_generics(t).strip()
+    return t.startswith(STD_CRATES) or t in PRIMITIVES or \
+        t.startswith(("[", "&", "*", "(", "fn(", "dyn "))
 
 
 def is_user_frame(path, user_fns):
@@ -109,7 +120,7 @@ def is_user_frame(path, user_fns):
         # user's: the self type or the trait is not a std one
         # (`<std::cell::Cell<i32> as main::Thing>::do_the_thing`)
         self_ty, trait = q
-        if all(strip_generics(t).startswith(STD_CRATES) for t in (self_ty, trait) if t):
+        if all(is_std_type(t) for t in (self_ty, trait) if t):
             return False
     elif strip_generics(path).startswith(STD_CRATES) or \
             any(x in strip_generics(path) for x in STD_CRATES):

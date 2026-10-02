@@ -421,12 +421,16 @@ def resolveGlobalsStmt (gmap : List (Nat × Nat)) : LStmt → Except String LStm
 
 /-- Lower a crate's `main` into a flat program.
 
-    Statics hoisting: every global becomes a fresh local appended after
-    main's locals, materialized `uninit` at pc 0; `Global` place roots are
-    rewritten to those locals. Initializer bodies are NOT run — hoisted
-    statics start undef, which is fine for SB purposes as long as the
-    program writes them before any value-dependent use (documented
-    divergence: real statics have interned, initialized allocations). -/
+    Globals hoisting: every global becomes a fresh local appended after
+    main's locals, materialized `uninit` at pc 0 and then given its value
+    by inlining its initializer (Charon's `value` call) before `main`
+    runs, outside any certificate frame (Miri evaluates consts and
+    statics before the program starts, so it records no frames for
+    them). `Global` place roots are rewritten to those locals. A const
+    whose initializer does not lower is unsupported (it is only ever
+    read); a static whose initializer does not lower keeps starting
+    `uninit` (documented divergence: the program must write it before a
+    value-dependent use). -/
 def lowerCrate (crate : UCrate) (cert? : Option Cert := none) : Except String LProg := do
   match crate.funs.find? (·.name == "main") with
   | none => .error "no main function in crate"
@@ -448,6 +452,21 @@ def lowerCrate (crate : UCrate) (cert? : Option Cert := none) : Except String LP
             pure { locals := main.locals ++ crate.globals.map (·.ty) ++ [.nat, .nat],
                    out := hoistInit, cert := some c,
                    certBad := base + nGlob, certTmp := base + nGlob + 1 }
+      let st0 ← crate.globals.zipIdx.foldlM (fun st (g, i) => do
+        match g.init with
+        | none => pure st
+        | some fid =>
+          -- the call's return-place protection lands on a scratch local;
+          -- the global itself gets one plain store, so its stack is just
+          -- its base item, as for Miri's pre-evaluated allocation
+          let g' : UPlace := { root := .local (base + i), projs := [], ty := g.ty }
+          let tmp : UPlace := { root := .local st.locals.length, projs := [], ty := g.ty }
+          let st1 := { st with locals := st.locals ++ [g.ty], cert := none }
+          match inlineCall crate 8 st1 fid [] tmp 0 with
+          | .ok st' => pure { pushOut st' (.assign g' (.use (.copy tmp)) 0) with cert := st.cert }
+          | .error e =>
+              if g.isStatic then pure st
+              else throw s!"unsupported: initializer of const {g.name}: {e}") st0
       let st ← walkBlock crate 8 st0 main 0 0 []
       let st ← match st.cert with
         | some c => if st.halted then pure st else do

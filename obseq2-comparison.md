@@ -154,6 +154,41 @@ aligned and never at address zero. All of this is proved, and executable
 checks reproduce the behaviour those Miri tests rely on. Nothing in the
 two machines or the correctness proof uses it yet; moving them onto it is
 the next stage.
+## 2026-10-01 (night) — Counting the Right Tests
+
+The suite had been scored against Miri's four Stacked Borrows test
+directories, 89 files. Miri checks Stacked Borrows in more places: 9
+undefined-behaviour tests elsewhere, and 38 programs that upstream runs
+under both aliasing models, 137 files in all. All 38 were run: Miri
+accepts every one, and six now load and agree with it. Getting there
+fixed three things in how programs are read: constants now get their
+values before `main` runs (one test was being flagged for reading a
+constant that had never been set); indexing into the elements of a slice
+now reaches the right element (a read of the second element of a slice
+of pairs used to land on the first element's second field); and the
+hidden borrow rustc inserts to read a slice's length no longer counts as
+an access. Most of the remaining programs need standard-library
+containers, threads, or integer addresses without provenance, which the
+model does not have.
+
+---
+
+## 2026-10-01 (evening) — A Struct Is a Tuple
+
+When a function is called, every reference passed to it is re-tagged and
+protected until the call returns, including references sitting inside a
+tuple. The model had made an exception for references inside a named
+struct, on the strength of a Miri test that turns out to pass the struct
+behind a reference, where nothing inside is re-tagged for any type. Two
+Miri tests that hand a struct holding a `&mut` to a function, which then
+frees the memory it points to, showed the model calling the program fine
+where Miri reports undefined behaviour. Structs and tuples are now one
+type in the loader, so they are treated alike everywhere; the two tests
+join the corpus and flag the free, and no other test changed its result.
+In the same session `ptr::drop_in_place` became supported: it protects
+the place it drops for the whole drop, and a program with its own
+`Drop` implementation is now refused rather than run with its destructor
+silently skipped.
 
 ---
 

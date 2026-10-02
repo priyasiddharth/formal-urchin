@@ -199,10 +199,10 @@ def reasonsAgree (miri ours : UBReason) : Bool :=
   miri.cause == ours.cause &&
   (miri.op == ours.op ||
    -- Miri's "access" is a read or a write; its protector message does not
-   -- name the operation at all, and a retag (which performs an access)
-   -- is one of them
+   -- name the operation at all, and a retag and a deallocation both
+   -- perform one (Miri's `Stack::dealloc`: "Step 1: Make a write access")
    (miri.op == "access" && (ours.op == "read" || ours.op == "write"
-      || (miri.cause == "protector" && ours.op == "retag")))) &&
+      || (miri.cause == "protector" && (ours.op == "retag" || ours.op == "dealloc"))))) &&
   (match miri.offset, ours.offset with
    | some a, some b => a == b
    | _, _ => true)

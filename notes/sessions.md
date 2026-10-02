@@ -4713,6 +4713,103 @@ The fork file change needs a fork commit before the superproject commit.
 (item q); the paper's protector description; item m.
 
 
+## 2026-10-01 (drop_in_place)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** item q step 1 — `ptr::drop_in_place`.
+
+**Key outputs:** `stdlite.dropInPlace` (protected Unique retag of `*p`,
+Box glue); `ullbc_ast.userDropImpl?` (a crate with a local `impl Drop` is
+unsupported, not lowered with its destructor skipped); drop_in_place_retag
+supported; witness local/drop_in_place_ok; drop_in_place_protector stays
+unsupported with an accurate reason (needs Charon drop_glue).
+
+**Status:** complete, not committed. Corpus 134/0/28, osea 134, live
+134/134 0 drift; units 19/19 + 129/129. Proofs untouched.
+
+**Next-session pickup candidates:** item q step 2 (user Drop glue via
+`--precise-drops`); CLAUDE.md's suite counts are stale (says 82/41/123).
+
+## 2026-10-01 (structs are tuples)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** item m — by-value struct fields are fn-entry retagged.
+
+**Key outputs:** `UTy.structT` removed (loader parses structs to `.tup`;
+every other site already treated the two alike, and `elab` erased the
+difference); fork commit with tests/formal-urchin/newtype{,_pair}_retagging.rs;
+both entries supported (verdict-only); README rows corrected.
+Durable note: durable/retagging-does-not-follow-references.md.
+
+**Critical corrections:** the 2026-08-14 rule "Miri does not retag
+named-struct fields" was never what fnentry_invalidation2 pins (it passes
+`&mut Thing`; nothing is retagged through a pointer). It made the model
+miss the newtype UB.
+
+**Status:** complete. 136/0/26, osea 136, live 136/136 0 drift; units
+19/19 + 129/129. Proofs untouched. Fork commit 9740df5de pushed.
+
+**Next-session pickup candidates:**
+local/unassigned_local_addr (MaybeUninit shim, item t); item q step 2.
+
+## 2026-10-01 (pass tests outside the SB directories)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** the denominator — 137 SB-relevant Miri files, not 89 — and the
+38 `pass` tests upstream runs under both models.
+
+**Key outputs:** all 38 run (scratch): Miri ok 38/38 (`vec`'s caught panic
+misread by miri_local.sh), Charon 37/38 (`slices`: layout_for_ptr). Six
+now supported (associated-const, disable-alignment-check,
+disjoint-array-accesses, issue-miri-3473, many_shr_bor, memleak_ignored).
+Fixes: global initializers inlined before main (associated-const was a
+false UB); `(*s)[k]` on slice data is an offset of `s`, not field k (a
+silent wrong-cell read for k > 0 on tuple elements); rustc's
+FakeForPtrMetadata bounds-check borrow (Charon renders it `Shared`)
+recovered by shape and not retagged; `mem::swap`, `Default::default`
+shims; miri_cert.py: `<primitive as std Trait>` frames are std.
+
+**Status:** complete, not committed. 142/0/26 (168), osea 142, live
+142/142 0 drift; units 19/19 + 129/129. Proofs untouched.
+
+Durable note: durable/miri-is-rustcs-mir-interpreter-plus-a-machine.md.
+
+**Next-session pickup candidates:** parked 12 (integer addresses —
+needs semantics); `atomic` (37 std fns); raw_ref_to_part (item n);
+box_into_raw_allows_interior_mutable_alias (passes as-is, needs a split).
+
+## 2026-10-01 (byte-addressing probe)
+
+**Session:** `formal-urchin` (continued)
+
+**Theme:** measure, not estimate, the proof repair for a byte-addressed
+memory model; scope what the seven representation tests would need.
+
+**Key outputs:** journal/2026-10/2026-10-01-byte-probe.md (stage 1: one
+type-level break — `values_len`; stage 2: `slotCount` split, Obseq3 green,
+68 mechanical sites + 20 broken theorems ≈ 3.5k lines, by module; three
+breakage buckets; revised C0 estimate). Plan file
+~/.claude/plans/can-we-move-to-stateless-lemur.md: the 137-file
+denominator, tiers A/B/E/F/G/C/D per scenario, ranked parity roadmap.
+Durable note miri-is-rustcs-mir-interpreter-plus-a-machine.md. Parked 12
+updated. Worktree removed, nothing committed from the probe.
+
+**Critical corrections:** Miri stores one borrow stack per BYTE range
+(`DedupRangeMap<Stack>`, structural equality on `borrows` +
+`unknown_bottom`), `exposed_tags` per allocation.
+
+**Status:** probe complete. Tree: 4b1afea + uncommitted notes (this entry,
+the journal, parked 12, the two durable notes from earlier today).
+
+[EMP] inventory of every unsupported Miri test and its blocker, over the
+137-file denominator: notes/empirical/unsupported-miri-tests.md (new dir).
+
+**Next-session pickup candidates:** roadmap step 1–2 (split-outs; `&raw`
+through a raw base, parked n); the store-width item ([HYP] in the probe
+journal) as a cell-model prerequisite for any later C0.
 ## 2026-10-02 (byte-addressed memory, stage 0)
 
 **Session:** `formal-urchin` (continued), branch `byteaddress` from main.
@@ -4888,3 +4985,25 @@ item B3 now carries the costs (offset 0 vs 8, size_of, 2 `reason_known`
 entries), the original rationale, and two resume options (layout-only
 padding — recommended; the real flag); B10 records the read-only-statics
 fix for the third known difference.
+
+## 2026-10-02 (merge: conformance-drop-in-place → byteaddress)
+
+**Theme:** one branch with both lines of work.
+
+**Resolution:** `structT` is KEPT (it carries Charon's struct layout for
+the byte model) but treated exactly like `.tup` for every SB purpose —
+containsRef, emitSeamCopy, sizes, masks — so the newtype retag fix
+(094db2e) survives; the old "struct fields are not retagged" rule is
+gone. stdlite takes this branch's `&arr[..]` length fix; the other
+branch's Default shim learns `.int` and `structT`; `URvalue.places`
+learns `binOp`'s integer type. Docs/notes: both sides kept (sessions
+chronological, dev log newest-first, README combined).
+
+**Found by the reason check:** the newtype tests' UB is a deallocation's
+write access popping a protected item (Miri `Stack::dealloc`: "Step 1:
+Make a write access"); the classifier now accepts an unnamed protector
+access for a dealloc as it does for a retag.
+
+**Status:** corpus 146 / 0 / 0 xfail / 26 unsupported (172); reasons 81 as
+Miri + 3 known + 0 differ; osea 146; cells 143 + 3 diverging; live
+146/146 0 drift; units 30/30 + 131/131; audit unchanged.

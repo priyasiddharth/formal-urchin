@@ -100,7 +100,7 @@ branches and loops are lowered along a Miri-derived CERTIFICATE (see
 | two-phase reserved borrows | pass_invalid_mut (TwoPhaseMut seams) |
 | protectors (strong) | aliasing_mut1-4, invalidate_against_protector1/2/3, illegal_write6 |
 | protectors (weak on SRW) | unsafe_cell_invalidate, ref_protector |
-| fn-entry retags: args/returns, tuple fields yes, struct fields no | pass/return_invalid_* family, fnentry_invalidation2 |
+| fn-entry retags: args/returns, tuple and struct fields (not through pointers) | pass/return_invalid_* family, newtype_retagging, newtype_pair_retagging, fnentry_invalidation2 |
 | in-place argument/return-place protection (Miri's `protect_in_place_function_argument`) | fail/function_calls/arg_inplace_*, return_pointer_aliasing_read/write |
 | typed read of uninitialized memory is UB | fail/function_calls/arg_inplace_observe_after; compile_tests d9b |
 | retag on reference loads | load_invalid_mut/shr |
@@ -117,10 +117,20 @@ protector is modeled with the same pop-blocking as strong protectors
 the call — unexercised by any reachable test); plain Box-typed
 assignments (`let b2 = b`) are not retagged (no test exercises it);
 wildcard resolution is determinized (topmost exposed granting item) vs
-miri's angelic reading; RefCell shims elide the borrow flag; hoisted
-statics start uninitialized; `size_of`/`Layout` sizes are in BYTES while
-the cell model allocates one cell per byte of them (over-allocation); the
-retag×data-race interaction (threads) is out of scope.
+miri's angelic reading; RefCell shims elide the borrow flag; globals
+are initialized by inlining their initializer before `main` (a const
+whose initializer does not lower is unsupported; such a static starts
+uninitialized, e.g. `null_mut()`); `size_of`/`Layout` sizes are in BYTES
+while the cell model allocates one cell per byte of them
+(over-allocation); the retag×data-race interaction (threads) is out of
+scope.
+
+Scope (2026-10-01): the corpus is Miri's four Stacked Borrows test
+directories (89 files, all in the manifest), 9 SB `fail` tests from
+other directories, and the `pass` tests elsewhere that upstream runs
+under both models (`//@revisions: stack tree`) as far as they load —
+137 SB-relevant Miri files in all, plus split-out scenarios and local
+witnesses.
 
 Byte model (branch `byteaddress`): the JUDGED verdict comes from the
 source semantics on byte-addressed memory, with real integer widths, C
@@ -145,7 +155,8 @@ allocation — and requires them to agree (the offset wherever Miri reports
 one). An unrecorded difference fails the suite; a difference explained in
 the manifest (`reason_known`: RefCell's elided borrow flag shifts an
 offset by 8; immutable statics are read-only memory in Miri but a frozen
-item here) is reported as known. Current: 78 as Miri, 3 known, 0 differ.
+item here) is reported as known. Current (after merging
+`conformance-drop-in-place`, 2026-10-02): 81 as Miri, 3 known, 0 differ.
 
 The single consolidated inventory of everything unimplemented or
 approximated lives in `notes/loose-ends/parked.md` (MASTER INVENTORY);
@@ -267,8 +278,8 @@ retags (`RExpr.refSlice` retags `size − offset` cells via the fat
 value's tag), unsize coercions are value copies, and
 `as_ptr`/`as_mut_ptr` shims reproduce the receiver's fn-entry retag
 before the raw data retag (the invalidation fnentry_invalidation2
-tests). Named-struct fields are NOT retagged at seams (miri's behavior,
-also per that test) — tuples are. Since 2026-09-23 a pointer value
+tests). Struct and tuple fields are retagged alike at seams (one `UTy.tup`
+since 2026-10-01; nothing behind a pointer is). Since 2026-09-23 a pointer value
 carries its EXTENT (the slice's length in cells), so a slice retag covers
 exactly its slice. Remaining exclusions: slice lengths (`.len()`/metadata)
 and range sub-slicing, Vec/String, threads, general closures, drop glue,

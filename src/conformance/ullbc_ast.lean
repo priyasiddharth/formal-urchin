@@ -53,7 +53,11 @@ inductive UTy
 | ref (mutbl : Bool) (inner : UTy)
 | raw (mutbl : Bool) (inner : UTy)
 | tup (tys : List UTy)
-| structT (tys : List UTy) (lay : Option StructLay)   -- named struct: fields are NOT retagged at seams; `lay`: rustc's layout, when Charon gives it
+| structT (tys : List UTy) (lay : Option StructLay)
+  -- a named struct: for every SB purpose (retags, sizes, freeze masks)
+  -- exactly a tuple — its fields are retagged like a tuple's
+  -- (2026-10-01, newtype_retagging) — plus rustc's layout when Charon
+  -- gives it (2026-10-02), which the byte model uses for field offsets
 | enum (variants : List (List UTy))
 | cell (inner : UTy)     -- UnsafeCell/Cell/Atomic*: interior-mutable region
 | boxT (inner : UTy)     -- Box<T>: unique-retagged at seams (miri's box retag)
@@ -63,8 +67,8 @@ inductive UTy
 deriving Repr, BEq, Inhabited
 
 /-- Does a reference (or Box, or reference-to-slice) occur ANYWHERE in the
-    type, struct fields and cells included? A conservative guard, unlike
-    the seam-retag rule `containsRef`. -/
+    type, cells included? A conservative guard, unlike the seam-retag
+    rule `containsRef`, which skips cells. -/
 partial def containsRefTy : UTy → Bool
   | .ref _ _ | .boxT _ | .slice false _ _ => true
   | .tup tys | .structT tys _ => tys.any containsRefTy
@@ -235,6 +239,9 @@ structure UGlobal where
   gid : Nat
   name : String
   ty : UTy
+  -- the initializer: Charon's `value` is a call to a fun computing it
+  init : Option Nat := none
+  isStatic : Bool := false
 deriving Repr, Inhabited
 
 structure UCrate where
@@ -1229,6 +1236,54 @@ def parseBlock (ctx : ParseCtx) (j : Json) : UBlock :=
   let termJ := (getK j "terminator").getD Json.null
   { stmts, term := parseTerm ctx termJ, termLine := spanLine termJ }
 
+def UOperand.places : UOperand → List UPlace
+  | .copy p | .move p => [p]
+  | _ => []
+
+def URvalue.places : URvalue → List UPlace
+  | .use op => op.places
+  | .move p | .ref _ _ p | .exposeAddr p | .fromExposed p | .ptrOffset p _
+  | .refSlice _ _ p | .sliceLen p | .discriminant p => [p]
+  | .aggregate _ ops => ops.flatMap (·.places)
+  | .subSlice p lo hi => p :: lo.places ++ hi.places
+  | .binOp _ _ a b => a.places ++ b.places
+  | _ => []
+
+def UTerm.places : UTerm → List UPlace
+  | .call _ args dest _ => dest :: args.flatMap (·.places)
+  | .callDyn fp args dest _ => fp :: dest :: args.flatMap (·.places)
+  | .assert c _ _ _ => c.places
+  | .switch d _ _ => d.places
+  | .drop p _ => [p]
+  | _ => []
+
+/-- rustc's bounds check reads a slice's length through
+    `_t = &raw const (fake) (*_s); _n = PtrMetadata(copy _t)`. A FAKE raw
+    borrow is not retagged (Miri: `RawPtr` skips the retag when
+    `kind.is_fake()`), but Charon renders `FakeForPtrMetadata` as `Shared`.
+    Recovered by shape: a raw shared slice borrow into a local whose every
+    other use is its `PtrMetadata` (surface Rust cannot write that
+    projection) becomes a tag-preserving copy of the fat pointer. -/
+def elideFakeMetadataBorrows (f : UFun) : UFun := Id.run do
+  let stmtPlaces := f.blocks.flatMap fun b =>
+    b.stmts.flatMap (fun s => match s.kind with
+      | .assign d rv => (d, true) :: rv.places.map ((·, false))
+      | _ => []) ++ b.term.places.map ((·, false))
+  let isFake (l : Nat) : Bool :=
+    let uses := stmtPlaces.filter fun (p, isDst) =>
+      !isDst && p.root == .local l
+    !uses.isEmpty && uses.all (fun (p, _) => p.projs == [.ptrMetadata])
+  let blocks := f.blocks.map fun b =>
+    { b with stmts := b.stmts.map fun s =>
+        match s.kind with
+        | .assign d (.refSlice .rawConst false src) =>
+            match d with
+            | { root := .local l, projs := [], .. } =>
+                if isFake l then { s with kind := .assign d (.use (.copy src)) } else s
+            | _ => s
+        | _ => s }
+  return { f with blocks }
+
 def parseFun (ctx : ParseCtx) (j : Json) : UFun :=
   let defId := ((getK j "def_id") >>= asNat).getD 0
   let path := (ctx.funPaths.lookup defId).getD (itemName j)
@@ -1248,14 +1303,36 @@ def parseFun (ctx : ParseCtx) (j : Json) : UFun :=
         ((localsJ >>= (getK · "locals")).map asArr).getD []
           |>.map (fun l => parseTy ctx 16 ((getK l "ty").getD Json.null))
       let blocks := ((getK bodyJ "body").map asArr).getD [] |>.map (parseBlock ctx)
-      { defId, name, path, argCount, locals, blocks, hasBody := true }
+      elideFakeMetadataBorrows { defId, name, path, argCount, locals, blocks, hasBody := true }
 
 def parseGlobal (ctx : ParseCtx) (j : Json) : UGlobal :=
   let gid := ((getK j "def_id") >>= asNat).getD 0
   let name := (itemName j).getLast?.getD "?"
-  { gid, name, ty := parseTy ctx 16 ((getK j "ty").getD Json.null) }
+  let init := getK j "value" >>= (getK · "kind") >>= (getK · "Call") >>= (·.getArrVal? 0 |>.toOption)
+    >>= (getK · "kind") >>= (getK · "Fun") >>= (getK · "Regular") >>= asNat
+  let isStatic := (getK j "global_kind" >>= asStr) == some "Static"
+  { gid, name, ty := parseTy ctx 16 ((getK j "ty").getD Json.null), init, isStatic }
+
+/-- A local `impl Drop`: drop glue runs only Boxes (`emitDropGlue`), so a
+    crate with a user destructor is rejected rather than lowered with its
+    `drop` silently skipped (at `Drop` terminators and in
+    `ptr::drop_in_place`). -/
+def userDropImpl? (root : Json) : Option String := do
+  let tr ← getK root "translated"
+  let traits := ((getK tr "trait_decls").map asArr).getD []
+  let dropIds := traits.filterMap fun t => do
+    if itemName t == ["core", "ops", "drop", "Drop"] then getK t "def_id" >>= asNat else none
+  let impls := ((getK tr "trait_impls").map asArr).getD []
+  let hit ← impls.find? fun ti =>
+    let tid := getK ti "impl_trait" >>= (getK · "id") >>= asNat
+    let isLocal := (getK ti "item_meta" >>= (getK · "is_local")) == some (.bool true)
+    isLocal && tid.any dropIds.contains
+  let src := (getK hit "item_meta" >>= (getK · "source_text") >>= asStr).getD "impl Drop"
+  pure (String.mk (src.toList.takeWhile (· != '\n')))
 
 def parseCrate (root : Json) : Except String UCrate := do
+  if let some d := userDropImpl? root then
+    throw s!"unsupported: user Drop impl ({d}): its drop glue is not modelled"
   let tbl := collectTable root []
   let decls := parseDecls root
   let paths := funPaths (mkNameCtx root tbl decls) root

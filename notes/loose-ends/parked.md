@@ -265,8 +265,25 @@ feature-level view.
 8. **Unions** (illegal_read3).
 9. **Misc std/lang**: MaybeUninit, coroutines, C variadics, trait
    objects/dyn, Pin/UnsafePinned, custom allocators (pass files).
-10. **Static initializers** — hoisted statics start undef; a test
-    READING a static's initial value would need initializer inlining.
+10. **Static initializers** — DONE 2026-10-01: every global's
+    initializer is inlined before `main` (outside certificate frames, the
+    value stored through a scratch local so the global's stack is just
+    its base item). A const whose initializer does not lower is
+    unsupported; a static falls back to uninit (`null_mut()`,
+    `without_provenance`: bodyless). Was: hoisted statics start undef.
+12. **Integer addresses without provenance** — `transmute` ptr↔int,
+    `with_addr`, `addr()`, int literals as pointers, byte-wise pointer
+    copies: transmute_ptr, ptr_int_transmute, ptr_int_casts,
+    ptr_int_from_exposed, provenance, option_box_transmute_ptr,
+    strange_references (pass/, outside the SB dirs). mirlite has
+    `exposeAddr` only; a provenance-stripping `addr` rvalue is new
+    semantics + proof leaves, and the byte-level ones need a byte-level
+    pointer representation the cell model does not have. [OBS 2026-10-01]
+    Byte-addressing cost MEASURED (journal/2026-10/2026-10-01-byte-probe.md):
+    splitting byte size from slot count breaks 20 theorems / ~3.5k proof
+    lines (68 mechanical sites besides), SB layer untouched; a faithful
+    C0 adds the layout-directed `readWordSeq` rework (unmeasured, est.
+    20–40 more). Flips no Miri file by itself. Not before the paper.
 11. **Miri-internal tests**: stack-printing, unknown-bottom-gc,
     zst-field-retagging-terminates.
 
@@ -395,7 +412,13 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   → c_variadics. [HYP]
 
 **Tier 2 — model / retag-rule changes (touch semantics, maybe proofs)**
-- m. **By-value named-struct fields must be fn-entry retagged** →
+- m. **DONE 2026-10-01** — `UTy.structT` deleted: struct decls parse to
+  `UTy.tup`, so struct fields retag exactly as tuple fields (args,
+  returns, loads); it had been the ONLY place the two differed (`elab`
+  already erased it to `TupL`). Fork rewrites newtype_retagging /
+  newtype_pair_retagging (closure → `fn free_it`, captured ptr → static
+  `PTR`), verdict-only; no other verdict moved. Was:
+  **By-value named-struct fields must be fn-entry retagged** →
   newtype_retagging, newtype_pair_retagging (both return "ok" today with
   the prep; the tuple variant passes). `containsRef (.structT _) = false`
   (emit.lean, `containsRef`) cites fnentry_invalidation2, but that test passes
@@ -425,7 +448,18 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   Box protectors (B2 becomes exercised) and the `&mut !Unpin` →
   SRW/no-protector rule → not_unpin_not_protected, basic::zst freed case,
   interior_mutability::unsafe_cell_deallocate. [HYP]
-- q. `drop_in_place` shim (protected Unique retag of `*p`) + drop glue
+- q. **STEP 1 DONE 2026-10-01** — `dropInPlace` shim (stdlite.lean):
+  pushProt; protected Unique retag of `*p`; Box glue; popProt.
+  drop_in_place_retag supported (verdict-only: Miri's UB span is in std;
+  `miri_local.sh` reports line 9 from the "created by" help span, the call
+  is line 10); witness local/drop_in_place_ok. The loader now REJECTS any
+  crate with a local `impl Drop` (`userDropImpl?`): no supported artifact
+  had one, and the glue silently skipped it. STEP 2 (open): Charon
+  `--precise-drops` emits `drop_in_place` still opaque but per-type
+  `{Destruct}::drop_glue` bodies + the user `drop` — the shim (and Drop
+  terminators) must find T's glue fn and inline it [OBS]; the flag changes
+  every artifact (MIR level ≥ elaborated), so cost the drift first.
+  Was: `drop_in_place` shim (protected Unique retag of `*p`) + drop glue
   (Drop terminators call Charon's `drop_glue`; flags static on the
   single certified path) → drop_in_place_retag (also `cast_mut`),
   drop_in_place_protector, maybe_dangling::boxy, drop_after_sharing. [OBS]
