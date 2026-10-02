@@ -5041,3 +5041,7 @@ Design notes appended to `notes/journal/2026-10/2026-10-02-byte-memory-design.md
 **Next-session pickup candidates:** A step 2 — the const_write leaf end
 to end (byte source `doAssign … constInit` vs `CStore dstL [Dat v]`) over
 `ByteMemSim`.
+Same session, later: A step 2's first leaf — `src/obseq3/byteproof/const_write.lean`
+(`InvAtB`, `compileStmt_constInit_local`, `constWrite_local_sim`), sorry-free,
+byteproof axioms unchanged (86 declarations). Next: port `ValuePkg` (one leaf
+per destination shape), then fresh-root / projection / deref regimes.

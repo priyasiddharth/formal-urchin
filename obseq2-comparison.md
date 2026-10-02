@@ -18,6 +18,12 @@ same verdict as the byte-level source — 146 of 146 — and so do the 131
 compiler test programs. The cell compiler and its proof are untouched;
 the new pair is what the byte-level proof will be about.
 
+The first piece of that proof is done: storing a constant into a
+variable. If the byte-level source takes the step, the compiled store
+takes it too and the two machines stay related, now byte by byte rather
+than cell by cell. The proof is shorter than its cell counterpart because
+addresses no longer need translating between the two machines.
+
 ---
 
 ## 2026-10-02 (evening) — The Same Undefined Behaviour, Not Just the Same Line

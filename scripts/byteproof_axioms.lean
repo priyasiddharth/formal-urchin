@@ -1,4 +1,5 @@
 import obseq3.byteproof.memsim
+import obseq3.byteproof.const_write
 open Lean Elab Command
 
 -- The byte-level proof (obseq3.byteproof, branch `byteaddress`) may rest

@@ -376,3 +376,30 @@ byteproof axioms unchanged; main audit unchanged (3 axioms, 0 sorries).
 
 Next: step 2, the const_write leaf over `ByteMemSim` against these two
 definitions.
+
+## A step 2 — the first leaf: const_write, bound local (2026-10-02, late)
+
+`src/obseq3/byteproof/const_write.lean`, sorry-free, axioms unchanged
+(86 byteproof declarations; propext / Quot.sound / Classical.choice).
+
+- `InvAtB L ρt s_mir s_osea cs`: the cell `InvAt` with `ByteMemSim` +
+  `ByteAllocLockstep` for `SourceMemSim` + `AllocLockstep`; NO `ρa`, no
+  `IdentityOnDomain`, no domain conjunct in the binding relation
+  (`LocalBindingSimB`: the local's register holds `Ptr addr 0 _ (L x).size
+  tag'`, same address). Permission and compiler-state halves unchanged.
+- `compileStmt_constInit_local`: a bound local's `x := const v` compiles to
+  exactly `emit cs [CStore (L x) [Dat v] reg]`.
+- `constWrite_local_sim`: source step ok ⇒ target `runN 1` ok and
+  `InvAtB` at the statement's compiled state. The body is the spike's
+  `store_step_sim` plus bookkeeping (pc, liveness via lockstep `freed`,
+  bounds, `sb_write_NextTag`); ~70 lines.
+
+[OBS] What dropping ρa bought: the cell regime-A leaf goes through
+`copy_bound_write_after_read`, a seam that also re-establishes ρa's
+domain over the stored range; here nothing about addresses is carried,
+and the leaf is one memory lemma and one permission lemma.
+
+[OBS] Not yet general: the cell leaves are one per DESTINATION shape over a
+value package (`ValuePkg`); this one is constInit-specific. Porting the
+package abstraction is the next structural step (then fresh root,
+projection, deref chains), before the remaining rvalues.

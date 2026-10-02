@@ -21,8 +21,9 @@ stated for any address and length, and the value-level ones for any
 layout, so nothing in them assumes cells. The Stacked Borrows side needs
 nothing new: `sb_*_respects_PermSim` already take any `(addr, len)`.
 
-STATUS (branch `byteaddress`, 2026-10-02): standalone; no machine step is
-proved here yet (that needs the byte-emitting compiler).
+STATUS (branch `byteaddress`, 2026-10-02): the lemmas here are used by the
+first machine-step leaf, `byteproof/const_write.lean` (byte compiler +
+layout-typed target, bound-local regime).
 -/
 
 namespace obseq3.byteproof
