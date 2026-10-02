@@ -403,3 +403,22 @@ and the leaf is one memory lemma and one permission lemma.
 value package (`ValuePkg`); this one is constInit-specific. Porting the
 package abstraction is the next structural step (then fresh root,
 projection, deref chains), before the remaining rvalues.
+
+### Value packages (same day)
+
+[DEC] Split as in the cell proof: `byteproof/spine.lean` holds `InvAtB`,
+`StoreStepB` (`cstore`/`rstore`), `ValuePkgB` and the destination leaf
+`storereg_local_simB` (any rvalue with a package, bound-local dst);
+`byteproof/const_write.lean` holds the packages `constInit_pkg`,
+`uninit_pkg` (via `pureCStore_pkg`) and the two one-line leaves. The
+constInit-specific leaf is gone.
+
+[DEC] `ValuePkgB` relates the stored values by `StoreSim`, not the read
+relation (spike finding 3). `uninit` meets it with undef ↔ undef; every
+reading rvalue errs on undef on both sides, so its values are defined.
+
+[OBS] The leaf takes `CodeIncludedB` of the statement's run directly; the
+cell leaf's conditional frame (`hF`, compile success ⇒ frame) is only
+needed when the per-statement leaves are assembled into the program
+theorem, and will come back then. 98 byteproof declarations, axioms
+unchanged.

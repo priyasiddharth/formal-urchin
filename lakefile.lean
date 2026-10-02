@@ -50,7 +50,7 @@ lean_exe interp_tests where
 
 lean_lib Obseq3ByteProof where
   srcDir := "src"
-  roots := #[`obseq3.byteproof.memsim, `obseq3.byteproof.const_write]
+  roots := #[`obseq3.byteproof.memsim, `obseq3.byteproof.spine, `obseq3.byteproof.const_write]
 
 lean_lib Obseq3Proof where
   srcDir := "src"
