@@ -9,6 +9,8 @@ import obseq3.byteproof.projdst
 import obseq3.byteproof.ref
 import obseq3.byteproof.move
 import obseq3.byteproof.leafops
+import obseq3.byteproof.readreg
+import obseq3.byteproof.binop
 open Lean Elab Command
 
 -- The byte-level proof (obseq3.byteproof, branch `byteaddress`) may rest

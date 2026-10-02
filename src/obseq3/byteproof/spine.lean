@@ -222,6 +222,7 @@ def ValuePkgB {Γ : Ctx} {τ : LayoutTy} (compProg : oseairL.Prog) (L : mirliteB
     ByteAllocLockstep sM.mem sA.mem →
     PermSim ρt sM.perms sA.perms →
     sA.pc = csA.nextLabel →
+    UnboundLocalsUnmappedB sM.env csA →
     ∀ (output : mirliteB.EvalOutput MSB Γ),
       mirliteB.evalRExpr MSB L sM dstL rhs = .ok output →
       ∃ (mkStore : Register → oseairL.Instr) (pOut : RhsPre L τ rhs),
@@ -309,7 +310,7 @@ theorem storereg_local_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRename
   -- §2 the rvalue, behind its package
   obtain ⟨mkStore, pOut, h_pval, h_storeR, h_postR, h_prmR, h_pkg'⟩ :=
     h_pkg ρt s_mir s_osea cs h_inv.wf_t h_inv.tbd h_inv.lbs h_inv.prb h_inv.mem
-      h_inv.alloc h_inv.psim h_inv.pc output h_eval
+      h_inv.alloc h_inv.psim h_inv.pc h_inv.unmap output h_eval
   have h_shape := compileStmt_storereg_local h_pi h_pval h_prmR h_storeR h_postR
   rw [h_shape] at h_code ⊢
   have h_codePre : CodeIncludedB compProg

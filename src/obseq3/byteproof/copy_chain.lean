@@ -104,7 +104,7 @@ theorem copy_chain_pkg {Γ : Ctx} {σ : LayoutTy} {compProg : oseairL.Prog}
     {L : mirliteB.LayEnv Γ} (hWF : PtrPlacesWF L) (dstL : BLayout) {src : Place Γ σ}
     (h_chain : PtrChain src) :
     ValuePkgB compProg L dstL (RExpr.copy src) := by
-  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc output h_ev
+  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc _h_unmap output h_ev
   -- the source: resolve, check, read whole
   simp only [mirliteB.evalRExpr, mirliteB.evalCopy] at h_ev
   cases h_res : mirliteB.resolvePlaceAcc MSB L sM src with

@@ -55,7 +55,7 @@ theorem leaf_pkg_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pr
     (h_chain : PtrChain src) (h_op : LeafOpB L dstL rhs src mk)
     (h_pre : compileRExprPreChecked L dstL rhs = readRhsPre L dstL rhs src mk (fun _ => []) ev) :
     ValuePkgB compProg L dstL rhs := by
-  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc output h_ev
+  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc _h_unmap output h_ev
   obtain ⟨⟨resolved, permsR⟩, h_res⟩ := h_op.resolves sM output h_ev
   have h_map : ∀ {τ' : LayoutTy} (loc : Local Γ τ') (b : Binding), sM.env.lookup loc = some b →
       ∃ reg layout, getPlaceInfo csA loc.idx.1 = some (reg, layout) := fun loc b h => by

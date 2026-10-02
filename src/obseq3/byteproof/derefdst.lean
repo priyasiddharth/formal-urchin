@@ -167,7 +167,7 @@ theorem storereg_lowered_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRena
   -- §2 the rvalue, behind its package
   obtain ⟨mkStore, pOut, h_pval, h_storeR, h_postR, h_prmR, h_pkg'⟩ :=
     h_pkg ρt s1 s_osea cs h_inv.wf_t h_inv.tbd h_inv.lbs h_inv.prb h_inv.mem
-      h_inv.alloc h_inv.psim h_inv.pc output h_eval
+      h_inv.alloc h_inv.psim h_inv.pc h_inv.unmap output h_eval
   -- the destination's access resolution, on the state the rvalue left
   split at h_step
   · cases h_step

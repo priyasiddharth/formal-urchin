@@ -110,7 +110,7 @@ theorem readRhsPre_local {Γ : Ctx} {L : mirliteB.LayEnv Γ} {dstL : BLayout}
 theorem copy_local_pkg {Γ : Ctx} {σ : LayoutTy} {compProg : oseairL.Prog}
     {L : mirliteB.LayEnv Γ} (dstL : BLayout) (l : Local Γ σ) :
     ValuePkgB compProg L dstL (RExpr.copy (.local l)) := by
-  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc output h_ev
+  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc _h_unmap output h_ev
   -- the source: a bound local, read whole
   cases h_env : sM.env.lookup l with
   | none =>

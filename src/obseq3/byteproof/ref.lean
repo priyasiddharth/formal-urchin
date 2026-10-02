@@ -177,7 +177,7 @@ theorem ref_pkg_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
     (h_low : LowersB L compProg a) (h_comp : CompilesB L a)
     (dstL : BLayout) (kind : RefKind) (prot : Bool) (mask : List Bool) :
     ValuePkgB compProg L dstL (RExpr.ref kind prot mask src) := by
-  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc output h_ev
+  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc _h_unmap output h_ev
   -- the source: resolve, check, retag
   simp only [mirliteB.evalRExpr] at h_ev
   cases h_r : mirliteB.resolvePlaceAcc MSB L sM src with

@@ -29,7 +29,7 @@ theorem pureCStore_pkg {Γ : Ctx} {τ : LayoutTy} {compProg : oseairL.Prog}
       mirliteB.evalRExpr MSB L sM dstL rhs = .ok output → output = ⟨vs, sM⟩)
     (h_rel : ∀ ρt, ListRel (StoreSim ρt) vs (ws.map oseairB.Val.toMem)) :
     ValuePkgB compProg L dstL rhs := by
-  intro ρt sM sA csA h_wf h_tbd h_lbs _ h_mem h_alloc h_psim h_pc output h_ev
+  intro ρt sM sA csA h_wf h_tbd h_lbs _ h_mem h_alloc h_psim h_pc _h_unmap output h_ev
   obtain ⟨h_run, pre, h_val, h_store, h_post⟩ := h_pre csA
   have h_out := h_eval sM output h_ev
   subst h_out
