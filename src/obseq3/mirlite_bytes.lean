@@ -172,6 +172,10 @@ def maskBytes (lay : BLayout) (mask : List Bool) : List Bool :=
     | some (_, j) => mask.getD j false
     | none => false
 
+/-- Miri checks that an allocation is still live BEFORE any borrow-stack
+    check, and reports a use-after-free as such. -/
+def freedMsg : String := "memory access failed: the allocation has been freed, so this pointer is dangling"
+
 structure State (M : PermissionModel) (Γ : Ctx) where
   pc : Nat
   env : Env Γ
@@ -234,7 +238,8 @@ def resolvePlaceAcc (state : State M Γ) {τ : LayoutTy} :
       match resolvePlaceAcc state ptrPlace with
       | .error e => .error e
       | .ok (ptrRes, perms') =>
-          if ptrRes.addr < ptrRes.allocBase ∨
+          if state.mem.isFreed ptrRes.allocBase then .error freedMsg
+          else if ptrRes.addr < ptrRes.allocBase ∨
              ptrRes.addr ≥ ptrRes.allocBase + ptrRes.allocSize then
             .error "deref of an out-of-bounds pointer"
           else
@@ -249,7 +254,8 @@ def resolvePlaceAcc (state : State M Γ) {τ : LayoutTy} :
 
 def writeResolvedPlace (state : State M Γ) (dst : PlaceRes) (lay : BLayout)
     (values : List MemValue) : Result M Γ :=
-  if dst.addr + lay.size > dst.allocBase + dst.allocSize then
+  if state.mem.isFreed dst.allocBase then .err freedMsg
+  else if dst.addr + lay.size > dst.allocBase + dst.allocSize then
     .err "write out of bounds"
   else
     match M.useMut state.perms dst.addr lay.size dst.tag with
@@ -291,7 +297,8 @@ def evalCopy (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) : EvalResu
   match resolvePlaceAcc M L state src with
   | .error e => .err e
   | .ok (resolved, permsR) =>
-      if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
+      if state.mem.isFreed resolved.allocBase then .err freedMsg
+      else if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
         .err "copy of an out-of-bounds range"
       else
       match M.read permsR resolved.addr lay.size resolved.tag with
@@ -319,7 +326,8 @@ def readCell (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) (what : St
   match resolvePlaceAcc M L state src with
   | .error e => .error e
   | .ok (resolved, permsR) =>
-      if resolved.addr + k.size > resolved.allocBase + resolved.allocSize then
+      if state.mem.isFreed resolved.allocBase then .error freedMsg
+      else if resolved.addr + k.size > resolved.allocBase + resolved.allocSize then
         .error s!"{what} of an out-of-bounds place"
       else
       match M.read permsR resolved.addr k.size resolved.tag with
@@ -344,7 +352,8 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
       match resolvePlaceAcc M L state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
-          if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
+          if state.mem.isFreed resolved.allocBase then .err freedMsg
+          else if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
             .err "move of an out-of-bounds range"
           else
           match M.ref permsR resolved.addr lay.size resolved.tag .Mut false [] with
@@ -446,6 +455,7 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
       match readCell M L state src "slice retag" with
       | .error e => .err e
       | .ok (.ptrVal base offset extent size tag, perms') =>
+          if state.mem.isFreed base then .err freedMsg else
           match M.ref perms' (base + offset) extent tag kind prot [] with
           | .error e => .err s!"retag failed: {e}"
           | .ok (perms'', newTag) =>
@@ -473,7 +483,8 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
       match resolvePlaceAcc M L state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
-          if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
+          if state.mem.isFreed resolved.allocBase then .err freedMsg
+          else if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
             .err "retag of an out-of-bounds range"
           else
           match M.ref permsR resolved.addr lay.size resolved.tag kind prot (maskBytes lay mask) with
@@ -530,9 +541,9 @@ def stepStmt (state : State M Γ) : Stmt Γ → Result M Γ
                 match M.dealloc out.state.perms base size tag with
                 | .error e => .err s!"deallocation failed: {e}"
                 | .ok permsD =>
+                    let mem := out.state.mem.write base (List.replicate size .uninit)
                     .ok { out.state with perms := permsD,
-                                         mem := out.state.mem.write base
-                                           (List.replicate size .uninit),
+                                         mem := { mem with freed := base :: mem.freed },
                                          pc := out.state.pc + 1 }
           | _ => .err "dealloc argument is not a pointer value"
 

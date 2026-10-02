@@ -30,6 +30,15 @@ for f in "${files[@]}"; do
     line="$(sed -n '/^error: Undefined Behavior/,$p' "$err" \
       | grep -m1 -- "--> .*$(basename "$f"):" | sed 's|.*\.rs:\([0-9]*\):.*|\1|' || true)"
     msg="$(grep -m1 "^error: Undefined Behavior" "$err" | cut -c1-140)"
+    # MIRI_REPORT_OUT: keep Miri's own account of the UB — the error line
+    # and the "this error occurs as part of <op> at <alloc>[<range>]" label
+    # — for the harness's reason check (one file per run)
+    if [ -n "${MIRI_REPORT_OUT:-}" ]; then
+      { grep -m1 "^error: Undefined Behavior" "$err"
+        part="$(grep -m1 -o "this error occurs as part of .*" "$err" || true)"
+        [ -n "$part" ] && echo "$part"
+      } > "$MIRI_REPORT_OUT"
+    fi
     echo "$name: ub line=$line :: $msg"
   elif grep -qE "panicked at|^error: abnormal termination" "$err"; then
     echo "$name: panic :: $(grep -m1 -E 'panicked at' "$err" | cut -c1-120)"

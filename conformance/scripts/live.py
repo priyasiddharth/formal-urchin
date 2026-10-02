@@ -54,7 +54,9 @@ def source_of(e):
     return e.get("source")
 
 
-def miri_verdict(src, env):
+def miri_verdict(src, env, report_out=None):
+    if report_out:
+        env = dict(env, MIRI_REPORT_OUT=report_out)
     r = sh(["scripts/miri_local.sh", src], env=env)
     out = r.stdout.strip().splitlines()
     line = out[-1] if out else ""
@@ -99,8 +101,16 @@ def run_entry_(e, env):
             res["problems"].append(f"source missing: {src}")
         return res
 
-    # 1. Miri
-    mv = miri_verdict(src, env)
+    # 1. Miri — on UB its own account of it goes to `<artifact>.miri.txt`
+    # beside the artifact (the harness's reason check reads it)
+    art0 = e.get("artifact")
+    report_rel = art0[:-len(".ullbc.json")] + ".miri.txt" if art0 and art0.endswith(".ullbc.json") else None
+    report_fresh = os.path.join(LIVE, "charon", report_rel) if report_rel else None
+    if report_fresh:
+        os.makedirs(os.path.dirname(report_fresh), exist_ok=True)
+        if os.path.exists(report_fresh):
+            os.remove(report_fresh)
+    mv = miri_verdict(src, env, report_fresh)
     res["miri"] = mv
     exp = e.get("expected") or {}
     if mv["verdict"] != exp.get("verdict"):
@@ -124,14 +134,19 @@ def run_entry_(e, env):
         err = [l for l in r.stderr.splitlines() if "error" in l.lower()]
         res["problems"].append("charon failed: " + (err[0] if err else r.stderr[-200:]).strip())
         return res
+    # Miri's UB report, drift-checked like the artifact
+    if report_fresh and os.path.exists(report_fresh):
+        committed_r = os.path.join(HERE, "charon", report_rel)
+        if not os.path.exists(committed_r) or open(committed_r).read() != open(report_fresh).read():
+            res.setdefault("drift", []).append(report_rel)
     if produced != fresh:
         os.replace(produced, fresh)
     committed = os.path.join(HERE, "charon", art)
     if not os.path.exists(committed):
         res["notes"].append("new artifact (none committed)")
-        res["drift"] = [art]
+        res.setdefault("drift", []).append(art)
     elif normalized(fresh) != normalized(committed):
-        res["drift"] = [art]
+        res.setdefault("drift", []).append(art)
 
     # 3. Certificate
     cert = e.get("certificate")

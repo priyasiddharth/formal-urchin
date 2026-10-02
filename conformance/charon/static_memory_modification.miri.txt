@@ -1,0 +1,1 @@
+error: Undefined Behavior: constructing invalid value of type &mut usize: encountered mutable reference pointing to read-only memory

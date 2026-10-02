@@ -1,0 +1,1 @@
+error: Undefined Behavior: reading memory at alloc158[0x0..0x4], but memory is uninitialized at [0x0..0x4], and this operation requires initialized memory

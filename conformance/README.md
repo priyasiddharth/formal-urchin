@@ -134,6 +134,19 @@ target. On the 161 entries that predate the byte model, the byte model's
 verdicts equal the cell model's (2026-10-02): same outcome, same `ok` /
 UB line; only offsets in diagnostics are now in bytes.
 
+UB reasons (2026-10-02): a UB verdict must also match Miri's REASON.
+`scripts/live.py` records Miri's own account of each UB (its error line
+and "occurs as part of" label) as `charon/<artifact>.miri.txt`,
+drift-checked like the artifacts; the harness reduces it and the model's
+error to the same description — operation (read / write / retag /
+dealloc), cause (tag missing, permission too weak, protector, no exposed
+tag, uninitialised, out-of-bounds / freed) and the byte offset in the
+allocation — and requires them to agree (the offset wherever Miri reports
+one). An unrecorded difference fails the suite; a difference explained in
+the manifest (`reason_known`: RefCell's elided borrow flag shifts an
+offset by 8; immutable statics are read-only memory in Miri but a frozen
+item here) is reported as known. Current: 78 as Miri, 3 known, 0 differ.
+
 The single consolidated inventory of everything unimplemented or
 approximated lives in `notes/loose-ends/parked.md` (MASTER INVENTORY);
 per-test blockers are in `manifest.json`.

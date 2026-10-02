@@ -4865,3 +4865,18 @@ outcome and verdict.
 
 **Status:** corpus 136/0/0/29 (pass/fail/xfail/unsupported), osea 136,
 cells 133 + 3 diverging, live 136/136; units 30/30 + 131/131.
+
+## 2026-10-02 (UB reasons vs Miri)
+
+**Key outputs:** Miri UB reports recorded by live.py (`*.miri.txt`, 81);
+harness reason check (op / cause / byte offset), failing on unrecorded
+differences; `reason_known` manifest field (3 entries); byte model checks
+allocation liveness before SB (use-after-free reported as Miri does).
+
+**Status:** reasons 78 as Miri + 3 known + 0 differ; corpus 136/0/0/29,
+osea 136, cells 133 + 3, live 136/136 0 drift; units 30/30 + 131/131;
+audit unchanged.
+
+**Next-session pickup candidates:** model RefCell's borrow flag as
+padding at rustc's offset (removes 2 known differences); read-only
+allocations for immutable statics (removes the third).

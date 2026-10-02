@@ -271,3 +271,22 @@ entries: same outcome 161/161, same verdict (`ok` / UB line) 161/161; the
 diagnostic text differs on 79 UB entries only because offsets are now in
 bytes. Corpus 136 pass / 0 fail / 0 xfail / 29 unsupported; osea 136;
 cells 133 matched + 3 diverging; live 136/136.
+
+## UB reasons checked against Miri (2026-10-02, later)
+
+[OBS] Until now a UB verdict matched Miri on verdict, line and (with a
+certificate) path — not on the reason; `miri_error` in the manifest is a
+hand-written regex (often covering both SB and TB revisions), never
+matched. Now: live.py records Miri's actual error line + "occurs as part
+of" label per UB entry (`charon/<artifact>.miri.txt`, 81 files,
+deterministic, drift-checked); the harness classifies both sides into
+(op, cause, byte offset in the allocation) and compares. First run: 72/81
+agree. The 9: 4 classifier (Miri's protector message names no
+operation — its span is the fn-entry retag), 2 a REAL mechanism
+difference fixed in the byte model (use-after-free: Miri checks liveness
+before SB; `bytes.Mem.freed` + `freedMsg` checks before every access,
+retag and deref), 3 recorded as `reason_known` (RefCell flag elided →
+offset 0 vs 8, ×2; immutable statics read-only in Miri vs a frozen SB
+item here). Result: 78 as Miri, 3 known, 0 differ; an unrecorded
+difference now fails the suite. Byte addressing is what makes the
+offset comparable at all (Miri reports byte offsets).

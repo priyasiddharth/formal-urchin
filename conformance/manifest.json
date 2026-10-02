@@ -512,7 +512,8 @@
         "dropped rustfmt attr, normalize directive and error annotation"
       ],
       "certificate": "illegal_read5.cert.json",
-      "note": "the old reason (\"Rc + interior mutability\") was stale: no Rc; RefCell shims + ptr::read already covered it (survey 2026-09-27)"
+      "note": "the old reason (\"Rc + interior mutability\") was stale: no Rc; RefCell shims + ptr::read already covered it (survey 2026-09-27)",
+      "reason_known": "the model elides RefCell's borrow flag (documented approximation): Miri's value sits at offset 8 after the 8-byte flag, the model's at 0 — same tag, same failure"
     },
     {
       "id": "fail/stacked_borrows/illegal_read7",
@@ -698,7 +699,8 @@
       "rewrites": [
         "dropped normalize directive and error annotation"
       ],
-      "miri_error": "read access .* tag does not exist in the borrow stack"
+      "miri_error": "read access .* tag does not exist in the borrow stack",
+      "reason_known": "the model elides RefCell's borrow flag (documented approximation): Miri's value sits at offset 8 after the 8-byte flag, the model's at 0 — same tag, same failure"
     },
     {
       "id": "fail/stacked_borrows/static_memory_modification",
@@ -715,7 +717,8 @@
         "dropped error annotation"
       ],
       "miri_error": "mutable reference pointing to read-only memory",
-      "note": "verdict and line match; miri raises a read-only-memory validity error, we fail the same transmute-to-&mut retag as a write through the frozen shared (no read-only memory in the model)"
+      "note": "verdict and line match; miri raises a read-only-memory validity error, we fail the same transmute-to-&mut retag as a write through the frozen shared (no read-only memory in the model)",
+      "reason_known": "Miri: a validity error — statics are READ-ONLY allocations and `&mut` to read-only memory is invalid; the model has no read-only memory and catches the same `&mut` (same line) through a Stacked Borrows permission failure on the static's frozen item"
     },
     {
       "id": "fail/stacked_borrows/track_caller",

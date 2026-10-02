@@ -83,23 +83,138 @@ except on entries the manifest records as diverging. -/
 def Loaded.layEnv (l : Loaded) : mirliteB.LayEnv l.Γ :=
   fun i => l.blay.getD i.val (bytes.ofLayoutTy (l.Γ.get i))
 
-def runLoadedBytes (l : Loaded) (L : mirliteB.LayEnv l.Γ) : Verdict :=
+/-- The byte model's verdict, and on UB the memory it failed in (the
+    reason check turns a failing address into an allocation offset). -/
+def runLoadedBytesFull (l : Loaded) (L : mirliteB.LayEnv l.Γ) : Verdict × Option bytes.Mem :=
   go (l.prog.length + 2) (mirliteB.State.initial M l.Γ)
 where
-  go : Nat → mirliteB.State M l.Γ → Verdict
-    | 0, _ => .fuelExhausted
+  go : Nat → mirliteB.State M l.Γ → Verdict × Option bytes.Mem
+    | 0, _ => (.fuelExhausted, none)
     | fuel + 1, st =>
         match l.prog[st.pc]? with
-        | none => .ok
-        | some .halt => .ok
+        | none => (.ok, none)
+        | some .halt => (.ok, none)
         | some stmt =>
             match mirliteB.stepStmt M L st stmt with
             | .ok st' => go fuel st'
             | .err msg =>
                 let line := l.lines[st.pc]?.getD 0
-                if line ≥ 2 * certLineBase then .certExhausted st.pc (line - 2 * certLineBase)
-                else if line ≥ certLineBase then .certRejected st.pc (line - certLineBase)
-                else .ub st.pc line msg
+                if line ≥ 2 * certLineBase then (.certExhausted st.pc (line - 2 * certLineBase), none)
+                else if line ≥ certLineBase then (.certRejected st.pc (line - certLineBase), none)
+                else (.ub st.pc line msg, some st.mem)
+
+def runLoadedBytes (l : Loaded) (L : mirliteB.LayEnv l.Γ) : Verdict :=
+  (runLoadedBytesFull l L).1
+
+/-! ## The reason check
+
+A UB verdict is matched against Miri at the line; the REASON is matched
+against Miri's own account of the UB (`<artifact>.miri.txt`, recorded by
+`scripts/live.py` from the pinned Miri). Both sides are reduced to the
+same small description — the operation that failed, why, and the byte
+offset in the allocation where it failed — and must agree. -/
+
+structure UBReason where
+  /-- read | write | access (Miri: read or write) | retag | dealloc | other -/
+  op : String
+  /-- missing (tag not in the stack) | permission (tag too weak) |
+      protector | no-exposed (wildcard) | uninit | oob | other -/
+  cause : String
+  /-- byte offset in the allocation where the check failed -/
+  offset : Option Nat
+deriving Repr, BEq
+
+def UBReason.render (r : UBReason) : String :=
+  s!"{r.op}/{r.cause}" ++ (match r.offset with | some o => s!"@{o}" | none => "")
+
+private def has (s sub : String) : Bool := (s.splitOn sub).length > 1
+
+private def hexVal (c : Char) : Option Nat :=
+  if c.isDigit then some (c.toNat - '0'.toNat)
+  else if 'a' ≤ c && c ≤ 'f' then some (c.toNat - 'a'.toNat + 10)
+  else none
+
+/-- The hex number right after the first `[0x` in `s`. -/
+private def hexAfterBracket (s : String) : Option Nat :=
+  match s.splitOn "[0x" with
+  | _ :: rest :: _ =>
+      let ds := rest.toList.takeWhile (fun c => (hexVal c).isSome)
+      if ds.isEmpty then none
+      else some (ds.foldl (fun acc c => acc * 16 + (hexVal c).getD 0) 0)
+  | _ => none
+
+/-- The first decimal number following " at " in `s`. -/
+private def addrAfterAt (s : String) : Option Nat :=
+  ((s.splitOn " at ").drop 1).findSome? fun piece =>
+    let ds := piece.toList.takeWhile Char.isDigit
+    if ds.isEmpty then none else (String.mk ds).toNat?
+
+def causeOf (s : String) : String :=
+  if has s "protected" then "protector"
+  else if has s "no exposed tags" then "no-exposed"
+  else if has s "does not exist in the borrow stack" || has s "no borrow stack" then "missing"
+  else if has s "only grants" || has s "does not grant" then "permission"
+  else if has s "uninitialized" then "uninit"
+  else if has s "out-of-bounds" || has s "out of bounds" || has s "dangling"
+    || has s "has been freed" || has s "not dereferenceable" then "oob"
+  else "other"
+
+/-- Miri's report: its UB line (and the "occurs as part of" label). -/
+def classifyMiri (report : String) : UBReason :=
+  let lines := report.splitOn "\n"
+  let main := lines.headD ""
+  let part := String.intercalate " " (lines.drop 1)
+  let op :=
+    if has main "read access" then "read"
+    else if has main "write access" then "write"
+    else if has main "retag" then "retag"
+    else if has main "deallocat" then "dealloc"
+    else if has part "part of retag" then "retag"
+    else if has part "part of a deallocation" then "dealloc"
+    else if has part "part of an access" || has main "not granting access" then "access"
+    else if has main "uninitialized" then "read"
+    else "other"
+  { op, cause := causeOf main, offset := hexAfterBracket main }
+
+/-- Our model's UB message; a failing address becomes an offset in the
+    allocation that contains it. -/
+def classifyOurs (msg : String) (mem? : Option bytes.Mem) : UBReason :=
+  let op :=
+    if msg.startsWith "read access failed" || msg.startsWith "dealloc pointer read failed"
+      || msg.startsWith "read of uninitialized" then "read"
+    else if msg.startsWith "write access failed" then "write"
+    else if msg.startsWith "retag failed" || msg.startsWith "move retag failed" then "retag"
+    else if msg.startsWith "deallocation failed" then "dealloc"
+    else "other"
+  let offset := do
+    let a ← addrAfterAt msg
+    let m ← mem?
+    let (base, _) ← m.allocOf a
+    pure (a - base)
+  { op, cause := causeOf msg, offset }
+
+/-- Do two reasons agree? The cause must; the operation must (Miri's
+    `access` is a read or a write); the offset must when both report one. -/
+def reasonsAgree (miri ours : UBReason) : Bool :=
+  miri.cause == ours.cause &&
+  (miri.op == ours.op ||
+   -- Miri's "access" is a read or a write; its protector message does not
+   -- name the operation at all, and a retag (which performs an access)
+   -- is one of them
+   (miri.op == "access" && (ours.op == "read" || ours.op == "write"
+      || (miri.cause == "protector" && ours.op == "retag")))) &&
+  (match miri.offset, ours.offset with
+   | some a, some b => a == b
+   | _, _ => true)
+
+inductive ReasonStatus
+| same (r : UBReason)
+-- a difference the manifest records and explains (`"reason_known"`): a
+-- documented model approximation, not a silent disagreement
+| known (ours miri : UBReason) (why : String)
+| differ (ours miri : UBReason)
+| unchecked (why : String)
+deriving Repr
 
 inductive CellsStatus
 | matched
@@ -251,6 +366,9 @@ structure TestEntry where
   -- `"cell_model": "diverges"`: the CELL model is known to get this one
   -- wrong (a byte-level program); `--cells` expects the two to differ
   cellDiverges : Bool := false
+  -- `"reason_known"`: why this entry's UB reason is known to differ from
+  -- Miri's (the verdict and line still match)
+  reasonKnown : Option String := none
 deriving Repr
 
 structure Manifest where
@@ -279,7 +397,8 @@ def parseManifest (j : Json) : Except String Manifest := do
     let expectLine := expected >>= (getK · "line") >>= asNat
     let certificate := getK t "certificate" >>= asStr
     let cellDiverges := (getK t "cell_model" >>= asStr) == some "diverges"
-    pure { id, artifact, status, expectUB, expectLine, certificate, cellDiverges : TestEntry }
+    let reasonKnown := getK t "reason_known" >>= asStr
+    pure { id, artifact, status, expectUB, expectLine, certificate, cellDiverges, reasonKnown : TestEntry }
   return { tests }
 
 /-! ## Outcomes -/
@@ -326,6 +445,7 @@ structure TestResult where
   outcome : Outcome
   osea : Option OseaStatus := none
   cells : Option CellsStatus := none
+  reason : Option ReasonStatus := none
   stats : CertStats := {}
 
 /-- Read and parse an entry's certificate, if it names one. -/
@@ -347,30 +467,47 @@ def loadCert (charonDir : String) (e : TestEntry) : IO (Except String (Option Ce
 def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) (cells : Bool := false) :
     IO TestResult := do
   let path := s!"{charonDir}/{e.artifact}"
-  let (verdict, oseaSt, cellsSt, stats) ←
+  -- Miri's account of the UB, when live.py recorded one
+  let reportPath := if e.artifact.endsWith ".ullbc.json"
+    then some s!"{charonDir}/{(e.artifact.dropRight ".ullbc.json".length)}.miri.txt" else none
+  let miriReport? : Option String ← match reportPath with
+    | some p => do
+        if ← System.FilePath.pathExists p then pure (some (← IO.FS.readFile p)) else pure none
+    | none => pure none
+  let (verdict, oseaSt, cellsSt, reasonSt, stats) ←
     try
       let content ← IO.FS.readFile path
       match Json.parse content with
-      | .error err => pure (Verdict.loadError s!"json parse: {err}", none, none, {})
+      | .error err => pure (Verdict.loadError s!"json parse: {err}", none, none, none, {})
       | .ok json =>
           match ← loadCert charonDir e with
-          | .error err => pure (Verdict.loadError err, none, none, {})
+          | .error err => pure (Verdict.loadError err, none, none, none, {})
           | .ok cert? =>
             match loadCrate json cert? with
-            | .error err => pure (Verdict.loadError err, none, none, {})
+            | .error err => pure (Verdict.loadError err, none, none, none, {})
             | .ok loaded =>
                 -- the JUDGED verdict: the byte model on the real layouts
-                let v := runLoadedBytes loaded loaded.layEnv
+                let (v, mem?) := runLoadedBytesFull loaded loaded.layEnv
                 -- the cell model, for `--osea` (its compiled target) and
                 -- `--cells` (against the byte model)
                 let vCell := runLoaded loaded
+                let reason : Option ReasonStatus := match v, miriReport? with
+                  | .ub _ _ msg, some rep =>
+                      let ours := classifyOurs msg mem?
+                      let miri := classifyMiri rep
+                      some (if reasonsAgree miri ours then .same ours
+                            else match e.reasonKnown with
+                              | some why => .known ours miri why
+                              | none => .differ ours miri)
+                  | .ub _ _ _, none => some (.unchecked "no Miri report recorded")
+                  | _, _ => none
                 pure (v, if osea then some (oseaStatus loaded vCell) else none,
                   if cells then some (cellsStatus loaded v vCell e.cellDiverges) else none,
-                  loaded.stats)
+                  reason, loaded.stats)
     catch ex =>
-      pure (Verdict.loadError s!"io: {ex}", none, none, {})
+      pure (Verdict.loadError s!"io: {ex}", none, none, none, {})
   return { entry := e, verdict, outcome := judge e verdict, osea := oseaSt, cells := cellsSt,
-           stats }
+           reason := reasonSt, stats }
 
 def outcomeLabel : Outcome → String
   | .pass => "PASS"
@@ -395,6 +532,14 @@ def reportResult (r : TestResult) (record : Bool) : IO Unit := do
   | some (.mismatch why) => IO.println s!"        OSEA MISMATCH: {why}"
   | some (.skipped reason) =>
       if record then IO.println s!"        [osea: skipped — {reason}]"
+  | none => pure ()
+  match r.reason with
+  | some (.same rr) => if record then IO.println s!"        [reason: as Miri — {rr.render}]"
+  | some (.differ ours miri) =>
+      IO.println s!"        REASON DIFFERS: ours {ours.render}, Miri {miri.render}"
+  | some (.known ours miri why) =>
+      if record then IO.println s!"        [reason: known difference — ours {ours.render}, Miri {miri.render}: {why}]"
+  | some (.unchecked why) => if record then IO.println s!"        [reason: unchecked — {why}]"
   | none => pure ()
   match r.cells with
   | some .matched => if record then IO.println s!"        [cells: matched]"
@@ -438,6 +583,10 @@ def summarize (rs : List TestResult) : IO UInt32 := do
       let skipped := cnt (fun s => match s with | .skipped _ => true | _ => false)
       IO.println s!"osea: matched {matched} | mismatch {mism} | skipped {skipped}"
       pure mism
+  let reasons := rs.filterMap (·.reason)
+  if !reasons.isEmpty then
+    let rc (f : ReasonStatus → Bool) := (reasons.filter f).length
+    IO.println s!"reasons: as Miri {rc fun s => match s with | .same _ => true | _ => false} | known differences {rc fun s => match s with | .known _ _ _ => true | _ => false} | differ {rc fun s => match s with | .differ _ _ => true | _ => false} | unchecked {rc fun s => match s with | .unchecked _ => true | _ => false}"
   let cellsSts := rs.filterMap (·.cells)
   let cnt (f : CellsStatus → Bool) := (cellsSts.filter f).length
   let cellsMismatches := cnt fun s => match s with | .mismatch _ => true | _ => false
@@ -445,6 +594,8 @@ def summarize (rs : List TestResult) : IO UInt32 := do
     let matched := cnt fun s => match s with | .matched => true | _ => false
     let diverging := cnt fun s => match s with | .diverging => true | _ => false
     IO.println s!"cells: matched {matched} | diverging {diverging} (recorded) | mismatch {cellsMismatches}"
-  return if fails > 0 || xpasses > 0 || oseaMismatches > 0 || cellsMismatches > 0 then 1 else 0
+  -- an UNRECORDED reason difference fails the suite, as a wrong line does
+  let reasonDiffs := (rs.filterMap (·.reason)).filter (fun s => match s with | .differ _ _ => true | _ => false) |>.length
+  return if fails > 0 || xpasses > 0 || oseaMismatches > 0 || cellsMismatches > 0 || reasonDiffs > 0 then 1 else 0
 
 end conformance

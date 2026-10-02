@@ -1,0 +1,1 @@
+error: Undefined Behavior: not granting access to tag <370> because that would remove [SharedReadOnly for <373>] which is strongly protected

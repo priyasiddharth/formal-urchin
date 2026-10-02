@@ -4,6 +4,24 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-02 (evening) — The Same Undefined Behaviour, Not Just the Same Line
+
+A test that ends in undefined behaviour used to count as agreeing with
+Miri when both stopped at the same source line. That leaves room for the
+model to fail for a different reason on that line. Now Miri's own error
+report is kept for every such test, and both reports are reduced to what
+went wrong: which operation (a read, a write, a new borrow, a free), why
+(the permission was gone, too weak, protected by a running function, the
+memory was uninitialised or already freed), and at which byte of the
+allocation. They must agree. On the first comparison 72 of 81 did; the
+rest were four quirks of reading Miri's messages, two cases where the
+model reported a use-after-free as a lost permission (now fixed: it checks
+that memory is still allocated first, as Miri does), and three
+differences that come from known simplifications and are now recorded
+with their explanation. Any new, unexplained difference fails the suite.
+
+---
+
 ## 2026-10-02 (afternoon) — Fields Where Rust Puts Them
 
 Rust is free to reorder a structure's fields to save space, and does: a

@@ -228,6 +228,10 @@ structure Mem where
   bytes : Nat → AbstractByte := fun _ => .uninit
   allocs : List (Nat × Nat) := []
   next : Nat := 1
+  /-- Bases of allocations that have been freed: an access through a
+      pointer into one is a use-after-free, which Miri reports before any
+      borrow-stack check. -/
+  freed : List Nat := []
 
 def Mem.read (m : Mem) (a n : Nat) : List AbstractByte :=
   (List.range n).map fun i => m.bytes (a + i)
@@ -305,6 +309,8 @@ theorem Mem.allocate_fresh {m : Mem} (hwf : m.WF) (size align : Nat) :
   intro b s hmem
   have := hall b s hmem
   simp [Mem.allocate]; omega
+
+def Mem.isFreed (m : Mem) (base : Nat) : Bool := m.freed.contains base
 
 /-- The live allocation containing address `a`, if any. -/
 def Mem.allocOf (m : Mem) (a : Nat) : Option (Nat × Nat) :=
