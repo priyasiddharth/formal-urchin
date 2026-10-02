@@ -118,8 +118,15 @@ the call — unexercised by any reachable test); plain Box-typed
 assignments (`let b2 = b`) are not retagged (no test exercises it);
 wildcard resolution is determinized (topmost exposed granting item) vs
 miri's angelic reading; RefCell shims elide the borrow flag; hoisted
-statics start uninitialized; the retag×data-race interaction (threads)
-is out of scope.
+statics start uninitialized; `size_of`/`Layout` sizes are in BYTES while
+the cell model allocates one cell per byte of them (over-allocation); the
+retag×data-race interaction (threads) is out of scope.
+
+Byte model (branch `byteaddress`, `--bytes`): the source semantics also
+runs on byte-addressed memory with real integer widths and C layouts;
+entries marked `xfail-model` are ones the cell model gets wrong and the
+byte model must match Miri on (local/narrow_ref_wide_write,
+local/narrow_fields_ok).
 
 The single consolidated inventory of everything unimplemented or
 approximated lives in `notes/loose-ends/parked.md` (MASTER INVENTORY);
