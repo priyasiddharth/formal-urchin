@@ -4855,3 +4855,13 @@ machines).
 
 **Status:** corpus 133 + 3 xfail, osea 136, bytes 136, live 136/136;
 units 30/30 + 131/131; audit unchanged.
+
+## 2026-10-02 (byte model judged)
+
+**Key outputs:** the harness judges the byte model; `--cells` replaces
+`--bytes`; `cell_model: diverges` manifest field; the three witnesses are
+supported. Verified against main: all 161 pre-existing entries keep their
+outcome and verdict.
+
+**Status:** corpus 136/0/0/29 (pass/fail/xfail/unsupported), osea 136,
+cells 133 + 3 diverging, live 136/136; units 30/30 + 131/131.

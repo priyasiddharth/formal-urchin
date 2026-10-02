@@ -255,3 +255,19 @@ destination, in elements.
 
 Open: rustc's tuple reordering; the compiler emitting byte
 offsets (core syntax switch) — then the byte target runs real layouts too.
+
+## The byte model is the judged model (2026-10-02, later)
+
+User decision: on this branch tests are judged by how they run on the
+byte model. The harness's verdict is the byte source on the loader's real
+layouts; `--cells` (was `--bytes`) runs the cell model against it
+(statement-level agreement, except entries recorded
+`"cell_model": "diverges"`) plus the byte target vs the uniform byte
+source; `--osea` stays the cell pair. The three byte-level witnesses are
+now plain `supported` entries with `cell_model: diverges`.
+
+[OBS] Regression check against main (6c6dbca), all 161 pre-existing
+entries: same outcome 161/161, same verdict (`ok` / UB line) 161/161; the
+diagnostic text differs on 79 UB entries only because offsets are now in
+bytes. Corpus 136 pass / 0 fail / 0 xfail / 29 unsupported; osea 136;
+cells 133 matched + 3 diverging; live 136/136.

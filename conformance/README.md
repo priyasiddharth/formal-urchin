@@ -122,11 +122,17 @@ statics start uninitialized; `size_of`/`Layout` sizes are in BYTES while
 the cell model allocates one cell per byte of them (over-allocation); the
 retag×data-race interaction (threads) is out of scope.
 
-Byte model (branch `byteaddress`, `--bytes`): the source semantics also
-runs on byte-addressed memory with real integer widths and C layouts;
-entries marked `xfail-model` are ones the cell model gets wrong and the
-byte model must match Miri on (local/narrow_ref_wide_write,
-local/narrow_fields_ok).
+Byte model (branch `byteaddress`): the JUDGED verdict comes from the
+source semantics on byte-addressed memory, with real integer widths, C
+layouts for tuples and rustc's own field offsets for structs (Charon).
+`--cells` also runs the cell model, which the compiler proof is about, and
+requires the same verdict except on entries recorded
+`"cell_model": "diverges"` — byte-level programs the cell model cannot
+represent (local/narrow_ref_wide_write, local/narrow_fields_ok,
+local/rust_layout_ok). `--osea` checks the cell model against its compiled
+target. On the 161 entries that predate the byte model, the byte model's
+verdicts equal the cell model's (2026-10-02): same outcome, same `ok` /
+UB line; only offsets in diagnostics are now in bytes.
 
 The single consolidated inventory of everything unimplemented or
 approximated lives in `notes/loose-ends/parked.md` (MASTER INVENTORY);

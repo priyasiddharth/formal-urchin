@@ -7,7 +7,7 @@ import obseq3.compile_tests
 
 Usage:
   sb_conformance --manifest <path> --charon-dir <path> [--filter <substr>]
-                 [--record] [--dump <test-id>] [--unit] [--osea] [--bytes]
+                 [--record] [--dump <test-id>] [--unit] [--osea] [--cells]
 
 - default: run the manifest, print per-test outcomes and a summary;
   exit 1 on any FAIL/XPASS.
@@ -16,11 +16,14 @@ Usage:
 - --dump <id>: print the lowered untyped program of one test (loader
   golden-check / curation aid).
 - --unit: run the obseq3 unit tests first.
-- --bytes: differential mode — additionally run each loaded program under
-  mirlite on byte-addressed memory (same verdict, statement-level, as the
-  cell semantics), and its compiled form on OSEA-IR on bytes (same
-  verdict as the byte source).
-- --osea: differential mode — additionally compile each loaded program to
+- the judged verdict (branch `byteaddress`) is the BYTE model's: mirlite on
+  byte-addressed memory with the loader's real layouts.
+- --cells: differential mode — additionally run the CELL model (the one the
+  compiler proof is about) and require the byte model's verdict
+  (statement-level), except on entries recorded `"cell_model": "diverges"`;
+  and run the compiled form on OSEA-IR on bytes (same verdict as the byte
+  source on the uniform layout).
+- --osea: differential mode, on the CELL model — additionally compile each loaded program to
   OSEA-IR-v3 and require the same verdict as mirlite (mismatch = failure;
   compiler-unsupported constructs are reported as skipped).
 -/
@@ -35,7 +38,7 @@ structure Args where
   dump : Option String := none
   unit : Bool := false
   osea : Bool := false
-  bytes : Bool := false
+  cells : Bool := false
 
 def parseArgs : List String → Except String Args
   | [] => .ok {}
@@ -46,7 +49,7 @@ def parseArgs : List String → Except String Args
   | "--dump" :: v :: rest => do return { ← parseArgs rest with dump := some v }
   | "--unit" :: rest => do return { ← parseArgs rest with unit := true }
   | "--osea" :: rest => do return { ← parseArgs rest with osea := true }
-  | "--bytes" :: rest => do return { ← parseArgs rest with bytes := true }
+  | "--cells" :: rest => do return { ← parseArgs rest with cells := true }
   | arg :: _ => .error s!"unknown argument {arg}"
 
 def dumpTest (charonDir : String) (m : Manifest) (id : String) : IO UInt32 := do
@@ -92,7 +95,8 @@ def dumpTest (charonDir : String) (m : Manifest) (id : String) : IO UInt32 := do
                   | .error err => IO.println s!"elaboration: {err}"; return 1
                   | .ok loaded => do
                       IO.println s!"elaborated ok: {loaded.prog.length} statements (incl. halt)"
-                      IO.println s!"verdict: {(runLoaded loaded).render}"
+                      IO.println s!"verdict (byte model, judged): {(runLoadedBytes loaded loaded.layEnv).render}"
+                      IO.println s!"verdict (cell model): {(runLoaded loaded).render}"
                       return 0
 
 def realMain (args : List String) : IO UInt32 := do
@@ -119,7 +123,7 @@ def realMain (args : List String) : IO UInt32 := do
                       | none => m.tests
                     let mut results := []
                     for e in tests do
-                      let r ← runEntry cDir a.osea e a.bytes
+                      let r ← runEntry cDir a.osea e a.cells
                       reportResult r a.record
                       results := r :: results
                     summarize results.reverse

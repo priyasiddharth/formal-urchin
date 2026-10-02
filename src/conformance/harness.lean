@@ -7,7 +7,10 @@ import obseq3.oseair_bytes
 Conformance harness: reads a manifest of Miri-derived tests, loads each
 Charon ULLBC artifact through the loader/elaborator, runs it under the
 obseq3 mirlite semantics, and compares the verdict with the manifest's
-expectation.
+expectation. On branch `byteaddress` the JUDGED verdict is the BYTE
+model's (`mirlite_bytes.lean` on the loader's real layouts); the cell
+model, which the compiler proof is about, is checked against it with
+`--cells`, and against its compiled target with `--osea`.
 
 Outcomes:
 - `pass`        — verdict (and line, when specified) matches expectation
@@ -67,13 +70,13 @@ where
                 else if line ≥ certLineBase then .certRejected st.pc (line - certLineBase)
                 else .ub st.pc line msg
 
-/-! ## Differential mode (`--bytes`)
+/-! ## The byte model (judged) and `--cells`
 
-Run the program again under mirlite on byte-addressed memory
-(`obseq3/mirlite_bytes.lean`) and require the same verdict: ok↔ok, or UB
-at the same source statement (the message may differ). The byte semantics
-is meant to agree with the cell one on everything the cell one supports;
-a mismatch is a hard failure of the suite. -/
+The byte model — mirlite on byte-addressed memory
+(`obseq3/mirlite_bytes.lean`) with the loader's real layouts — gives the
+verdict judged against Miri. `--cells` runs the cell model too and
+requires the same verdict (ok↔ok, or UB at the same source statement),
+except on entries the manifest records as diverging. -/
 
 /-- The loader's byte layouts as an environment (a local without one — none
     should be missing — falls back to the uniform layout). -/
@@ -98,8 +101,11 @@ where
                 else if line ≥ certLineBase then .certRejected st.pc (line - certLineBase)
                 else .ub st.pc line msg
 
-inductive BytesStatus
+inductive CellsStatus
 | matched
+-- the cell model differs from the byte model, as the manifest records
+-- for this entry (`"cell_model": "diverges"`): a known cell-model limit
+| diverging
 | mismatch (why : String)
 deriving Repr
 
@@ -123,28 +129,28 @@ def Verdict.stmt? : Verdict → Option Nat
   | .ub i _ _ | .certRejected i _ | .certExhausted i _ => some i
   | _ => none
 
-def bytesStatus (l : Loaded) (cell : Verdict) (fixes? : Option (Verdict → Bool) := none) :
-    BytesStatus :=
-  -- the byte SOURCE on the program's real layouts (widths, padding)
-  let b := runLoadedBytes l l.layEnv
-  let srcCheck : BytesStatus :=
-    -- an entry the CELL model is known to get wrong (`xfail-model`) is
-    -- judged against Miri's expected verdict instead of the cells
-    match fixes? with
-    | some ok => if ok b then .matched else .mismatch s!"byte model {b.render}, Miri's verdict differs"
-    | none =>
-    match cell, b with
-    | .ok, .ok => .matched
-    | .fuelExhausted, .fuelExhausted => .matched
-    | c, b =>
-        match c.stmt?, b.stmt? with
-        | some i, some j =>
-            if i == j then .matched
-            else .mismatch s!"bytes {b.render} at stmt {j}, cells {c.render} at stmt {i}"
-        | _, _ => .mismatch s!"bytes {b.render}, cells {c.render}"
+/-- Do two verdicts agree (ok↔ok, or UB at the same statement)? -/
+def Verdict.agrees : Verdict → Verdict → Bool
+  | .ok, .ok | .fuelExhausted, .fuelExhausted => true
+  | a, b =>
+      match a.stmt?, b.stmt? with
+      | some i, some j => i == j
+      | _, _ => false
+
+/-- `--cells`: the cell model against the (judged) byte model — they must
+    agree, except on an entry recorded as diverging — and the compiled
+    program on the byte target against the byte source. -/
+def cellsStatus (l : Loaded) (byte cell : Verdict) (diverges : Bool) : CellsStatus :=
+  let srcCheck : CellsStatus :=
+    if diverges then
+      if cell.agrees byte then
+        .mismatch s!"the cell model now agrees ({cell.render}): drop `cell_model: diverges`"
+      else .diverging
+    else if cell.agrees byte then .matched
+    else .mismatch s!"cells {cell.render}, bytes {byte.render}"
   match srcCheck with
   | .mismatch w => .mismatch w
-  | .matched =>
+  | st =>
   -- the byte TARGET against the byte source, as `--osea` does for cells;
   -- a program the compiler does not cover is checked on the source only.
   -- The compiler still emits cell units, so the target runs on the
@@ -152,16 +158,16 @@ def bytesStatus (l : Loaded) (cell : Verdict) (fixes? : Option (Verdict → Bool
   -- source on that same layout
   let b := runLoadedBytes l (mirliteB.uniformEnv l.Γ)
   match compile.compileProg l.prog with
-  | .error _ => .matched
+  | .error _ => st
   | .ok tprog =>
       let ranges := compile.stmtLabelRanges l.prog
       let fuel := compile.emittedLabels l.prog + 2
       match runOseaProgBytes tprog fuel, b with
-      | .ok, .ok => .matched
+      | .ok, .ok => st
       | .ub label _ msg, _ =>
           match ranges.findIdx? (fun r => r.1 ≤ label && label < r.2), b.stmt? with
           | some i, some j =>
-              if i == j then .matched
+              if i == j then st
               else .mismatch s!"byte target UB at stmt {i} ({msg}), byte source at stmt {j}"
           | _, _ => .mismatch s!"byte target UB (label {label}: {msg}), byte source {b.render}"
       | t, _ => .mismatch s!"byte target {t.render}, byte source {b.render}"
@@ -242,6 +248,9 @@ structure TestEntry where
   expectUB : Bool
   expectLine : Option Nat
   certificate : Option String := none   -- `<name>.cert.json` beside the artifact
+  -- `"cell_model": "diverges"`: the CELL model is known to get this one
+  -- wrong (a byte-level program); `--cells` expects the two to differ
+  cellDiverges : Bool := false
 deriving Repr
 
 structure Manifest where
@@ -269,7 +278,8 @@ def parseManifest (j : Json) : Except String Manifest := do
     let expectUB := (expected >>= (getK · "verdict") >>= asStr) == some "ub"
     let expectLine := expected >>= (getK · "line") >>= asNat
     let certificate := getK t "certificate" >>= asStr
-    pure { id, artifact, status, expectUB, expectLine, certificate : TestEntry }
+    let cellDiverges := (getK t "cell_model" >>= asStr) == some "diverges"
+    pure { id, artifact, status, expectUB, expectLine, certificate, cellDiverges : TestEntry }
   return { tests }
 
 /-! ## Outcomes -/
@@ -315,7 +325,7 @@ structure TestResult where
   verdict : Verdict
   outcome : Outcome
   osea : Option OseaStatus := none
-  bytes : Option BytesStatus := none
+  cells : Option CellsStatus := none
   stats : CertStats := {}
 
 /-- Read and parse an entry's certificate, if it names one. -/
@@ -334,10 +344,10 @@ def loadCert (charonDir : String) (e : TestEntry) : IO (Except String (Option Ce
       catch ex =>
         return .error s!"certificate io: {ex}"
 
-def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) (bytes : Bool := false) :
+def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) (cells : Bool := false) :
     IO TestResult := do
   let path := s!"{charonDir}/{e.artifact}"
-  let (verdict, oseaSt, bytesSt, stats) ←
+  let (verdict, oseaSt, cellsSt, stats) ←
     try
       let content ← IO.FS.readFile path
       match Json.parse content with
@@ -349,15 +359,17 @@ def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) (bytes : Bool :=
             match loadCrate json cert? with
             | .error err => pure (Verdict.loadError err, none, none, {})
             | .ok loaded =>
-                let v := runLoaded loaded
-                let fixes? : Option (Verdict → Bool) := match e.status with
-                  | .xfailModel _ => some (verdictMatches e)
-                  | _ => none
-                pure (v, if osea then some (oseaStatus loaded v) else none,
-                  if bytes then some (bytesStatus loaded v fixes?) else none, loaded.stats)
+                -- the JUDGED verdict: the byte model on the real layouts
+                let v := runLoadedBytes loaded loaded.layEnv
+                -- the cell model, for `--osea` (its compiled target) and
+                -- `--cells` (against the byte model)
+                let vCell := runLoaded loaded
+                pure (v, if osea then some (oseaStatus loaded vCell) else none,
+                  if cells then some (cellsStatus loaded v vCell e.cellDiverges) else none,
+                  loaded.stats)
     catch ex =>
       pure (Verdict.loadError s!"io: {ex}", none, none, {})
-  return { entry := e, verdict, outcome := judge e verdict, osea := oseaSt, bytes := bytesSt,
+  return { entry := e, verdict, outcome := judge e verdict, osea := oseaSt, cells := cellsSt,
            stats }
 
 def outcomeLabel : Outcome → String
@@ -384,9 +396,10 @@ def reportResult (r : TestResult) (record : Bool) : IO Unit := do
   | some (.skipped reason) =>
       if record then IO.println s!"        [osea: skipped — {reason}]"
   | none => pure ()
-  match r.bytes with
-  | some .matched => if record then IO.println s!"        [bytes: matched]"
-  | some (.mismatch why) => IO.println s!"        BYTES MISMATCH: {why}"
+  match r.cells with
+  | some .matched => if record then IO.println s!"        [cells: matched]"
+  | some .diverging => IO.println s!"        [cells: diverge, as recorded — a cell-model limit]"
+  | some (.mismatch why) => IO.println s!"        CELLS MISMATCH: {why}"
   | none => pure ()
 
 def summarize (rs : List TestResult) : IO UInt32 := do
@@ -425,11 +438,13 @@ def summarize (rs : List TestResult) : IO UInt32 := do
       let skipped := cnt (fun s => match s with | .skipped _ => true | _ => false)
       IO.println s!"osea: matched {matched} | mismatch {mism} | skipped {skipped}"
       pure mism
-  let bytesSts := rs.filterMap (·.bytes)
-  let bytesMismatches :=
-    bytesSts.filter (fun s => match s with | .mismatch _ => true | _ => false) |>.length
-  if !bytesSts.isEmpty then
-    IO.println s!"bytes: matched {bytesSts.length - bytesMismatches} | mismatch {bytesMismatches}"
-  return if fails > 0 || xpasses > 0 || oseaMismatches > 0 || bytesMismatches > 0 then 1 else 0
+  let cellsSts := rs.filterMap (·.cells)
+  let cnt (f : CellsStatus → Bool) := (cellsSts.filter f).length
+  let cellsMismatches := cnt fun s => match s with | .mismatch _ => true | _ => false
+  if !cellsSts.isEmpty then
+    let matched := cnt fun s => match s with | .matched => true | _ => false
+    let diverging := cnt fun s => match s with | .diverging => true | _ => false
+    IO.println s!"cells: matched {matched} | diverging {diverging} (recorded) | mismatch {cellsMismatches}"
+  return if fails > 0 || xpasses > 0 || oseaMismatches > 0 || cellsMismatches > 0 then 1 else 0
 
 end conformance
