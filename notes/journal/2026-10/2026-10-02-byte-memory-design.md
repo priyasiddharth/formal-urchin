@@ -437,3 +437,40 @@ survives the `Load`. 109 byteproof declarations, axioms unchanged.
 Next: the byte place-lowering simulation (projection borrows at byte
 offsets, deref loads) — the cell proof's `ptrChain_lowering_sim` — which
 unlocks projected/deref sources and destinations for every package.
+
+### Place lowering (same day)
+
+`byteproof/places.lean` (672 lines): `ptrChain_lowering_simB`, the byte
+`ptrChain_lowering_sim`, for every `PtrChain` place (local; deref of a
+chain; deref of a field of a chain), result packaged as `LoweredB`.
+Pieces: `deref_lowering`/`proj_lowering`/`proj_eq` (compiled shapes),
+`deref_level` (one Load level, shared by the deref and offset-zero
+field cases), `load_level`, `runN_Load_ptr`/`runN_Borrow`/`runN_Die`,
+`decode_ptr_sim`. The nonzero-offset field case is `Borrow(Shared);
+Load; Die` against the source's one read, closed by keystone's
+`sb_ref_read_die_cancels` at len = ptrSize — the SB layer unchanged, as
+predicted. 148 byteproof declarations, axioms unchanged.
+
+[DEC] New hypothesis `PtrPlacesWF L`: a pointer-typed place has a
+pointer-sized layout. The compiler borrows the pointer FIELD at its
+layout size and the Load reads 8 bytes through that borrow; the
+cancellation needs the two lengths equal. A layout table violating it
+is not a layout of the program's types.
+
+[OBS] Two byte-SOURCE bugs found by the port (both fixed, commits
+"mirliteB: a deref must find the whole pointer in bounds" and "mirliteB:
+a one-leaf read decodes exactly the leaf's bytes"): the deref checked only
+the pointer's first byte; `readCell` decoded 8 bytes for every leaf. The
+differential corpus could not see either (no test straddles an
+allocation end or casts a narrow int to a pointer); the proof could.
+Witness t31 pins the second.
+
+[OBS] Proof-engineering gotchas this file hit: structure-instance fields
+on a continuation line must be indented past the `{` (colGt), else
+"unexpected identifier; expected '}'"; `omega` does not see through
+`Tag`, so NextTag chains use `Nat.le_trans`; an implicit machine state
+that only appears as `s.pc` in a hypothesis must be given explicitly
+(`(s := S1)`).
+
+Next: use `LoweredB` for deref destinations (the cell `storereg_chaindst_simulation`)
+and deref/projected sources (copy package beyond locals).
