@@ -2214,6 +2214,17 @@
       "cell_model_note": "cell model: one cell per scalar, so a narrow reference used through a wider pointer, or a byte written into a wider integer, is not represented; the byte model (--bytes) matches Miri"
     },
     {
+      "id": "local/deref_straddles_end",
+      "artifact": "local/deref_straddles_end.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 15
+      },
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-02 via scripts/live.py",
+      "notes": "a pointer read whose first byte is in bounds but whose last 4 are past the end of a 12-byte allocation: out of bounds (the byte model checked only the first byte before 2026-10-02)."
+    },
+    {
       "id": "local/narrow_fields_ok",
       "artifact": "local/narrow_fields_ok.ullbc.json",
       "status": "supported",

@@ -159,7 +159,9 @@ def causeOf (s : String) : String :=
   else if has s "only grants" || has s "does not grant" then "permission"
   else if has s "uninitialized" then "uninit"
   else if has s "out-of-bounds" || has s "out of bounds" || has s "dangling"
-    || has s "has been freed" || has s "not dereferenceable" then "oob"
+    || has s "has been freed" || has s "not dereferenceable"
+    -- an access that starts in bounds and runs past the end
+    || has s "bytes from the end of the allocation" then "oob"
   else "other"
 
 /-- Miri's report: its UB line (and the "occurs as part of" label). -/
