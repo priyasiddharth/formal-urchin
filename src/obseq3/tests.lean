@@ -528,6 +528,27 @@ def t29_bytes_pointer_read_as_word : IO Unit := do
   | some (.ptrVal ..) => pure ()
   | v => throw (IO.userError s!"t29 cells: y should hold the pointer cell, got {reprStr v}")
 
+def ΓN : Ctx := [natL, natL, ptrNat]
+def xN : Place ΓN natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def yN : Place ΓN natL := .local ⟨⟨1, by decide⟩, rfl⟩
+def pN : Place ΓN ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+
+/-- An int-to-pointer cast reads its integer at the integer's OWN width
+    (2026-10-02 fix: it read 8 bytes whatever the width, running past a
+    `u8` into the next local and the uninitialised bytes after it). -/
+def t31_narrow_int_to_ptr : IO Unit := do
+  let L : mirliteB.LayEnv ΓN := fun i =>
+    match i.val with
+    | 2 => .ptr (.int 1)
+    | _ => .int 1
+  let prog : Prog ΓN := [
+    .assign xN (.constInit 5),
+    .assign yN (.constInit 7),
+    .assign pN (.fromExposed xN)]
+  match mirliteB.runN M L (prog.length + 1) (mirliteB.State.initial M ΓN) prog with
+  | .ok _ => pure ()
+  | .err e => throw (IO.userError s!"t31 narrow int-to-ptr: expected ok, got {e}")
+
 /-- MIR integer arithmetic at a type (`evalBinOp`, `binOpUB`): wrapping at
     the width, two's complement, signed comparison and arithmetic shift,
     real overflow flags, and the UB cases. -/
@@ -587,7 +608,8 @@ def allTests : List (IO Unit) := [
   t27_bytes_tuple_roundtrip,
   t28_bytes_mirlite_same_ub,
   t29_bytes_pointer_read_as_word,
-  t30_typed_arithmetic]
+  t30_typed_arithmetic,
+  t31_narrow_int_to_ptr]
 
 def runAll : IO Unit := do
   allTests.forM id

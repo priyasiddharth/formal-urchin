@@ -335,7 +335,8 @@ def readCell (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) (what : St
       else
       match M.read permsR resolved.addr k.size resolved.tag with
       | .error e => .error s!"read access failed: {e}"
-      | .ok perms' => .ok (readOne state.mem resolved.addr k, perms')
+      -- exactly the leaf's bytes (a narrow integer is not 8 bytes wide)
+      | .ok perms' => .ok (decodeV k (state.mem.read resolved.addr k.size), perms')
 
 /-- The pointee layout of a pointer place. -/
 def pointeeLayout {σ : LayoutTy} (p : Place Γ (obseq.LayoutTy.PtrL σ)) : BLayout :=
