@@ -59,14 +59,34 @@ other features (A/B/E/F/G in the 2026-10-01 plan).
    `allocate_wf`/`allocate_fresh`. Axioms: propext, Classical.choice,
    Quot.sound. Unit tests t20–t24 (round trip, partial read, bytewise copy
    keeps provenance, int copy strips it, mixed bytes / uninit).
-1. **Layouts with widths and offsets.** obseq3 needs its own layout type:
+1. **Layouts — DONE 2026-10-02** (`src/obseq3/bytelayout.lean`, ~330
+   lines). `BLayout = int n | ptr pointee | tup fields offsets size align`
+   (explicit offsets so Charon's `field_offsets` can be used verbatim);
+   `reprC` computes the C layout (aligned fields, trailing padding);
+   `leaves` gives the `(offset, scalar)` view; `Mem.loadL`/`storeL` move a
+   whole value leaf by leaf. `ofLayoutTy` embeds the cell layouts (word =
+   `usize`). Proved: `placeFields_good`/`reprC_good` (leaves pairwise
+   separated, in address order, inside the size), `ofLayoutTy_good`,
+   `ofLayoutTy_leaves_length` (**one leaf per cell**: the byte model
+   produces exactly as many values as the cell model, so stage 2 changes
+   addresses, not value counts), `storeLeaves_frame`,
+   `loadLeaves_storeLeaves`, `loadL_storeL`. Unit tests t25–t27.
+   Original plan text: obseq3 needs its own layout type:
    `obseq.LayoutTy` is shared with v1 (`src/obseq`) and obseq2, so do not
    widen it in place. `ByteLayout = int n | ptr pointee | tup [(offset,
    layout)] size align`; size/align/field offsets computed like rustc for
    tuples, or taken from Charon's `layout` field (present in 62/111
    artifacts) for user ADTs. A "leaf list" view (offset × scalar) gives
    the flat value shape the semantics already works with.
-2. **mirlite on bytes.** `Mem := bytes.Mem`; values become `List SVal`
+2. **mirlite on bytes.** Concretely, from stage 1: a value of layout `τ`
+   is the list of its `ofLayoutTy τ` leaves (same length as today's
+   `List MemValue`, `ofLayoutTy_leaves_length`); `MemValue.word w` ↦
+   `SVal.int w` (needs `w < 2^64`: the bounded-word decision bites here —
+   `binOp` must wrap), `ptrVal b o e s t` ↦ `SVal.ptr ⟨b + o, some ⟨b, s, t⟩⟩`
+   with `e` recovered from the pointee type; `undef` ↦ a failed leaf load.
+   The one new lemma the place layer needs: the byte offset of a path is
+   the offset of its first leaf (`PathTo.offset` in cells ↦ the leaf
+   index; the byte offset is that leaf's `.1`). `Mem := bytes.Mem`; values become `List SVal`
    per leaf (or raw byte lists for copies); `evalCopy` = read the bytes,
    check initialization per leaf at the leaf's scalar type; a typed copy
    of a non-pointer leaf strips provenance, a raw copy keeps it; place

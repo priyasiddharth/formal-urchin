@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-02 (later) — Where Each Field Lives
+
+With bytes in place, the model now also knows where a value's parts sit:
+a number of a given width, a pointer of eight bytes, or a group of fields
+at given positions with padding in between, as Rust lays them out (a
+one-byte field followed by a four-byte one leaves three bytes of padding).
+A value is handled as its list of numbers and pointers, each at its
+position, so storing a value and reading it back gives the same value and
+leaves the padding untouched. The model's existing layouts translate into
+this form with exactly one entry per existing cell, which is what lets the
+next step move the source machine onto bytes without changing how many
+values anything produces. All of this is proved.
+
+---
+
 ## 2026-10-02 — Memory Made of Bytes
 
 The model has always stored memory as cells, one per number or pointer.

@@ -1,5 +1,6 @@
 import obseq3.mirlite_semantics
 import obseq3.bytemem
+import obseq3.bytelayout
 
 /-!
 Unit tests for the obseq3 SB model and mirlite semantics, following the
@@ -428,6 +429,36 @@ def t24_bytes_mixed_and_uninit : IO Unit := do
   let (fresh, m) := m.allocate ptrSize ptrSize
   assert (m.load fresh .ptr == none) "t24 uninit pointer read fails"
 
+/-- `repr(C)` layouts: `(u8, u32, u8)` puts the fields at 0, 4, 8 with
+    size 12, align 4; `(i32, u8)` is 8 bytes (3 of tail padding). -/
+def t25_bytes_reprC_layout : IO Unit := do
+  let L := reprC [.int 1, .int 4, .int 1]
+  assert (L.leaves.map (·.1) == [0, 4, 8]) s!"t25 offsets {L.leaves.map (·.1)}"
+  assert (L.size == 12 && L.align == 4) s!"t25 size {L.size} align {L.align}"
+  let L2 := reprC [.int 4, .int 1]
+  assert (L2.size == 8) s!"t25 (i32, u8) size {L2.size}"
+
+/-- The cell layout `(word, ptr, (word, word))` becomes `usize` leaves at
+    0, 8, 16, 24: one leaf per cell. -/
+def t26_bytes_of_cell_layout : IO Unit := do
+  let τ : obseq.LayoutTy := .TupL [.NatL, .PtrL .NatL, .TupL [.NatL, .NatL]]
+  let L := ofLayoutTy τ
+  assert (L.leaves.map (·.1) == [0, 8, 16, 24]) s!"t26 offsets {L.leaves.map (·.1)}"
+  assert (L.leaves.length == obseq.layoutSize τ) "t26 one leaf per cell"
+  assert (L.size == 32) s!"t26 size {L.size}"
+
+/-- A whole `(u8, *const i32, u16)` value stored and loaded back; the
+    padding bytes stay uninit. -/
+def t27_bytes_tuple_roundtrip : IO Unit := do
+  let L := reprC [.int 1, .ptr (.int 4), .int 2]
+  let (base, m) := (({} : bytes.Mem)).allocate L.size L.align
+  let p : Pointer := ⟨base, some ⟨base, L.size, 3⟩⟩
+  let vs := [SVal.int 200, SVal.ptr p, SVal.int 65000]
+  let some m := m.storeL base L vs
+    | throw (IO.userError "t27 store failed")
+  assert (m.loadL base L == some vs) "t27 tuple round trip"
+  assert (m.read (base + 1) 7 == List.replicate 7 .uninit) "t27 padding after the u8 is uninit"
+
 end bytes
 
 def allTests : List (IO Unit) := [
@@ -454,7 +485,10 @@ def allTests : List (IO Unit) := [
   t21_bytes_partial_pointer_read,
   t22_bytes_bytewise_copy_keeps_provenance,
   t23_bytes_int_copy_strips_provenance,
-  t24_bytes_mixed_and_uninit]
+  t24_bytes_mixed_and_uninit,
+  t25_bytes_reprC_layout,
+  t26_bytes_of_cell_layout,
+  t27_bytes_tuple_roundtrip]
 
 def runAll : IO Unit := do
   allTests.forM id

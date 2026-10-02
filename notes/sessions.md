@@ -4732,3 +4732,22 @@ numbers — conformance-drop-in-place is not merged here).
 **Next-session pickup candidates:** stage 1 (obseq3's own ByteLayout with
 widths and offsets — do not widen the shared obseq.LayoutTy); decide the
 stage-2 value shape (per-leaf SVal vs raw bytes).
+
+## 2026-10-02 (byte-addressed memory, stage 1)
+
+**Session:** `formal-urchin` (continued), branch `byteaddress`.
+
+**Theme:** byte layouts.
+
+**Key outputs:** `src/obseq3/bytelayout.lean`: BLayout with explicit field
+offsets, `reprC`, leaf view, whole-value load/store; `ofLayoutTy` bridge
+from the cell layouts with `ofLayoutTy_leaves_length` (one leaf per
+cell); separation/in-bounds and store/load round-trip theorems (standard
+axioms). Units t25–t27. Design note updated with the concrete stage-2
+mapping (word ↦ SVal.int, ptrVal ↦ SVal.ptr, extent from the pointee).
+
+**Status:** stage 1 done; units 27/27 + 129/129; corpus 132/0/29, osea 132;
+audit unchanged.
+
+**Next-session pickup candidates:** stage 2 (mirlite on bytes), starting
+with path byte offsets = first-leaf offset, and wrapping `binOp`.
