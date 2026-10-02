@@ -500,3 +500,29 @@ Coverage now: destinations {bound local, pointer chain}; rvalues
 order: fresh-root and projected destinations; the ref/move/cast/ptrarith/
 binop/alloc/slice packages; dealloc, assignIf, protectors; the program
 theorem (prefix states, frames).
+
+### First assignments, fields, references (same day)
+
+- `freshroot.lean`: a local's first assignment = the root `Alloc`
+  (`freshroot_prologue`, `sb_own_respects_PermSim` growing ρt) followed by
+  the bound-local leaf, via two equations: the compiler from the
+  post-Alloc state emits the same code minus the Alloc
+  (`compileStmt_fresh_eq`), the source from the post-allocation state steps
+  the same (`stepStmt_fresh_eq`). No new simulation reasoning.
+- `derefdst.lean` refactor: `storereg_lowered_simB` takes any destination
+  meeting `LowersB` (the place-lowering contract); chains are an instance.
+- `projdst.lean`: fields. Offset zero lowers as the base
+  (`proj_zero_lowers`); nonzero offset is `Borrow(Mut); store; Die` closed by
+  keystone's `sb_ref_use_die_cancels` at the field's BYTE length. Instances:
+  `x.f` (x bound / first assignment), `(*P).f`.
+- `ref.lean`: one core package `ref_pkg_core` from an anchor contract
+  (`BorrowAnchorShape`, `BorrowAnchorRes`, `LowersB`, `CompilesB`) — every
+  borrow is "lower the anchor, one Borrow at an offset"; instances `&x`,
+  `&*chain`, `&chain.f`. The retag is `sb_ref_respects_PermSim` unchanged.
+201 byteproof declarations, axioms unchanged.
+
+Coverage: destinations {bound local, first assignment, field of a chain,
+deref chain}; rvalues {constInit, uninit, copy from a chain, ref of a
+chain/field}. Not yet: nested projections (reassociation) and derefs of
+non-chain places (flatten); move, casts, ptrOffset, binOp, alloc, slices;
+dealloc, assignIf, protectors; the program theorem.

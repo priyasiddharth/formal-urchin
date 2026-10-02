@@ -6,6 +6,7 @@ import obseq3.byteproof.derefdst
 import obseq3.byteproof.copy_chain
 import obseq3.byteproof.freshroot
 import obseq3.byteproof.projdst
+import obseq3.byteproof.ref
 open Lean Elab Command
 
 -- The byte-level proof (obseq3.byteproof, branch `byteaddress`) may rest
