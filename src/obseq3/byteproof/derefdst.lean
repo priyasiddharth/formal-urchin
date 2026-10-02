@@ -106,36 +106,60 @@ theorem LocalBindingSimB.prm_congr {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : Ta
   show List.lookup _ _ = _
   rw [h_prm]; exact hpi
 
-/-- The pointer-chain destination leaf, for any rvalue with a value
-    package (`proof/spine.lean`'s `storereg_chaindst_simulation`). -/
-theorem storereg_chaindst_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
+/-- The place-lowering contract: from any related states at which the
+    source resolves `p`, the compiled lowering of `p` delivers `LoweredB`.
+    Pointer chains meet it (`ptrChain_lowering_simB`), and so does a field
+    of one at byte offset zero. -/
+def LowersB {Γ : Ctx} (L : mirliteB.LayEnv Γ) (compProg : oseairL.Prog) {τ : LayoutTy}
+    (p : Place Γ τ) : Prop :=
+  ∀ (ρt : TagRenameMap) (sM : mirliteB.State MSB Γ) (kind : RefKind) (cs : CompilerState)
+    (sA : oseairL.State MSB) (resolved : PlaceRes) (permsD : MSB.State),
+    TagRenameWF ρt →
+    mirliteB.resolvePlaceAcc MSB L sM p = .ok (resolved, permsD) →
+    TagRenameBounded ρt sM.perms.NextTag sA.perms.NextTag →
+    LocalBindingSimB L ρt sM.env sA cs →
+    PlaceRegMapBoundB cs →
+    ByteMemSim ρt sM.mem sA.mem →
+    ByteAllocLockstep sM.mem sA.mem →
+    PermSim ρt sM.perms sA.perms →
+    sA.pc = cs.nextLabel →
+    CodeIncludedB compProg (CheckedCompilerM.run (placeToRegChecked L kind p) cs) →
+    ∃ placeOut n s' tres, LoweredB L ρt compProg kind p cs sM sA resolved permsD
+      placeOut n s' tres
+
+theorem ptrChain_lowers {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
+    (hWF : PtrPlacesWF L) {τ : LayoutTy} {p : Place Γ τ} (h_chain : PtrChain p) :
+    LowersB L compProg p :=
+  fun _ _ kind cs sA resolved permsD hwf h_res =>
+    ptrChain_lowering_simB hWF hwf h_chain kind cs sA resolved permsD h_res
+
+/-- The destination leaf for ANY place whose lowering meets the
+    place-lowering contract (`LowersB`) and whose assignment never
+    allocates (`h_prepOK`), for any rvalue with a value package. -/
+theorem storereg_lowered_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {s_mir s_mir' : mirliteB.State MSB Γ} {s_osea : oseairL.State MSB}
-    {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)} {rhs : RExpr Γ τ} {cs : CompilerState}
-    (compProg : oseairL.Prog) (hWF : PtrPlacesWF L)
-    (h_chain : PtrChain (.deref P))
-    (h_pkg : ValuePkgB compProg L (mirliteB.placeLayout L (.deref P)) rhs)
+    {τ : LayoutTy} {dst : Place Γ τ} {rhs : RExpr Γ τ} {cs : CompilerState}
+    (compProg : oseairL.Prog)
+    (h_low : LowersB L compProg dst)
+    (h_prepOK : ∀ s1, mirliteB.preparePlaceAssign MSB L s_mir dst = .ok s1 →
+      s1 = s_mir ∧ ∃ r, mirliteB.resolvePlace? MSB L s_mir dst = some r)
+    (h_pkg : ValuePkgB compProg L (mirliteB.placeLayout L dst) rhs)
     (h_inv : InvAtB L ρt s_mir s_osea cs)
     (h_code : CodeIncludedB compProg
-      (CheckedCompilerM.run (compileStmtChecked L (.assign (.deref P) rhs)) cs))
-    (h_step : mirliteB.stepStmt MSB L s_mir (.assign (.deref P) rhs) = .ok s_mir') :
+      (CheckedCompilerM.run (compileStmtChecked L (.assign dst rhs)) cs))
+    (h_step : mirliteB.stepStmt MSB L s_mir (.assign dst rhs) = .ok s_mir') :
     ∃ (ρt' : TagRenameMap) (s_osea' : oseairL.State MSB) (n : Nat),
       TagRenameIncr ρt ρt' ∧
       oseairL.runN MSB n s_osea compProg = .Ok s_osea' ∧
       InvAtB L ρt' s_mir' s_osea'
-        (CheckedCompilerM.run (compileStmtChecked L (.assign (.deref P) rhs)) cs) := by
+        (CheckedCompilerM.run (compileStmtChecked L (.assign dst rhs)) cs) := by
   -- §1 the source: the destination exists (a deref root is never allocated)
   simp only [mirliteB.stepStmt, mirliteB.doAssign] at h_step
-  cases h_prep : mirliteB.preparePlaceAssign MSB L s_mir (.deref P) with
+  cases h_prep : mirliteB.preparePlaceAssign MSB L s_mir dst with
   | err msg => rw [h_prep] at h_step; cases h_step
   | ok s1 =>
   rw [h_prep] at h_step
-  have h_s1 : s1 = s_mir ∧ ∃ r, mirliteB.resolvePlace? MSB L s_mir (.deref P) = some r := by
-    simp only [mirliteB.preparePlaceAssign] at h_prep
-    split at h_prep
-    · rename_i r h_r
-      exact ⟨(mirliteB.Result.ok.inj h_prep).symm, r, h_r⟩
-    · simp [mirliteB.allocateRoot] at h_prep
-  obtain ⟨rfl, rp, h_rp⟩ := h_s1
+  obtain ⟨rfl, rp, h_rp⟩ := h_prepOK s1 h_prep
   simp only at h_step
   split at h_step
   · cases h_step
@@ -148,27 +172,26 @@ theorem storereg_chaindst_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRen
   split at h_step
   · cases h_step
   rename_i resolved permsD h_dres
-  have h_root : CompilerM.run (ensurePlaceRoot L (.deref P)) cs = cs := by
+  have h_root : CompilerM.run (ensurePlaceRoot L dst) cs = cs := by
     refine ensurePlaceRoot_noop (s := s1) (fun loc b h => ?_) _ _ h_rp
     obtain ⟨r, t, hpi, -⟩ := h_inv.lbs loc b h
     exact ⟨r, _, hpi⟩
   -- §3 code inclusion, from the statement's down to the rvalue's
   have h_codeD := h_code.mono (assign_dst_incr (rhs := rhs) h_root h_pval)
-  have h_codePre := h_codeD.mono (CheckedCompilerM.incr (placeToRegChecked L RefKind.Mut (.deref P))
-    (CheckedCompilerM.run (compileRExprPreChecked L (mirliteB.placeLayout L (.deref P)) rhs) cs))
+  have h_codePre := h_codeD.mono (CheckedCompilerM.incr (placeToRegChecked L RefKind.Mut dst)
+    (CheckedCompilerM.run (compileRExprPreChecked L (mirliteB.placeLayout L dst) rhs) cs))
   obtain ⟨ρt', nR, sR, memO, perms₂, vals, h_incr_t, h_wf_t', h_ost, h_runR, h_regmono,
     h_lbsR, h_psimR, h_tbdR, h_memR, h_allocR, h_pcR, h_exec, h_valsRel⟩ := h_pkg' h_codePre
   rw [h_ost] at h_dres h_step
   have h_prbR : PlaceRegMapBoundB
-      (CheckedCompilerM.run (compileRExprPreChecked L (mirliteB.placeLayout L (.deref P)) rhs) cs) :=
+      (CheckedCompilerM.run (compileRExprPreChecked L (mirliteB.placeLayout L dst) rhs) cs) :=
     fun idx r τ' h' => RegisterBelow.mono h_regmono (h_inv.prb idx r τ' (by
       show List.lookup _ _ = _
       rw [← h_prmR]; exact h'))
   -- §4 the destination's lowering, at the post-rvalue states
   obtain ⟨dOut, n2, s2, tres, hD⟩ :=
-    ptrChain_lowering_simB (sM := { s1 with mem := memO, perms := perms₂ }) hWF h_wf_t' h_chain
-      RefKind.Mut _ sR resolved permsD h_dres h_tbdR h_lbsR h_prbR h_memR h_allocR h_psimR h_pcR
-      h_codeD
+    h_low ρt' { s1 with mem := memO, perms := perms₂ } RefKind.Mut _ sR resolved permsD h_wf_t'
+      h_dres h_tbdR h_lbsR h_prbR h_memR h_allocR h_psimR h_pcR h_codeD
   have h_shape := compileStmt_storereg_dst h_root h_pval h_storeR h_postR hD.val hD.clean
   rw [h_shape] at h_code ⊢
   -- §5 the store, on both sides
@@ -198,7 +221,7 @@ theorem storereg_chaindst_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRen
     simp only [bytes.Mem.isFreed, ← h_lock2.2.2] at h_free ⊢
     simpa using h_free
   have h_wtp : oseairL.writeThroughPtr MSB s2 dOut.result.reg
-      (mirliteB.placeLayout L (.deref P)) vals "store"
+      (mirliteB.placeLayout L dst) vals "store"
       = .Ok { s2 with perms := pT', mem := mT', pc := s2.pc + 1 } := by
     simp only [PermissionModel.stackedBorrows] at hu'
     simp only [oseairL.writeThroughPtr, h_dentry, hA, h_freeT, Bool.false_eq_true, if_false,
@@ -228,8 +251,8 @@ theorem storereg_chaindst_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRen
       exact TagRenameBounded.mono h_tbdR (Nat.le_refl _) hD.tgtNT
     unmap := fun loc' h' => by
       have : getPlaceInfo
-          (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut (.deref P))
-            (CheckedCompilerM.run (compileRExprPreChecked L (mirliteB.placeLayout L (.deref P)) rhs) cs))
+          (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut dst)
+            (CheckedCompilerM.run (compileRExprPreChecked L (mirliteB.placeLayout L dst) rhs) cs))
           loc'.idx.1 = none := by
         show List.lookup _ _ = _
         rw [hD.prm, h_prmR]; exact h_inv.unmap loc' h'
@@ -240,5 +263,31 @@ theorem storereg_chaindst_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRen
         rw [← h_prmR, ← hD.prm]; exact h'
       exact RegisterBelow.mono (Nat.le_trans h_regmono hD.regmono) (h_inv.prb idx r τ' this)
   }
+
+/-- The pointer-chain destination leaf (`proof/spine.lean`'s
+    `storereg_chaindst_simulation`). -/
+theorem storereg_chaindst_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
+    {s_mir s_mir' : mirliteB.State MSB Γ} {s_osea : oseairL.State MSB}
+    {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)} {rhs : RExpr Γ τ} {cs : CompilerState}
+    (compProg : oseairL.Prog) (hWF : PtrPlacesWF L)
+    (h_chain : PtrChain (.deref P))
+    (h_pkg : ValuePkgB compProg L (mirliteB.placeLayout L (.deref P)) rhs)
+    (h_inv : InvAtB L ρt s_mir s_osea cs)
+    (h_code : CodeIncludedB compProg
+      (CheckedCompilerM.run (compileStmtChecked L (.assign (.deref P) rhs)) cs))
+    (h_step : mirliteB.stepStmt MSB L s_mir (.assign (.deref P) rhs) = .ok s_mir') :
+    ∃ (ρt' : TagRenameMap) (s_osea' : oseairL.State MSB) (n : Nat),
+      TagRenameIncr ρt ρt' ∧
+      oseairL.runN MSB n s_osea compProg = .Ok s_osea' ∧
+      InvAtB L ρt' s_mir' s_osea'
+        (CheckedCompilerM.run (compileStmtChecked L (.assign (.deref P) rhs)) cs) :=
+  storereg_lowered_simB compProg (ptrChain_lowers hWF h_chain)
+    (fun s1 h_prep => by
+      simp only [mirliteB.preparePlaceAssign] at h_prep
+      split at h_prep
+      · rename_i r h_r
+        exact ⟨(mirliteB.Result.ok.inj h_prep).symm, r, h_r⟩
+      · simp [mirliteB.allocateRoot] at h_prep)
+    h_pkg h_inv h_code h_step
 
 end obseq3.byteproof
