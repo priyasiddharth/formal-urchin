@@ -239,8 +239,11 @@ def resolvePlaceAcc (state : State M Γ) {τ : LayoutTy} :
       | .error e => .error e
       | .ok (ptrRes, perms') =>
           if state.mem.isFreed ptrRes.allocBase then .error freedMsg
+          -- the WHOLE pointer must be in bounds, as for every other typed
+          -- read (and the compiled `Load`): a pointer read straddling the
+          -- allocation's end is out of bounds
           else if ptrRes.addr < ptrRes.allocBase ∨
-             ptrRes.addr ≥ ptrRes.allocBase + ptrRes.allocSize then
+             ptrRes.addr + ptrSize > ptrRes.allocBase + ptrRes.allocSize then
             .error "deref of an out-of-bounds pointer"
           else
           match M.read perms' ptrRes.addr ptrSize ptrRes.tag with
