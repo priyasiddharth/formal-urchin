@@ -1,4 +1,5 @@
 import obseq3.sb
+import obseq3.bytemem
 import obseq3.types
 import obseq3.context
 import obseq3.syntax

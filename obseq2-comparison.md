@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-02 — Memory Made of Bytes
+
+The model has always stored memory as cells, one per number or pointer.
+Rust's own interpreter, which Miri runs on, stores bytes: a pointer is
+eight bytes, each remembering which allocation the pointer may touch, and
+a number is its bytes in little-endian order. Several Miri tests depend on
+exactly that, such as copying a pointer one byte at a time, or reading one
+byte of a pointer as a number. On a new branch, the byte memory now
+exists as its own layer, following MiniRust, the executable specification
+of Rust's semantics: writing a value and reading it back gives the same
+value, reading a pointer's bytes as a number gives its address and loses
+its permission, a byte-by-byte copy keeps it, and fresh allocations are
+aligned and never at address zero. All of this is proved, and executable
+checks reproduce the behaviour those Miri tests rely on. Nothing in the
+two machines or the correctness proof uses it yet; moving them onto it is
+the next stage.
+
+---
+
 ## 2026-10-01 (later) — Boxes Are Freed
 
 Until now the model never freed a box: when a `Box` went out of scope,

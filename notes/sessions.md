@@ -4712,3 +4712,23 @@ The fork file change needs a fork commit before the superproject commit.
 **Next-session pickup candidates:** user `Drop` + `drop_in_place`
 (item q); the paper's protector description; item m.
 
+
+## 2026-10-02 (byte-addressed memory, stage 0)
+
+**Session:** `formal-urchin` (continued), branch `byteaddress` from main.
+
+**Theme:** start the move to byte-addressed memory, MiniRust-style.
+
+**Key outputs:** `src/obseq3/bytemem.lean` (standalone: AbstractByte,
+provenance on every pointer byte, LE encode/decode, scalar load/store,
+aligned non-null allocation; round-trip, cross-read and read/write frame
+theorems, standard axioms only); unit tests t20–t24; design and stages in
+journal/2026-10/2026-10-02-byte-memory-design.md.
+
+**Status:** stage 0 done; mirlite/oseair untouched; audit unchanged (0
+sorries); units 24/24 + 129/129; corpus 132/0/29 and osea 132 (main's
+numbers — conformance-drop-in-place is not merged here).
+
+**Next-session pickup candidates:** stage 1 (obseq3's own ByteLayout with
+widths and offsets — do not widen the shared obseq.LayoutTy); decide the
+stage-2 value shape (per-leaf SVal vs raw bytes).

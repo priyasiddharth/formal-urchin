@@ -1,4 +1,5 @@
 import obseq3.mirlite_semantics
+import obseq3.bytemem
 
 /-!
 Unit tests for the obseq3 SB model and mirlite semantics, following the
@@ -364,6 +365,71 @@ def t18_binop_words : IO Unit := do
   | some (.word 0), some (.word 1) => pure ()
   | a, b => throw (IO.userError s!"t18: expected x = 0, y = 1, got {reprStr a} {reprStr b}")
 
+/-! ## Byte-addressed memory (`bytemem.lean`, standalone layer) -/
+
+section bytes
+open obseq3.bytes
+
+/-- A fresh pointer-sized allocation holding a pointer with provenance. -/
+private def bytesSetup : IO (bytes.Mem × Nat × Pointer) := do
+  let (target, m) := (({} : bytes.Mem)).allocate 4 4          -- an i32
+  let (slot, m) := m.allocate ptrSize ptrSize           -- a *const i32 slot
+  let p : Pointer := ⟨target, some ⟨target, 4, 7⟩⟩
+  let some m := m.store slot .ptr (.ptr p)
+    | throw (IO.userError "bytes setup: pointer store failed")
+  pure (m, slot, p)
+
+/-- Allocation is aligned and never at 0; a stored pointer reads back with
+    its provenance. -/
+def t20_bytes_alloc_and_pointer_roundtrip : IO Unit := do
+  let (m, slot, p) ← bytesSetup
+  assert (p.addr % 4 == 0 && p.addr != 0) s!"t20 i32 base {p.addr} aligned, non-null"
+  assert (slot % 8 == 0) s!"t20 pointer slot {slot} 8-aligned"
+  assert (m.load slot .ptr == some (SVal.ptr p)) "t20 pointer round trip keeps provenance"
+
+/-- `ptr_int_transmute::ptr_partial_read`: one byte of a pointer read as a
+    `u8` is the low address byte, without provenance. -/
+def t21_bytes_partial_pointer_read : IO Unit := do
+  let (m, slot, p) ← bytesSetup
+  assert (m.load slot (.int 1) == some (SVal.int (p.addr % 256))) "t21 low address byte"
+  assert (m.load slot (.int 8) == some (SVal.int p.addr)) "t21 whole pointer read as usize = address"
+
+/-- `provenance::bytewise_custom_memcpy`: copying a pointer one RAW byte at
+    a time (`MaybeUninit<u8>`) preserves its provenance. -/
+def t22_bytes_bytewise_copy_keeps_provenance : IO Unit := do
+  let (m, slot, p) ← bytesSetup
+  let (dst, m) := m.allocate ptrSize ptrSize
+  let m := (List.range ptrSize).foldl (fun m i => m.copyBytes (dst + i) (slot + i) 1) m
+  assert (m.load dst .ptr == some (SVal.ptr p)) "t22 bytewise raw copy keeps provenance"
+
+/-- Copying a pointer through INTEGERS strips provenance: the copy has the
+    address and no provenance (`transmute_strip_provenance`). -/
+def t23_bytes_int_copy_strips_provenance : IO Unit := do
+  let (m, slot, p) ← bytesSetup
+  let (dst, m) := m.allocate ptrSize ptrSize
+  let some (SVal.int a) := m.load slot (.int ptrSize)
+    | throw (IO.userError "t23 int read of a pointer failed")
+  let some m := m.store dst (.int ptrSize) (.int a)
+    | throw (IO.userError "t23 int store failed")
+  assert (m.load dst .ptr == some (SVal.ptr ⟨p.addr, none⟩)) "t23 copy via usize has no provenance"
+
+/-- Mixing the bytes of two pointers: the address is the byte mix, the
+    provenance is gone (the bytes disagree); an uninit byte makes the read
+    fail. -/
+def t24_bytes_mixed_and_uninit : IO Unit := do
+  let (m, slot, _) ← bytesSetup
+  let (slot2, m) := m.allocate ptrSize ptrSize
+  let some m := m.store slot2 .ptr (.ptr ⟨slot, some ⟨slot, 8, 9⟩⟩)
+    | throw (IO.userError "t24 store failed")
+  let m := m.copyBytes slot slot2 1                      -- one byte from the other pointer
+  match m.load slot .ptr with
+  | some (SVal.ptr q) => assert (q.prov == none) "t24 mixed bytes lose provenance"
+  | _ => throw (IO.userError "t24 mixed pointer read failed")
+  let (fresh, m) := m.allocate ptrSize ptrSize
+  assert (m.load fresh .ptr == none) "t24 uninit pointer read fails"
+
+end bytes
+
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
   t2_raw_const_is_read_only,
@@ -383,7 +449,12 @@ def allTests : List (IO Unit) := [
   t15_deref_oob_pointer,
   t16_junk_sized_pointer_retag,
   t17_junk_sized_pointer_copy,
-  t18_binop_words]
+  t18_binop_words,
+  t20_bytes_alloc_and_pointer_roundtrip,
+  t21_bytes_partial_pointer_read,
+  t22_bytes_bytewise_copy_keeps_provenance,
+  t23_bytes_int_copy_strips_provenance,
+  t24_bytes_mixed_and_uninit]
 
 def runAll : IO Unit := do
   allTests.forM id
