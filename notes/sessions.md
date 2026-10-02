@@ -5024,3 +5024,20 @@ decoding).
 
 **Next-session pickup candidates:** A step 1 — byte-layout typed syntax +
 byte-offset compiler, then the const_write leaf.
+
+## 2026-10-02 (byte-level proof: step 1 — byte compiler + target)
+
+**Key outputs:** `src/obseq3/oseair_layout.lean` (layout-typed OSEA-IR
+target on `bytes.Mem`), `src/obseq3/compile_bytes.lean` (the compiler,
+parameterized by the layout table, emitting byte offsets/lengths and
+layout-typed loads/stores; evidence types kept). Differential wired:
+`compile_tests` fifth machine; harness `--osea` reports `osea bytes`.
+Design notes appended to `notes/journal/2026-10/2026-10-02-byte-memory-design.md`.
+
+**Status:** corpus 146/0/0/26 (172); osea 146; osea bytes 146; cells 143
++ 3 diverging; reasons 81 + 3 known; units 30/30 + 131/131; main audit
+3 axioms / 0 sorries; byteproof axioms unchanged.
+
+**Next-session pickup candidates:** A step 2 — the const_write leaf end
+to end (byte source `doAssign … constInit` vs `CStore dstL [Dat v]`) over
+`ByteMemSim`.

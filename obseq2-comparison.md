@@ -4,6 +4,22 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-02 (late) — A Compiler That Knows Where the Bytes Are
+
+The compiler the correctness proof is about still thinks in cells: every
+integer and pointer one slot, every field offset a count of slots. The
+machines now run on real bytes, so the proof has to be about a compiler
+that emits byte offsets — a one-byte field four bytes in, a borrow of
+exactly the two bytes of a `u16`. There is now such a compiler, a copy of
+the existing one that is told each variable's real layout, and a target
+machine whose loads and stores know the layout of what they move. Every
+program in the Miri corpus, compiled with the real layouts, reaches the
+same verdict as the byte-level source — 146 of 146 — and so do the 131
+compiler test programs. The cell compiler and its proof are untouched;
+the new pair is what the byte-level proof will be about.
+
+---
+
 ## 2026-10-02 (evening) — The Same Undefined Behaviour, Not Just the Same Line
 
 A test that ends in undefined behaviour used to count as agreeing with

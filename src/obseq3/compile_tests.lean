@@ -1,5 +1,6 @@
 import obseq3.oseair_bytes
 import obseq3.compile
+import obseq3.compile_bytes
 import obseq3.tests
 
 /-!
@@ -303,9 +304,34 @@ where
                 | some i => .ub i
                 | none => .ub 999999
 
-/-- Every differential program runs on FOUR machines — the cell source
-    and target, and both again on byte-addressed memory — and all four
-    must reach the expected verdict. -/
+/-- The BYTE compiler's output (`compile_bytes.lean`) on its own target
+    (`oseair_layout.lean`), both at layout table `L`. -/
+def tgtRunL (Γ : Ctx) (L : mirliteB.LayEnv Γ) (prog : Prog Γ) : Except String DiffOut :=
+  match compileB.compileProg L prog with
+  | .error e => .error s!"compile error: {reprStr e}"
+  | .ok tp =>
+      .ok (go tp (compileB.stmtLabelRanges L prog) (compileB.emittedLabels L prog + 2)
+        (oseairL.State.initial M))
+where
+  go (tp : oseairL.Prog) (ranges : List (Nat × Nat)) :
+      Nat → oseairL.State M → DiffOut
+    | 0, _ => .stuck
+    | n + 1, st =>
+        match tp st.pc with
+        | none => .ok
+        | some .Halt => .ok
+        | some _ =>
+            match oseairL.step M st tp with
+            | .Ok st' => go tp ranges n st'
+            | .Err _ =>
+                match ranges.findIdx? (fun r => r.1 ≤ st.pc && st.pc < r.2) with
+                | some i => .ub i
+                | none => .ub 999999
+
+/-- Every differential program runs on FIVE machines — the cell source
+    and target, both again on byte-addressed memory, and the byte
+    compiler's output on its layout-typed target — and all five must
+    reach the expected verdict. -/
 def expectDiff (Γ : Ctx) (prog : Prog Γ) (expected : DiffOut) (label : String) : IO Unit := do
   let src := srcRun Γ prog
   assert (src == expected) s!"{label}: source verdict {reprStr src}, expected {reprStr expected}"
@@ -322,6 +348,11 @@ def expectDiff (Γ : Ctx) (prog : Prog Γ) (expected : DiffOut) (label : String)
   | .ok tgtB =>
       assert (tgtB == expected)
         s!"{label}: byte target verdict {reprStr tgtB}, expected {reprStr expected}"
+  match tgtRunL Γ (mirliteB.uniformEnv Γ) prog with
+  | .error e => throw (IO.userError s!"{label}: {e}")
+  | .ok tgtL =>
+      assert (tgtL == expected)
+        s!"{label}: layout target verdict {reprStr tgtL}, expected {reprStr expected}"
 
 def ΓA : Ctx := [natL, ptrNat, natL]
 def xA : Place ΓA natL := .local ⟨⟨0, by decide⟩, rfl⟩

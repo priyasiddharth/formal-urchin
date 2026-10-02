@@ -140,7 +140,10 @@ requires the same verdict except on entries recorded
 `"cell_model": "diverges"` — byte-level programs the cell model cannot
 represent (local/narrow_ref_wide_write, local/narrow_fields_ok,
 local/rust_layout_ok). `--osea` checks the cell model against its compiled
-target. On the 161 entries that predate the byte model, the byte model's
+target, and (2026-10-02) the byte model against the BYTE compiler's
+output (`obseq3/compile_bytes.lean`, compiled at the real layouts) on its
+layout-typed target (`obseq3/oseair_layout.lean`): `osea bytes: matched
+146`. On the 161 entries that predate the byte model, the byte model's
 verdicts equal the cell model's (2026-10-02): same outcome, same `ok` /
 UB line; only offsets in diagnostics are now in bytes.
 

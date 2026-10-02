@@ -336,3 +336,43 @@ that emits byte offsets/lengths and TYPE-directed store widths; (2) one
 leaf end to end (const_write) restated over `ByteMemSim`; (3) the rest
 of the port (measured: ~11 mechanical, ~8 store-width, ~20–40 memory-
 relation theorems; SB layer unchanged).
+
+## A step 1 — the byte compiler and its target (2026-10-02, late)
+
+[DEC] A post-pass over the cell compiler's output cannot produce byte
+code: a cell offset does not say which byte layout it came from. So
+`src/obseq3/compile_bytes.lean` (`obseq3.compileB`) is a copy of
+`compile.lean` parameterized by `L : mirliteB.LayEnv Γ` — same lowering,
+same instruction order, same evidence inductives (now indexed by `L`),
+same `StateIncr` monad — and `src/obseq3/oseair_layout.lean`
+(`obseq3.oseairL`) is its target: OSEA-IR's instructions with
+`BLayout` on `Load`/`Alloc`/`AllocN`/`AllocDyn`/`RStore`/`CStore`, byte
+offsets and lengths on `Borrow`/`Die`/`PtrOffset`, element byte sizes on
+`SliceLen`/`SubSlice`, memory `bytes.Mem`, registers holding one value
+per leaf. No `Memcpy` (the cell compiler no longer emits it).
+
+What the byte compiler emits differently (each mirrors the byte source):
+- projection borrow offset `fieldOffset (placeLayout L base) path.indices`,
+  every borrow/`Die` length `(placeLayout L p).size` (`placeSize`);
+- loads at the SOURCE place's layout, stores at the DESTINATION's
+  (`compileRExprPreChecked` takes `dstL`, as `evalRExpr` does), so a
+  layout-mismatched copy fails at `writeL`'s leaf check on both sides;
+- `ref`'s mask expanded by `maskBytes`; `move`'s stays `[]` — kept
+  syntactically equal to the source's so the SB halves need no
+  "[] ≡ all-false" lemma;
+- the one-leaf reads (`exposeAddr`/`fromExposed`/`ptrOffset`/`ptrCast`/
+  `refSlice`) carry the source's `leafKind`; `ptrOffset` is pre-scaled by
+  the pointee's byte size; `uninit` stores one `Undef` per dst leaf;
+- a deref loads one pointer leaf (`derefLoad`), as `resolvePlaceAcc`.
+The target checks liveness (`freed`) before bounds and SB, as the byte
+source does; the cell targets do not.
+
+[OBS] Differential: `compile_tests` runs every program on a FIFTH machine
+(byte compiler at the uniform layout, on `oseairL`) — 131/131; the
+corpus `--osea` adds `osea bytes` (byte compiler at the REAL layouts vs
+the judged byte verdict) — 146 matched / 0 mismatch / 0 skipped. Teeth:
+mutating the projection offset to `8 * cell offset` gave ≥10 mismatches.
+byteproof axioms unchanged; main audit unchanged (3 axioms, 0 sorries).
+
+Next: step 2, the const_write leaf over `ByteMemSim` against these two
+definitions.
