@@ -54,7 +54,10 @@ def BorrowAnchorShape {Γ : Ctx} (L : mirliteB.LayEnv Γ) {σ τ : LayoutTy} (sr
             (Register.R (CheckedCompilerM.run (placeToRegChecked L kind a) cs).nextReg)
             (oseairL.Rhs.Borrow kind prot mask (some (placeSize L src)) aOut.result.reg o)] ∧
     ∃ out, CheckedCompilerM.value (placeToBorrowRegChecked L kind prot mask src) cs = .ok out ∧
-      out.result.reg = Register.R (CheckedCompilerM.run (placeToRegChecked L kind a) cs).nextReg
+      out.result.reg = Register.R (CheckedCompilerM.run (placeToRegChecked L kind a) cs).nextReg ∧
+      out.result.cleanup =
+        [(Register.R (CheckedCompilerM.run (placeToRegChecked L kind a) cs).nextReg,
+          placeSize L src)]
 
 /-- The source resolves `src` as the anchor, shifted by `o`. -/
 def BorrowAnchorRes {Γ : Ctx} (L : mirliteB.LayEnv Γ) {σ τ : LayoutTy} (src : Place Γ τ)
@@ -73,7 +76,7 @@ theorem borrow_local_shape {Γ : Ctx} {L : mirliteB.LayEnv Γ} {τ : LayoutTy} (
   simp only [placeToBorrowRegChecked, CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
     h_val, CheckedCompilerM.run_lift, CheckedCompilerM.value_lift, CheckedCompilerM.run_pure,
     CheckedCompilerM.value_pure]
-  exact ⟨rfl, _, rfl, rfl⟩
+  exact ⟨rfl, _, rfl, rfl, rfl⟩
 
 theorem borrow_local_res {Γ : Ctx} {L : mirliteB.LayEnv Γ} {τ : LayoutTy} (loc : Local Γ τ) :
     BorrowAnchorRes L (.local loc) (.local loc) 0 :=
@@ -108,7 +111,7 @@ theorem borrow_deref_shape {Γ : Ctx} {L : mirliteB.LayEnv Γ} {σ : LayoutTy}
       simp only [placeToBorrowRegChecked, CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
         h_q, CheckedCompilerM.run_lift, CheckedCompilerM.value_lift, CheckedCompilerM.run_pure,
         CheckedCompilerM.value_pure, h_res]
-      exact ⟨rfl, _, rfl, rfl⟩
+      exact ⟨rfl, _, rfl, rfl, rfl⟩
 
 theorem borrow_deref_res {Γ : Ctx} {L : mirliteB.LayEnv Γ} {σ : LayoutTy}
     (q : Place Γ (obseq.LayoutTy.PtrL σ)) :
@@ -142,7 +145,9 @@ theorem borrow_proj_shape {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρ τ : LayoutTy}
   simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind, h_val,
     CheckedCompilerM.run_lift, CheckedCompilerM.value_lift, CheckedCompilerM.run_pure,
     CheckedCompilerM.value_pure]
-  exact ⟨rfl, _, rfl, rfl⟩
+  refine ⟨rfl, _, rfl, rfl, ?_⟩
+  show aOut.result.cleanup ++ _ = _
+  rw [h_clean]; rfl
 
 theorem borrow_proj_res {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρ τ : LayoutTy}
     {b : Place Γ ρ} (f : PathTo ρ τ) :
@@ -200,7 +205,7 @@ theorem ref_pkg_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
     obtain ⟨r, t, hpi, -⟩ := h_lbs loc b h
     exact ⟨r, _, hpi⟩
   obtain ⟨aOut, h_aval, h_aclean, h_aprm⟩ := h_comp sM csA kind _ h_map h_ra
-  obtain ⟨h_brun, bOut, h_bval, h_breg⟩ :=
+  obtain ⟨h_brun, bOut, h_bval, h_breg, -⟩ :=
     h_shape kind prot (mirliteB.maskBytes (mirliteB.placeLayout L src) mask) csA aOut h_aval h_aclean
   have h_pre : CheckedCompilerM.run (compileRExprPreChecked L dstL (RExpr.ref kind prot mask src)) csA
       = CheckedCompilerM.run (placeToBorrowRegChecked L kind prot
