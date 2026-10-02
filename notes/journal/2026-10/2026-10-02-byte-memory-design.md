@@ -422,3 +422,18 @@ cell leaf's conditional frame (`hF`, compile success ⇒ frame) is only
 needed when the per-statement leaves are assembled into the program
 theorem, and will come back then. 98 byteproof declarations, axioms
 unchanged.
+
+### Copy package, bound-local source (same day)
+
+`byteproof/copy.lean`: `copy_local_pkg` (any destination layout `dstL`)
+and the leaf `copy_local_local_sim`. The source's typed read is the
+spike's `load_step_sim`; `readL_rel` turns the read relation into the
+store relation, using that the source read erred on any undef leaf — so
+every loaded target leaf is defined too (the target `Load`'s own undef
+check passes) and `StoreSim` holds. The fresh temp register is above
+every bound local's (`PlaceRegMapBoundB`), so the binding relation
+survives the `Load`. 109 byteproof declarations, axioms unchanged.
+
+Next: the byte place-lowering simulation (projection borrows at byte
+offsets, deref loads) — the cell proof's `ptrChain_lowering_sim` — which
+unlocks projected/deref sources and destinations for every package.
