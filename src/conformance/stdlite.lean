@@ -261,25 +261,21 @@ def sliceIndex (mutbl : Bool) : Shim := fun st args dest line => do
         | none => .error s!"unsupported: slice index argument is not a place (line {line})"
         | some rp =>
             match rp.ty with
-            | .tup [] | .structT [] =>
+            | .tup [] | .structT [] _ =>
                 -- RangeFull: the whole slice, so `0 .. len`
                 let lenIdx := st.locals.length
                 pure (UOperand.const 0, UOperand.copy
                   { root := .local lenIdx, projs := [], ty := .nat })
-            | .tup [_, _] | .structT [_, _] =>
+            | .tup [_, _] | .structT [_, _] _ =>
                 pure (UOperand.copy (fld rp 0), UOperand.copy (fld rp 1))
             | _ => .error s!"unsupported: slice index by {reprStr rp.ty} (line {line})"
-      -- a RangeFull needs the length materialised first
+      -- the RangeFull length's local is reserved now (its index is in
+      -- `hi`) and filled below
       let st ←
         match rangeOp with
         | .copy rp | .move rp =>
             match rp.ty with
-            | .tup [] | .structT [] =>
-                let lenIdx := st.locals.length
-                let st := { st with locals := st.locals ++ [UTy.nat] }
-                pure (pushOut st (.assign
-                  { root := .local lenIdx, projs := [], ty := .nat }
-                  (.sliceLen tmp) line))
+            | .tup [] | .structT [] _ => pure { st with locals := st.locals ++ [UTy.nat] }
             | _ => pure st
         | _ => pure st
       -- move the retagged receiver into the destination first: when
@@ -288,6 +284,17 @@ def sliceIndex (mutbl : Bool) : Shim := fun st args dest line => do
       -- slice's element type, which is the type the narrowing scales
       -- its bounds by
       let st ← emitAssign st line dest (.use (.copy tmp))
+      -- a RangeFull's length is read from the DESTINATION, i.e. in slice
+      -- elements (2026-10-02; read from an array receiver it was the
+      -- array's extent in ARRAYS — 1 — on both machines)
+      let st :=
+        match rangeOp with
+        | .copy rp | .move rp =>
+            match rp.ty, hi with
+            | .tup [], .copy lenP | .structT [] _, .copy lenP =>
+                pushOut st (.assign lenP (.sliceLen dest) line)
+            | _, _ => st
+        | _ => st
       let st ← emitAssign st line dest (.subSlice dest lo hi)
       -- the mint over the narrowed range
       return pushOut st (.assign dest (.refSlice kind false dest) line)

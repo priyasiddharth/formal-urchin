@@ -4,6 +4,22 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-02 (afternoon) — Fields Where Rust Puts Them
+
+Rust is free to reorder a structure's fields to save space, and does: a
+one-byte field, a four-byte field and another one-byte field become eight
+bytes with the four-byte field first, not twelve in declaration order.
+The byte machine now places a structure's fields exactly where the
+compiler put them, reading the positions from Charon's record of the
+compiler's own layout. A new test reads the structure back byte by byte
+and checks each field at its real position against Miri; the byte machine
+agrees, the cell machine cannot. Enums keep the model's own layout on
+purpose. On the way, a long-standing slip surfaced: taking all of an
+array as a slice computed its length as one (one array) instead of the
+number of elements, on both machines; it is fixed.
+
+---
+
 ## 2026-10-02 (morning after) — Real Widths
 
 The byte machine now knows how big things are. A byte is one byte, a

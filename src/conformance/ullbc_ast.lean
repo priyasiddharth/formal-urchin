@@ -34,6 +34,15 @@ structure UIntTy where
   signed : Bool := false
 deriving Repr, BEq, Inhabited
 
+/-- A struct's layout as rustc chose it (Charon's `layout`): field byte
+    offsets in DECLARATION order, size and alignment. `repr(Rust)` fields
+    may be reordered and packed; this is what the byte model uses. -/
+structure StructLay where
+  offsets : List Nat
+  size : Nat
+  align : Nat
+deriving Repr, BEq, Inhabited
+
 /-- Untyped types. `ref`/`raw` both erase to a pointer layout, but the
     distinction drives inline-seam retag synthesis (refs are retagged at
     function boundaries, raws are not). `enum` lowers to a discriminant
@@ -44,7 +53,7 @@ inductive UTy
 | ref (mutbl : Bool) (inner : UTy)
 | raw (mutbl : Bool) (inner : UTy)
 | tup (tys : List UTy)
-| structT (tys : List UTy)   -- named struct: fields are NOT retagged at seams
+| structT (tys : List UTy) (lay : Option StructLay)   -- named struct: fields are NOT retagged at seams; `lay`: rustc's layout, when Charon gives it
 | enum (variants : List (List UTy))
 | cell (inner : UTy)     -- UnsafeCell/Cell/Atomic*: interior-mutable region
 | boxT (inner : UTy)     -- Box<T>: unique-retagged at seams (miri's box retag)
@@ -58,7 +67,7 @@ deriving Repr, BEq, Inhabited
     the seam-retag rule `containsRef`. -/
 partial def containsRefTy : UTy → Bool
   | .ref _ _ | .boxT _ | .slice false _ _ => true
-  | .tup tys | .structT tys => tys.any containsRefTy
+  | .tup tys | .structT tys _ => tys.any containsRefTy
   | .enum variants => variants.any (·.any containsRefTy)
   | .cell t => containsRefTy t
   | _ => false  -- a raw pointer is not retagged, whatever it points to
@@ -68,7 +77,7 @@ partial def uSize : UTy → Nat
   | .nat | .int _ | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => 1
   | .sliceData _ => 0
   | .cell inner => uSize inner
-  | .tup tys | .structT tys => (tys.map uSize).foldl (· + ·) 0
+  | .tup tys | .structT tys _ => (tys.map uSize).foldl (· + ·) 0
   | .enum variants =>
       1 + (variants.map (fun fs => (fs.map uSize).foldl (· + ·) 0)).foldl Nat.max 0
   | .unsupported _ => 1
@@ -77,7 +86,7 @@ partial def uSize : UTy → Nat
     pointer)? The model's analogue of "not `Freeze`". -/
 partial def containsCell : UTy → Bool
   | .cell _ => true
-  | .tup tys | .structT tys => tys.any containsCell
+  | .tup tys | .structT tys _ => tys.any containsCell
   | .enum variants => variants.any (·.any containsCell)
   | _ => false
 
@@ -87,7 +96,7 @@ partial def freezeMask : UTy → List Bool
   | .nat | .int _ | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => [false]
   | .sliceData _ => []
   | .cell inner => List.replicate (uSize inner) true
-  | .tup tys | .structT tys => tys.flatMap freezeMask
+  | .tup tys | .structT tys _ => tys.flatMap freezeMask
   -- A multi-variant enum that is not `Freeze` is treated like a union by
   -- Miri's `visit_freeze_sensitive` (vendor/miri/src/helpers.rs): the whole
   -- value, discriminant included, is UnsafeCell, WITHOUT reading which
@@ -285,6 +294,8 @@ deriving Inhabited
 structure DeclInfo where
   path : List String
   kind : DeclKind
+  -- rustc's layout of a struct (x86_64), when Charon reports it
+  layout : Option StructLay := none
   -- the monomorphised instantiation (`Instantiated` in the item name):
   -- `UnsafeCell<i32>`'s `[i32]`, for opaque std types whose inner type no
   -- constructor call reveals
@@ -426,7 +437,16 @@ def parseDecls (j : Json) : List (Nat × DeclInfo) :=
               DeclKind.enum ((asArr variantsJ).map fun v =>
                 ((getK v "fields").map asArr).getD [] |>.filterMap (getK · "ty"))
           | _ => DeclKind.opaque
-        pure (did, { path, kind, tyArgs })
+        let layout : Option StructLay := do
+          let v ← (((getK td "layout").map asArr).getD []).head? >>= (getK · "value")
+          let size ← getK v "size" >>= asNat
+          let align ← getK v "align" >>= asNat
+          let vl ← ((getK v "variant_layouts").map asArr).getD [] |>.head?
+          let offs ← ((getK vl "field_offsets").map asArr).bind (·.mapM asNat)
+          match kind with
+          | .struct fs => if offs.length == fs.length then some { offsets := offs, size, align } else none
+          | _ => none
+        pure (did, { path, kind, tyArgs, layout })
 
 /-- The type Json of an operand (place ty or const ty). -/
 def operandTyJson (op : Json) : Option Json :=
@@ -788,7 +808,7 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     | _ => .cell .nat
                   else
                     match info.kind with
-                    | .struct fields => .structT (fields.map (parseTy ctx (fuel - 1)))
+                    | .struct fields => .structT (fields.map (parseTy ctx (fuel - 1))) info.layout
                     | .enum variants =>
                         .enum (variants.map (·.map (parseTy ctx (fuel - 1))))
                     | .opaque => .unsupported s!"opaque adt {String.intercalate "::" info.path}"

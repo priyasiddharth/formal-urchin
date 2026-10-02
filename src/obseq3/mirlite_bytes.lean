@@ -159,11 +159,16 @@ def writeL (m : bytes.Mem) (addr : Nat) (lay : BLayout) (vals : List MemValue) :
       pure (buf.take o ++ bs ++ buf.drop (o + bs.length))
   pure (m.write addr buf)
 
-/-- A per-leaf UnsafeCell mask, per byte (a padding byte takes the mask of
-    the leaf before it). -/
+/-- A per-leaf UnsafeCell mask, per byte: byte `i` takes the bit of the
+    leaf starting closest at or below it (padding takes the leaf before
+    it). Leaves are in FIELD order, which a reordered `repr(Rust)` struct
+    does not keep in address order. -/
 def maskBytes (lay : BLayout) (mask : List Bool) : List Bool :=
   (List.range lay.size).map fun i =>
-    match (lay.leaves.zipIdx.filter fun ((o, _), _) => o ≤ i).getLast? with
+    let below := lay.leaves.zipIdx.filter fun ((o, _), _) => o ≤ i
+    match below.foldl (fun best c => match best with
+        | none => some c
+        | some b => if c.1.1 ≥ b.1.1 then some c else some b) none with
     | some (_, j) => mask.getD j false
     | none => false
 

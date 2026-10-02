@@ -221,7 +221,7 @@ def markMovedOps (st : LowerSt) (ops : List UOperand) : LowerSt :=
 /-- A Box somewhere in the value itself (not behind a pointer). -/
 partial def containsBox : UTy → Bool
   | .boxT _ => true
-  | .tup tys | .structT tys => tys.any containsBox
+  | .tup tys | .structT tys _ => tys.any containsBox
   | .enum vs => vs.any (·.any containsBox)
   | .cell t => containsBox t
   | _ => false
@@ -250,7 +250,7 @@ partial def emitDropGlue (st : LowerSt) (line : Nat) (p : UPlace) : Except Strin
       | none =>
           let st := if uSize inner == 0 then st else pushOut st (.dealloc p line)
           return markMoved st p
-  | .tup tys | .structT tys =>
+  | .tup tys | .structT tys _ =>
       tys.zipIdx.foldlM (fun st (t, i) => emitDropGlue st line { fld p i with ty := t }) st
   | .cell t => emitDropGlue st line { p with ty := t }
   | .enum _ => .error s!"unsupported: drop of an enum holding a Box (line {line})"
@@ -291,9 +291,10 @@ def constOf (st : LowerSt) : UOperand → Option Int
 
 /-- A type's BYTE layout (x86_64): an integer at its width (`bool` 1,
     `char` 4), a model word 8, every pointer 8 (pointee kept for strides
-    and extents), a tuple or struct in C layout (rustc may reorder a
-    `repr(Rust)` aggregate — documented deviation until Charon's
-    `field_offsets` are read), and an enum as the MODEL lays it out: an
+    and extents), a struct at rustc's own field offsets when Charon reports
+    its layout (2026-10-02; `repr(Rust)` may reorder fields), a tuple — a
+    builtin, which Charon gives no layout — and a layout-less struct in C
+    layout (rustc may reorder a tuple: documented deviation), and an enum as the MODEL lays it out: an
     8-byte discriminant, then the longest variant's fields (the cell
     layout's shape, so values line up leaf for leaf). -/
 partial def toBLayout : UTy → obseq3.bytes.BLayout
@@ -303,7 +304,10 @@ partial def toBLayout : UTy → obseq3.bytes.BLayout
   | .slice _ _ e => .ptr (toBLayout e)
   | .sliceData e => toBLayout e
   | .cell t => toBLayout t
-  | .tup tys | .structT tys => obseq3.bytes.reprC (tys.map toBLayout)
+  | .structT tys (some l) =>
+      -- rustc's own layout (Charon): `repr(Rust)` fields reordered/packed
+      .tup (tys.map toBLayout) l.offsets l.size (max 1 l.align)
+  | .tup tys | .structT tys none => obseq3.bytes.reprC (tys.map toBLayout)
   | .enum vs =>
       let longest := vs.foldl (fun a f => if f.length > a.length then f else a) []
       obseq3.bytes.reprC (.int 8 :: longest.map toBLayout)
@@ -380,7 +384,7 @@ partial def containsRef : UTy → Bool
   | .boxT _ => true            -- Box: unique-retagged at seams (miri box retag)
   | .slice false _ _ => true   -- reference-to-slice: seam-retagged (runtime length)
   | .tup tys => tys.any containsRef
-  | .structT _ => false  -- miri does NOT fn-entry-retag named-struct fields
+  | .structT _ _ => false  -- miri does NOT fn-entry-retag named-struct fields
                          -- (fnentry_invalidation2's point); tuples ARE retagged
   | .enum variants => variants.any (·.any containsRef)
   | .cell _ => false

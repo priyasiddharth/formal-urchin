@@ -2199,6 +2199,18 @@
       "notes": "repr(C) {u8, u32, u16}: size_of 12; a byte write into a u32 and a byte read out of it, certified against Miri."
     },
     {
+      "id": "local/rust_layout_ok",
+      "artifact": "local/rust_layout_ok.ullbc.json",
+      "status": "xfail-model",
+      "reason": "cell model: fields in declaration order, one cell each; rustc reorders repr(Rust) structs (Charon field_offsets), which the byte model (--bytes) uses",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/rust_layout_ok.cert.json",
+      "provenance": "local; real-Miri verified (miri 0.1.0 34d6a79544, the submodule pin), 2026-10-02 via scripts/live.py",
+      "notes": "S { a: u8, b: u32, c: u8 } is laid out b@0, a@4, c@5, size 8; byte reads through *const u8 certified against Miri."
+    },
+    {
       "id": "fail/function_calls/arg_inplace_observe_after",
       "source": "corpus/tests/fail/function_calls/arg_inplace_observe_after.rs",
       "prep": "prep/arg_inplace_observe_after.rs",

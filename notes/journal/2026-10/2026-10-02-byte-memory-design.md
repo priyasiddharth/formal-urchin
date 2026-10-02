@@ -236,6 +236,22 @@ Done:
 
 Result: corpus 133 pass + 2 xfail, osea 135, bytes 135, live 135/135.
 
-Open: Charon `field_offsets` for repr(Rust) types; rustc's tuple
-reordering; enum layouts (niches, tag width); the compiler emitting byte
+Struct offsets from Charon (same day, later): `StructLay` (offsets in
+declaration order, size, align) read from a struct decl's `layout`; the
+loader's `UTy.structT` carries it and `toBLayout` uses it, so a
+`repr(Rust)` struct sits at rustc's own offsets (`S { a: u8, b: u32,
+c: u8 }` → b@0, a@4, c@5, size 8). Enums deliberately keep the MODEL's
+shape (user decision): 8-byte tag, longest variant, no niches. Tuples are
+Charon builtins without a layout, so they stay C layout. Leaves of a
+reordered struct are in field order, not address order: `maskBytes`
+picks the leaf starting closest at or below each byte. No committed
+artifact had a reordered struct; witness local/rust_layout_ok (byte reads
+at rustc's offsets, certified; xfail-model for cells).
+
+Fixed on the way (both machines): `&arr[..]` on an ARRAY read the
+RangeFull length from the array reference — its extent in ARRAYS, 1 —
+instead of from the reinterpreted slice; the length is now read from the
+destination, in elements.
+
+Open: rustc's tuple reordering; the compiler emitting byte
 offsets (core syntax switch) — then the byte target runs real layouts too.

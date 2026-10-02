@@ -4844,3 +4844,14 @@ units 30/30 + 131/131; audit unchanged (0 sorries).
 **Next-session pickup candidates:** Charon `field_offsets` for
 `repr(Rust)` structs; the core-syntax switch (compiler emits byte
 offsets; proof repair) when the user decides to.
+
+## 2026-10-02 (struct layouts from Charon)
+
+**Key outputs:** Charon `field_offsets`/size/align for structs
+(`StructLay` on `UTy.structT`) used by the byte layouts; enums keep the
+model's own shape (user decision); witness local/rust_layout_ok
+(reordered `repr(Rust)` struct); `&arr[..]` length bug fixed (both
+machines).
+
+**Status:** corpus 133 + 3 xfail, osea 136, bytes 136, live 136/136;
+units 30/30 + 131/131; audit unchanged.
