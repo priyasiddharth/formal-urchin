@@ -5007,3 +5007,20 @@ access for a dealloc as it does for a retag.
 **Status:** corpus 146 / 0 / 0 xfail / 26 unsupported (172); reasons 81 as
 Miri + 3 known + 0 differ; osea 146; cells 143 + 3 diverging; live
 146/146 0 drift; units 30/30 + 131/131; audit unchanged.
+
+## 2026-10-02 (byte-level proof: spike)
+
+**Key outputs:** `src/obseq3/byteproof/memsim.lean` (library
+`Obseq3ByteProof`): per-byte memory relation and its read/write/decode/
+encode/layout/store/load/sub-cell lemmas, sorry-free;
+`scripts/byteproof_axioms.lean` (fails on any axiom beyond propext,
+Quot.sound, Classical.choice — run after every byteproof change; user:
+STOP and ask if a new axiom appears). Findings in the design journal
+(why not a refinement; the StoreSim asymmetry; injectivity for pointer
+decoding).
+
+**Status:** spike done; main audit unchanged (0 sorries); units 30/30 +
+131/131.
+
+**Next-session pickup candidates:** A step 1 — byte-layout typed syntax +
+byte-offset compiler, then the const_write leaf.

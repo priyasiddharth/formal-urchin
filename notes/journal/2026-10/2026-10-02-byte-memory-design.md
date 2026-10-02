@@ -290,3 +290,49 @@ offset 0 vs 8, ×2; immutable statics read-only in Miri vs a frozen SB
 item here). Result: 78 as Miri, 3 known, 0 differ; an unrecorded
 difference now fails the suite. Byte addressing is what makes the
 offset comparable at all (Miri reports byte offsets).
+
+## The byte-level proof: why A, and the spike (2026-10-02, later)
+
+[FACT] A refinement of the byte machines into the proved cell machines
+("option B") cannot cover sub-cell borrows: it needs every byte state to
+have a cell image (8 bytes of a cell sharing one stack, one value per
+cell), and a one-byte borrow, a byte written into a `u32`, or a reordered
+struct has none — exactly the programs the byte model exists for. So the
+byte proof is a direct compiler proof on the byte machines ("option A"),
+built in PARALLEL (`obseq3/byteproof/`, library `Obseq3ByteProof`) so the
+audited cell theorem stays green until the switch.
+
+Spike — `src/obseq3/byteproof/memsim.lean`, sorry-free, axioms propext /
+Quot.sound / Classical.choice only (`scripts/byteproof_axioms.lean`
+fails on anything else, user instruction: stop and ask on a new axiom):
+- the relation: `ByteSim` (same byte, provenance with its tag renamed;
+  an uninit source byte refines anything), `ByteMemSim` (per address, NO
+  address renaming: lockstep allocation), `ByteAllocLockstep`;
+- memory: `ByteMemSim.read` / `.write` / `.copyBytes` / `.allocate` —
+  any address, any length;
+- values: `decodeV_sim` (related bytes decode to related values at ANY
+  scalar type — the pointer case needs the tag renaming to be a function
+  AND injective, which `TagRenameWF` already provides: renaming must not
+  merge two provenances into one), `encodeAt_sim`;
+- layouts: `readL_sim`, `writeL_sim` — any `BLayout`, padding included;
+- steps: `store_step_sim` (sb_write + writeL), `load_step_sim` (sb_read
+  + readL), `subcell_store_sim` (a one-byte store inside a wider value);
+  the SB halves are the cell proof's `sb_*_respects_PermSim`, UNCHANGED.
+
+[OBS] What the spike taught:
+1. The per-byte relation makes sub-cell accesses free: no lemma mentions
+   cells; a narrow store is `writeL_sim` at `.int 1`.
+2. The SB layer needs nothing (per-byte stacks are stacks).
+3. One asymmetry: the cell proof lets a source `undef` relate to ANY
+   target value, but a byte STORE must encode the target value, which can
+   fail (a word that does not fit). Stores therefore need `StoreSim`
+   (undef ↔ undef, else related) — true of the compiler, whose `uninit`
+   stores `Undef` on both sides; reads keep the weak relation.
+4. Pointer decoding is where injectivity matters (mixed provenance must
+   stay mixed under renaming).
+
+Next for A, in order: (1) typed syntax with byte layouts and a compiler
+that emits byte offsets/lengths and TYPE-directed store widths; (2) one
+leaf end to end (const_write) restated over `ByteMemSim`; (3) the rest
+of the port (measured: ~11 mechanical, ~8 store-width, ~20–40 memory-
+relation theorems; SB layer unchanged).
