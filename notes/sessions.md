@@ -4880,3 +4880,11 @@ audit unchanged.
 **Next-session pickup candidates:** model RefCell's borrow flag as
 padding at rustc's offset (removes 2 known differences); read-only
 allocations for immutable statics (removes the third).
+
+## 2026-10-02 (RefCell flag: parked)
+
+User: leave RefCell's elided borrow flag as is, record for later. Parked
+item B3 now carries the costs (offset 0 vs 8, size_of, 2 `reason_known`
+entries), the original rationale, and two resume options (layout-only
+padding — recommended; the real flag); B10 records the read-only-statics
+fix for the third known difference.

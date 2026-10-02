@@ -488,6 +488,35 @@ a+j (small shims), h i, then q, p, t, w.
    the borrow flag — valid only for conflict-free executions (all the
    corpus exercises); a test relying on a borrow-flag panic stays
    unsupported.
+   [PARKED 2026-10-02, branch `byteaddress` — user: "leave it be for now,
+   record it for later"] What the elision now COSTS, made visible by the
+   byte model and the UB-reason check:
+   - layout: the value sits at offset 0, not rustc's 8 (after the 8-byte
+     `Cell<isize>` flag); `RefCell<i32>` is 4 bytes, not 16, so
+     `size_of::<RefCell<T>>()` is wrong;
+   - 2 of the 3 `reason_known` entries (illegal_read5,
+     shared_rw_borrows_are_weak2: Miri fails at alloc[0x8], the model at
+     offset 0 — same tag, same failure).
+   Why it was elided (journal/2026-08/2026-08-14-refcell-srw-groups-landed.md):
+   the flag enforces borrow rules by PANICKING, not UB; conflict-free runs
+   never consult it, and the certificate rejects panic paths; its accesses
+   (Cell get/set through `&self`) touch only the flag's own bytes, so they
+   cannot invalidate a tag on the value; reproducing std's
+   BorrowRef/BorrowRefMut needed drop glue, which did not exist then.
+   Options when resumed:
+   (1) LAYOUT ONLY (recommended, small): keep the semantics elided but lay
+       RefCell<T> out at rustc's offsets — the flag as PADDING (no leaf,
+       so values still line up with the cell model), value at
+       `alignUp 8 (align T)`, size rounded to `max 8 (align T)` (`toBLayout`
+       in emit.lean; the RefCell shims in stdlite.lean must then reborrow
+       the value FIELD, not offset 0; `maskBytes` must give the flag bytes
+       the UnsafeCell bit). Removes both known differences; drop their
+       `reason_known` in the manifest.
+   (2) THE REAL FLAG: a counter word written by borrow/borrow_mut through
+       `&self` (an SRW access in the UnsafeCell), decremented by the guards'
+       drop glue (Box drop glue exists since 2026-10-01), panicking on a
+       conflict. Only needed to support borrow-conflict PANIC tests, which
+       are not Stacked Borrows tests.
 4. **Slice length convention**: a slice value is one cell carrying its
    own EXTENT (2026-09-23), and `sliceLen` reads the length off it in
    elements (2026-09-24). Zero-sized elements have no length in the
@@ -527,6 +556,12 @@ a+j (small shims), h i, then q, p, t, w.
 10. **No read-only memory**: static_memory_modification matches
     verdict+line via a frozen-write failure instead of miri's
     read-only-memory validity error.
+    [2026-10-02] Recorded as the third `reason_known` entry: Miri's UB
+    is a VALIDITY error ("mutable reference pointing to read-only
+    memory"), the model's an SB permission failure, same line. Fix when
+    resumed: read-only allocations for immutable statics without interior
+    mutability (byte model: a read-only list beside `bytes.Mem.freed`, set
+    after the initializer runs; `&mut`/write into it is UB).
 11. **Messages**: error text approximates miri's wording (several match
     verbatim); the harness never matches text — verdict + line only.
 
