@@ -400,8 +400,8 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
   | .subSlice p lo hi => do
       return .subSlice (← resolveGlobalRoot gmap p) (← resolveGlobalsOp gmap lo)
         (← resolveGlobalsOp gmap hi)
-  | .binOp op a b => do
-      return .binOp op (← resolveGlobalsOp gmap a) (← resolveGlobalsOp gmap b)
+  | .binOp op t a b => do
+      return .binOp op t (← resolveGlobalsOp gmap a) (← resolveGlobalsOp gmap b)
   | rv => .ok rv
 
 def resolveGlobalsStmt (gmap : List (Nat × Nat)) : LStmt → Except String LStmt

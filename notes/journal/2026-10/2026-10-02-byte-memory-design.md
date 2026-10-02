@@ -143,3 +143,32 @@ other features (A/B/E/F/G in the 2026-10-01 plan).
   during the migration (both machines parametric in the memory) or switch
   in one step per machine. The probe suggests one step: the breakage is
   concentrated, not spread.
+
+## Integer arithmetic: MIR's wrapping and UB (2026-10-02, later)
+
+[FACT] rustc's interpreter (`interpret/operator.rs`, `binary_int_op`;
+`mir/syntax.rs` `BinOp`): `Add`/`Sub`/`Mul` WRAP at the type's width;
+`*WithOverflow` return `(wrapped, overflowed)` — a debug build's panic is
+a separate `Assert` on the flag; `*Unchecked` are UB on overflow; `Div`/
+`Rem` are UB on a zero divisor and on signed `MIN / -1` (rustc inserts an
+`Assert` before them); `Shl`/`Shr` mask the amount to the width,
+`*Unchecked` shifts are UB out of range. Charon keeps these one to one
+(`Add(Wrap|UB|Panic)`, `AddChecked`, `Div(UB)`, …).
+
+Done: `obseq3.IntTy` (bits, signedness; words are bit patterns);
+`BinOp` carries the type and covers all of the above plus bit ops and
+comparisons by signedness; `evalBinOp` stays TOTAL (the proof treats it
+as opaque) and `binOpUB` decides UB, consulted first by both mirlites and
+oseair. Proof change: one `split` in `binop.lean`, one hypothesis on
+`runN_Assgn_BinOp_step`. Loader: the operand's Charon integer type is
+kept on `URvalue.binOp`; ops with modes render `Add.Wrap`…; a checked op
+emits the wrapped value AND its real overflow flag (was: a hard-coded 0
+relying on the certificate); folds use `evalBinOp` and do not fold an op
+that would be UB, so the run raises it at its statement; negative
+constant OPERANDS are two's complement at the op's type. The old
+"`sub` truncates at 0" is gone (t18, d100 updated).
+
+Open: negative constants in plain value positions still clamp to 0 (the
+destination's width is not on `UTy.nat` yet — stage 5); unary `Neg`/`Not`,
+`Cmp` and `Offset` are still unsupported; a 128-bit value does not fit a
+byte-model leaf (8 bytes) until leaves get widths (stage 5).

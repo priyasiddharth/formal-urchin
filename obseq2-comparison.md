@@ -4,6 +4,24 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-02 (night) — Arithmetic as MIR Does It
+
+The model's numbers were unbounded: subtraction stopped at zero instead of
+wrapping, and the "did this overflow?" flag that Rust's debug builds check
+was always assumed to be false. Rust's compiler defines arithmetic more
+precisely, and Miri follows it: ordinary addition, subtraction and
+multiplication wrap around at the number's width; the checked forms also
+report whether they overflowed, and it is a separate check on that report
+that panics; the unchecked forms, division by zero, and dividing the most
+negative signed number by minus one are undefined behaviour. The model now
+does exactly this at each operation's own width and signedness, in both
+machines, and the correctness proof needed only a small change: both
+machines check the same undefined-behaviour condition before computing.
+The conformance programs that add numbers at runtime now compute real
+overflow flags, and all programs keep their verdicts.
+
+---
+
 ## 2026-10-02 (evening) — The Source Machine Runs on Bytes
 
 The source machine now has a second implementation that keeps its memory

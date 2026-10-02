@@ -420,6 +420,11 @@ def evalRExpr
               | .ok out2 =>
                   match out2.values with
                   | [.word y] =>
+                      -- MIR's UB cases (unchecked overflow, division by
+                      -- zero, out-of-range unchecked shifts) first
+                      match binOpUB op x y with
+                      | some e => .err e
+                      | none =>
                       .ok { values := [MemValue.word (evalBinOp op x y)]
                             values_len := rfl
                             state := out2.state }

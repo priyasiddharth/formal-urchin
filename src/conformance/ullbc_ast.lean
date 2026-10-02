@@ -142,6 +142,13 @@ inductive URefKind
 | boxMut   -- a Box's retag: `mut` per cell, WEAK protector when protected
 deriving Repr, BEq, Inhabited
 
+/-- An integer operation's type: width in bits and signedness, from the
+    operand's Charon type (pointers and anything non-integer: `u64`). -/
+structure UIntTy where
+  bits : Nat := 64
+  signed : Bool := false
+deriving Repr, BEq, Inhabited
+
 /-- `ref`'s `prot` marks a protected (inline-seam) retag; the parser
     always produces `false`, the lowering sets it. `aggregate`'s
     `variant?` is `some v` for enum-variant aggregates (tuples: `none`).
@@ -159,7 +166,7 @@ inductive URvalue
 | refSlice (kind : URefKind) (prot : Bool) (p : UPlace)  -- retag of slice data, runtime length
 | sliceLen (p : UPlace)   -- a fat pointer's length in elements (`.len()`, `PtrMetadata`)
 | subSlice (p : UPlace) (lo hi : UOperand)  -- narrow a fat pointer to elements `lo..hi`
-| binOp (op : String) (a b : UOperand)
+| binOp (op : String) (ity : UIntTy) (a b : UOperand)
 | discriminant (p : UPlace)   -- an enum's variant index (payload slot 0)
 | fnRef (funId : Nat)
 | uninit
@@ -416,6 +423,27 @@ def operandTyJson (op : Json) : Option Json :=
   | some ("Copy", p) | some ("Move", p) => getK p "ty"
   | some ("Const", c) => getK c "ty"
   | _ => none
+
+/-- The integer type of a Charon type: `I8`…`I128`/`Isize` signed,
+    `U8`…`U128`/`Usize` unsigned (x86_64: size types are 64-bit), `bool` a
+    `u8`, `char` a `u32`; anything else `u64`. -/
+def intTyOfJson (tbl : TyTable) (j : Json) : UIntTy :=
+  let width : Option String → Nat
+    | some "I8" | some "U8" => 8
+    | some "I16" | some "U16" => 16
+    | some "I32" | some "U32" => 32
+    | some "I128" | some "U128" => 128
+    | _ => 64
+  match sumKey (resolveTyJson tbl j) with
+  | some ("Literal", lit) =>
+      match sumKey lit with
+      | some ("Int", k) => { bits := width (asStr k), signed := true }
+      | some ("UInt", k) => { bits := width (asStr k), signed := false }
+      | _ =>
+          if lit == Json.str "Bool" then { bits := 8 }
+          else if lit == Json.str "Char" then { bits := 32 }
+          else {}
+  | _ => {}
 
 /-- The decl id of a type Json when it is a (monomorphised, opaque)
     wrapper named `name` (`Box`, `NonNull`, `ManuallyDrop`). -/
@@ -920,8 +948,17 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
   | some ("BinaryOp", payload) =>
       match asArr payload with
       | [opJ, aJ, bJ] =>
-          match asStr opJ with
-          | some op => .binOp op (parseOperand ctx aJ) (parseOperand ctx bJ)
+          -- `"Eq"`, `"AddChecked"`, … or `{"Add": "Wrap"}` (an op with an
+          -- overflow mode: Wrap / UB / Panic), rendered `Add.Wrap`
+          let op? : Option String := match asStr opJ with
+            | some s => some s
+            | none => match sumKey opJ with
+              | some (k, m) => (asStr m).map (s!"{k}." ++ ·)
+              | none => none
+          match op? with
+          | some op =>
+              .binOp op (intTyOfJson ctx.tbl ((operandTyJson aJ).getD Json.null))
+                (parseOperand ctx aJ) (parseOperand ctx bJ)
           | none => .unsupported "malformed binary op"
       | _ => .unsupported "malformed BinaryOp"
   | some ("Discriminant", payload) =>

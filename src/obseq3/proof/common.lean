@@ -2762,13 +2762,16 @@ theorem runN_Assgn_AllocDyn_step
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- `BinOp` is REGISTER-ONLY: two value registers in, one word out, no
-    memory and no permission event. One `runN` step. -/
+    memory and no permission event. One `runN` step, given that the
+    operation is not UB on these operands (the source's `binOp` decided
+    the same `binOpUB` before it produced its word). -/
 theorem runN_Assgn_BinOp_step
     (compProg : oseair.Prog) (s : oseair.State MSB)
     (dst r1 r2 : Register) (op : BinOp) (t1 t2 : obseq.TyVal) (x y : Word)
     (h_instr : compProg s.pc = some (Instr.Assgn dst (Rhs.BinOp op r1 r2)))
     (h_r1 : oseair.RegMap.lookup s.reg r1 = some (t1, [Val.Dat x]))
-    (h_r2 : oseair.RegMap.lookup s.reg r2 = some (t2, [Val.Dat y])) :
+    (h_r2 : oseair.RegMap.lookup s.reg r2 = some (t2, [Val.Dat y]))
+    (h_ub : binOpUB op x y = none) :
     oseair.runN MSB 1 s compProg = oseair.Result.Ok
       { s with
         reg := oseair.RegMap.insert s.reg dst
@@ -2779,7 +2782,7 @@ theorem runN_Assgn_BinOp_step
         reg := oseair.RegMap.insert s.reg dst
           (obseq.TyVal.NatTy, [Val.Dat (evalBinOp op x y)]),
         pc := s.pc + 1 } := by
-    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_r1, h_r2]
+    simp only [oseair.step, oseair.stepWith, h_instr, oseair.evalRhsWith, h_r1, h_r2, h_ub]
   simp [oseair.runN_succ, oseair.runN_zero, h_step]
 
 /-- `SliceLen` is REGISTER-ONLY: a fat pointer in, its length in

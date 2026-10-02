@@ -278,7 +278,9 @@ def evalRhsWith (M : PermissionModel) (A : AllocatorSpec)
   | Rhs.BinOp op r1 r2 =>
      match state.reg.lookup r1, state.reg.lookup r2 with
      | some (_, [Val.Dat x]), some (_, [Val.Dat y]) =>
-         RhsResult.Ok [Val.Dat (evalBinOp op x y)] obseq.TyVal.NatTy state
+         match binOpUB op x y with
+         | some e => RhsResult.Err e
+         | none => RhsResult.Ok [Val.Dat (evalBinOp op x y)] obseq.TyVal.NatTy state
      | _, _ => RhsResult.Err "BinOp expects two concrete words"
 
   | Rhs.AllocN ty n =>

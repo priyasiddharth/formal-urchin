@@ -355,17 +355,18 @@ def t17_junk_sized_pointer_copy : IO Unit := do
     "t17 junk-sized copy" "out-of-bounds range"
 
 
-/-- `binOp`: two copy reads then the word; `sub` truncates at zero. -/
+/-- `binOp`: two copy reads then the word; `sub` WRAPS at the width (MIR
+    `Sub`): `3 - 5` at `u64` is `2^64 - 2`, which is not below 5. -/
 def t18_binop_words : IO Unit := do
   let s0 ← expectOk (run ΓK [
     .assign xK (.constInit 3),
     .assign yK (.constInit 5),
-    .assign xK (.binOp .sub xK yK),
-    .assign yK (.binOp .lt xK yK)]) "t18 binOp"
+    .assign xK (.binOp (.sub .u64) xK yK),
+    .assign yK (.binOp (.lt .u64) xK yK)]) "t18 binOp"
   -- locals are placed in first-write order: x at 0, y at 1 (p is never written)
   match s0.mem.find? 0, s0.mem.find? 1 with
-  | some (.word 0), some (.word 1) => pure ()
-  | a, b => throw (IO.userError s!"t18: expected x = 0, y = 1, got {reprStr a} {reprStr b}")
+  | some (.word 18446744073709551614), some (.word 0) => pure ()
+  | a, b => throw (IO.userError s!"t18: expected x = 2^64 - 2, y = 0, got {reprStr a} {reprStr b}")
 
 /-! ## Byte-addressed memory (`bytemem.lean`, standalone layer) -/
 
@@ -527,6 +528,35 @@ def t29_bytes_pointer_read_as_word : IO Unit := do
   | some (.ptrVal ..) => pure ()
   | v => throw (IO.userError s!"t29 cells: y should hold the pointer cell, got {reprStr v}")
 
+/-- MIR integer arithmetic at a type (`evalBinOp`, `binOpUB`): wrapping at
+    the width, two's complement, signed comparison and arithmetic shift,
+    real overflow flags, and the UB cases. -/
+def t30_typed_arithmetic : IO Unit := do
+  let u8 : IntTy := ⟨8, false⟩
+  let i8 : IntTy := ⟨8, true⟩
+  let i32 : IntTy := ⟨32, true⟩
+  assert (evalBinOp (.add u8) 250 10 == 4) "t30 u8 250 + 10 wraps to 4"
+  assert (evalBinOp (.addOv u8) 250 10 == 1) "t30 u8 add overflow flag"
+  assert (evalBinOp (.addOv u8) 250 5 == 0) "t30 u8 add no overflow"
+  assert (evalBinOp (.sub u8) 3 5 == 254) "t30 u8 3 - 5 wraps to 254"
+  assert (evalBinOp (.subOv i8) 3 5 == 0) "t30 i8 3 - 5 = -2 does not overflow"
+  assert (evalBinOp (.sub i8) 3 5 == 254) "t30 i8 -2 is the pattern 254"
+  assert (evalBinOp (.lt i8) 255 1 == 1) "t30 i8 -1 < 1"
+  assert (evalBinOp (.lt u8) 255 1 == 0) "t30 u8 255 < 1 is false"
+  assert (evalBinOp (.mulOv i32) 65536 65536 == 1) "t30 i32 2^16 * 2^16 overflows"
+  assert (evalBinOp (.div i8) 249 2 == 253) "t30 i8 -7 / 2 = -3 (truncating)"
+  assert (evalBinOp (.rem i8) 249 2 == 255) "t30 i8 -7 % 2 = -1"
+  assert (evalBinOp (.shr i8) 240 2 == 252) "t30 i8 -16 >> 2 = -4 (arithmetic)"
+  assert (evalBinOp (.shr u8) 240 2 == 60) "t30 u8 240 >> 2 = 60"
+  assert (evalBinOp (.shl u8) 1 9 == 2) "t30 u8 shl amount masked: 1 << (9 % 8)"
+  assert (evalBinOp (.bitAnd u8) 0x1F3 0x0F == 3) "t30 u8 bitand on the low byte"
+  assert ((binOpUB (.addUB u8) 250 10).isSome) "t30 unchecked overflow is UB"
+  assert ((binOpUB (.addUB u8) 250 5).isNone) "t30 unchecked in range is fine"
+  assert ((binOpUB (.rem u8) 7 0).isSome) "t30 remainder by zero is UB"
+  assert ((binOpUB (.div i8) 128 255).isSome) "t30 i8::MIN / -1 is UB"
+  assert ((binOpUB (.shlUB u8) 1 8).isSome) "t30 unchecked shift by the width is UB"
+  assert ((binOpUB (.add u8) 250 10).isNone) "t30 wrapping add is never UB"
+
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
   t2_raw_const_is_read_only,
@@ -556,7 +586,8 @@ def allTests : List (IO Unit) := [
   t26_bytes_of_cell_layout,
   t27_bytes_tuple_roundtrip,
   t28_bytes_mirlite_same_ub,
-  t29_bytes_pointer_read_as_word]
+  t29_bytes_pointer_read_as_word,
+  t30_typed_arithmetic]
 
 def runAll : IO Unit := do
   allTests.forM id

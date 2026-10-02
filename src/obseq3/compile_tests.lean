@@ -121,7 +121,7 @@ def g5_compiler_total : IO Unit := do
        .assign x2 (.exposeAddr p2),
        .assign p2 (.fromExposed x2),
        .assign p2 (.ptrOffset p2 0),
-       .assign x2 (.binOp .add x2 x2),
+       .assign x2 (.binOp (.add .u64) x2 x2),
        .assign x2 .uninit,
        .dealloc p2,
        .halt] with
@@ -2353,7 +2353,7 @@ def g15_binop : IO Unit :=
   expectCode ΓA
     [.assign xA (.constInit 3),
      .assign tA (.constInit 4),
-     .assign xA (.binOp .add xA tA),
+     .assign xA (.binOp (.add .u64) xA tA),
      .halt]
     [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
      Instr.CStore natTy [Val.Dat 3] (Register.R 0),
@@ -2361,7 +2361,7 @@ def g15_binop : IO Unit :=
      Instr.CStore natTy [Val.Dat 4] (Register.R 1),
      Instr.Assgn (Register.R 2) (Rhs.Load natTy (Register.R 0)),
      Instr.Assgn (Register.R 3) (Rhs.Load natTy (Register.R 1)),
-     Instr.Assgn (Register.R 4) (Rhs.BinOp .add (Register.R 2) (Register.R 3)),
+     Instr.Assgn (Register.R 4) (Rhs.BinOp (.add .u64) (Register.R 2) (Register.R 3)),
      Instr.RStore natTy (Register.R 4) (Register.R 0),
      Instr.Halt]
     "g15 binOp"
@@ -2372,7 +2372,7 @@ def d98_binop_add_then_guard : IO Unit :=
   expectDiff ΓA
     [.assign xA (.constInit 3),
      .assign tA (.constInit 4),
-     .assign xA (.binOp .add xA tA),
+     .assign xA (.binOp (.add .u64) xA tA),
      .assign tA (.binOp .eq xA tA),
      .assignIf tA 0 xA (.constInit 9),
      .assign tA (.copy xA)]
@@ -2384,18 +2384,52 @@ def d99_binop_uninit_operand : IO Unit :=
   expectDiff ΓA
     [.assign xA (.constInit 3),
      .assign tA .uninit,
-     .assign xA (.binOp .add xA tA)]
+     .assign xA (.binOp (.add .u64) xA tA)]
     (.ub 2) "d99 binOp uninit operand"
 
-/-- Positive: `sub` truncates at zero (unbounded words), on both machines. -/
+/-- Positive: `sub` wraps at the width (`3 - 5` at `u64` is `2^64 - 2`,
+    not 0), on both machines. -/
 def d100_binop_sub_truncates : IO Unit :=
   expectDiff ΓA
     [.assign xA (.constInit 3),
      .assign tA (.constInit 5),
-     .assign xA (.binOp .sub xA tA),
+     .assign xA (.binOp (.sub .u64) xA tA),
      .assign tA (.binOp .eq xA tA),
      .assignIf xA 0 tA (.constInit 1)]
     .ok "d100 binOp sub truncates"
+
+/-- MIR's arithmetic UB (`binOpUB`) is UB at the same statement on both
+    machines: an unchecked add that overflows `u64`, a division by zero,
+    and signed `i32::MIN / -1`. -/
+def d101_binop_ub_cases : IO Unit := do
+  expectDiff ΓA
+    [.assign xA (.constInit 18446744073709551615),
+     .assign tA (.constInit 1),
+     .assign xA (.binOp (.addUB .u64) xA tA)]
+    (.ub 2) "d101 unchecked add overflow"
+  expectDiff ΓA
+    [.assign xA (.constInit 7),
+     .assign tA (.constInit 0),
+     .assign xA (.binOp (.div .u64) xA tA)]
+    (.ub 2) "d101 division by zero"
+  expectDiff ΓA
+    [.assign xA (.constInit 2147483648),        -- i32::MIN's bit pattern
+     .assign tA (.constInit 4294967295),        -- -1i32
+     .assign xA (.binOp (.div ⟨32, true⟩) xA tA)]
+    (.ub 2) "d101 i32::MIN / -1"
+
+/-- The wrapping ops never err: `u64::MAX + 1` wraps to 0, `0 - 1` to
+    `u64::MAX`, and the checked add's flag is a real 1. -/
+def d102_binop_wrapping_ok : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 18446744073709551615),
+     .assign tA (.constInit 1),
+     .assign xA (.binOp (.addOv .u64) xA tA),   -- overflowed: 1
+     .assign xA (.binOp (.add .u64) xA tA),     -- 1 + 1 = 2
+     .assign tA (.constInit 0),
+     .assign xA (.binOp (.sub .u64) tA xA),     -- 0 - 2 wraps
+     .assign tA (.binOp (.lt .u64) tA xA)]      -- 0 < 2^64 - 2: 1
+    .ok "d102 wrapping ops"
 
 /-- `sliceLen` lowers as one exposed `Load` of the fat pointer and a
     register-only `SliceLen`: the extent the pointer claims, divided by
@@ -2674,6 +2708,8 @@ def allTests : List (IO Unit) := [
   d98_binop_add_then_guard,
   d99_binop_uninit_operand,
   d100_binop_sub_truncates,
+  d101_binop_ub_cases,
+  d102_binop_wrapping_ok,
   g16_slice_len,
   d101_slice_len_of_cast,
   d102_slice_len_after_retag,

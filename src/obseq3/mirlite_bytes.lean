@@ -341,6 +341,9 @@ def evalRExpr (M : PermissionModel) (state : State M Γ) {τ : LayoutTy} (expr :
               | .ok out2 =>
                   match out2.values with
                   | [.word y] =>
+                      match binOpUB op x y with
+                      | some e => .err e
+                      | none =>
                       .ok { values := [MemValue.word (evalBinOp op x y)], values_len := rfl,
                             state := out2.state }
                   | _ => .err "binOp operand is not a concrete word"

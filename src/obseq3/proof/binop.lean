@@ -80,6 +80,10 @@ theorem binOp_valuePkg {Γ : Ctx} (op : BinOp)
   split at h_eval
   case h_2 => simp at h_eval
   rename_i y h_valsB
+  -- the operation was not UB (`binOpUB`), or the source would have erred
+  split at h_eval
+  case h_1 => simp at h_eval
+  rename_i h_ub
   injection h_eval with h_out
   subst h_out
   -- §2 the FIRST read, through copy's package with its register exposed
@@ -238,7 +242,7 @@ theorem binOp_valuePkg {Γ : Ctx} (op : BinOp)
         (k := 0) (by simp)
       simpa using h
   have h_run3 := runN_Assgn_BinOp_step compProg sR2 _ _ _ op _ _ x y
-    h_code0 h_vregA' h_vregB
+    h_code0 h_vregA' h_vregB h_ub
   -- §8 the tail: no memory, no tag, no address — everything transports
   rw [h_pre]
   have h_prm : (emit { (CheckedCompilerM.run (readToReg b)

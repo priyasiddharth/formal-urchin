@@ -114,7 +114,7 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
       | .PtrL _, pl => return ⟨.NatL, .sliceLen pl⟩
       | _, _ => .error "slice length of a non-pointer place"
   | .subSlice _ _ _ => .error "subSlice is elaborated against the destination type"
-  | .binOp op a b => do
+  | .binOp op ity a b => do
       -- a runtime word: two `NatL` operand PLACES (the seam materialised
       -- any constant operand) and the mirlite `BinOp` the string names
       let pa ← match a with
@@ -123,14 +123,8 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
       let pb ← match b with
         | .copy p | .move p => elabNatPlace Γ p "binOp operand"
         | _ => .error "binOp operand not materialised by lowering"
-      let bop ← match op with
-        | "Add" | "AddChecked" | "WrappingAdd" => pure BinOp.add
-        | "Sub" | "SubChecked" | "WrappingSub" => pure BinOp.sub
-        | "Mul" | "MulChecked" | "WrappingMul" => pure BinOp.mul
-        | "Lt" => pure BinOp.lt | "Le" => pure BinOp.le
-        | "Gt" => pure BinOp.gt | "Ge" => pure BinOp.ge
-        | "Eq" => pure BinOp.eq | "Ne" => pure BinOp.ne
-        | _ => .error s!"unsupported: binary op {op}"
+      let some bop := binOpOf op ity.toIntTy
+        | .error s!"unsupported: binary op {op}"
       return ⟨.NatL, .binOp bop pa pb⟩
   | .refSlice _ _ _ => .error "refSlice is elaborated against the destination type"
   | .fnRef _ => .error "fn reference not consumed by lowering"
@@ -237,7 +231,7 @@ def rvaluePlaces : URvalue → List UPlace
   | .refSlice _ _ p | .discriminant p | .sliceLen p => [p]
   | .subSlice p lo hi => p :: (operandPlaces lo ++ operandPlaces hi)
   | .aggregate _ ops => ops.flatMap operandPlaces
-  | .binOp _ a b => operandPlaces a ++ operandPlaces b
+  | .binOp _ _ a b => operandPlaces a ++ operandPlaces b
   | .fnRef _ | .uninit | .unsupported _ => []
 
 def stmtPlaces : LStmt → List UPlace

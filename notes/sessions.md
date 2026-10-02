@@ -4774,3 +4774,24 @@ an in-place switch breaks the proof for all of stages 2–4).
 (type-directed store width; Borrow/Die lengths and offsets in bytes; the
 19 golden tests), likewise as a parallel target first, with `--osea`
 comparing the byte target against the byte source.
+
+## 2026-10-02 (MIR integer arithmetic)
+
+**Session:** `formal-urchin` (continued), branch `byteaddress`.
+
+**Theme:** wrapping and UB for integer ops, as MIR defines them.
+
+**Key outputs:** `IntTy`; typed `BinOp` (wrap / overflow flag / unchecked
+UB / div-rem UB / bit ops / shifts / signed compares); `evalBinOp` total +
+`binOpUB` checked by mirlite (cells and bytes) and oseair; proof repaired
+(binop.lean, one hypothesis on the oseair step lemma); loader keeps the
+operand's integer type, emits real overflow flags, folds with the same
+semantics; units t30, compiler tests d101–d102.
+
+**Critical corrections:** the model's `sub` truncated at 0 and checked
+ops carried a constant-0 flag; both were approximations, now MIR's
+semantics.
+
+**Status:** units 30/30 + 131/131; corpus 132/0/29, osea 132, bytes 132;
+4 corpus programs now compute overflow flags at runtime; audit unchanged
+(0 sorries).

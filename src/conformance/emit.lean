@@ -1,5 +1,6 @@
 import conformance.ullbc_ast
 import conformance.certificate
+import obseq3.types
 
 /-!
 The lowering state and its statement emitters: `LowerSt`, `emitAssign`,
@@ -143,7 +144,7 @@ def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .sliceLen p => .sliceLen (rebasePlace off p)
   | .subSlice p lo hi =>
       .subSlice (rebasePlace off p) (rebaseOperand off lo) (rebaseOperand off hi)
-  | .binOp op a b => .binOp op (rebaseOperand off a) (rebaseOperand off b)
+  | .binOp op t a b => .binOp op t (rebaseOperand off a) (rebaseOperand off b)
   | .discriminant p => .discriminant (rebasePlace off p)
   | .fnRef fid => .fnRef fid
   | .uninit => .uninit
@@ -287,21 +288,46 @@ def constOf (st : LowerSt) : UOperand → Option Int
   | .move p => constOfPlace st p
   | _ => none
 
-def isCheckedOp (op : String) : Bool :=
-  op == "AddChecked" || op == "SubChecked" || op == "MulChecked"
+def UIntTy.toIntTy (t : UIntTy) : obseq3.IntTy := ⟨t.bits, t.signed⟩
 
-def foldBinOp (op : String) (a b : Int) : Option Int :=
+/-- The obseq3 operation an ULLBC op denotes at integer type `t`, as MIR
+    defines it (Charon keeps MIR's ops one to one; an op with an overflow
+    mode renders `Add.Wrap`/`Add.UB`). `AddChecked` (MIR `AddWithOverflow`)
+    denotes its WRAPPED result here; its flag is `overflowOpOf`. `Panic`
+    modes only exist under Charon's `--reconstruct-fallible-operations`,
+    which the corpus does not use. -/
+def binOpOf (op : String) (t : obseq3.IntTy) : Option obseq3.BinOp :=
   match op with
-  | "Add" | "AddChecked" | "WrappingAdd" => some (a + b)
-  | "Sub" | "SubChecked" | "WrappingSub" => some (a - b)
-  | "Mul" | "MulChecked" | "WrappingMul" => some (a * b)
-  | "Lt" => some (if a < b then 1 else 0)
-  | "Le" => some (if a ≤ b then 1 else 0)
-  | "Gt" => some (if a > b then 1 else 0)
-  | "Ge" => some (if a ≥ b then 1 else 0)
-  | "Eq" => some (if a == b then 1 else 0)
-  | "Ne" => some (if a != b then 1 else 0)
+  | "Add.Wrap" | "AddChecked" => some (.add t)
+  | "Sub.Wrap" | "SubChecked" => some (.sub t)
+  | "Mul.Wrap" | "MulChecked" => some (.mul t)
+  | "Add.UB" => some (.addUB t) | "Sub.UB" => some (.subUB t) | "Mul.UB" => some (.mulUB t)
+  | "Div.UB" | "Div.Wrap" => some (.div t)
+  | "Rem.UB" | "Rem.Wrap" => some (.rem t)
+  | "BitAnd" => some (.bitAnd t) | "BitOr" => some (.bitOr t) | "BitXor" => some (.bitXor t)
+  | "Shl.Wrap" => some (.shl t) | "Shl.UB" => some (.shlUB t)
+  | "Shr.Wrap" => some (.shr t) | "Shr.UB" => some (.shrUB t)
+  | "Lt" => some (.lt t) | "Le" => some (.le t) | "Gt" => some (.gt t) | "Ge" => some (.ge t)
+  | "Eq" => some .eq | "Ne" => some .ne
+  -- internal: the overflow flag of a checked op (see `overflowOpOf`)
+  | "AddOv" => some (.addOv t) | "SubOv" => some (.subOv t) | "MulOv" => some (.mulOv t)
   | _ => none
+
+/-- For a checked op (`AddWithOverflow`…), the op string of its overflow
+    flag. -/
+def overflowOpOf (op : String) : Option String :=
+  match op with
+  | "AddChecked" => some "AddOv"
+  | "SubChecked" => some "SubOv"
+  | "MulChecked" => some "MulOv"
+  | _ => none
+
+/-- A constant operand as a bit pattern of `t` (a negative constant in
+    two's complement). -/
+def constWord (t : obseq3.IntTy) : UOperand → UOperand
+  | .constNeg n => .const (t.ofInt (-(Int.ofNat n)))
+  | .const n => .const (t.ofInt n)
+  | op => op
 
 def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URvalue
   | .use op => do return .use (← resolveIdxOperand st line op)
@@ -317,8 +343,8 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
   | .subSlice p lo hi => do
       return .subSlice (← resolveIdxPlace st line p) (← resolveIdxOperand st line lo)
         (← resolveIdxOperand st line hi)
-  | .binOp op a b => do
-      return .binOp op (← resolveIdxOperand st line a) (← resolveIdxOperand st line b)
+  | .binOp op t a b => do
+      return .binOp op t (← resolveIdxOperand st line a) (← resolveIdxOperand st line b)
   | rv => pure rv
 
 /-- Does this type contain a reference (transitively through tuples and
@@ -456,20 +482,6 @@ def materialiseWord (st : LowerSt) (line : Nat) (op : UOperand) :
   | .constUnit => .error s!"unsupported: unit arithmetic operand (line {line})"
   | .unsupported d => .error s!"unsupported: {d} (line {line})"
 
-/-- The mirlite `binOp` an ULLBC op string lowers to, when it has one.
-    Checked ops carry the same arithmetic (the overflow flag is emitted
-    separately); comparisons yield 0/1. Division, remainder, shifts and
-    bit operations have no mirlite form (none is in the corpus). -/
-def toBinOp (op : String) : Option String :=
-  match op with
-  | "Add" | "AddChecked" | "WrappingAdd" => some "add"
-  | "Sub" | "SubChecked" | "WrappingSub" => some "sub"
-  | "Mul" | "MulChecked" | "WrappingMul" => some "mul"
-  | "Lt" => some "lt" | "Le" => some "le"
-  | "Gt" => some "gt" | "Ge" => some "ge"
-  | "Eq" => some "eq" | "Ne" => some "ne"
-  | _ => none
-
 /-- Static fn-pointer tracking follows a whole-local copy or move: `dst`
     holds the function `src` held. -/
 def propagateFnPtr (st : LowerSt) (src dst : UPlace) : LowerSt :=
@@ -503,40 +515,44 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
       let (st, pLo) ← materialiseWord st line lo
       let (st, pHi) ← materialiseWord st line hi
       return pushOut st (.assign dst (.subSlice p (.copy pLo) (.copy pHi)) line)
-  | .binOp op a b =>
+  | .binOp op ity a b =>
       -- arithmetic is FOLDED when both operands are known (T1: the static
-      -- value is what indices, offsets and sizes need). Otherwise it is
-      -- EMITTED: mirlite's `binOp` reads two word places and computes the
-      -- word at runtime, so the result is a real value the checks can
-      -- read (2026-09-24 — this is what retired the placeholder words).
-      match constOf st a, constOf st b with
-      | some x, some y =>
-          match foldBinOp op x y with
-          | some v =>
-              if v < 0 then
-                .error s!"unsupported: negative arithmetic result (line {line})"
-              else if isCheckedOp op then
-                -- `(value, overflowed)`: mirlite words are unbounded, so the
-                -- flag is 0; a Miri overflow panic surfaces as a certificate
-                -- disagreement at the following assert
-                emitAssign st line dst (.aggregate none [.const v.toNat, .const 0])
-              else
-                emitAssign st line dst (.use (.const v.toNat))
-          | none => .error s!"unsupported: binary op {op} (line {line})"
-      | _, _ => do
-          if (toBinOp op).isNone then
-            .error s!"unsupported: binary op {op} (line {line})"
+      -- value is what indices, offsets and sizes need), with the machines'
+      -- own `evalBinOp` at the operand's integer type — so a fold wraps
+      -- exactly as the run would. Otherwise, and whenever the folded
+      -- operation would be UB (`binOpUB`: the run must raise it at this
+      -- statement), it is EMITTED: mirlite's `binOp` reads two word places
+      -- and computes the word at runtime (2026-09-24).
+      let t := ity.toIntTy
+      let some bop := binOpOf op t
+        | .error s!"unsupported: binary op {op} (line {line})"
+      let a := constWord t a
+      let b := constWord t b
+      let flag? := (overflowOpOf op).bind (binOpOf · t)
+      let folded : Option (Nat × Option Nat) :=
+        match constOf st a, constOf st b with
+        | some x, some y =>
+            let (xw, yw) := (t.ofInt x, t.ofInt y)
+            if (obseq3.binOpUB bop xw yw).isSome then none
+            else some (obseq3.evalBinOp bop xw yw, flag?.map (obseq3.evalBinOp · xw yw))
+        | _, _ => none
+      match folded with
+      | some (v, some f) =>
+          -- `(wrapped value, overflowed)`: a real flag; an overflowing
+          -- checked op then fails the `Assert` that follows, as in Miri
+          emitAssign st line dst (.aggregate none [.const v, .const f])
+      | some (v, none) => emitAssign st line dst (.use (.const v))
+      | none => do
           -- both operands must be word PLACES: a constant is materialised
           -- into a fresh word local (one write nobody aliases)
           let (st, pa) ← materialiseWord st line a
           let (st, pb) ← materialiseWord st line b
-          if isCheckedOp op then
-            -- `(value, overflowed)`: the flag is 0 on every non-panicking
-            -- path, and a panicking one is rejected by the certificate
-            let st := pushOut st (.assign (fld dst 0) (.binOp op (.copy pa) (.copy pb)) line)
-            return pushOut st (.assign (fld dst 1) (.use (.const 0)) line)
-          else
-            return pushOut st (.assign dst (.binOp op (.copy pa) (.copy pb)) line)
+          match overflowOpOf op with
+          | some fop =>
+              let st := pushOut st (.assign (fld dst 0) (.binOp op ity (.copy pa) (.copy pb)) line)
+              return pushOut st (.assign (fld dst 1) (.binOp fop ity (.copy pa) (.copy pb)) line)
+          | none =>
+              return pushOut st (.assign dst (.binOp op ity (.copy pa) (.copy pb)) line)
   | .use (.copy p) | .use (.move p) =>
       -- `_p.PtrMetadata` in a read position is the fat pointer's length
       -- (rustc lowers `a[i]`'s bounds check through it)
