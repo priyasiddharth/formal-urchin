@@ -2,6 +2,7 @@ import obseq3.proof.program
 import obseq3.proof.leaffield
 import obseq3.proof.refslicefield
 import obseq3.proof.exposefield
+import obseq3.proof.addr
 import obseq3.proof.const_write
 
 /-!
@@ -153,6 +154,8 @@ inductive RhsB {Γ : Ctx} : {τ : LayoutTy} → RExpr Γ τ → Prop
       (prot : Bool) : LeafSrcB src → RhsB (.refSlice (τ := τ) kind prot src)
   | exposeAddr {σ : LayoutTy} {t : IntTy} {src : Place Γ (LayoutTy.PtrL σ)} :
       LeafSrcB src → RhsB (.exposeAddr (t := t) src)
+  | addr {σ : LayoutTy} {t : IntTy} {src : Place Γ (LayoutTy.PtrL σ)} :
+      LeafSrcB src → RhsB (.addr (t := t) src)
   | fromExposed {τ : LayoutTy} {t : IntTy} {src : Place Γ (LayoutTy.IntL t)} :
       LeafSrcB src → RhsB (.fromExposed (τ := τ) src)
   | sliceLen {σ : LayoutTy} {t : IntTy} {src : Place Γ (LayoutTy.PtrL σ)} :
@@ -181,6 +184,7 @@ theorem RhsB.pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   | ptrOffset delta h => exact ptrOffset_pkgL hWF hLeaf dstL _ h delta
   | refSlice kind prot h => exact refSlice_pkgL hWF hLeaf dstL kind prot _ h
   | exposeAddr h => exact exposeAddr_pkgL hWF hLeaf dstL _ h
+  | addr h => exact addr_pkgL hWF hLeaf dstL _ h
   | fromExposed h => exact fromExposed_pkgL hWF hLeaf dstL _ h
   | sliceLen h => exact sliceLen_pkg hWF dstL h
   | subSlice h1 h2 h3 => exact subSlice_pkg hWF dstL h1 h2 h3

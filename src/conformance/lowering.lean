@@ -392,6 +392,7 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
   | .ref kind prot p => do return .ref kind prot (← resolveGlobalRoot gmap p)
   | .aggregate v ops => do return .aggregate v (← ops.mapM (resolveGlobalsOp gmap))
   | .exposeAddr p => do return .exposeAddr (← resolveGlobalRoot gmap p)
+  | .addr p => do return .addr (← resolveGlobalRoot gmap p)
   | .fromExposed p => do return .fromExposed (← resolveGlobalRoot gmap p)
   | .ptrOffset p d => do return .ptrOffset (← resolveGlobalRoot gmap p) d
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveGlobalRoot gmap p)

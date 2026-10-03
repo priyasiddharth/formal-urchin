@@ -77,6 +77,9 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
 | subSlice {tl th : IntTy} : Place Γ (LayoutTy.PtrL σ) → Place Γ (LayoutTy.IntL tl)
     → Place Γ (LayoutTy.IntL th) → RExpr Γ (LayoutTy.PtrL σ)
 | exposeAddr {t : IntTy} : Place Γ (LayoutTy.PtrL σ) → RExpr Γ (LayoutTy.IntL t)
+/-- The pointer's bytes read at integer type (`ptr.addr()`, a pointer-to-integer
+    `transmute`): the address, provenance stripped, nothing exposed. -/
+| addr {t : IntTy} : Place Γ (LayoutTy.PtrL σ) → RExpr Γ (LayoutTy.IntL t)
 | fromExposed {t : IntTy} : Place Γ (LayoutTy.IntL t) → RExpr Γ (LayoutTy.PtrL τ)
 | uninit : RExpr Γ τ
 | alloc : AllocLen Γ → RExpr Γ (LayoutTy.PtrL τ)

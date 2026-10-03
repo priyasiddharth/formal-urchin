@@ -549,6 +549,39 @@ def t30_typed_arithmetic : IO Unit := do
   assert ((binOpUB (.shlUB u8) 1 8).isSome) "t30 unchecked shift by the width is UB"
   assert ((binOpUB (.add u8) 250 10).isNone) "t30 wrapping add is never UB"
 
+def ΓX : Ctx := [natL, ptrNat, natL, ptrNat]
+def xX : Place ΓX natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pX : Place ΓX ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def yX : Place ΓX natL := .local ⟨⟨2, by decide⟩, rfl⟩
+def qX : Place ΓX ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
+
+/-- `addr` (`ptr.addr()`, a pointer-to-integer `transmute`) reads the
+    pointer's bytes as an integer: the address, provenance stripped,
+    nothing exposed. A pointer rebuilt from it may not access `x`; the same
+    program with `exposeAddr` may. -/
+def t32_addr_strips_provenance : IO Unit := do
+  let s ← expectOk (run ΓX [
+    .assign xX (.constInit 7),
+    .assign pX (.ref (.Raw true) false [] xX),
+    .assign yX (.addr pX)]) "t32 addr"
+  let some bx := s.env ⟨0, by decide⟩ | throw (IO.userError "t32: x unbound")
+  let some byy := s.env ⟨2, by decide⟩ | throw (IO.userError "t32: y unbound")
+  match readOne s.mem byy.addr (.int 8) with
+  | .word a => assert (a == bx.addr) s!"t32: y = {a}, x at {bx.addr}"
+  | v => throw (IO.userError s!"t32: y should be a word, got {reprStr v}")
+  expectErr (run ΓX [
+    .assign xX (.constInit 7),
+    .assign pX (.ref (.Raw true) false [] xX),
+    .assign yX (.addr pX),
+    .assign qX (.fromExposed yX),
+    .assign (.deref qX) (.constInit 9)]) "t32 rebuilt pointer writes" "exposed"
+  let _ ← expectOk (run ΓX [
+    .assign xX (.constInit 7),
+    .assign pX (.ref (.Raw true) false [] xX),
+    .assign yX (.exposeAddr pX),
+    .assign qX (.fromExposed yX),
+    .assign (.deref qX) (.constInit 9)]) "t32 exposed: the rebuilt pointer writes"
+
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
   t2_raw_const_is_read_only,
@@ -579,7 +612,8 @@ def allTests : List (IO Unit) := [
   t27_bytes_tuple_roundtrip,
   t29_bytes_pointer_read_as_word,
   t30_typed_arithmetic,
-  t31_narrow_int_to_ptr]
+  t31_narrow_int_to_ptr,
+  t32_addr_strips_provenance]
 
 def runAll : IO Unit := do
   allTests.forM id

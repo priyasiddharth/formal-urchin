@@ -168,6 +168,8 @@ deriving Repr, BEq, Inhabited
     `variant?` is `some v` for enum-variant aggregates (tuples: `none`).
     `uninit` is emitted only by the lowering (hoisted statics).
     `exposeAddr`/`fromExposed` are ptr↔int casts (exposed provenance);
+    `addr` reads a pointer's bytes as an integer (`ptr.addr()`, a
+    ptr→int `transmute`): provenance stripped, nothing exposed;
     `fnRef` is a reified function pointer (tracked statically). -/
 inductive URvalue
 | use (op : UOperand)
@@ -175,6 +177,7 @@ inductive URvalue
 | ref (kind : URefKind) (prot : Bool) (p : UPlace)
 | aggregate (variant? : Option Nat) (ops : List UOperand)
 | exposeAddr (p : UPlace)
+| addr (p : UPlace)
 | fromExposed (p : UPlace)
 | ptrOffset (p : UPlace) (delta : Int)
 | refSlice (kind : URefKind) (prot : Bool) (p : UPlace)  -- retag of slice data, runtime length
@@ -1031,6 +1034,23 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
                       | false, false, op => .use op           -- int-to-int
                       | _, _, _ => .unsupported "ptr/int cast of a non-place"
                   | _ => .unsupported "malformed RawPtr cast"
+              | some ("Transmute", tys) =>
+                  -- a reinterpretation of the bytes: pointer → integer
+                  -- reads the address and strips provenance (MiniRust);
+                  -- pointer → pointer keeps the tag
+                  let isPtr : UTy → Bool := fun t =>
+                    match t with
+                    | .ref _ _ | .raw _ _ => true
+                    | _ => false
+                  match asArr tys with
+                  | [srcJ, dstJ] =>
+                      match isPtr (parseTy ctx 16 srcJ), isPtr (parseTy ctx 16 dstJ),
+                          parseOperand ctx operand with
+                      | true, true, op => .use op
+                      | true, false, .copy p => .addr p
+                      | true, false, .move p => .addr p
+                      | _, _, _ => .unsupported "transmute other than pointer → pointer or integer"
+                  | _ => .unsupported "malformed Transmute cast"
               | some ("Unsize", _) =>
                   -- array-to-slice coercion: our slice values are the
                   -- same one-cell pointer (length = rest of allocation)
@@ -1248,7 +1268,7 @@ def UOperand.places : UOperand → List UPlace
 
 def URvalue.places : URvalue → List UPlace
   | .use op => op.places
-  | .move p | .ref _ _ p | .exposeAddr p | .fromExposed p | .ptrOffset p _
+  | .move p | .ref _ _ p | .exposeAddr p | .addr p | .fromExposed p | .ptrOffset p _
   | .refSlice _ _ p | .sliceLen p | .discriminant p => [p]
   | .aggregate _ ops => ops.flatMap (·.places)
   | .subSlice p lo hi => p :: lo.places ++ hi.places

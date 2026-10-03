@@ -2223,6 +2223,28 @@
       "notes": "a pointer read whose first byte is in bounds but whose last 4 are past the end of a 12-byte allocation: out of bounds (the byte model checked only the first byte before 2026-10-02)."
     },
     {
+      "id": "local/addr_ok",
+      "artifact": "local/addr_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/live.py",
+      "notes": "ptr.addr() and a ptr→usize transmute read the address without exposing it; the pointer stays usable."
+    },
+    {
+      "id": "local/addr_strips_provenance",
+      "artifact": "local/addr_strips_provenance.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 11
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/live.py",
+      "notes": "ptr.addr() exposes nothing: a pointer rebuilt from the address by with_exposed_provenance_mut may not write x.",
+      "reason_known": "Miri resolves an integer address only to an EXPOSED allocation, so the rebuilt pointer has no provenance (dangling); the model's int-to-ptr cast resolves the live allocation and the write fails at its borrow stack, where no exposed tag grants it (determinized wildcard, documented approximation) — same statement, same cause: nothing was exposed"
+    },
+    {
       "id": "local/narrow_fields_ok",
       "artifact": "local/narrow_fields_ok.ullbc.json",
       "status": "supported",

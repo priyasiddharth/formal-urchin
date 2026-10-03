@@ -19,6 +19,7 @@ import obseq3.proof.alloc
 import obseq3.proof.refslice
 import obseq3.proof.refslicefield
 import obseq3.proof.exposefield
+import obseq3.proof.addr
 import obseq3.proof.stmts
 import obseq3.proof.program
 import obseq3.proof.fragment

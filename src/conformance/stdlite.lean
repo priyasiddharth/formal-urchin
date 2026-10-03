@@ -128,6 +128,11 @@ def transmute : Shim := fun st args dest line => do
                 { pointee p with ty := inner }) line)
         | .raw _ _ =>
             return pushOut st (.assign dest (.use (.copy p)) line)
+        | .int _ | .nat =>
+            -- pointer → integer: the address, provenance stripped
+            match p.ty with
+            | .raw _ _ | .ref _ _ => return pushOut st (.assign dest (.addr p) line)
+            | _ => .error s!"unsupported: transmute to non-pointer type (line {line})"
         | _ => .error s!"unsupported: transmute to non-pointer type (line {line})"
   | _ => .error s!"unsupported: transmute argument is not a place (line {line})"
 
@@ -138,6 +143,13 @@ def transmuteCopy : Shim := fun st args dest line => do
   | [.copy p] | [.move p] =>
       emitAssign st line dest (.use (.copy { pointee p with ty := dest.ty }))
   | _ => .error s!"unsupported: transmute_copy argument is not a place (line {line})"
+
+/-- `ptr.addr()`: the address, provenance stripped, nothing exposed. -/
+def ptrAddr : Shim := fun st args dest line => do
+  match args with
+  | [.copy p] | [.move p] =>
+      return pushOut st (.assign dest (.addr p) line)
+  | _ => .error s!"unsupported: addr argument is not a place (line {line})"
 
 def exposeProvenance : Shim := fun st args dest line => do
   match args with
@@ -599,6 +611,8 @@ def table : List (List String × Shim) :=
   , (["core", "ptr", "mut_ptr", "*mut T", "read"], ptrRead)
   , (["core", "intrinsics", "transmute"], transmute)
   , (["core", "mem", "transmute_copy"], transmuteCopy)
+  , (["core", "ptr", "const_ptr", "*const T", "addr"], ptrAddr)
+  , (["core", "ptr", "mut_ptr", "*mut T", "addr"], ptrAddr)
   , (["core", "ptr", "const_ptr", "*const T", "expose_provenance"], exposeProvenance)
   , (["core", "ptr", "mut_ptr", "*mut T", "expose_provenance"], exposeProvenance)
   , (["core", "ptr", "with_exposed_provenance_mut"], withExposedProvenance)

@@ -139,6 +139,7 @@ def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .ref kind prot p => .ref kind prot (rebasePlace off p)
   | .aggregate v ops => .aggregate v (ops.map (rebaseOperand off))
   | .exposeAddr p => .exposeAddr (rebasePlace off p)
+  | .addr p => .addr (rebasePlace off p)
   | .fromExposed p => .fromExposed (rebasePlace off p)
   | .ptrOffset p d => .ptrOffset (rebasePlace off p) d
   | .refSlice kind prot p => .refSlice kind prot (rebasePlace off p)
@@ -363,6 +364,7 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
   | .ref kind prot p => do return .ref kind prot (← resolveIdxPlace st line p)
   | .aggregate v ops => do return .aggregate v (← ops.mapM (resolveIdxOperand st line))
   | .exposeAddr p => do return .exposeAddr (← resolveIdxPlace st line p)
+  | .addr p => do return .addr (← resolveIdxPlace st line p)
   | .fromExposed p => do return .fromExposed (← resolveIdxPlace st line p)
   | .ptrOffset p d => do return .ptrOffset (← resolveIdxPlace st line p) d
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveIdxPlace st line p)
@@ -674,7 +676,7 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
       -- a seam-bound moved call argument (`emitSeamBind`): the callee's
       -- parameter holds the same fn pointer the caller's local did
       return pushOut (propagateFnPtr st p dst) (.assign dst rv line)
-  | .ref _ _ _ | .uninit | .exposeAddr _ | .fromExposed _ =>
+  | .ref _ _ _ | .uninit | .exposeAddr _ | .addr _ | .fromExposed _ =>
       return pushOut st (.assign dst rv line)
   | .discriminant p =>
       -- the variant index lives in payload slot 0 and is always exact

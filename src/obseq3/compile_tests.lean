@@ -2542,6 +2542,46 @@ def d107_sub_slice_narrows_the_retag : IO Unit :=
      .assign (.deref qS) (.constInit 7)]
     (.ub 9) "d107 subSlice narrows the retag"
 
+/-- `addr` compiles to one `Load` of the pointer's bytes at integer layout
+    (no `ExposeAddr`), then the store. -/
+def g18_addr : IO Unit :=
+  expectCode ΓA'
+    [.assign xA' (.constInit 1),
+     .assign pA' (.ref (.Raw true) false [] xA'),
+     .assign tA' (.addr pA'),
+     .halt]
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false (List.replicate 8 false) (some 8) (Register.R 0) 0),
+     Instr.RStore ptrB (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc natB),
+     Instr.Assgn (Register.R 4) (Rhs.Load natB (Register.R 1)),
+     Instr.RStore natB (Register.R 4) (Register.R 3),
+     Instr.Halt]
+    "g18 addr"
+
+/-- Negative: a pointer rebuilt from a stripped address may not write;
+    UB at the write on both machines. -/
+def d108_addr_rebuilt_pointer : IO Unit :=
+  expectDiff ΓE
+    [.assign xE (.constInit 7),
+     .assign pE (.ref (.Raw true) false [] xE),
+     .assign aE (.addr pE),
+     .assign qE (.fromExposed aE),
+     .assign (.deref qE) (.constInit 9)]
+    (.ub 4) "d108 addr does not expose"
+
+/-- Positive: the same program with `exposeAddr`. -/
+def d109_expose_rebuilt_pointer : IO Unit :=
+  expectDiff ΓE
+    [.assign xE (.constInit 7),
+     .assign pE (.ref (.Raw true) false [] xE),
+     .assign aE (.exposeAddr pE),
+     .assign qE (.fromExposed aE),
+     .assign (.deref qE) (.constInit 9)]
+    .ok "d109 exposeAddr exposes"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2672,7 +2712,10 @@ def allTests : List (IO Unit) := [
   d104_sub_slice_tail,
   d105_sub_slice_len,
   d106_sub_slice_out_of_range,
-  d107_sub_slice_narrows_the_retag]
+  d107_sub_slice_narrows_the_retag,
+  g18_addr,
+  d108_addr_rebuilt_pointer,
+  d109_expose_rebuilt_pointer]
 
 def runAll : IO Unit := do
   allTests.forM id

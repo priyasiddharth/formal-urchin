@@ -114,6 +114,11 @@ def elabRvalue (Γ : Ctx) (expected : LayoutTy) :
       match τ, pl with
       | .PtrL _, pl => return ⟨.IntL (intTyOf expected), .exposeAddr pl⟩
       | _, _ => .error "ptr-to-int cast of a non-pointer place"
+  | .addr p => do
+      let ⟨τ, pl⟩ ← elabPlace Γ p
+      match τ, pl with
+      | .PtrL _, pl => return ⟨.IntL (intTyOf expected), .addr pl⟩
+      | _, _ => .error "ptr-to-int transmute of a non-pointer place"
   | .use (.constNeg _ _) => .error "negative constant not encoded by lowering"
   | .fromExposed _ => .error "fromExposed is elaborated against the destination type"
   | .ptrOffset _ _ => .error "ptrOffset is elaborated against the destination type"
@@ -240,7 +245,7 @@ def operandPlaces : UOperand → List UPlace
 
 def rvaluePlaces : URvalue → List UPlace
   | .use op => operandPlaces op
-  | .move p | .ref _ _ p | .exposeAddr p | .fromExposed p | .ptrOffset p _
+  | .move p | .ref _ _ p | .exposeAddr p | .addr p | .fromExposed p | .ptrOffset p _
   | .refSlice _ _ p | .discriminant p | .sliceLen p => [p]
   | .subSlice p lo hi => p :: (operandPlaces lo ++ operandPlaces hi)
   | .aggregate _ ops => ops.flatMap operandPlaces

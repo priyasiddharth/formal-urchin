@@ -560,6 +560,10 @@ inductive RExprToEvidence {Γ : Ctx} (L : LayEnv Γ)
       {σ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.PtrL σ)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
       RExprToEvidence L dstPtr (.exposeAddr (t := t) src)
+  | addr
+      {σ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.PtrL σ)) (srcRes : PtrResult)
+      (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
+      RExprToEvidence L dstPtr (.addr (t := t) src)
   | fromExposed
       {τ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.IntL t)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
@@ -716,6 +720,11 @@ def compileRExprPreChecked {Γ : Ctx} (L : LayEnv Γ) (dstL : BLayout) {τ : Lay
       readRhsPre L dstL (RExpr.exposeAddr src) src
         (Rhs.ExposeAddr (leafKind (placeLayout L src))) (fun _ => [])
         (fun srcRes evd _ => RExprToEvidence.exposeAddr src srcRes evd)
+  | .addr src =>
+      -- a load of the pointer's bytes at integer layout: the same decode
+      readRhsPre L dstL (RExpr.addr src) src
+        (Rhs.Load (.int (leafKind (placeLayout L src)).size)) (fun _ => [])
+        (fun srcRes evd _ => RExprToEvidence.addr src srcRes evd)
   | .fromExposed (τ := τ) src =>
       readRhsPre L dstL (RExpr.fromExposed (τ := τ) src) src
         (Rhs.FromExposed (leafKind (placeLayout L src))) (fun _ => [])

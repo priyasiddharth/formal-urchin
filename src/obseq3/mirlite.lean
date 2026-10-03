@@ -303,6 +303,21 @@ def readCell (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) (what : St
       -- exactly the leaf's bytes (a narrow integer is not 8 bytes wide)
       | .ok perms' => .ok (decodeV k (state.mem.read resolved.addr k.size), perms')
 
+/-- `readCell` decoding at a given scalar `k` instead of the place's own
+    leaf kind (a pointer's bytes read as an integer). -/
+def readCellAs (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) (k : Scalar) (what : String) :
+    Except String (MemValue × M.State) :=
+  match resolvePlaceAcc M L state src with
+  | .error e => .error e
+  | .ok (resolved, permsR) =>
+      if state.mem.isFreed resolved.allocBase then .error freedMsg
+      else if resolved.addr + k.size > resolved.allocBase + resolved.allocSize then
+        .error s!"{what} of an out-of-bounds place"
+      else
+      match M.read permsR resolved.addr k.size resolved.tag with
+      | .error e => .error s!"read access failed: {e}"
+      | .ok perms' => .ok (decodeV k (state.mem.read resolved.addr k.size), perms')
+
 /-- The pointee layout of a pointer place. -/
 def pointeeLayout {σ : LayoutTy} (p : Place Γ (LayoutTy.PtrL σ)) : BLayout :=
   match placeLayout L p with
@@ -429,6 +444,14 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
               .ok { values := [MemValue.ptrVal base offset extent size newTag],
                     state := { state with perms := perms'' } }
       | .ok _ => .err "slice value is not a pointer"
+  | .addr src =>
+      -- the pointer's bytes decoded as an integer of the same width
+      match readCellAs M L state src (.int (leafKind (placeLayout L src)).size)
+          "ptr-to-int transmute" with
+      | .error e => .err e
+      | .ok (v, perms') =>
+          if v == .undef then .err "read of uninitialized memory"
+          else .ok { values := [v], state := { state with perms := perms' } }
   | .exposeAddr src =>
       match readCell M L state src "ptr-to-int cast" with
       | .error e => .err e
