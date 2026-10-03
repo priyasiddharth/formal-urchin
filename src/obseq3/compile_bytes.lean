@@ -669,10 +669,7 @@ def compileRExprPreChecked {Γ : Ctx} (L : LayEnv Γ) (dstL : BLayout) {τ : Lay
         ev := fun _ => RExprToEvidence.move src srcRes srcOut.evidence
       }
   | .alloc (τ := σ) len => do
-      let pointee := match dstL with
-        | .ptr q => q
-        | _ => bytes.ofLayoutTy σ
-      let r ← compileAllocLenChecked L pointee len
+      let r ← compileAllocLenChecked L (mirliteB.allocPointee dstL σ) len
       pure {
         store := fun dstPtr => [Instr.RStore dstL r dstPtr],
         postCleanup := [],

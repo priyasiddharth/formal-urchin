@@ -172,6 +172,14 @@ def maskBytes (lay : BLayout) (mask : List Bool) : List Bool :=
     | some (_, j) => mask.getD j false
     | none => false
 
+/-- An `alloc`'s element layout: the destination pointer's pointee (the
+    type's own layout when the destination is not a pointer). Shared with
+    the byte compiler (`compile_bytes.lean`). -/
+def allocPointee (dstL : BLayout) (σ : LayoutTy) : BLayout :=
+  match dstL with
+  | .ptr q => q
+  | _ => ofLayoutTy σ
+
 /-- Miri checks that an allocation is still live BEFORE any borrow-stack
     check, and reports a use-after-free as such. -/
 def freedMsg : String := "memory access failed: the allocation has been freed, so this pointer is dangling"
@@ -373,9 +381,7 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
               if vals.any (fun v => v == .undef) then .err "read of uninitialized memory"
               else .ok { values := vals, state := { state with perms := perms' } }
   | .alloc (τ := σ) len =>
-      let pointee := match dstL with
-        | .ptr q => q
-        | _ => ofLayoutTy σ
+      let pointee := allocPointee dstL σ
       match evalAllocLen M L state len with
       | .error e => .err e
       | .ok (n, state) =>
