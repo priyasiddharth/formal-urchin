@@ -5055,3 +5055,13 @@ ref, move, the one-leaf rvalues and binOp; `readToReg_simB`. 238
 byteproof declarations, axioms unchanged (last commit cbf17e4). Next:
 sliceLen/subSlice/alloc/refSlice, then the non-assign statements, then the
 program theorem.
+
+## 2026-10-03 (byte proof: remaining rvalues, statements, field reads)
+
+**Key outputs:** byteproof `slice`, `alloc`, `refslice`, `stmts`,
+`readsrc` (commits 2ec1699..4c40225); `mirliteB.allocPointee`. 270
+byteproof declarations, axioms unchanged; corpus 147, osea / osea bytes
+147, units 31 + 131.
+
+**Next-session pickup candidates:** nested projections; assignIf + halt;
+the program theorem; leaf ops / refSlice from field sources.

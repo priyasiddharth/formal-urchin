@@ -548,3 +548,24 @@ binOp), alloc (const/dyn: `sb_own` like the fresh root), refSlice (Load +
 reserved label), push/pop protectors, halt; nested projections and
 non-chain derefs (reassociation / flatten equations); then the program
 theorem (prefix compile states, `StmtFrame`, the run induction).
+
+### 2026-10-03: the remaining rvalues, statements, field reads
+
+- `slice.lean` (sliceLen, subSlice), `alloc.lean` (const / runtime
+  length; `allocPtr_sim`; `mirliteB.allocPointee` now names the element
+  layout both source and compiler use), `refslice.lean` (Load + extent
+  retag), `stmts.lean` (push/pop protectors, dealloc).
+- `readsrc.lean`: `ReadSrcB` = chain or field of a chain; zero-offset
+  fields via the lowering contract, nonzero via `Borrow(Shared); Load;
+  Die` + `sb_ref_read_die_cancels`. All register-read consumers take
+  `ReadSrcB`; `copy_pkgR` is derived from the register read.
+270 byteproof declarations, axioms unchanged.
+
+Still open, in order: one-leaf rvalues and refSlice from FIELD sources
+(needs a leaf-size = field-size WF for the bracket); nested projections
+(reassociation on both sides: `fieldOffset` over `PathTo.append`);
+assignIf (root prologue, guard read, SkipIf over a reserved label, the
+not-taken branch needs the body's compile facts) and halt; then the
+program theorem (prefix compile states, per-statement code inclusion,
+the run induction) with a dispatch that maps every statement shape to
+its leaf.
