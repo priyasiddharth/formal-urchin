@@ -4,6 +4,24 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-03 (evening) — The Real Layouts Meet the Proof's Conditions
+
+The byte-level theorem holds under two conditions on layouts, and it was
+open whether the layouts the Rust loader produces meet them. They now
+provably reduce to a simple check on each variable: its byte layout must
+have the shape its type says (an integer where the type says integer, a
+pointer where it says pointer, a struct with matching fields). If every
+variable passes, the conditions hold for every place the program can
+name. The conformance runner can now do this check (`--layouts`). On
+its first run, 18 programs failed, all for the same reason: a variable
+holding a panic message, which the loader cannot model and which the
+program never touches, had been given a real two-word layout instead of
+the placeholder's. With that fixed, all 147 programs the corpus loads
+pass, and no verdict changed. So the byte-level correctness theorem
+covers every program in the corpus, with the layouts it actually runs.
+
+---
+
 ## 2026-10-03 (later) — The Byte-Level Proof Covers Every Program
 
 The byte-level correctness theorem no longer needs a list of covered

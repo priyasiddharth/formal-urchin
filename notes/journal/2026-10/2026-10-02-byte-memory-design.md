@@ -674,3 +674,26 @@ Cheap way to know: a decidable per-program check that each local's
 `BLayout` has its `LayoutTy`'s shape (int ↔ NatL, ptr ↔ PtrL, tup ↔ TupL
 fieldwise), which implies both conditions for every place; run it over
 the corpus in the harness.
+
+### 2026-10-03: the loader's layouts meet the two conditions
+
+Answers the [Q] above. `bytes.Agrees τ l` (`obseq3/layout_agree.lean`,
+decidable): `l` has `τ`'s shape — any-width int for `NatL`, a pointer to an
+agreeing pointee for `PtrL`, fieldwise for `TupL` (offsets, size, align
+free). `byteproof/layoutagree.lean`: if every LOCAL agrees, every PLACE
+does (`placeLayout_agrees`; a field of an agreeing tuple, the pointee of an
+agreeing pointer), hence `PtrPlacesWF` and `LeafWF`;
+`compileB_correct_agrees` is the theorem under that decidable hypothesis.
+
+`sb_conformance --layouts` checks the loader's layouts per program. First
+run: 129 agree, 18 disagree, 26 do not load. All 29 disagreeing locals
+were the same: `enum [[], [opaque core::fmt::Arguments]]` (a panic
+message), a PLACEHOLDER local — `toLayout` fails, elaboration gives it
+`NatL` and rejects any use — whose `toBLayout` was a 16-byte pair. [DEC]
+Fixed in the loader, not the condition: a placeholder local gets the
+placeholder's layout (`ofLayoutTy NatL`). It is never used, so no verdict
+moves (corpus 147/0/26, osea 147, osea bytes 147, units 31 + 131,
+unchanged). Now 147/147 loaded programs agree: the byte-level theorem
+applies to every program the corpus compiles with its real layouts.
+`--layouts` exits 1 on any disagreement; worth adding to the validation
+list. 522 byteproof declarations, axioms unchanged.

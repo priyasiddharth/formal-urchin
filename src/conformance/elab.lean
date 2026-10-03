@@ -264,7 +264,11 @@ def elabProg (lp : LProg) : Except String Loaded := do
       | .global _ => pure ()
   let stmts ← lp.stmts.mapM (elabStmt Γ)
   return { Γ, prog := stmts ++ [.halt], lines := lp.stmts.map (·.line) ++ [0], stats := lp.stats,
-           blay := lp.locals.map toBLayout }
+           -- a placeholder local (never used, checked above) gets the
+           -- placeholder's layout, so every local's layout has its type's
+           -- shape (`bytes.Agrees`, the byte proof's layout conditions)
+           blay := (lp.locals.zip layouts).map fun (ty, _, err?) =>
+             if err?.isSome then obseq3.bytes.ofLayoutTy .NatL else toBLayout ty }
 
 /-- Full pipeline: ULLBC JSON → parsed crate → lowered (along the
     certificate, if any) → elaborated. -/

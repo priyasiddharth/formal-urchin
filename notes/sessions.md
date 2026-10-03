@@ -5082,3 +5082,9 @@ Later: field operands for the one-leaf rvalues, refSlice and exposeAddr
 byteproof declarations, axioms unchanged. Next: check the two layout
 conditions for the loader's real layouts (a decidable shape-agreement check
 over the corpus), then the cleanup pass (factor the projoff bracket, grind).
+Later: the loader's layouts checked against the two conditions —
+`bytes.Agrees` + `byteproof/layoutagree.lean` (`compileB_correct_agrees`),
+`sb_conformance --layouts`. 29 placeholder locals (an unused
+`fmt::Arguments` enum) disagreed; the loader now gives placeholders the
+placeholder's layout, and 147/147 loaded programs agree, suites unchanged.
+Next: the cleanup pass (factor the projoff bracket, grind).

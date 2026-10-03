@@ -2,6 +2,7 @@ import conformance.elab
 import obseq3.compile
 import obseq3.compile_bytes
 import obseq3.mirlite_bytes
+import obseq3.layout_agree
 import obseq3.oseair_bytes
 
 /-!
@@ -85,6 +86,14 @@ except on entries the manifest records as diverging. -/
     should be missing — falls back to the uniform layout). -/
 def Loaded.layEnv (l : Loaded) : mirliteB.LayEnv l.Γ :=
   fun i => l.blay.getD i.val (bytes.ofLayoutTy (l.Γ.get i))
+
+/-- Locals whose byte layout does not have their type's shape
+    (`bytes.Agrees`). Empty means the byte proof's two layout conditions
+    hold for every place of the program
+    (`byteproof.compileB_correct_agrees`). -/
+def Loaded.layoutDisagreements (l : Loaded) : List (Nat × obseq.LayoutTy × bytes.BLayout) :=
+  (List.finRange l.Γ.length).filterMap fun i =>
+    if bytes.Agrees (l.Γ.get i) (l.layEnv i) then none else some (i.val, l.Γ.get i, l.layEnv i)
 
 /-- The byte model's verdict, and on UB the memory it failed in (the
     reason check turns a failing address into an allocation offset). -/
@@ -509,6 +518,23 @@ def loadCert (charonDir : String) (e : TestEntry) : IO (Except String (Option Ce
             | .ok c => return .ok (some c)
       catch ex =>
         return .error s!"certificate io: {ex}"
+
+/-- `--layouts`: load one entry and list the locals whose loader layout
+    disagrees with its type (`none`: the entry does not load). -/
+def layoutCheck (charonDir : String) (e : TestEntry) :
+    IO (Option (List (Nat × obseq.LayoutTy × bytes.BLayout))) := do
+  try
+    let content ← IO.FS.readFile s!"{charonDir}/{e.artifact}"
+    match Json.parse content with
+    | .error _ => pure none
+    | .ok json =>
+        match ← loadCert charonDir e with
+        | .error _ => pure none
+        | .ok cert? =>
+            match loadCrate json cert? with
+            | .error _ => pure none
+            | .ok loaded => pure (some loaded.layoutDisagreements)
+  catch _ => pure none
 
 def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) (cells : Bool := false) :
     IO TestResult := do

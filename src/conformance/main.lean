@@ -23,6 +23,9 @@ Usage:
   (statement-level), except on entries recorded `"cell_model": "diverges"`;
   and run the compiled form on OSEA-IR on bytes (same verdict as the byte
   source on the uniform layout).
+- --layouts: instead of running, check each loaded program's byte layouts
+  against its locals' types (`bytes.Agrees`; the byte proof's layout
+  conditions, `byteproof.compileB_correct_agrees`) and list disagreements.
 - --osea: differential mode, on the CELL model — additionally compile each loaded program to
   OSEA-IR-v3 and require the same verdict as mirlite (mismatch = failure;
   compiler-unsupported constructs are reported as skipped).
@@ -39,6 +42,7 @@ structure Args where
   unit : Bool := false
   osea : Bool := false
   cells : Bool := false
+  layouts : Bool := false
 
 def parseArgs : List String → Except String Args
   | [] => .ok {}
@@ -50,6 +54,7 @@ def parseArgs : List String → Except String Args
   | "--unit" :: rest => do return { ← parseArgs rest with unit := true }
   | "--osea" :: rest => do return { ← parseArgs rest with osea := true }
   | "--cells" :: rest => do return { ← parseArgs rest with cells := true }
+  | "--layouts" :: rest => do return { ← parseArgs rest with layouts := true }
   | arg :: _ => .error s!"unknown argument {arg}"
 
 def dumpTest (charonDir : String) (m : Manifest) (id : String) : IO UInt32 := do
@@ -121,6 +126,21 @@ def realMain (args : List String) : IO UInt32 := do
                     let tests := match a.filter with
                       | some f => m.tests.filter (fun (t : TestEntry) => (t.id.splitOn f).length > 1)
                       | none => m.tests
+                    if a.layouts then
+                      let mut ok := 0
+                      let mut bad := 0
+                      let mut unloaded := 0
+                      for e in tests do
+                        match ← layoutCheck cDir e with
+                        | none => unloaded := unloaded + 1
+                        | some [] => ok := ok + 1
+                        | some ds =>
+                            bad := bad + 1
+                            IO.println s!"{e.id}:"
+                            for (i, τ, l) in ds do
+                              IO.println s!"  _{i}: {reprStr τ} vs {reprStr l}"
+                      IO.println s!"layouts agree: {ok}, disagree: {bad}, not loaded: {unloaded}"
+                      return (if bad == 0 then 0 else 1)
                     let mut results := []
                     for e in tests do
                       let r ← runEntry cDir a.osea e a.cells

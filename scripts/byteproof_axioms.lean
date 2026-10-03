@@ -27,6 +27,7 @@ import obseq3.byteproof.prmpres
 import obseq3.byteproof.assignif
 import obseq3.byteproof.correct
 import obseq3.byteproof.coverage
+import obseq3.byteproof.layoutagree
 open Lean Elab Command
 
 -- The byte-level proof (obseq3.byteproof, branch `byteaddress`) may rest
