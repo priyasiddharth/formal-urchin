@@ -1577,11 +1577,14 @@ witness corpus of 133 programs, run on both machines at the uniform layout
 and pinned as golden listings where the shape of the code matters; a
 corpus of 175 entries, drawn from Miri's Stacked Borrows tests and
 completed by local witnesses, loaded from rustc's MIR through Charon with
-rustc's own layouts, whose 149 supported programs reach Miri's verdict
+rustc's own layouts, whose 151 supported programs reach Miri's verdict
 and, where Miri reports undefined behavior, the same statement and, with
-four documented exceptions, the same reason; and a differential run that compiles each of those 149
+four documented exceptions, the same reason; and a differential run that compiles each of those 151
 programs and requires the same verdict from both machines. The layout
-check of @def:layoutwf passes on all 149. The running program of this
+check of @def:layoutwf passes on all 152 programs that load; the one not
+counted above is a recorded divergence, a zero-sized retag through a
+dangling pointer, which Miri accepts and the model's `ref` rejects for
+its bounds check. The running program of this
 paper is part of the witness corpus, both as a golden listing
 (@fig:compile-example) and as a differential test; the states of
 @tab:mir-example and @tab:osea-example are printed by the mechanized
