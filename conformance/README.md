@@ -120,9 +120,7 @@ wildcard resolution is determinized (topmost exposed granting item) vs
 miri's angelic reading; RefCell shims elide the borrow flag; globals
 are initialized by inlining their initializer before `main` (a const
 whose initializer does not lower is unsupported; such a static starts
-uninitialized, e.g. `null_mut()`); `size_of`/`Layout` sizes are in BYTES
-while the cell model allocates one cell per byte of them
-(over-allocation); the retag×data-race interaction (threads) is out of
+uninitialized, e.g. `null_mut()`); the retag×data-race interaction (threads) is out of
 scope.
 
 Scope (2026-10-01): the corpus is Miri's four Stacked Borrows test
@@ -132,20 +130,17 @@ under both models (`//@revisions: stack tree`) as far as they load —
 137 SB-relevant Miri files in all, plus split-out scenarios and local
 witnesses.
 
-Byte model (branch `byteaddress`): the JUDGED verdict comes from the
-source semantics on byte-addressed memory, with real integer widths, C
-layouts for tuples and rustc's own field offsets for structs (Charon).
-`--cells` also runs the cell model, which the compiler proof is about, and
-requires the same verdict except on entries recorded
-`"cell_model": "diverges"` — byte-level programs the cell model cannot
-represent (local/narrow_ref_wide_write, local/narrow_fields_ok,
-local/rust_layout_ok). `--osea` checks the cell model against its compiled
-target, and (2026-10-02) the byte model against the BYTE compiler's
-output (`obseq3/compile_bytes.lean`, compiled at the real layouts) on its
-layout-typed target (`obseq3/oseair_layout.lean`): `osea bytes: matched
-146`. On the 161 entries that predate the byte model, the byte model's
-verdicts equal the cell model's (2026-10-02): same outcome, same `ok` /
-UB line; only offsets in diagnostics are now in bytes.
+Memory model: the verdict comes from the source semantics on
+byte-addressed memory (`obseq3/mirlite.lean`), with real integer widths,
+C layouts for tuples and rustc's own field offsets for structs (Charon).
+`--osea` also compiles each program (`obseq3/compile.lean`, at the same
+layouts) and requires its target (`obseq3/oseair.lean`) to reach the same
+verdict: `osea: matched 147`. `--layouts` checks that every loaded
+program's byte layouts have their types' shape (integer widths included),
+the hypothesis of the compiler-correctness theorem: 147/147. (The
+earlier cell model — one slot per integer or pointer — was retired on
+2026-10-03; on the 161 entries that predated the byte model the two gave
+the same verdicts.)
 
 UB reasons (2026-10-02): a UB verdict must also match Miri's REASON.
 `scripts/live.py` records Miri's own account of each UB (its error line

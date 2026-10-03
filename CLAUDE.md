@@ -1,8 +1,10 @@
 # formal-urchin2
 
-Lean 4 formalization: obseq2 compiler-correctness proofs
-(mirlite → oseair). v2 lives in `src/obseq2/`; `src/obseq/` is the v1
-reference implementation.
+Lean 4 formalization: compiler correctness for mirlite → OSEA-IR on
+byte-addressed memory with Stacked Borrows (`src/obseq3/`: semantics
+`mirlite.lean`, target `oseair.lean`, compiler `compile.lean`, proof
+`proof/`). `src/obseq2/` and `src/obseq/` are the v2 and v1 reference
+implementations. The cell model was retired on 2026-10-03.
 
 notes at: notes/
 
@@ -11,33 +13,38 @@ notes at: notes/
   `lake build Core Obseq3 Obseq3Proof Conformance` (or rely on
   `scripts/audit_axioms.sh`, which builds Obseq3Proof).
 - Axiom/sorry audit: `scripts/audit_axioms.sh` machine-checks that the
-  two roots (`obseq3.proof.compile_correct` and
-  `compile_correct_from_initial`) rest only on the whitelisted axioms
+  roots (`obseq3.proof.compile_correct_agrees`, `compile_correct_uniform`,
+  `compile_correct_all`) rest only on the whitelisted axioms
   and EXACTLY the audited sorries (pinned in
   `scripts/axiom_whitelist.txt`; the audit fails on drift in either
   direction). Run it as part of validation before every
   commit that touches proofs; update the pin in the same commit that
   closes or adds a residual. obseq3 is currently sorry-FREE, so the
   `[sorries]` block is empty and `sorryAx` reappearing is a regression,
-  not drift.
+  not drift. `lake env lean scripts/proof_axioms.lean` checks EVERY
+  declaration under `obseq3.proof` the same way.
 - Test suites — there are FOUR, and `--unit` runs only the first two:
 
       ./.lake/build/bin/sb_conformance --unit
-        # obseq3 tests           17/17   (mirlite SB semantics)
-        # obseq3 compiler tests  110/110 (compiler witness corpus)
+        # obseq3 tests           30/30   (mirlite SB semantics on bytes)
+        # obseq3 compiler tests  130/130 (compiler witness corpus)
 
       ./.lake/build/bin/sb_conformance \
         --manifest conformance/manifest.json --charon-dir conformance/charon
         # ULLBC corpus, Charon artifacts vs Miri verdicts
-        # 82 pass / 0 fail / 41 unsupported (123 total)
+        # 147 pass / 0 fail / 26 unsupported (173 total)
 
       ...same, plus --osea
         # differential: compile each program and require the SAME verdict
-        # from both machines. 82 matched / 0 mismatch / 0 skipped
+        # from both machines. 147 matched / 0 mismatch / 0 skipped
+
+      ...same, with --layouts instead
+        # the loader's byte layouts have their types' shape (the proof's
+        # layout hypothesis): 147 agree / 0 disagree
 
   The validation build above does NOT relink this binary: run
   `lake build sb_conformance` after touching a test file, or `--unit`
-  silently reports the old count. Run all four before committing, not just `--unit`. The last two need
+  silently reports the old count. Run all of them before committing, not just `--unit`. The last three need
   no Charon binary — they read the committed JSON under
   `conformance/charon/`.
 - `notes/` is the agent-maintained research notebook (better-than-fish
