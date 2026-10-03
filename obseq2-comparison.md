@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-03 — The Byte-Level Compiler Is Proved Correct, for Most Programs
+
+The compiler that knows real byte layouts now has its correctness theorem:
+if a program compiles, and every statement in it is of a kind the proof
+covers, then whenever the program runs without undefined behaviour on the
+byte-level source machine, the compiled code runs too, and the two
+machines stay related byte by byte. The covered kinds are nearly all of
+the language: stores into variables (including their first assignment),
+into fields and through pointers; copies, moves, references of every
+kind, casts, pointer arithmetic, integer arithmetic, slices, heap
+allocation, freeing, and entering and leaving a function's protector
+scope. Still missing: the conditional assignment used for enums, fields
+of fields, and a few operations applied directly to a field. The proof is
+about half the size of the cell-level one, mostly because the two byte
+machines put every allocation at the same address, so no address
+translation has to be tracked.
+
+---
+
 ## 2026-10-02 (late) — A Compiler That Knows Where the Bytes Are
 
 The compiler the correctness proof is about still thinks in cells: every

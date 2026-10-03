@@ -5065,3 +5065,8 @@ byteproof declarations, axioms unchanged; corpus 147, osea / osea bytes
 
 **Next-session pickup candidates:** nested projections; assignIf + halt;
 the program theorem; leaf ops / refSlice from field sources.
+Later: the byte-level program theorem — `byteproof/program.lean`,
+`byteproof/fragment.lean`, `compileB_correct_fragment` (axioms: the three
+whitelisted only). Next: grow the fragment (assignIf, nested projections,
+field operands for the one-leaf rvalues), then the cleanup pass (helpers,
+grind).

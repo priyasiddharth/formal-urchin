@@ -16,6 +16,8 @@ import obseq3.byteproof.slice
 import obseq3.byteproof.alloc
 import obseq3.byteproof.refslice
 import obseq3.byteproof.stmts
+import obseq3.byteproof.program
+import obseq3.byteproof.fragment
 open Lean Elab Command
 
 -- The byte-level proof (obseq3.byteproof, branch `byteaddress`) may rest

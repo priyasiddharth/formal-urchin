@@ -569,3 +569,31 @@ not-taken branch needs the body's compile facts) and halt; then the
 program theorem (prefix compile states, per-statement code inclusion,
 the run induction) with a dispatch that maps every statement shape to
 its leaf.
+
+### 2026-10-03: the program theorem
+
+- `byteproof/program.lean`: `stepStmt_pc` (every successful non-halt step
+  advances the source pc — needed because the leaves state `InvAtB` at the
+  statement's compiled run, which must be the next prefix state);
+  `csAtB` (prefix compile states) and `stmt_in_prog` (in a compiling
+  program, statement i's run is the next prefix state and is code-included);
+  `InvAtB_initial` (reusing the cell proof's initial permission facts);
+  `StmtSimB` (a statement's simulation, the shape every leaf has);
+  `compileB_run_sim` (the run induction) and `compileB_correct`.
+- `byteproof/fragment.lean`: `BorrowSrcB`, `RhsB`, `DstB`, `StmtB` — the
+  proved fragment as predicates — with `RhsB.pkg` and `StmtB.sim`
+  dispatching to the leaves (bound vs first-assignment chosen by the
+  source environment at the step), and
+  **`compileB_correct_fragment`**: for a layout table with pointer-sized
+  pointer places, a compiling program all of whose non-halt statements
+  are in the fragment — every successful source run is matched by a
+  successful target run from the initial state, related by `InvAtB`.
+  Axioms: propext, Classical.choice, Quot.sound (334 byteproof
+  declarations); main audit unchanged.
+
+[DEC] Coverage is a hypothesis of the theorem (`h_frag`), not baked into
+it: extending coverage is adding `StmtB` constructors and their cases in
+`StmtB.sim`; the program theorem itself does not change.
+
+Not in the fragment yet: assignIf; nested projections; derefs of non-chain
+places; one-leaf rvalues and refSlice with a field operand.
