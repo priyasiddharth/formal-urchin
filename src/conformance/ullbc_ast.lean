@@ -977,6 +977,52 @@ def parseRefRvalueKind (kindJ : Json) (isRaw : Bool) : Except String URefKind :=
       | some (k, _) => .error s!"borrow kind {k}"
       | none => .error s!"borrow kind {kindJ.compress}"
 
+/-- rustc's `place_base_raw` (`add_retag.rs`): a raw borrow `&raw place`
+    whose LAST dereference goes through a raw pointer is not retagged. For
+    such a place, the raw pointer's sub-place JSON and the projections after
+    that dereference (`some (sub, steps)`, each step `(fieldIndex, isVariant)`);
+    `none` when the place is not raw-based, or a step is not a field. -/
+partial def rawDerefBase (ctx : ParseCtx) (j : Json) : Option (Json × List (Nat × Bool)) :=
+  match getK j "kind" >>= sumKey with
+  | some ("Projection", args) =>
+      match asArr args with
+      | [sub, proj] =>
+          match sumKey proj with
+          | some ("Deref", _) =>
+              match getK sub "ty" with
+              | some tyJ =>
+                  match parseTy ctx 16 tyJ with
+                  | .raw _ _ => some (sub, [])
+                  | _ => none
+              | none => none
+          | some ("Field", fargs) =>
+              match asArr fargs with
+              | [kind, iJ] =>
+                  let variant := ((getK kind "Adt").bind fun a =>
+                    match asArr a with
+                    | [_, v] => asNat v
+                    | _ => none).isSome
+                  match asNat iJ, rawDerefBase ctx sub with
+                  | some i, some (b, steps) => some (b, steps ++ [(i, variant)])
+                  | _, _ => none
+              | _ => none
+          | _ => none
+      | _ => none
+  | _ => none
+
+/-- Field steps from a pointee of type `t` that stay at byte offset 0
+    (a struct's field 0 in C layout, or any field rustc placed at 0). -/
+def zeroOffsetSteps : UTy → List (Nat × Bool) → Bool
+  | _, [] => true
+  | .structT tys lay, (i, false) :: rest =>
+      let at0 := match lay with
+        | some l => l.offsets.getD i 1 == 0
+        | none => i == 0
+      at0 && zeroOffsetSteps (tys.getD i (.unsupported "field")) rest
+  | .tup tys, (i, false) :: rest => i == 0 && zeroOffsetSteps (tys.getD i (.unsupported "field")) rest
+  | .cell t, steps => zeroOffsetSteps t steps
+  | _, _ => false
+
 def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
   match sumKey j with
   | some ("Use", payload) =>
@@ -997,7 +1043,21 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
                   | some .deref =>
                       .refSlice kind false { pl with projs := pl.projs.dropLast }
                   | _ => .unsupported "slice borrow of a non-deref place"
-              | _ => .ref kind false pl
+              | _ =>
+                  -- `&raw` through a raw pointer: no retag (rustc's
+                  -- `place_base_raw`); at byte offset 0 the result is the raw
+                  -- pointer itself, retyped
+                  match (if isRaw then rawDerefBase ctx pJ else none) with
+                  | some (subJ, steps) =>
+                      match parsePlace ctx subJ with
+                      | .ok base =>
+                          match base.ty with
+                          | .raw _ inner =>
+                              if zeroOffsetSteps inner steps then .use (.copy base)
+                              else .unsupported "raw borrow of a field at a nonzero offset through a raw pointer"
+                          | _ => .ref kind false pl
+                      | .error e => .unsupported e
+                  | none => .ref kind false pl
           | .error e, _ => .unsupported e
           | _, .error e => .unsupported e
       | _, _ => .unsupported "malformed Ref/RawPtr rvalue"

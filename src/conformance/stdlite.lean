@@ -144,6 +144,25 @@ def transmuteCopy : Shim := fun st args dest line => do
       emitAssign st line dest (.use (.copy { pointee p with ty := dest.ty }))
   | _ => .error s!"unsupported: transmute_copy argument is not a place (line {line})"
 
+/-- `ptr::without_provenance(addr)`: a pointer with NO provenance. Its bytes
+    are the integer's, read back at pointer type — a scratch `usize` holding
+    `addr`, read through a raw pointer retyped to `*const *T`. The byte
+    decode gives a pointer over zero bytes that may only be used for
+    zero-sized accesses (MiniRust's int-to-ptr transmute). -/
+def withoutProvenance : Shim := fun st args dest line => do
+  match args with
+  | [op] =>
+      let t := st.locals.length
+      let st := { st with locals := st.locals ++ [.nat, .raw false .nat, .raw false dest.ty] }
+      let tmpInt : UPlace := { root := .local t, projs := [], ty := .nat }
+      let tmpR : UPlace := { root := .local (t + 1), projs := [], ty := .raw false .nat }
+      let tmpPP : UPlace := { root := .local (t + 2), projs := [], ty := .raw false dest.ty }
+      let st := pushOut st (.assign tmpInt (.use op) line)
+      let st := pushOut st (.assign tmpR (.ref .rawConst false tmpInt) line)
+      let st := pushOut st (.assign tmpPP (.use (.copy tmpR)) line)
+      return pushOut st (.assign dest (.use (.copy { pointee tmpPP with ty := dest.ty })) line)
+  | _ => .error s!"unsupported: without_provenance with {args.length} arguments (line {line})"
+
 /-- `ptr.addr()`: the address, provenance stripped, nothing exposed. -/
 def ptrAddr : Shim := fun st args dest line => do
   match args with
@@ -611,6 +630,8 @@ def table : List (List String × Shim) :=
   , (["core", "ptr", "mut_ptr", "*mut T", "read"], ptrRead)
   , (["core", "intrinsics", "transmute"], transmute)
   , (["core", "mem", "transmute_copy"], transmuteCopy)
+  , (["core", "ptr", "without_provenance"], withoutProvenance)
+  , (["core", "ptr", "without_provenance_mut"], withoutProvenance)
   , (["core", "ptr", "const_ptr", "*const T", "addr"], ptrAddr)
   , (["core", "ptr", "mut_ptr", "*mut T", "addr"], ptrAddr)
   , (["core", "ptr", "const_ptr", "*const T", "expose_provenance"], exposeProvenance)

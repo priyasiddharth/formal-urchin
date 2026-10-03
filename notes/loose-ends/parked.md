@@ -430,12 +430,18 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   `&mut Thing` and retags never recurse through a reference, so it does
   not support the rule; newtype_retagging's own comment says "Make sure
   that we protect references inside structs". Re-run the corpus. [OBS+source]
-- n. `place_base_raw`: `&raw` of a place based on a raw-pointer deref
-  does NOT retag (Miri) — the loader always mints → raw_ref_to_part
-  (+ Box::leak). May shift supported tests; re-run. [HYP]
-- o. Zero-sized retag = no access, no bounds/liveness check; plus
-  no-provenance pointers (`without_provenance_mut`) → basic::zst.
-  Touches mirlite, oseair and the `ref` proof leaf. [HYP]
+- n. DONE 2026-10-03 (zero-offset case): `&raw` of a place whose last
+  deref goes through a raw pointer is a tag-preserving copy of that pointer
+  (`rawDerefBase`, `zeroOffsetSteps` in ullbc_ast.lean); raw_ref_to_part
+  passes, no other verdict moved. A field at a NONZERO byte offset is still
+  reported unsupported (needs byte-offset pointer arithmetic in the loader).
+- o. PROBED 2026-10-03: `without_provenance(_mut)` is a loader shim (the
+  integer's bytes read back as a pointer: no provenance, zero bytes).
+  basic::zst then fails only on the zero-sized retag through an OOB /
+  dangling pointer (line 21). Skipping liveness+bounds when the retag covers
+  0 bytes, in mirlite `ref` and oseair `Borrow (some n)`, makes it pass with
+  NO other verdict moving (152/0/23, osea 152). Not adopted: needs the ref
+  and Borrow proof cases. Entry is `xfail-model` until then. [OBS]
 - p. [STEP 1 DONE 2026-10-01: weak Box protectors — see § B2. STEP 2 DONE
   2026-10-01: `UTerm.drop`; moved-place tracking (`LowerSt.moved`, keys
   as the trackers'; a move operand moves, an assignment/call destination

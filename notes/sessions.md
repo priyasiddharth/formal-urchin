@@ -5105,3 +5105,8 @@ provenance-stripping `addr` rvalue end to end (semantics, compiler as an
 integer `Load`, proof, loader for `.addr()`/`transmute`, two Miri-verified
 witnesses, paper appendix). Corpus 149/0/26 of 175; units 31 + 133.
 Next: `with_addr` (parked 12-B) or UB preservation.
+Later: Miri `pass/` 35 → 37 of 52 — box_into_raw_allows_interior_mutable_alias
+(passes as-is) and raw_ref_to_part (loader: `place_base_raw`, no retag for
+`&raw` through a raw pointer at offset 0). basic::zst probed: shim for
+`without_provenance` added; the remaining gap is the zero-sized retag rule
+(model + ref/Borrow proof), entry xfail-model. Corpus 151/0/1/23 of 175.

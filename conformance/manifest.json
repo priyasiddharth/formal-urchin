@@ -1377,14 +1377,17 @@
     {
       "id": "pass/both_borrows/basic_aliasing_model::raw_ref_to_part",
       "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
-      "prep": null,
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "Box + named ADT",
+      "prep": "prep/basic_aliasing_model__raw_ref_to_part.rs",
+      "artifact": "basic_aliasing_model__raw_ref_to_part.ullbc.json",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ok"
       },
-      "rewrites": []
+      "rewrites": [
+        "scenario extracted"
+      ],
+      "certificate": "basic_aliasing_model__raw_ref_to_part.cert.json"
     },
     {
       "id": "pass/both_borrows/basic_aliasing_model::array_casts",
@@ -1458,14 +1461,16 @@
     {
       "id": "pass/both_borrows/basic_aliasing_model::box_into_raw_allows_interior_mutable_alias",
       "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
-      "prep": null,
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "Box + Cell",
+      "prep": "prep/basic_aliasing_model__box_into_raw_allows_interior_mutable_alias.rs",
+      "artifact": "basic_aliasing_model__box_into_raw_allows_interior_mutable_alias.ullbc.json",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ok"
       },
-      "rewrites": []
+      "rewrites": [
+        "scenario extracted"
+      ]
     },
     {
       "id": "pass/both_borrows/basic_aliasing_model::cell_inside_struct",
@@ -1485,14 +1490,17 @@
     {
       "id": "pass/both_borrows/basic_aliasing_model::zst",
       "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
-      "prep": null,
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "alloc/dealloc + int-to-ptr",
+      "prep": "prep/basic_aliasing_model__zst.rs",
+      "artifact": "basic_aliasing_model__zst.ullbc.json",
+      "status": "xfail-model",
+      "reason": "zero-sized retags: Miri performs no liveness or bounds check for a 0-byte retag; the model checks both, so `&mut *ptr` through an out-of-bounds or dangling pointer to () is a false UB (line 21). Probed 2026-10-03: skipping the two checks when the retag covers 0 bytes, in the source ref and the target Borrow, makes it pass with no other verdict changing; adopting it needs the ref and Borrow proof cases updated.",
       "expected": {
         "verdict": "ok"
       },
-      "rewrites": []
+      "rewrites": [
+        "scenario extracted",
+        "Layout::from_size_align(1, 1).unwrap() → from_size_align_unchecked(1, 1) (same layout; no Result in the model)"
+      ]
     },
     {
       "id": "pass/stacked_borrows/stacked-borrows::two_phase_aliasing_violation",

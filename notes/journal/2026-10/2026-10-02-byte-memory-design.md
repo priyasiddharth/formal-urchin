@@ -788,3 +788,19 @@ Miri: dangling, no provenance, since it resolves addresses only to EXPOSED
 allocations; ours: no exposed tag at the borrow stack, the determinized
 wildcard). Corpus 149/0/26 of 175, --osea 149, --layouts 149, units
 31 + 133; 779 proof declarations, axioms unchanged.
+
+### 2026-10-03: three `pass/` scenarios (parked n, o)
+
+box_into_raw_allows_interior_mutable_alias: split out, passes as-is.
+raw_ref_to_part: split out with a certificate (its `assert!`), then the
+expected false UB at line 22 — the loader retagged `&raw (*whole).part`
+(4 bytes), so widening back to `Whole` (8 bytes) lacked the tag at byte
+4. [DEC] rustc's `place_base_raw` rule in the loader: a raw borrow whose
+last deref is through a raw pointer is a tag-preserving copy of that
+pointer when the trailing fields sit at byte offset 0; nonzero offsets
+stay unsupported. No verdict moved. zst: `without_provenance` shim (the
+integer's bytes read back as a pointer, via scratch locals); `Layout::
+from_size_align(..).unwrap()` rewritten to the unchecked form in the prep.
+Remaining gap is model-level: a 0-byte retag must skip liveness and bounds
+(Miri). Probed by editing the two machines only: zst passes, nothing else
+moves. Kept as xfail-model pending the proof update.
