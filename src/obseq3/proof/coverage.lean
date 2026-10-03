@@ -93,6 +93,16 @@ theorem StmtB.all {Γ : Ctx} (stmt : Stmt Γ) (h : stmt ≠ .halt) : StmtB stmt 
   | popProtectors => exact .base .popProtectors
   | halt => exact absurd rfl h
 
+/-- **One-step forward simulation.** Under the two layout conditions,
+    every statement but `halt` simulates: from the invariant at a compiler
+    state whose run of the statement compiles and is in the program, a
+    successful source step is matched by target steps re-establishing the
+    invariant at the statement's run. -/
+theorem stmt_sim {Γ : Ctx} (L : mirlite.LayEnv Γ) (hWF : PtrPlacesWF L) (hLeaf : LeafWF L)
+    (compProg : oseair.Prog) (stmt : Stmt Γ) (h : stmt ≠ .halt) :
+    StmtSimBc L compProg stmt :=
+  (StmtB.all stmt h).sim hWF hLeaf
+
 /-- **Compiler correctness.** If every pointer-typed place has
     a pointer-sized layout and every integer- or pointer-typed place a
     one-leaf layout, and `prog` compiles, then every successful source run

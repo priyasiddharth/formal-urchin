@@ -3,15 +3,13 @@ import obseq3.oseair
 import obseq3.mirlite
 
 /-!
-# The compiler: mirlite → OSEA-IR with byte layouts
+# The compiler: mirlite → OSEA-IR
 
-`compile.lean` with every unit made explicit, parameterized by the layout
-table `L : mirlite.LayEnv Γ` the source (`mirlite.lean`) runs
-on. Same lowering, same instruction order, same evidence shapes; what
-changes is only what the instructions carry:
+Parameterized by the layout table `L : mirlite.LayEnv Γ` the source
+(`mirlite.lean`) runs on; every unit in the emitted code is a byte:
 
 - a local's `Alloc` carries its byte layout `L loc.idx`;
-- a projection's `Borrow` offset is the field's BYTE offset
+- a projection's `Borrow` offset is the field's byte offset
   (`fieldOffset (placeLayout L base) path.indices`, the source's
   `resolvePlace`), and every borrow and `Die` length is the place's byte
   size `(placeLayout L p).size`;
@@ -24,9 +22,6 @@ changes is only what the instructions carry:
   the pointee layout's byte size, and the one-leaf reads
   (`exposeAddr`/`fromExposed`/`ptrOffset`/`ptrCast`/`refSlice`) carry the
   source's `leafKind`.
-
-A post-pass cannot derive this from `compile.lean`'s output: a cell
-offset does not say which byte layout it came from.
 -/
 
 namespace obseq3.compile
