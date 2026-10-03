@@ -7,7 +7,7 @@ import obseq3.layout_agree
 If every local's byte layout has its type's shape (`Agrees`), so does
 every place's (`placeLayout_agrees`: a field of an agreeing tuple agrees
 with the field's type, the pointee of an agreeing pointer with the
-pointee type), and an agreeing `NatL`/`PtrL` layout is one leaf of the
+pointee type), and an agreeing `IntL`/`PtrL` layout is one leaf of the
 layout's own size. So `PtrPlacesWF` and `LeafWF` follow from a check on
 the locals alone, which the conformance harness runs on the loader's
 layouts.
@@ -74,7 +74,7 @@ theorem agrees_ptr_size {τ : LayoutTy} {l : BLayout} (h : Agrees (.PtrL τ) l =
   | int _ => simp [Agrees] at h
   | tup _ _ _ _ => simp [Agrees] at h
 
-theorem agrees_nat_leaf {l : BLayout} (h : Agrees .NatL l = true) :
+theorem agrees_nat_leaf {t : IntTy} {l : BLayout} (h : Agrees (.IntL t) l = true) :
     (mirliteB.leafKind l).size = l.size := by
   cases l with
   | int n => rfl

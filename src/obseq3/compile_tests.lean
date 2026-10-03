@@ -575,7 +575,7 @@ def d18_assign_if_body_ub : IO Unit :=
      .assignIf tA' 1 (.deref pA') (.constInit 5)]
     (.ub 4) "d18 assignIf body ub"
 
-def ptrPair := obseq.LayoutTy.PtrL pairL
+def ptrPair := LayoutTy.PtrL pairL
 def ΓF : Ctx := [pairL, ptrPair, ptrNat, natL]
 def tupF : Place ΓF pairL := .local ⟨⟨0, by decide⟩, rfl⟩
 def fld0F : Place ΓF natL := .proj tupF (.field ⟨0, by decide⟩ .nil)
@@ -690,10 +690,10 @@ def d23_ref_slice_pops : IO Unit :=
     UB at the same statement. Before the mirlite deref-read change this
     program MISMATCHED (source ok, target UB): the risk-register item (a)
     divergence, where Miri sides with the target. -/
-def ΓG : Ctx := [natL, ptrNat, obseq.LayoutTy.PtrL ptrNat, natL]
+def ΓG : Ctx := [natL, ptrNat, LayoutTy.PtrL ptrNat, natL]
 def xG : Place ΓG natL := .local ⟨⟨0, by decide⟩, rfl⟩
 def pG : Place ΓG ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
-def qG : Place ΓG (obseq.LayoutTy.PtrL ptrNat) := .local ⟨⟨2, by decide⟩, rfl⟩
+def qG : Place ΓG (LayoutTy.PtrL ptrNat) := .local ⟨⟨2, by decide⟩, rfl⟩
 def tG : Place ΓG natL := .local ⟨⟨3, by decide⟩, rfl⟩
 
 def d24_deref_read_alignment : IO Unit :=
@@ -723,8 +723,8 @@ def d25_deref_oob_alignment : IO Unit :=
     reassociating lowering (2026-08-27) the compiler retagged the whole
     intermediate place `s.1` and the target reported spurious UB here. -/
 def ΓH : Ctx :=
-  [obseq.LayoutTy.TupL [natL, obseq.LayoutTy.TupL [natL, natL]], ptrNat, natL]
-def sH : Place ΓH (obseq.LayoutTy.TupL [natL, obseq.LayoutTy.TupL [natL, natL]]) :=
+  [LayoutTy.TupL [natL, LayoutTy.TupL [natL, natL]], ptrNat, natL]
+def sH : Place ΓH (LayoutTy.TupL [natL, LayoutTy.TupL [natL, natL]]) :=
   .local ⟨⟨0, by decide⟩, rfl⟩
 def qH : Place ΓH ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
 def tH : Place ΓH natL := .local ⟨⟨2, by decide⟩, rfl⟩
@@ -756,8 +756,8 @@ def d26_nested_proj_sibling : IO Unit :=
     rejects using the borrow across the parent write), so they live only
     here. -/
 def ΓY : Ctx :=
-  [obseq.LayoutTy.TupL [natL, natL, natL], ptrNat, ptrNat, ptrNat, natL]
-def sY : Place ΓY (obseq.LayoutTy.TupL [natL, natL, natL]) :=
+  [LayoutTy.TupL [natL, natL, natL], ptrNat, ptrNat, ptrNat, natL]
+def sY : Place ΓY (LayoutTy.TupL [natL, natL, natL]) :=
   .local ⟨⟨0, by decide⟩, rfl⟩
 def p0Y : Place ΓY ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
 def p1Y : Place ΓY ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
@@ -823,7 +823,7 @@ def d30_reborrow_through_pointer : IO Unit :=
      .assign tZ (.copy xZ)]
     .ok "d30 reborrow &mut *p, write through it"
 
-abbrev unitL := obseq.LayoutTy.TupL ([] : List obseq.LayoutTy)
+abbrev unitL := LayoutTy.TupL ([] : List LayoutTy)
 def ΓZ2 : Ctx := [unitL, .PtrL unitL, .PtrL unitL, natL]
 def zZ : Place ΓZ2 unitL := .local ⟨⟨0, by decide⟩, rfl⟩
 def pzZ : Place ΓZ2 (.PtrL unitL) := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -928,7 +928,7 @@ def d33_overlap_junk_copy_agrees : IO Unit := do
     source code first, then the destination lowering, then the store —
     and both machines agree. Teeth: reverting the arm to the old order
     makes this test report `.ub 5` again. -/
-def tPairL := obseq.LayoutTy.TupL [natL, ptrNat]
+def tPairL := LayoutTy.TupL [natL, ptrNat]
 def ΓD34 : Ctx := [tPairL, .PtrL tPairL, .PtrL ptrNat, natL]
 def tD34 : Place ΓD34 tPairL := .local ⟨⟨0, by decide⟩, rfl⟩
 def pD34 : Place ΓD34 (.PtrL tPairL) := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -948,9 +948,9 @@ def xD34 : Place ΓD34 natL := .local ⟨⟨3, by decide⟩, rfl⟩
     `Load; Die; Borrow none` (compile.lean) fixed it: the bracket closes
     while its temporary is still on top. Kept as the regression witness —
     reverting the split makes this report `.ub 3` again. -/
-def ΓRS : Ctx := [tPairL, obseq.LayoutTy.PtrL tPairL, ptrNat]
+def ΓRS : Ctx := [tPairL, LayoutTy.PtrL tPairL, ptrNat]
 def tRS : Place ΓRS tPairL := .local ⟨⟨0, by decide⟩, rfl⟩
-def pRS : Place ΓRS (obseq.LayoutTy.PtrL tPairL) := .local ⟨⟨1, by decide⟩, rfl⟩
+def pRS : Place ΓRS (LayoutTy.PtrL tPairL) := .local ⟨⟨1, by decide⟩, rfl⟩
 def qRS : Place ΓRS ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
 
 def rs_mut_slice_retag_pops_projection_borrow : IO Unit := do
@@ -1096,14 +1096,14 @@ def d97_move_field_pops_own_borrow : IO Unit :=
     the write invalidates. Pins that the projection's scaffolding does
     not perturb real program borrows — the property the broad fix in
     loose-ends/parked.md must preserve. -/
-def tPlainL := obseq.LayoutTy.TupL [natL, natL]
-def uPtrL := obseq.LayoutTy.TupL [natL, ptrNat]
-def ΓPX : Ctx := [tPlainL, uPtrL, ptrNat, natL, obseq.LayoutTy.PtrL tPlainL]
+def tPlainL := LayoutTy.TupL [natL, natL]
+def uPtrL := LayoutTy.TupL [natL, ptrNat]
+def ΓPX : Ctx := [tPlainL, uPtrL, ptrNat, natL, LayoutTy.PtrL tPlainL]
 def tPX : Place ΓPX tPlainL := .local ⟨⟨0, by decide⟩, rfl⟩
 def uPX : Place ΓPX uPtrL := .local ⟨⟨1, by decide⟩, rfl⟩
 def rPX : Place ΓPX ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
 def xPX : Place ΓPX natL := .local ⟨⟨3, by decide⟩, rfl⟩
-def vPX : Place ΓPX (obseq.LayoutTy.PtrL tPlainL) := .local ⟨⟨4, by decide⟩, rfl⟩
+def vPX : Place ΓPX (LayoutTy.PtrL tPlainL) := .local ⟨⟨4, by decide⟩, rfl⟩
 
 def px_write_through_projected_ptroffset : IO Unit := do
   let f0 : PathTo tPlainL natL := .field ⟨0, by decide⟩ .nil
@@ -1174,7 +1174,7 @@ def d37_copy_through_pointer : IO Unit :=
 /-- Differential: a NESTED projection tower write — `s.1.0 := v` over a
     pair-of-pairs — exercising the flattening recursion (the lowering
     reassociates; the source composes offsets). -/
-def nestL := obseq.LayoutTy.TupL [pairL, pairL]
+def nestL := LayoutTy.TupL [pairL, pairL]
 def ΓD38 : Ctx := [nestL]
 def sD38 : Place ΓD38 nestL := .local ⟨⟨0, by decide⟩, rfl⟩
 
@@ -1203,7 +1203,7 @@ def d39_deref_field_zero_write : IO Unit :=
     `t.0 := &x` with `t : (*mut u64, u64)`-ish — the first non-local
     DESTINATION regime (`ref_local_projzero_simulation`): the RStore
     goes through the dst BASE register into the field. -/
-def refFieldL := obseq.LayoutTy.TupL [ptrNat, natL]
+def refFieldL := LayoutTy.TupL [ptrNat, natL]
 def ΓD40 : Ctx := [refFieldL, natL]
 def tD40 : Place ΓD40 refFieldL := .local ⟨⟨0, by decide⟩, rfl⟩
 def xD40 : Place ΓD40 natL := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1220,7 +1220,7 @@ def d40_ref_into_field_zero : IO Unit :=
     `t.1 := &mut x` with the pointer field second — the
     `[BorrowS; BorrowM; RStore; Die]` fragment (BRIDGE 1 around the
     store), then a write THROUGH the stored reference. -/
-def refField2L := obseq.LayoutTy.TupL [natL, ptrNat]
+def refField2L := LayoutTy.TupL [natL, ptrNat]
 def ΓD41 : Ctx := [refField2L, natL]
 def tD41 : Place ΓD41 refField2L := .local ⟨⟨0, by decide⟩, rfl⟩
 def xD41 : Place ΓD41 natL := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1237,7 +1237,7 @@ def d41_ref_into_field_offset : IO Unit :=
     &mut x` over a pair-of-(nat,ptr) — the dst-flattening recursion for
     ref (the lowering reassociates to one field borrow), then a write
     through the stored reference. -/
-def nestRefL := obseq.LayoutTy.TupL [natL, refField2L]
+def nestRefL := LayoutTy.TupL [natL, refField2L]
 def ΓD42 : Ctx := [nestRefL, natL]
 def sD42 : Place ΓD42 nestRefL := .local ⟨⟨0, by decide⟩, rfl⟩
 def xD42 : Place ΓD42 natL := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1251,7 +1251,7 @@ def d42_ref_into_nested_field : IO Unit :=
         (.field ⟨1, by decide⟩ .nil))) (.constInit 9)]
     .ok "d42 ref into nested field"
 
-def ptrPtrNat := obseq.LayoutTy.PtrL ptrNat
+def ptrPtrNat := LayoutTy.PtrL ptrNat
 def ΓD43 : Ctx := [ptrPtrNat, ptrNat, natL, natL]
 def qD43 : Place ΓD43 ptrPtrNat := .local ⟨⟨0, by decide⟩, rfl⟩
 def rD43 : Place ΓD43 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1272,7 +1272,7 @@ def d43_ref_through_loaded_ptr : IO Unit :=
      .assign (.deref (.deref qD43)) (.constInit 9)]
     .ok "d43 ref through loaded ptr"
 
-def sD44L := obseq.LayoutTy.TupL [natL, ptrPtrNat]
+def sD44L := LayoutTy.TupL [natL, ptrPtrNat]
 def ΓD44 : Ctx := [sD44L, ptrNat, natL]
 def sD44 : Place ΓD44 sD44L := .local ⟨⟨0, by decide⟩, rfl⟩
 def rD44 : Place ΓD44 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1297,8 +1297,8 @@ def d44_write_through_ptr_field_chain : IO Unit :=
     interior-projection chain (`*(*(s.f)) := &mut y`), then written
     through. Exercises `ref_derefdst_local_simulation` over a
     `PtrChain` with a proj level. -/
-def ptrPtrPtrNat := obseq.LayoutTy.PtrL ptrPtrNat
-def sD45L := obseq.LayoutTy.TupL [natL, ptrPtrPtrNat]
+def ptrPtrPtrNat := LayoutTy.PtrL ptrPtrNat
+def sD45L := LayoutTy.TupL [natL, ptrPtrPtrNat]
 def ΓD45 : Ctx := [sD45L, ptrPtrNat, ptrNat, natL, natL]
 def sD45 : Place ΓD45 sD45L := .local ⟨⟨0, by decide⟩, rfl⟩
 def qD45 : Place ΓD45 ptrPtrNat := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1319,10 +1319,10 @@ def d45_ref_through_ptr_field_chain : IO Unit :=
        (.constInit 9)]
     .ok "d45 ref through ptr-field chain"
 
-def tD46L := obseq.LayoutTy.TupL [natL, ptrNat]
-def ΓD46 : Ctx := [tD46L, obseq.LayoutTy.PtrL tD46L, natL]
+def tD46L := LayoutTy.TupL [natL, ptrNat]
+def ΓD46 : Ctx := [tD46L, LayoutTy.PtrL tD46L, natL]
 def tD46 : Place ΓD46 tD46L := .local ⟨⟨0, by decide⟩, rfl⟩
-def qD46 : Place ΓD46 (obseq.LayoutTy.PtrL tD46L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def qD46 : Place ΓD46 (LayoutTy.PtrL tD46L) := .local ⟨⟨1, by decide⟩, rfl⟩
 def xD46 : Place ΓD46 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 
 /-- Positive: write through the pointer FIELD of a DEREFERENCED struct —
@@ -1354,7 +1354,7 @@ def d47_copy_through_ptr_field : IO Unit :=
      .assign yD47 (.copy (.deref (.proj sD47 (.field ⟨1, by decide⟩ .nil))))]
     .ok "d47 copy through ptr field"
 
-def tD48L := obseq.LayoutTy.TupL [natL, ptrPtrNat]
+def tD48L := LayoutTy.TupL [natL, ptrPtrNat]
 def ΓD48 : Ctx := [tD48L, ptrNat, natL, natL]
 def tD48 : Place ΓD48 tD48L := .local ⟨⟨0, by decide⟩, rfl⟩
 def rD48 : Place ΓD48 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1398,8 +1398,8 @@ def d49_ref_of_deref_ptr_field : IO Unit :=
      .assign yD49 (.copy (.deref qD49))]
     .ok "d49 ref of deref ptr field"
 
-def innerD50L := obseq.LayoutTy.TupL [natL, ptrNat]
-def sD50L := obseq.LayoutTy.TupL [natL, innerD50L]
+def innerD50L := LayoutTy.TupL [natL, ptrNat]
+def sD50L := LayoutTy.TupL [natL, innerD50L]
 def ΓD50 : Ctx := [sD50L, natL, natL]
 def sD50 : Place ΓD50 sD50L := .local ⟨⟨0, by decide⟩, rfl⟩
 def xD50 : Place ΓD50 natL := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1443,12 +1443,12 @@ def d51_copy_ref_through_nested_ptr_field : IO Unit :=
      .assign (.deref qD51) (.constInit 9)]
     .ok "d51 copy and ref through nested ptr field"
 
-def pairD52L := obseq.LayoutTy.TupL [natL, natL]
-def ΓD52 : Ctx := [obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL pairD52L),
-  obseq.LayoutTy.PtrL pairD52L, pairD52L, natL]
-def qD52 : Place ΓD52 (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL pairD52L)) :=
+def pairD52L := LayoutTy.TupL [natL, natL]
+def ΓD52 : Ctx := [LayoutTy.PtrL (LayoutTy.PtrL pairD52L),
+  LayoutTy.PtrL pairD52L, pairD52L, natL]
+def qD52 : Place ΓD52 (LayoutTy.PtrL (LayoutTy.PtrL pairD52L)) :=
   .local ⟨⟨0, by decide⟩, rfl⟩
-def rD52 : Place ΓD52 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def rD52 : Place ΓD52 (LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
 def sD52 : Place ΓD52 pairD52L := .local ⟨⟨2, by decide⟩, rfl⟩
 def yD52 : Place ΓD52 natL := .local ⟨⟨3, by decide⟩, rfl⟩
 
@@ -1470,9 +1470,9 @@ def d52_proj_write_through_chain : IO Unit :=
      .assign yD52 (.copy (.proj sD52 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d52 proj write through chain"
 
-def pD53L := obseq.LayoutTy.PtrL pairD52L
-def innerD53L := obseq.LayoutTy.TupL [natL, pD53L]
-def sD53L := obseq.LayoutTy.TupL [natL, innerD53L]
+def pD53L := LayoutTy.PtrL pairD52L
+def innerD53L := LayoutTy.TupL [natL, pD53L]
+def sD53L := LayoutTy.TupL [natL, innerD53L]
 def ΓD53 : Ctx := [sD53L, pairD52L, natL]
 def sD53 : Place ΓD53 sD53L := .local ⟨⟨0, by decide⟩, rfl⟩
 def tD53 : Place ΓD53 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1514,8 +1514,8 @@ def d54_fresh_root_proj_writes : IO Unit :=
      .assign yD54 (.copy (.proj tD54 (.field ⟨0, by decide⟩ .nil)))]
     .ok "d54 fresh root proj writes"
 
-def ΓD55 : Ctx := [obseq.LayoutTy.PtrL pairD52L, pairD52L, natL, natL]
-def pD55 : Place ΓD55 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨0, by decide⟩, rfl⟩
+def ΓD55 : Ctx := [LayoutTy.PtrL pairD52L, pairD52L, natL, natL]
+def pD55 : Place ΓD55 (LayoutTy.PtrL pairD52L) := .local ⟨⟨0, by decide⟩, rfl⟩
 def sD55 : Place ΓD55 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
 def xD55 : Place ΓD55 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 def yD55 : Place ΓD55 natL := .local ⟨⟨3, by decide⟩, rfl⟩
@@ -1534,8 +1534,8 @@ def d55_copy_from_proj_over_chain : IO Unit :=
      .assign yD55 (.copy (.proj (.deref pD55) (.field ⟨1, by decide⟩ .nil)))]
     .ok "d55 copy from proj over chain"
 
-def innerD56L := obseq.LayoutTy.TupL [natL, natL]
-def sD56L := obseq.LayoutTy.TupL [natL, innerD56L]
+def innerD56L := LayoutTy.TupL [natL, natL]
+def sD56L := LayoutTy.TupL [natL, innerD56L]
 def ΓD56 : Ctx := [sD56L, natL, natL]
 def sD56 : Place ΓD56 sD56L := .local ⟨⟨0, by decide⟩, rfl⟩
 def xD56 : Place ΓD56 natL := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1557,12 +1557,12 @@ def d56_copy_from_nested_proj : IO Unit :=
         (.field ⟨1, by decide⟩ .nil)))]
     .ok "d56 copy from nested proj"
 
-def ΓD57 : Ctx := [pairD52L, pairD52L, natL, natL, obseq.LayoutTy.PtrL pairD52L]
+def ΓD57 : Ctx := [pairD52L, pairD52L, natL, natL, LayoutTy.PtrL pairD52L]
 def sD57 : Place ΓD57 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
 def tD57 : Place ΓD57 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
 def xD57 : Place ΓD57 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 def yD57 : Place ΓD57 natL := .local ⟨⟨3, by decide⟩, rfl⟩
-def pD57 : Place ΓD57 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨4, by decide⟩, rfl⟩
+def pD57 : Place ΓD57 (LayoutTy.PtrL pairD52L) := .local ⟨⟨4, by decide⟩, rfl⟩
 
 /-- Positive: copies whose DESTINATION is unbound — the statement's own
     execution allocates it (`Alloc` then `Memcpy`), for a local source
@@ -1596,7 +1596,7 @@ def d58_copy_field_into_fresh_local : IO Unit :=
      .assign yD58 (.copy (.proj sD58 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d58 copy field into fresh local"
 
-def ppNatD59 := obseq.LayoutTy.PtrL ptrNat
+def ppNatD59 := LayoutTy.PtrL ptrNat
 def ΓD59 : Ctx := [natL, ptrNat, ppNatD59, ppNatD59, ptrNat]
 def xD59 : Place ΓD59 natL := .local ⟨⟨0, by decide⟩, rfl⟩
 def pD59 : Place ΓD59 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1643,7 +1643,7 @@ def d60_copy_into_deref_dst : IO Unit :=
      .assign (.deref pD60) (.copy (.deref qD60))]
     .ok "d60 copy into deref dst"
 
-def sD61L := obseq.LayoutTy.TupL [natL, innerD50L]
+def sD61L := LayoutTy.TupL [natL, innerD50L]
 def ΓD61 : Ctx := [sD61L, natL, natL, pairD52L]
 def sD61 : Place ΓD61 sD61L := .local ⟨⟨0, by decide⟩, rfl⟩
 def xD61 : Place ΓD61 natL := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -1665,8 +1665,8 @@ def d61_copy_into_flattened_deref_dst : IO Unit :=
         (.field ⟨1, by decide⟩ .nil))))]
     .ok "d61 copy into flattened deref dst"
 
-def ΓD62 : Ctx := [obseq.LayoutTy.PtrL pairD52L, pairD52L, natL, natL]
-def pD62 : Place ΓD62 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨0, by decide⟩, rfl⟩
+def ΓD62 : Ctx := [LayoutTy.PtrL pairD52L, pairD52L, natL, natL]
+def pD62 : Place ΓD62 (LayoutTy.PtrL pairD52L) := .local ⟨⟨0, by decide⟩, rfl⟩
 def tD62 : Place ΓD62 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
 def yD62 : Place ΓD62 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 def zD62 : Place ΓD62 natL := .local ⟨⟨3, by decide⟩, rfl⟩
@@ -1699,8 +1699,8 @@ def d63_copy_into_proj_deref_dst_offset : IO Unit :=
      .assign zD62 (.copy (.proj tD62 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d63 copy into proj deref dst at offset"
 
-def ΓD64 : Ctx := [obseq.LayoutTy.PtrL natL, pairD52L, natL, natL]
-def pD64 : Place ΓD64 (obseq.LayoutTy.PtrL natL) := .local ⟨⟨0, by decide⟩, rfl⟩
+def ΓD64 : Ctx := [LayoutTy.PtrL natL, pairD52L, natL, natL]
+def pD64 : Place ΓD64 (LayoutTy.PtrL natL) := .local ⟨⟨0, by decide⟩, rfl⟩
 def tD64 : Place ΓD64 pairD52L := .local ⟨⟨1, by decide⟩, rfl⟩
 def xD64 : Place ΓD64 natL := .local ⟨⟨2, by decide⟩, rfl⟩
 def zD64 : Place ΓD64 natL := .local ⟨⟨3, by decide⟩, rfl⟩
@@ -1867,13 +1867,13 @@ def d74_projsrc_offset_into_fresh_proj_offset : IO Unit :=
     .ok "d74 proj src at offset into fresh proj dst at offset"
 
 def ΓD75 : Ctx :=
-  [pairD52L, obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL natL),
-   obseq.LayoutTy.PtrL natL, obseq.LayoutTy.PtrL natL, natL, natL]
+  [pairD52L, LayoutTy.PtrL (LayoutTy.PtrL natL),
+   LayoutTy.PtrL natL, LayoutTy.PtrL natL, natL, natL]
 def tD75 : Place ΓD75 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
-def pD75 : Place ΓD75 (obseq.LayoutTy.PtrL (obseq.LayoutTy.PtrL natL)) :=
+def pD75 : Place ΓD75 (LayoutTy.PtrL (LayoutTy.PtrL natL)) :=
   .local ⟨⟨1, by decide⟩, rfl⟩
-def qD75 : Place ΓD75 (obseq.LayoutTy.PtrL natL) := .local ⟨⟨2, by decide⟩, rfl⟩
-def rD75 : Place ΓD75 (obseq.LayoutTy.PtrL natL) := .local ⟨⟨3, by decide⟩, rfl⟩
+def qD75 : Place ΓD75 (LayoutTy.PtrL natL) := .local ⟨⟨2, by decide⟩, rfl⟩
+def rD75 : Place ΓD75 (LayoutTy.PtrL natL) := .local ⟨⟨3, by decide⟩, rfl⟩
 def xD75 : Place ΓD75 natL := .local ⟨⟨4, by decide⟩, rfl⟩
 def zD75 : Place ΓD75 natL := .local ⟨⟨5, by decide⟩, rfl⟩
 
@@ -1901,10 +1901,10 @@ def d75_ref_projsrc_offset_into_deref_dst : IO Unit :=
     .ok "d75 ref proj src at offset into deref dst"
 
 def ΓD76 : Ctx :=
-  [pairD52L, obseq.LayoutTy.PtrL natL, obseq.LayoutTy.PtrL natL, natL]
+  [pairD52L, LayoutTy.PtrL natL, LayoutTy.PtrL natL, natL]
 def sD76 : Place ΓD76 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
-def tD76 : Place ΓD76 (obseq.LayoutTy.PtrL natL) := .local ⟨⟨1, by decide⟩, rfl⟩
-def rD76 : Place ΓD76 (obseq.LayoutTy.PtrL natL) := .local ⟨⟨2, by decide⟩, rfl⟩
+def tD76 : Place ΓD76 (LayoutTy.PtrL natL) := .local ⟨⟨1, by decide⟩, rfl⟩
+def rD76 : Place ΓD76 (LayoutTy.PtrL natL) := .local ⟨⟨2, by decide⟩, rfl⟩
 def zD76 : Place ΓD76 natL := .local ⟨⟨3, by decide⟩, rfl⟩
 
 /-- Positive: REGIME B-proj of ref — a reference to a FIELD stored into
@@ -1927,7 +1927,7 @@ def d76_ref_projsrc_into_fresh_dst : IO Unit :=
      .assign zD76 (.copy (.proj sD76 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d76 ref proj src into fresh dst"
 
-def ptrPairD77L := obseq.LayoutTy.TupL [ptrNat, ptrNat]
+def ptrPairD77L := LayoutTy.TupL [ptrNat, ptrNat]
 def ΓD77 : Ctx := [ptrPairD77L, natL, natL, natL]
 def tD77 : Place ΓD77 ptrPairD77L := .local ⟨⟨0, by decide⟩, rfl⟩
 def xD77 : Place ΓD77 natL := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -2004,8 +2004,8 @@ def d79_ref_derefsrc_into_fresh_dst : IO Unit :=
      .assign zD79 (.copy xD79)]
     .ok "d79 ref deref src into fresh dst"
 
-def innerD80 := obseq.LayoutTy.TupL [natL, natL]
-def outerD80 := obseq.LayoutTy.TupL [innerD80, innerD80]
+def innerD80 := LayoutTy.TupL [natL, natL]
+def outerD80 := LayoutTy.TupL [innerD80, innerD80]
 def ΓD80 : Ctx := [outerD80, ptrNat, ptrNat, natL]
 def sD80 : Place ΓD80 outerD80 := .local ⟨⟨0, by decide⟩, rfl⟩
 def tD80 : Place ΓD80 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -2117,8 +2117,8 @@ def d83_ref_projsrc_into_bound_projdst : IO Unit :=
      .assign zD82 (.copy s10D82)]
     .ok "d83 ref proj src into bound proj dst"
 
-def selfTupA := obseq.LayoutTy.TupL [natL, ptrNat, natL]
-def selfTupB := obseq.LayoutTy.TupL [ptrNat, natL, natL]
+def selfTupA := LayoutTy.TupL [natL, ptrNat, natL]
+def selfTupB := LayoutTy.TupL [ptrNat, natL, natL]
 def ΓD84 : Ctx := [selfTupA, ptrNat, natL]
 def tD84 : Place ΓD84 selfTupA := .local ⟨⟨0, by decide⟩, rfl⟩
 def rD84 : Place ΓD84 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -2169,9 +2169,9 @@ def d85_ref_self_root_zero : IO Unit :=
      .assign zD85 (.copy t1D85)]
     .ok "d85 ref self root at zero"
 
-def ΓD86 : Ctx := [pairD52L, obseq.LayoutTy.PtrL pairD52L, ptrNat, ptrNat, natL, natL]
+def ΓD86 : Ctx := [pairD52L, LayoutTy.PtrL pairD52L, ptrNat, ptrNat, natL, natL]
 def sD86 : Place ΓD86 pairD52L := .local ⟨⟨0, by decide⟩, rfl⟩
-def pD86 : Place ΓD86 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def pD86 : Place ΓD86 (LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
 def tD86 : Place ΓD86 ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
 def rD86 : Place ΓD86 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
 def zD86 : Place ΓD86 natL := .local ⟨⟨4, by decide⟩, rfl⟩
@@ -2204,9 +2204,9 @@ def d86_ref_derefprojsrc_into_local : IO Unit :=
      .assign yD86 (.copy (.proj sD86 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d86 ref deref-proj src into local"
 
-def ΓD87 : Ctx := [ptrPairD77L, obseq.LayoutTy.PtrL pairD52L, pairD52L, ptrNat, natL]
+def ΓD87 : Ctx := [ptrPairD77L, LayoutTy.PtrL pairD52L, pairD52L, ptrNat, natL]
 def tD87 : Place ΓD87 ptrPairD77L := .local ⟨⟨0, by decide⟩, rfl⟩
-def pD87 : Place ΓD87 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def pD87 : Place ΓD87 (LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
 def sD87 : Place ΓD87 pairD52L := .local ⟨⟨2, by decide⟩, rfl⟩
 def rD87 : Place ΓD87 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
 def zD87 : Place ΓD87 natL := .local ⟨⟨4, by decide⟩, rfl⟩
@@ -2236,9 +2236,9 @@ def d87_ref_chainsrc_into_fresh_projdst : IO Unit :=
      .assign zD87 (.copy (.proj sD87 (.field ⟨1, by decide⟩ .nil)))]
     .ok "d87 ref chain src into fresh proj dst at offset"
 
-def ΓD88 : Ctx := [ptrPairD77L, obseq.LayoutTy.PtrL pairD52L, pairD52L, ptrNat, ptrNat, natL]
+def ΓD88 : Ctx := [ptrPairD77L, LayoutTy.PtrL pairD52L, pairD52L, ptrNat, ptrNat, natL]
 def tD88 : Place ΓD88 ptrPairD77L := .local ⟨⟨0, by decide⟩, rfl⟩
-def pD88 : Place ΓD88 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def pD88 : Place ΓD88 (LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
 def sD88 : Place ΓD88 pairD52L := .local ⟨⟨2, by decide⟩, rfl⟩
 def qD88 : Place ΓD88 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
 def rD88 : Place ΓD88 ptrNat := .local ⟨⟨4, by decide⟩, rfl⟩
@@ -2271,10 +2271,10 @@ def d88_ref_plain_deref_src_into_projdst : IO Unit :=
     .ok "d88 ref plain deref src into proj dst at offset"
 
 def ΓD89 : Ctx :=
-  [obseq.LayoutTy.PtrL ptrNat, obseq.LayoutTy.PtrL pairD52L, pairD52L,
+  [LayoutTy.PtrL ptrNat, LayoutTy.PtrL pairD52L, pairD52L,
    ptrNat, ptrNat, natL]
-def qD89 : Place ΓD89 (obseq.LayoutTy.PtrL ptrNat) := .local ⟨⟨0, by decide⟩, rfl⟩
-def pD89 : Place ΓD89 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def qD89 : Place ΓD89 (LayoutTy.PtrL ptrNat) := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD89 : Place ΓD89 (LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
 def sD89 : Place ΓD89 pairD52L := .local ⟨⟨2, by decide⟩, rfl⟩
 def tD89 : Place ΓD89 ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
 def rD89 : Place ΓD89 ptrNat := .local ⟨⟨4, by decide⟩, rfl⟩
@@ -2308,10 +2308,10 @@ def d89_ref_two_mothers : IO Unit :=
     .ok "d89 ref two mothers: chain src into chain dst"
 
 def ΓD90 : Ctx :=
-  [obseq.LayoutTy.PtrL ptrPairD77L, obseq.LayoutTy.PtrL pairD52L, pairD52L,
+  [LayoutTy.PtrL ptrPairD77L, LayoutTy.PtrL pairD52L, pairD52L,
    ptrPairD77L, ptrNat, natL]
-def qD90 : Place ΓD90 (obseq.LayoutTy.PtrL ptrPairD77L) := .local ⟨⟨0, by decide⟩, rfl⟩
-def pD90 : Place ΓD90 (obseq.LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
+def qD90 : Place ΓD90 (LayoutTy.PtrL ptrPairD77L) := .local ⟨⟨0, by decide⟩, rfl⟩
+def pD90 : Place ΓD90 (LayoutTy.PtrL pairD52L) := .local ⟨⟨1, by decide⟩, rfl⟩
 def sD90 : Place ΓD90 pairD52L := .local ⟨⟨2, by decide⟩, rfl⟩
 def tD90 : Place ΓD90 ptrPairD77L := .local ⟨⟨3, by decide⟩, rfl⟩
 def rD90 : Place ΓD90 ptrNat := .local ⟨⟨4, by decide⟩, rfl⟩
@@ -2387,8 +2387,8 @@ Change the paper in the same commit that changes either. -/
 def tripleTy := obseq.TyVal.TupTy [natTy, obseq.TyVal.TupTy [natTy, natTy]]
 
 def ΓP : Ctx :=
-  [obseq.LayoutTy.TupL [natL, obseq.LayoutTy.TupL [natL, natL]], ptrNat]
-def xP : Place ΓP (obseq.LayoutTy.TupL [natL, obseq.LayoutTy.TupL [natL, natL]]) :=
+  [LayoutTy.TupL [natL, LayoutTy.TupL [natL, natL]], ptrNat]
+def xP : Place ΓP (LayoutTy.TupL [natL, LayoutTy.TupL [natL, natL]]) :=
   .local ⟨⟨0, by decide⟩, rfl⟩
 def yP : Place ΓP ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
 /-- `x.0`. -/

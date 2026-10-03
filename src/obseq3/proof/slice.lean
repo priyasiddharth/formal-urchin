@@ -10,7 +10,7 @@ import obseq3.proof.binop
 /-!
 # `sliceLen`: slice metadata as a REGISTER-ONLY value package
 
-`sliceLen p : RExpr Γ NatL` reads the fat pointer in `p` — copy's read,
+`sliceLen p : RExpr Γ (IntL t)` reads the fat pointer in `p` — copy's read,
 once — and stores the length the pointer CLAIMS, in elements: its extent
 divided by the element's block size. `subSlice p lo hi` reads the same
 pointer and two bounds — three copy reads — and stores the pointer
@@ -33,9 +33,9 @@ open obseq3.oseair (Instr Register Rhs Val)
 variable {Γ : Ctx}
 
 /-- `sliceLen` is a value package. -/
-theorem sliceLen_valuePkg {Γ : Ctx} {σ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (compProg : oseair.Prog) :
-    ValuePkg compProg (RExpr.sliceLen (Γ := Γ) src) := by
+theorem sliceLen_valuePkg {Γ : Ctx} {σ : LayoutTy} {t : IntTy}
+    (src : Place Γ (LayoutTy.PtrL σ)) (compProg : oseair.Prog) :
+    ValuePkg compProg (RExpr.sliceLen (Γ := Γ) (t := t) src) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   -- §1 invert the source: one read, a pointer value
@@ -69,7 +69,7 @@ theorem sliceLen_valuePkg {Γ : Ctx} {σ : LayoutTy}
   obtain ⟨h_fr, h_fv⟩ := readToReg_flat hD
   -- §3 the compiled shape: the read, then the one `SliceLen`
   have h_pre : CheckedCompilerM.run
-      (compileRExprPreChecked (RExpr.sliceLen (Γ := Γ) src)) csA
+      (compileRExprPreChecked (RExpr.sliceLen (Γ := Γ) (t := t) src)) csA
       = emit { (CheckedCompilerM.run (readToReg src) csA) with
           nextReg := (CheckedCompilerM.run (readToReg src) csA).nextReg + 1 }
         [Instr.Assgn (Register.R (CheckedCompilerM.run (readToReg src) csA).nextReg)
@@ -127,7 +127,7 @@ theorem sliceLen_valuePkg {Γ : Ctx} {σ : LayoutTy}
   have h_run2 := runN_Assgn_SliceLen_step compProg sR _ _ _ _ b' o e sz tag'
     h_code0 h_vreg
   have h_ts : obseq.typeSize (layoutToTyVal σ) = blockSize σ :=
-    obseq.typeSize_layoutToTyVal _
+    typeSize_layoutToTyVal _
   rw [h_ts] at h_run2
   -- §6 the tail: nothing grew — not memory, not a tag, not an address
   rw [h_pre]
@@ -175,7 +175,8 @@ follow them (the register frame the read packages export). -/
 
 /-- `subSlice` is a value package. -/
 theorem subSlice_valuePkg {Γ : Ctx} {σ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (lo hi : Place Γ obseq.LayoutTy.NatL)
+    (src : Place Γ (LayoutTy.PtrL σ)) {tl th : IntTy} (lo : Place Γ (LayoutTy.IntL tl))
+    (hi : Place Γ (LayoutTy.IntL th))
     (compProg : oseair.Prog) :
     ValuePkg compProg (RExpr.subSlice (Γ := Γ) src lo hi) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
@@ -358,17 +359,17 @@ theorem subSlice_valuePkg {Γ : Ctx} {σ : LayoutTy}
   rw [← h_hfr] at h_regmonoH h_lbsH h_pcH h_vbelowH
   -- the earlier operands survived the later reads
   have h_vregP' : oseair.RegMap.lookup sR3.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (flattenPlace src)) csA).nextReg)
-      = some (layoutToTyVal (obseq.LayoutTy.PtrL σ), [Val.Ptr b' o e sz tag']) := by
+      = some (layoutToTyVal (LayoutTy.PtrL σ), [Val.Ptr b' o e sz tag']) := by
     rw [h_frameH _ (RegisterBelow.mono h_regmonoL h_vbelowP),
       h_frameL _ h_vbelowP]
     exact h_vregP
   have h_vregL' : oseair.RegMap.lookup sR3.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (flattenPlace lo)) (CheckedCompilerM.run (readToReg src) csA)).nextReg)
-      = some (layoutToTyVal obseq.LayoutTy.NatL, [Val.Dat l]) := by
+      = some (layoutToTyVal (LayoutTy.IntL tl), [Val.Dat l]) := by
     rw [h_frameH _ h_vbelowL]
     exact h_vregL
   -- §6 the `SubSlice` step
   have h_ts : obseq.typeSize (layoutToTyVal σ) = blockSize σ :=
-    obseq.typeSize_layoutToTyVal _
+    typeSize_layoutToTyVal _
   have h_code0 : compProg sR3.pc = some (Instr.Assgn (Register.R (CheckedCompilerM.run (readToReg hi) (CheckedCompilerM.run (readToReg lo) (CheckedCompilerM.run (readToReg src) csA))).nextReg)
           (Rhs.SubSlice (layoutToTyVal σ) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (flattenPlace src)) csA).nextReg) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (flattenPlace lo)) (CheckedCompilerM.run (readToReg src) csA)).nextReg) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared (flattenPlace hi)) (CheckedCompilerM.run (readToReg lo) (CheckedCompilerM.run (readToReg src) csA))).nextReg))) := by
     rw [h_pcH]

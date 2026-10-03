@@ -41,7 +41,7 @@ theorem pureCStore_pkg {Γ : Ctx} {τ : LayoutTy} {compProg : oseairL.Prog}
 
 theorem constInit_pkg {Γ : Ctx} {compProg : oseairL.Prog} {L : mirliteB.LayEnv Γ}
     (dstL : BLayout) (v : Word) :
-    ValuePkgB compProg L dstL (RExpr.constInit (Γ := Γ) v) :=
+    ValuePkgB compProg L dstL (RExpr.constInit (Γ := Γ) (t := tE) v) :=
   pureCStore_pkg [MemValue.word v] [Val.Dat v]
     (fun _ => ⟨rfl, _, rfl, fun _ => rfl, rfl⟩)
     (fun sM output h => by
@@ -66,7 +66,7 @@ theorem uninit_pkg {Γ : Ctx} {τ : LayoutTy} {compProg : oseairL.Prog} {L : mir
 /-- `x := const v`, `x` a bound local. -/
 theorem constWrite_local_sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {s_mir s_mir' : mirliteB.State MSB Γ} {s_osea : oseairL.State MSB}
-    {loc : Local Γ obseq.LayoutTy.NatL} {b : Binding} {v : Word} {cs : CompilerState}
+    {loc : Local Γ (LayoutTy.IntL tN)} {b : Binding} {v : Word} {cs : CompilerState}
     (compProg : oseairL.Prog)
     (h_inv : InvAtB L ρt s_mir s_osea cs)
     (h_code : CodeIncludedB compProg

@@ -18,7 +18,7 @@ open obseq3 obseq3.bytes obseq3.proof
 open obseq3.compileB
 
 theorem ChainB.deref_all {Γ : Ctx} :
-    ∀ {τ : LayoutTy} (P : Place Γ (obseq.LayoutTy.PtrL τ)), ChainB (.deref P)
+    ∀ {τ : LayoutTy} (P : Place Γ (LayoutTy.PtrL τ)), ChainB (.deref P)
   | _, .local loc => .deref (.base loc)
   | _, .deref P => .deref (ChainB.deref_all P)
   | _, .proj (.local loc) f => .derefProj f (.base loc)

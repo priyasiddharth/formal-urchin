@@ -24,7 +24,8 @@ def mergeVariantLayouts (variants : List (List LayoutTy)) :
     []
 
 partial def toLayout : UTy → Except String LayoutTy
-  | .nat | .int _ => .ok .NatL
+  | .nat => .ok .usize
+  | .int t => .ok (.IntL t.toIntTy)
   | .ref _ inner => do return .PtrL (← toLayout inner)
   | .raw _ inner => do return .PtrL (← toLayout inner)
   | .tup tys => do return .TupL (← tys.mapM toLayout)
@@ -35,7 +36,9 @@ partial def toLayout : UTy → Except String LayoutTy
   | .sliceData _ => .error "unsupported: unsized slice value position"
   | .enum variants => do
       let vls ← variants.mapM (·.mapM toLayout)
-      return .TupL (.NatL :: (← mergeVariantLayouts vls))
+      -- the tag is an `isize`, the type MIR's `discriminant()` has for an
+      -- enum without a `repr`
+      return .TupL (.IntL ⟨64, true⟩ :: (← mergeVariantLayouts vls))
   | .unsupported d => .error s!"unsupported: type {d}"
 
 def toRefKind : URefKind → obseq3.RefKind
@@ -72,18 +75,25 @@ def elabPlace (Γ : Ctx) (p : UPlace) : Except String ((τ : LayoutTy) × Place 
   let ⟨τ, pl⟩ ← elabRoot Γ p.root
   elabPlaceAux Γ τ pl p.projs
 
-/-- Elaborate a place that must have layout `NatL` (discriminants,
-    allocation sizes). -/
-def elabNatPlace (Γ : Ctx) (p : UPlace) (what : String) :
-    Except String (Place Γ .NatL) := do
+/-- Elaborate a place that must be integer-typed, at any width
+    (discriminants, allocation sizes, operands). -/
+def elabIntPlace (Γ : Ctx) (p : UPlace) (what : String) :
+    Except String ((t : IntTy) × Place Γ (.IntL t)) := do
   let ⟨τ, pl⟩ ← elabPlace Γ p
-  if h : τ = obseq.LayoutTy.NatL then
-    return h ▸ pl
-  else
-    .error s!"{what} is not a word-typed place"
+  match τ, pl with
+  | .IntL t, pl => return ⟨t, pl⟩
+  | _, _ => .error s!"{what} is not an integer-typed place"
 
-def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr Γ τ)
-  | .use (.const v) => .ok ⟨.NatL, .constInit v⟩
+/-- The integer type an integer-valued rvalue is elaborated at: the
+    destination's, or `usize` when the destination is not an integer (the
+    assignment then reports the mismatch). -/
+def intTyOf : LayoutTy → IntTy
+  | .IntL t => t
+  | _ => IntTy.u64
+
+def elabRvalue (Γ : Ctx) (expected : LayoutTy) :
+    URvalue → Except String ((τ : LayoutTy) × RExpr Γ τ)
+  | .use (.const v) => .ok ⟨.IntL (intTyOf expected), .constInit v⟩
   | .use .constUnit => .error "unit constant not dropped by lowering"
   | .use (.copy p) | .use (.move p) => do
       -- an assignment `Move` operand is a COPY, as Miri evaluates it (rustc
@@ -102,7 +112,7 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
   | .exposeAddr p => do
       let ⟨τ, pl⟩ ← elabPlace Γ p
       match τ, pl with
-      | .PtrL _, pl => return ⟨.NatL, .exposeAddr pl⟩
+      | .PtrL _, pl => return ⟨.IntL (intTyOf expected), .exposeAddr pl⟩
       | _, _ => .error "ptr-to-int cast of a non-pointer place"
   | .use (.constNeg _ _) => .error "negative constant not encoded by lowering"
   | .fromExposed _ => .error "fromExposed is elaborated against the destination type"
@@ -111,21 +121,21 @@ def elabRvalue (Γ : Ctx) : URvalue → Except String ((τ : LayoutTy) × RExpr 
       -- slice metadata: the fat pointer's extent, in elements
       let ⟨τ, pl⟩ ← elabPlace Γ p
       match τ, pl with
-      | .PtrL _, pl => return ⟨.NatL, .sliceLen pl⟩
+      | .PtrL _, pl => return ⟨.IntL (intTyOf expected), .sliceLen pl⟩
       | _, _ => .error "slice length of a non-pointer place"
   | .subSlice _ _ _ => .error "subSlice is elaborated against the destination type"
   | .binOp op ity a b => do
-      -- a runtime word: two `NatL` operand PLACES (the seam materialised
+      -- a runtime word: two integer operand PLACES (the seam materialised
       -- any constant operand) and the mirlite `BinOp` the string names
       let pa ← match a with
-        | .copy p | .move p => elabNatPlace Γ p "binOp operand"
+        | .copy p | .move p => elabIntPlace Γ p "binOp operand"
         | _ => .error "binOp operand not materialised by lowering"
       let pb ← match b with
-        | .copy p | .move p => elabNatPlace Γ p "binOp operand"
+        | .copy p | .move p => elabIntPlace Γ p "binOp operand"
         | _ => .error "binOp operand not materialised by lowering"
       let some bop := binOpOf op ity.toIntTy
         | .error s!"unsupported: binary op {op}"
-      return ⟨.NatL, .binOp bop pa pb⟩
+      return ⟨.IntL (intTyOf expected), .binOp bop pa.2 pb.2⟩
   | .refSlice _ _ _ => .error "refSlice is elaborated against the destination type"
   | .fnRef _ => .error "fn reference not consumed by lowering"
   | .uninit => .error "uninit is elaborated against the destination type"
@@ -141,9 +151,9 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
       match rv with
       | .uninit => return .assign pd .uninit
       | .fromExposed p =>
-          let np ← elabNatPlace Γ p "int-to-ptr cast source"
+          let np ← elabIntPlace Γ p "int-to-ptr cast source"
           match τd, pd with
-          | .PtrL _, pd => return .assign pd (.fromExposed np)
+          | .PtrL _, pd => return .assign pd (.fromExposed np.2)
           | _, _ => .error s!"int-to-ptr cast into a non-pointer place (line {line})"
       | .ptrOffset p delta =>
           let ⟨τp, pp⟩ ← elabPlace Γ p
@@ -161,22 +171,22 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           -- scales its bounds by that block size
           let ⟨τp, pp⟩ ← elabPlace Γ p
           let ploOp ← match lo with
-            | .copy q | .move q => elabNatPlace Γ q "sub-slice bound"
+            | .copy q | .move q => elabIntPlace Γ q "sub-slice bound"
             | _ => .error "sub-slice bound not materialised by lowering"
           let phiOp ← match hi with
-            | .copy q | .move q => elabNatPlace Γ q "sub-slice bound"
+            | .copy q | .move q => elabIntPlace Γ q "sub-slice bound"
             | _ => .error "sub-slice bound not materialised by lowering"
           match τd, pd with
           | .PtrL τe, pd =>
               -- source and destination are the same slice type: the
               -- narrowing neither changes the element nor the pointee
-              if h : τp = obseq.LayoutTy.PtrL τe then
-                return .assign pd (.subSlice (h ▸ pp) ploOp phiOp)
+              if h : τp = obseq3.LayoutTy.PtrL τe then
+                return .assign pd (.subSlice (h ▸ pp) ploOp.2 phiOp.2)
               else
                 .error s!"sub-slice element type mismatch (line {line})"
           | _, _ => .error s!"sub-slice into a non-pointer place (line {line})"
       | _ =>
-        let ⟨τr, er⟩ ← elabRvalue Γ rv
+        let ⟨τr, er⟩ ← elabRvalue Γ τd rv
         if h : τr = τd then
           return .assign pd (h ▸ er)
         else
@@ -187,11 +197,11 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           | _, _, _, _ =>
             .error s!"type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
   | .assignIf discr val dst rv line => do
-      let discrP ← elabNatPlace Γ discr "assignIf discriminant"
+      let discrP ← elabIntPlace Γ discr "assignIf discriminant"
       let ⟨τd, pd⟩ ← elabPlace Γ dst
-      let ⟨τr, er⟩ ← elabRvalue Γ rv
+      let ⟨τr, er⟩ ← elabRvalue Γ τd rv
       if h : τr = τd then
-        return .assignIf discrP val pd (h ▸ er)
+        return .assignIf discrP.2 val pd (h ▸ er)
       else
         .error s!"assignIf type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
   | .alloc dst szOp _line => do
@@ -202,7 +212,7 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
             | none => pure (AllocLen.const 1)
             | some (.const v) => pure (AllocLen.const v)
             | some (.copy p) | some (.move p) =>
-                pure (AllocLen.fromPlace (← elabNatPlace Γ p "allocation size"))
+                pure (AllocLen.fromPlace (← elabIntPlace Γ p "allocation size").2)
             | some _ => .error "unsupported allocation size operand"
           return .assign pd (.alloc len)
       | _, _ => .error "alloc destination is not pointer-typed"
@@ -252,7 +262,7 @@ def elabProg (lp : LProg) : Except String Loaded := do
   let layouts := lp.locals.map fun ty =>
     match toLayout ty with
     | .ok l => (l, none)
-    | .error e => (obseq.LayoutTy.NatL, some e)
+    | .error e => (obseq3.LayoutTy.usize, some e)
   let Γ := layouts.map (·.1)
   for s in lp.stmts do
     for p in stmtPlaces s do
@@ -268,7 +278,7 @@ def elabProg (lp : LProg) : Except String Loaded := do
            -- placeholder's layout, so every local's layout has its type's
            -- shape (`bytes.Agrees`, the byte proof's layout conditions)
            blay := (lp.locals.zip layouts).map fun (ty, _, err?) =>
-             if err?.isSome then obseq3.bytes.ofLayoutTy .NatL else toBLayout ty }
+             if err?.isSome then obseq3.bytes.ofLayoutTy .usize else toBLayout ty }
 
 /-- Full pipeline: ULLBC JSON → parsed crate → lowered (along the
     certificate, if any) → elaborated. -/

@@ -5088,3 +5088,9 @@ Later: the loader's layouts checked against the two conditions —
 `fmt::Arguments` enum) disagreed; the loader now gives placeholders the
 placeholder's layout, and 147/147 loaded programs agree, suites unchanged.
 Next: the cleanup pass (factor the projoff bracket, grind).
+Later: `IntL (t : IntTy)` replaces `NatL` — obseq3's own `LayoutTy`; loader
+keeps integer widths (enum tags `isize`, typed `x | 0` for
+pattern-preserving casts, `Ref` guard pointees from type args);
+`Agrees`/`--layouts` now width-checked, 147/147. Suites and both audits
+unchanged. Next: optionally tighten op typing to the `BinOp`'s width; the
+cleanup pass.

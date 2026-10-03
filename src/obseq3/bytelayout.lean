@@ -1,5 +1,5 @@
 import obseq3.bytemem
-import obseq.types
+import obseq3.types
 
 /-!
 # Byte layouts — stage 1 of byte-addressed memory
@@ -21,7 +21,7 @@ semantics can switch memories without changing how many values anything
 produces.
 
 STATUS (branch `byteaddress`): standalone, like `bytemem.lean`.
-`obseq.LayoutTy` is shared with v1 and obseq2 and is not widened.
+`LayoutTy` is shared with v1 and obseq2 and is not widened.
 -/
 
 namespace obseq3.bytes
@@ -152,22 +152,24 @@ theorem reprC_good (fs : List BLayout) (hfs : ∀ f ∈ fs, Good f.leaves f.size
 /-! ## From the cell layouts -/
 
 mutual
-/-- Today's cell layout as a byte layout: a model word is a `usize`, a
-    pointer a thin pointer, a tuple the C layout of its fields. -/
-def ofLayoutTy : obseq.LayoutTy → BLayout
-  | .NatL => .int ptrSize
+/-- The uniform byte layout of a layout type: every integer 8 bytes
+    whatever its width (one cell of the cell model), a pointer a thin
+    pointer, a tuple the C layout of its fields. The loader's layouts give
+    integers their real width instead (`Agrees` checks it). -/
+def ofLayoutTy : LayoutTy → BLayout
+  | .IntL _ => .int ptrSize
   | .PtrL τ => .ptr (ofLayoutTy τ)
   | .TupL ts => reprC (ofLayoutTyList ts)
 
-def ofLayoutTyList : List obseq.LayoutTy → List BLayout
+def ofLayoutTyList : List LayoutTy → List BLayout
   | [] => []
   | t :: ts => ofLayoutTy t :: ofLayoutTyList ts
 end
 
 mutual
-theorem ofLayoutTy_good : (τ : obseq.LayoutTy) →
+theorem ofLayoutTy_good : (τ : LayoutTy) →
     Good (ofLayoutTy τ).leaves (ofLayoutTy τ).size
-  | .NatL => by
+  | .IntL _ => by
       simp [ofLayoutTy, BLayout.leaves, BLayout.size, Good, Scalar.size]
   | .PtrL _ => by
       simp [ofLayoutTy, BLayout.leaves, BLayout.size, Good, Scalar.size]
@@ -175,7 +177,7 @@ theorem ofLayoutTy_good : (τ : obseq.LayoutTy) →
       rw [ofLayoutTy]
       exact reprC_good _ (ofLayoutTyList_good ts)
 
-theorem ofLayoutTyList_good : (ts : List obseq.LayoutTy) →
+theorem ofLayoutTyList_good : (ts : List LayoutTy) →
     ∀ f ∈ ofLayoutTyList ts, Good f.leaves f.size
   | [] => by simp [ofLayoutTyList]
   | t :: ts => by
@@ -202,21 +204,21 @@ theorem leavesFields_length (fs : List BLayout) (os : List Nat)
 mutual
 /-- The leaves of the byte layout are exactly the cells of the cell
     layout: one per word or pointer. -/
-theorem ofLayoutTy_leaves_length : (τ : obseq.LayoutTy) →
-    (ofLayoutTy τ).leaves.length = obseq.layoutSize τ
-  | .NatL => by simp [ofLayoutTy, BLayout.leaves, obseq.layoutSize]
-  | .PtrL _ => by simp [ofLayoutTy, BLayout.leaves, obseq.layoutSize]
+theorem ofLayoutTy_leaves_length : (τ : LayoutTy) →
+    (ofLayoutTy τ).leaves.length = layoutSize τ
+  | .IntL _ => by simp [ofLayoutTy, BLayout.leaves, layoutSize]
+  | .PtrL _ => by simp [ofLayoutTy, BLayout.leaves, layoutSize]
   | .TupL ts => by
-      rw [ofLayoutTy, obseq.layoutSize, reprC]
+      rw [ofLayoutTy, layoutSize, reprC]
       simp only [BLayout.leaves]
       rw [leavesFields_length _ _ (placeFields_length _ _)]
       exact ofLayoutTyList_leaves_length ts
 
-theorem ofLayoutTyList_leaves_length : (ts : List obseq.LayoutTy) →
-    ((ofLayoutTyList ts).map fun f => f.leaves.length).sum = obseq.layoutSizeList ts
-  | [] => by simp [ofLayoutTyList, obseq.layoutSizeList]
+theorem ofLayoutTyList_leaves_length : (ts : List LayoutTy) →
+    ((ofLayoutTyList ts).map fun f => f.leaves.length).sum = layoutSizeList ts
+  | [] => by simp [ofLayoutTyList, layoutSizeList]
   | t :: ts => by
-      simp only [ofLayoutTyList, List.map_cons, List.sum_cons, obseq.layoutSizeList]
+      simp only [ofLayoutTyList, List.map_cons, List.sum_cons, layoutSizeList]
       rw [ofLayoutTy_leaves_length t, ofLayoutTyList_leaves_length ts]
 end
 

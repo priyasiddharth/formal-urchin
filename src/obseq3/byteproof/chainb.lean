@@ -21,11 +21,11 @@ open obseq3.compileB
 
 inductive ChainB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
   | base {τ : LayoutTy} (loc : Local Γ τ) : ChainB (.local loc)
-  | deref {τ : LayoutTy} {p : Place Γ (obseq.LayoutTy.PtrL τ)} : ChainB p → ChainB (.deref p)
-  | derefProj {σ τ : LayoutTy} {b : Place Γ σ} (f : PathTo σ (obseq.LayoutTy.PtrL τ)) :
+  | deref {τ : LayoutTy} {p : Place Γ (LayoutTy.PtrL τ)} : ChainB p → ChainB (.deref p)
+  | derefProj {σ τ : LayoutTy} {b : Place Γ σ} (f : PathTo σ (LayoutTy.PtrL τ)) :
       ChainB b → ChainB (.deref (.proj b f))
   | derefNested {ρ σ τ : LayoutTy} {b : Place Γ ρ} {q : PathTo ρ σ}
-      {p : PathTo σ (obseq.LayoutTy.PtrL τ)} :
+      {p : PathTo σ (LayoutTy.PtrL τ)} :
       ChainB (.deref (.proj b (q.append p))) → ChainB (.deref (.proj (.proj b q) p))
 
 theorem ChainB.not_proj {Γ : Ctx} {σ : LayoutTy} {b : Place Γ σ} (h : ChainB b) :
@@ -41,7 +41,7 @@ theorem PtrChain.toB {Γ : Ctx} {τ : LayoutTy} {p : Place Γ τ} (h : PtrChain 
 
 theorem resolveAcc_deref_assoc {Γ : Ctx} {L : mirliteB.LayEnv Γ} {M : PermissionModel}
     {s : mirliteB.State M Γ} {ρ σ τ : LayoutTy} {b : Place Γ ρ} {q : PathTo ρ σ}
-    {p : PathTo σ (obseq.LayoutTy.PtrL τ)} :
+    {p : PathTo σ (LayoutTy.PtrL τ)} :
     mirliteB.resolvePlaceAcc M L s (.deref (.proj (.proj b q) p))
       = mirliteB.resolvePlaceAcc M L s (.deref (.proj b (q.append p))) := by
   have h := resolvePlaceAcc_assoc (L := L) s b q p
@@ -49,7 +49,7 @@ theorem resolveAcc_deref_assoc {Γ : Ctx} {L : mirliteB.LayEnv Γ} {M : Permissi
   rw [h]
 
 theorem deref_assoc {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρ σ τ : LayoutTy} (kind : RefKind)
-    (b : Place Γ ρ) (q : PathTo ρ σ) (p : PathTo σ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState) :
+    (b : Place Γ ρ) (q : PathTo ρ σ) (p : PathTo σ (LayoutTy.PtrL τ)) (cs : CompilerState) :
     CheckedCompilerM.run (placeToRegChecked L kind (.deref (.proj (.proj b q) p))) cs
       = CheckedCompilerM.run (placeToRegChecked L kind (.deref (.proj b (q.append p)))) cs ∧
     (CheckedCompilerM.value (placeToRegChecked L kind (.deref (.proj (.proj b q) p))) cs).map (·.result)

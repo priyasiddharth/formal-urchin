@@ -7,7 +7,7 @@ namespace obseq3
 inductive PathTo : LayoutTy → LayoutTy → Type where
 | nil : PathTo τ τ
 | field {tys : List LayoutTy} (idx : Fin tys.length) :
-    PathTo (tys.get idx) τ → PathTo (obseq.LayoutTy.TupL tys) τ
+    PathTo (tys.get idx) τ → PathTo (LayoutTy.TupL tys) τ
 
 namespace PathTo
 
@@ -53,13 +53,13 @@ theorem offset_add_size_le : (p : PathTo src dst) →
         | nil => cases h_i
         | cons ty rest ihs =>
             cases i with
-            | zero => simp [layoutSizeList, obseq.layoutSizeList]
+            | zero => simp [layoutSizeList, layoutSizeList]
             | succ j =>
                 have h_j : j < rest.length := Nat.lt_of_succ_lt_succ h_i
                 have := ihs j h_j
                 simp only [List.take_succ_cons, List.get_cons_succ]
                 show layoutSizeList (ty :: rest.take j) + _ ≤ layoutSizeList (ty :: rest)
-                simp only [layoutSizeList, obseq.layoutSizeList] at this ⊢
+                simp only [layoutSizeList, layoutSizeList] at this ⊢
                 omega
       calc offset (.field idx tail) + layoutSize dst
           = layoutSizeList (tys.take idx.1) + (offset tail + layoutSize dst) := by
@@ -67,7 +67,7 @@ theorem offset_add_size_le : (p : PathTo src dst) →
         _ ≤ layoutSizeList (tys.take idx.1) + layoutSize (tys.get idx) :=
             Nat.add_le_add_left ih _
         _ ≤ layoutSizeList tys := h_split
-        _ = layoutSize (obseq.LayoutTy.TupL tys) := rfl
+        _ = layoutSize (LayoutTy.TupL tys) := rfl
 
 end PathTo
 
@@ -76,7 +76,7 @@ end PathTo
 inductive Place (Γ : Ctx) : LayoutTy → Type where
 | local : Local Γ τ → Place Γ τ
 | proj  : Place Γ σ → PathTo σ τ → Place Γ τ
-| deref : Place Γ (obseq.LayoutTy.PtrL τ) → Place Γ τ
+| deref : Place Γ (LayoutTy.PtrL τ) → Place Γ τ
 
 /-- Constructor count — the termination measure for place lowering, which
     reassociates `.proj (.proj b q) p` to `.proj b (q.append p)`:
@@ -92,7 +92,7 @@ def Place.depth : Place Γ τ → Nat
     `n * blockSize τ` cells for a `PtrL τ` result. -/
 inductive AllocLen (Γ : Ctx) : Type where
 | const : Nat → AllocLen Γ
-| fromPlace : Place Γ obseq.LayoutTy.NatL → AllocLen Γ
+| fromPlace {t : IntTy} : Place Γ (LayoutTy.IntL t) → AllocLen Γ
 
 /-- A right-hand-side expression of layout type `τ` in context `Γ`.
     `ref`'s `Bool` marks a *protected* (function-entry) retag and its
@@ -111,22 +111,22 @@ inductive AllocLen (Γ : Ctx) : Type where
     surrounds it is a separate `refSlice`) and no memory event beyond
     the three reads. -/
 inductive RExpr (Γ : Ctx) : LayoutTy → Type where
-| constInit : Word → RExpr Γ obseq.LayoutTy.NatL
+| constInit {t : IntTy} : Word → RExpr Γ (LayoutTy.IntL t)
 | copy : Place Γ τ → RExpr Γ τ
 | move : Place Γ τ → RExpr Γ τ
-| ref : RefKind → Bool → List Bool → Place Γ τ → RExpr Γ (obseq.LayoutTy.PtrL τ)
-| ptrCast : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ (obseq.LayoutTy.PtrL τ)
-| ptrOffset : Place Γ (obseq.LayoutTy.PtrL σ) → Int → RExpr Γ (obseq.LayoutTy.PtrL τ)
-| refSlice : RefKind → Bool → Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ (obseq.LayoutTy.PtrL τ)
-| sliceLen : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ obseq.LayoutTy.NatL
-| subSlice : Place Γ (obseq.LayoutTy.PtrL σ) → Place Γ obseq.LayoutTy.NatL
-    → Place Γ obseq.LayoutTy.NatL → RExpr Γ (obseq.LayoutTy.PtrL σ)
-| exposeAddr : Place Γ (obseq.LayoutTy.PtrL σ) → RExpr Γ obseq.LayoutTy.NatL
-| fromExposed : Place Γ obseq.LayoutTy.NatL → RExpr Γ (obseq.LayoutTy.PtrL τ)
+| ref : RefKind → Bool → List Bool → Place Γ τ → RExpr Γ (LayoutTy.PtrL τ)
+| ptrCast : Place Γ (LayoutTy.PtrL σ) → RExpr Γ (LayoutTy.PtrL τ)
+| ptrOffset : Place Γ (LayoutTy.PtrL σ) → Int → RExpr Γ (LayoutTy.PtrL τ)
+| refSlice : RefKind → Bool → Place Γ (LayoutTy.PtrL σ) → RExpr Γ (LayoutTy.PtrL τ)
+| sliceLen {t : IntTy} : Place Γ (LayoutTy.PtrL σ) → RExpr Γ (LayoutTy.IntL t)
+| subSlice {tl th : IntTy} : Place Γ (LayoutTy.PtrL σ) → Place Γ (LayoutTy.IntL tl)
+    → Place Γ (LayoutTy.IntL th) → RExpr Γ (LayoutTy.PtrL σ)
+| exposeAddr {t : IntTy} : Place Γ (LayoutTy.PtrL σ) → RExpr Γ (LayoutTy.IntL t)
+| fromExposed {t : IntTy} : Place Γ (LayoutTy.IntL t) → RExpr Γ (LayoutTy.PtrL τ)
 | uninit : RExpr Γ τ
-| alloc : AllocLen Γ → RExpr Γ (obseq.LayoutTy.PtrL τ)
-| binOp : BinOp → Place Γ obseq.LayoutTy.NatL → Place Γ obseq.LayoutTy.NatL
-    → RExpr Γ obseq.LayoutTy.NatL
+| alloc : AllocLen Γ → RExpr Γ (LayoutTy.PtrL τ)
+| binOp {ta tb tr : IntTy} : BinOp → Place Γ (LayoutTy.IntL ta) → Place Γ (LayoutTy.IntL tb)
+    → RExpr Γ (LayoutTy.IntL tr)
 
 /-- A statement in context `Γ`.
     - `pushProtectors`/`popProtectors` bracket an inlined call's protector
@@ -138,8 +138,8 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
       `val` — used for variant-conditional seam retags of enum payloads. -/
 inductive Stmt (Γ : Ctx) : Type where
 | assign : Place Γ τ → RExpr Γ τ → Stmt Γ
-| assignIf : Place Γ obseq.LayoutTy.NatL → Word → Place Γ τ → RExpr Γ τ → Stmt Γ
-| dealloc : Place Γ (obseq.LayoutTy.PtrL τ) → Stmt Γ
+| assignIf {t : IntTy} : Place Γ (LayoutTy.IntL t) → Word → Place Γ τ → RExpr Γ τ → Stmt Γ
+| dealloc : Place Γ (LayoutTy.PtrL τ) → Stmt Γ
 | pushProtectors : Stmt Γ
 | popProtectors : Stmt Γ
 | halt : Stmt Γ

@@ -35,8 +35,8 @@ theorem ptr_of_storeSim {ρt : TagRenameMap} {b o e sz : Nat} {t : Tag} {vals : 
 
 theorem sliceLen_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_c : ReadSrcB src) :
-    ValuePkgB compProg L dstL (RExpr.sliceLen src) := by
+    {src : Place Γ (LayoutTy.PtrL σ)} (h_c : ReadSrcB src) :
+    ValuePkgB compProg L dstL (RExpr.sliceLen (t := tE) src) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
   have h_inv0 : InvAtB L ρt sM sA csA := ⟨h_pc, h_lbs, h_mem, h_alloc, h_psim, h_wf, h_tbd,
     h_unmap, h_prb⟩
@@ -51,7 +51,7 @@ theorem sliceLen_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
   subst h_ev
   have h_st1 := evalCopy_state h_e1
   obtain ⟨h_valA, h_prmA, -⟩ := readToReg_factsR h_c h_lbs h_e1
-  have h_pre : CheckedCompilerM.run (compileRExprPreChecked L dstL (RExpr.sliceLen src)) csA
+  have h_pre : CheckedCompilerM.run (compileRExprPreChecked L dstL (RExpr.sliceLen (t := tE) src)) csA
       = emit (bumpReg (CheckedCompilerM.run (readToReg L src) csA))
           [oseairL.Instr.Assgn (Register.R (CheckedCompilerM.run (readToReg L src) csA).nextReg)
             (oseairL.Rhs.SliceLen (mirliteB.pointeeLayout L src).size
@@ -60,7 +60,7 @@ theorem sliceLen_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
       CheckedCompilerM.run_lift, CheckedCompilerM.value_lift, CheckedCompilerM.run_pure]
     rfl
   have h_preV : ∃ pOut, CheckedCompilerM.value
-      (compileRExprPreChecked L dstL (RExpr.sliceLen src)) csA = .ok pOut ∧
+      (compileRExprPreChecked L dstL (RExpr.sliceLen (t := tE) src)) csA = .ok pOut ∧
       (∀ d, pOut.store d = [oseairL.Instr.RStore dstL
         (Register.R (CheckedCompilerM.run (readToReg L src) csA).nextReg) d]) ∧
       pOut.postCleanup = [] := by
@@ -106,7 +106,7 @@ theorem sliceLen_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
 
 theorem subSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} {lo hi : Place Γ obseq.LayoutTy.NatL}
+    {src : Place Γ (LayoutTy.PtrL σ)} {tl th : IntTy} {lo : Place Γ (LayoutTy.IntL tl)} {hi : Place Γ (LayoutTy.IntL th)}
     (h_c : ReadSrcB src) (h_cl : ReadSrcB lo) (h_ch : ReadSrcB hi) :
     ValuePkgB compProg L dstL (RExpr.subSlice src lo hi) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev

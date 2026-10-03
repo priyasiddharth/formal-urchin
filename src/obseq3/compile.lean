@@ -34,7 +34,6 @@ abbrev TargetProg := obseq3.oseair.Prog
 abbrev PlaceInfo := Register × LayoutTy
 abbrev PlaceRegMap := List (Nat × PlaceInfo)
 
-abbrev layoutToTyVal : LayoutTy → TyVal := obseq.layoutToTyVal
 
 structure CompilerState where
   nextReg   : Nat
@@ -377,7 +376,7 @@ inductive PlaceToRegEvidence {Γ : Ctx} :
       PlaceToRegEvidence kind (.proj base path)
         { reg := tmpReg, cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)] }
   | deref
-      {σ : LayoutTy} (ptrPlace : Place Γ (obseq.LayoutTy.PtrL σ))
+      {σ : LayoutTy} (ptrPlace : Place Γ (LayoutTy.PtrL σ))
       (ptrRes : PtrResult) (loadedReg : Register)
       (ptrEv : PlaceToRegEvidence RefKind.Shared ptrPlace ptrRes) :
       PlaceToRegEvidence kind (.deref ptrPlace)
@@ -402,7 +401,7 @@ inductive PlaceToBorrowRegEvidence {Γ : Ctx} :
       PlaceToBorrowRegEvidence kind (.proj base path)
         { reg := tmpReg, cleanup := baseRes.cleanup ++ [(tmpReg, blockSize τ)] }
   | deref
-      {σ : LayoutTy} (ptrPlace : Place Γ (obseq.LayoutTy.PtrL σ))
+      {σ : LayoutTy} (ptrPlace : Place Γ (LayoutTy.PtrL σ))
       (ptrRes : PtrResult) (loadedReg tmpReg : Register)
       (ptrEv : PlaceToRegEvidence RefKind.Shared ptrPlace ptrRes) :
       PlaceToBorrowRegEvidence kind (.deref ptrPlace)
@@ -517,8 +516,8 @@ def placeToBorrowRegChecked {Γ : Ctx} {τ : LayoutTy}
 
 inductive RExprToEvidence {Γ : Ctx}
     (dstPtr : Register) : {τ : LayoutTy} → RExpr Γ τ → Type where
-  | constInit (value : Word) :
-      RExprToEvidence dstPtr (.constInit value)
+  | constInit {t : IntTy} (value : Word) :
+      RExprToEvidence dstPtr (.constInit (t := t) value)
   | copy
       {τ : LayoutTy} (src : Place Γ τ) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
@@ -536,33 +535,35 @@ inductive RExprToEvidence {Γ : Ctx}
       RExprToEvidence dstPtr (.uninit (τ := τ))
   | alloc {τ : LayoutTy} (len : AllocLen Γ) (reg : Register) :
       RExprToEvidence dstPtr (.alloc (τ := τ) len)
-  | binOp (op : BinOp) (a b : Place Γ obseq.LayoutTy.NatL) (r1 r2 tmp : Register) :
-      RExprToEvidence dstPtr (.binOp op a b)
-  | sliceLen {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (r tmp : Register) :
-      RExprToEvidence dstPtr (.sliceLen src)
-  | subSlice {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ))
-      (lo hi : Place Γ obseq.LayoutTy.NatL) (rp rLo rHi tmp : Register) :
+  | binOp (op : BinOp) {ta tb tr : IntTy} (a : Place Γ (LayoutTy.IntL ta))
+      (b : Place Γ (LayoutTy.IntL tb)) (r1 r2 tmp : Register) :
+      RExprToEvidence dstPtr (.binOp (tr := tr) op a b)
+  | sliceLen {σ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.PtrL σ)) (r tmp : Register) :
+      RExprToEvidence dstPtr (.sliceLen (t := t) src)
+  | subSlice {σ : LayoutTy} (src : Place Γ (LayoutTy.PtrL σ))
+      {tl th : IntTy} (lo : Place Γ (LayoutTy.IntL tl)) (hi : Place Γ (LayoutTy.IntL th))
+      (rp rLo rHi tmp : Register) :
       RExprToEvidence dstPtr (.subSlice src lo hi)
   | exposeAddr
-      {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
+      {σ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.PtrL σ)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
-      RExprToEvidence dstPtr (.exposeAddr src)
+      RExprToEvidence dstPtr (.exposeAddr (t := t) src)
   | fromExposed
-      {τ : LayoutTy} (src : Place Γ obseq.LayoutTy.NatL) (srcRes : PtrResult)
+      {τ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.IntL t)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
       RExprToEvidence dstPtr (.fromExposed (τ := τ) src)
   | ptrCast
-      {σ τ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
+      {σ τ : LayoutTy} (src : Place Γ (LayoutTy.PtrL σ)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
       RExprToEvidence dstPtr (.ptrCast (τ := τ) src)
   | ptrOffset
-      {σ τ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (delta : Int)
+      {σ τ : LayoutTy} (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int)
       (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
       RExprToEvidence dstPtr (.ptrOffset (τ := τ) src delta)
   | refSlice
       {σ τ : LayoutTy} (kind : RefKind) (prot : Bool)
-      (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
+      (src : Place Γ (LayoutTy.PtrL σ)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence RefKind.Shared src srcRes) :
       RExprToEvidence dstPtr (.refSlice (τ := τ) kind prot src)
 
@@ -627,11 +628,11 @@ def readToReg {Γ : Ctx} {τ : LayoutTy} (p : Place Γ τ) :
       ++ cleanupInstrs pOut.result.cleanup))
   pure reg
 
-/-- A guard's discriminant read: copy's read of a `NatL` place — lower it
+/-- A guard's discriminant read: copy's read of an integer (`IntL`) place — lower it
     shared, `Load` through the result, retire any temporary BEFORE the
     guard so it is dead on both paths — returning the VALUE register the
-    `SkipIf` compares. `readToReg` at `NatL`. -/
-def guardRead {Γ : Ctx} (discr : Place Γ obseq.LayoutTy.NatL) :
+    `SkipIf` compares. `readToReg` at an integer type. -/
+def guardRead {Γ : Ctx} {t : IntTy} (discr : Place Γ (LayoutTy.IntL t)) :
     CheckedCompilerM Register :=
   readToReg discr
 
@@ -773,7 +774,7 @@ def compileRExprPreChecked
       -- removes the divergence and puts the cast in the read-then-store
       -- family, whose leaves and seams prove it.
       readRhsPre (RExpr.ptrCast (τ := τ) src) src
-        (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL τ))) (fun _ => [])
+        (Rhs.Load (layoutToTyVal (LayoutTy.PtrL τ))) (fun _ => [])
         (fun srcRes evd _ => RExprToEvidence.ptrCast src srcRes evd)
   | .ptrOffset (σ := σ) src delta => do
       -- delta is in pointees of the SOURCE type; pre-scale to cells
@@ -792,7 +793,7 @@ def compileRExprPreChecked
       -- same order as `BorrowRest` did, and mirlite's `.refSlice` does:
       -- read the cell, take the pointer, retag its rest.
       readRhsPre (RExpr.refSlice (τ := τ) kind prot src) src
-        (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+        (Rhs.Load (layoutToTyVal (LayoutTy.PtrL σ)))
         (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)])
         (fun srcRes evd _ => RExprToEvidence.refSlice kind prot src srcRes evd)
 
@@ -824,11 +825,11 @@ inductive StmtEvidence {Γ : Ctx} : Stmt Γ → Type where
   | popProtectors :
       StmtEvidence .popProtectors
   | assignIf
-      {τ : LayoutTy} (discr : Place Γ obseq.LayoutTy.NatL) (val : Word)
+      {τ : LayoutTy} {t : IntTy} (discr : Place Γ (LayoutTy.IntL t)) (val : Word)
       (dst : Place Γ τ) (rhs : RExpr Γ τ) :
       StmtEvidence (.assignIf discr val dst rhs)
   | dealloc
-      {τ : LayoutTy} (dst : Place Γ (obseq.LayoutTy.PtrL τ)) :
+      {τ : LayoutTy} (dst : Place Γ (LayoutTy.PtrL τ)) :
       StmtEvidence (.dealloc dst)
 
 /-- The assign lowering — ONE definition, used by the `.assign` statement
@@ -960,7 +961,7 @@ def compileStmtChecked {Γ : Ctx} :
       -- (`rs_guarded_fresh_root_then_write`, 2026-09-17). The body's own
       -- `ensurePlaceRoot` then finds the root mapped and is silent.
       let _ ← CheckedCompilerM.lift (ensurePlaceRoot dst)
-      -- the discriminant is READ, exactly as `copy` reads a `NatL` place
+      -- the discriminant is READ, exactly as `copy` reads an integer (`IntL`) place
       -- (`guardRead`), then the guard tests the loaded VALUE register —
       -- `SkipIf` itself touches no memory
       let discrReg ← guardRead discr

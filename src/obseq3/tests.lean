@@ -147,9 +147,9 @@ def t13_freeze_mask_and_weak_protection : IO Unit := do
 
 abbrev M := PermissionModel.stackedBorrows
 
-def natL := obseq.LayoutTy.NatL
-def ptrNat := obseq.LayoutTy.PtrL natL
-def pairL := obseq.LayoutTy.TupL [natL, natL]
+abbrev natL := LayoutTy.usize
+def ptrNat := LayoutTy.PtrL natL
+def pairL := LayoutTy.TupL [natL, natL]
 
 def run (Γ : Ctx) (prog : Prog Γ) : Result M Γ :=
   runN M (prog.length + 1) (State.initial M Γ) prog
@@ -270,10 +270,10 @@ def t10_disjoint_field_borrows : IO Unit := do
     reads `p`'s cell, disabling a `&mut` reborrow of the pointer variable
     itself. Before the 2026-08-21 change mirlite resolved derefs
     access-free and this program was (wrongly) accepted. -/
-def ΓE' : Ctx := [natL, ptrNat, obseq.LayoutTy.PtrL ptrNat, natL]
+def ΓE' : Ctx := [natL, ptrNat, LayoutTy.PtrL ptrNat, natL]
 def xE' : Place ΓE' natL := .local ⟨⟨0, by decide⟩, rfl⟩
 def pE' : Place ΓE' ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
-def qE' : Place ΓE' (obseq.LayoutTy.PtrL ptrNat) := .local ⟨⟨2, by decide⟩, rfl⟩
+def qE' : Place ΓE' (LayoutTy.PtrL ptrNat) := .local ⟨⟨2, by decide⟩, rfl⟩
 def tE' : Place ΓE' natL := .local ⟨⟨3, by decide⟩, rfl⟩
 
 def t14_deref_read_disables_sibling : IO Unit := do
@@ -302,7 +302,7 @@ def t15_deref_oob_pointer : IO Unit := do
 
 /-! t16: the invariant-gap example, encoded as a STATE (journal
     2026-08-27-ref-proj-closed / the event-fix discussion). No program
-    reaches a memory cell holding `ptrVal (0, 0, 1, 0, t)` at a `PtrL NatL`
+    reaches a memory cell holding `ptrVal (0, 0, 1, 0, t)` at a `PtrL usize`
     use site — every mint site stores the allocation's size — but
     `mirlite.State` is just data, so the junk state is constructible
     here. Before 2026-08-28 mirlite's `.ref` accepted the reborrow
@@ -443,10 +443,10 @@ def t25_bytes_reprC_layout : IO Unit := do
 /-- The cell layout `(word, ptr, (word, word))` becomes `usize` leaves at
     0, 8, 16, 24: one leaf per cell. -/
 def t26_bytes_of_cell_layout : IO Unit := do
-  let τ : obseq.LayoutTy := .TupL [.NatL, .PtrL .NatL, .TupL [.NatL, .NatL]]
+  let τ : LayoutTy := .TupL [.usize, .PtrL .usize, .TupL [.usize, .usize]]
   let L := ofLayoutTy τ
   assert (L.leaves.map (·.1) == [0, 8, 16, 24]) s!"t26 offsets {L.leaves.map (·.1)}"
-  assert (L.leaves.length == obseq.layoutSize τ) "t26 one leaf per cell"
+  assert (L.leaves.length == layoutSize τ) "t26 one leaf per cell"
   assert (L.size == 32) s!"t26 size {L.size}"
 
 /-- A whole `(u8, *const i32, u16)` value stored and loaded back; the
@@ -496,10 +496,10 @@ def t28_bytes_mirlite_same_ub : IO Unit := do
     .assign qE' (.ptrOffset qE' 7),
     .assign tE' (.copy (.deref (.deref qE')))]) "t28 oob deref" "out-of-bounds"
 
-def ΓR : Ctx := [natL, ptrNat, obseq.LayoutTy.PtrL ptrNat, ptrNat, natL]
+def ΓR : Ctx := [natL, ptrNat, LayoutTy.PtrL ptrNat, ptrNat, natL]
 def xR : Place ΓR natL := .local ⟨⟨0, by decide⟩, rfl⟩
 def pR : Place ΓR ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
-def qR : Place ΓR (obseq.LayoutTy.PtrL ptrNat) := .local ⟨⟨2, by decide⟩, rfl⟩
+def qR : Place ΓR (LayoutTy.PtrL ptrNat) := .local ⟨⟨2, by decide⟩, rfl⟩
 def rR : Place ΓR ptrNat := .local ⟨⟨3, by decide⟩, rfl⟩
 def yR : Place ΓR natL := .local ⟨⟨4, by decide⟩, rfl⟩
 

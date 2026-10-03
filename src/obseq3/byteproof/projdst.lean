@@ -363,7 +363,7 @@ theorem storereg_projlocal_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRe
 /-- `(*P).f := rhs`, `*P` a pointer chain. -/
 theorem storereg_projchain_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {s_mir s_mir' : mirliteB.State MSB Γ} {s_osea : oseairL.State MSB}
-    {ρ τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL ρ)} {f : PathTo ρ τ} {rhs : RExpr Γ τ}
+    {ρ τ : LayoutTy} {P : Place Γ (LayoutTy.PtrL ρ)} {f : PathTo ρ τ} {rhs : RExpr Γ τ}
     {cs : CompilerState}
     (compProg : oseairL.Prog) (hWF : PtrPlacesWF L) (h_chain : PtrChain (.deref P))
     (h_pkg : ValuePkgB compProg L (mirliteB.placeLayout L (.proj (.deref P) f)) rhs)

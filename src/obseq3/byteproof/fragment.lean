@@ -25,7 +25,7 @@ open obseq3.compileB
     a field of a chain. -/
 inductive BorrowSrcB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
   | local {τ : LayoutTy} (loc : Local Γ τ) : BorrowSrcB (.local loc)
-  | deref {σ : LayoutTy} {q : Place Γ (obseq.LayoutTy.PtrL σ)} :
+  | deref {σ : LayoutTy} {q : Place Γ (LayoutTy.PtrL σ)} :
       ChainB (.deref q) → BorrowSrcB (.deref q)
   | field {ρ τ : LayoutTy} {b : Place Γ ρ} (f : PathTo ρ τ) : ChainB b → BorrowSrcB (.proj b f)
   | nested {ρ σ τ : LayoutTy} {b : Place Γ ρ} {q : PathTo ρ σ} {p : PathTo σ τ} :
@@ -139,32 +139,33 @@ theorem StmtSimB.congr {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.P
 
 /-- The rvalues covered, with their operand shapes. -/
 inductive RhsB {Γ : Ctx} : {τ : LayoutTy} → RExpr Γ τ → Prop
-  | constInit (v : Word) : RhsB (.constInit v)
+  | constInit {t : IntTy} (v : Word) : RhsB (.constInit (t := t) v)
   | uninit {τ : LayoutTy} : RhsB (τ := τ) .uninit
   | copy {τ : LayoutTy} {src : Place Γ τ} : ReadSrcB src → RhsB (.copy src)
   | move {τ : LayoutTy} {src : Place Γ τ} : BorrowSrcB src → RhsB (.move src)
   | ref {τ : LayoutTy} {src : Place Γ τ} (kind : RefKind) (prot : Bool) (mask : List Bool) :
       BorrowSrcB src → RhsB (.ref kind prot mask src)
-  | ptrCast {σ τ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} :
+  | ptrCast {σ τ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)} :
       LeafSrcB src → RhsB (.ptrCast (τ := τ) src)
-  | ptrOffset {σ τ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} (delta : Int) :
+  | ptrOffset {σ τ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)} (delta : Int) :
       LeafSrcB src → RhsB (.ptrOffset (τ := τ) src delta)
-  | refSlice {σ τ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} (kind : RefKind)
+  | refSlice {σ τ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)} (kind : RefKind)
       (prot : Bool) : LeafSrcB src → RhsB (.refSlice (τ := τ) kind prot src)
-  | exposeAddr {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} :
-      LeafSrcB src → RhsB (.exposeAddr src)
-  | fromExposed {τ : LayoutTy} {src : Place Γ obseq.LayoutTy.NatL} :
+  | exposeAddr {σ : LayoutTy} {t : IntTy} {src : Place Γ (LayoutTy.PtrL σ)} :
+      LeafSrcB src → RhsB (.exposeAddr (t := t) src)
+  | fromExposed {τ : LayoutTy} {t : IntTy} {src : Place Γ (LayoutTy.IntL t)} :
       LeafSrcB src → RhsB (.fromExposed (τ := τ) src)
-  | sliceLen {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} :
-      ReadSrcB src → RhsB (.sliceLen src)
-  | subSlice {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)}
-      {lo hi : Place Γ obseq.LayoutTy.NatL} :
+  | sliceLen {σ : LayoutTy} {t : IntTy} {src : Place Γ (LayoutTy.PtrL σ)} :
+      ReadSrcB src → RhsB (.sliceLen (t := t) src)
+  | subSlice {σ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)}
+      {tl th : IntTy} {lo : Place Γ (LayoutTy.IntL tl)} {hi : Place Γ (LayoutTy.IntL th)} :
       ReadSrcB src → ReadSrcB lo → ReadSrcB hi → RhsB (.subSlice src lo hi)
   | allocConst {τ : LayoutTy} (n : Nat) : RhsB (.alloc (τ := τ) (.const n))
-  | allocDyn {τ : LayoutTy} {p : Place Γ obseq.LayoutTy.NatL} :
+  | allocDyn {τ : LayoutTy} {t : IntTy} {p : Place Γ (LayoutTy.IntL t)} :
       ReadSrcB p → RhsB (.alloc (τ := τ) (.fromPlace p))
-  | binOp (op : BinOp) {a b : Place Γ obseq.LayoutTy.NatL} :
-      ReadSrcB a → ReadSrcB b → RhsB (.binOp op a b)
+  | binOp (op : BinOp) {ta tb tr : IntTy} {a : Place Γ (LayoutTy.IntL ta)}
+      {b : Place Γ (LayoutTy.IntL tb)} :
+      ReadSrcB a → ReadSrcB b → RhsB (.binOp (tr := tr) op a b)
 
 theorem RhsB.pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) {τ : LayoutTy} {rhs : RExpr Γ τ} (h : RhsB rhs)
@@ -190,10 +191,10 @@ theorem RhsB.pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
 /-- The destinations covered. -/
 inductive DstB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
   | local {τ : LayoutTy} (loc : Local Γ τ) : DstB (.local loc)
-  | deref {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)} :
+  | deref {τ : LayoutTy} {P : Place Γ (LayoutTy.PtrL τ)} :
       ChainB (.deref P) → DstB (.deref P)
   | projLocal {ρ τ : LayoutTy} (loc : Local Γ ρ) (f : PathTo ρ τ) : DstB (.proj (.local loc) f)
-  | projDeref {ρ τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL ρ)} (f : PathTo ρ τ) :
+  | projDeref {ρ τ : LayoutTy} {P : Place Γ (LayoutTy.PtrL ρ)} (f : PathTo ρ τ) :
       ChainB (.deref P) → DstB (.proj (.deref P) f)
 
 /-- The statements covered. -/
@@ -202,7 +203,7 @@ inductive StmtB0 {Γ : Ctx} : Stmt Γ → Prop
       DstB dst → RhsB rhs → StmtB0 (.assign dst rhs)
   | pushProtectors : StmtB0 .pushProtectors
   | popProtectors : StmtB0 .popProtectors
-  | dealloc {σ : LayoutTy} {dst : Place Γ (obseq.LayoutTy.PtrL σ)} :
+  | dealloc {σ : LayoutTy} {dst : Place Γ (LayoutTy.PtrL σ)} :
       ReadSrcB dst → StmtB0 (.dealloc dst)
   /-- `x.f.g := rhs` is `x.(f ++ g) := rhs` on both machines. -/
   | nested {ρ σ τ : LayoutTy} {b : Place Γ ρ} {q : PathTo ρ σ} {p : PathTo σ τ} {rhs : RExpr Γ τ} :

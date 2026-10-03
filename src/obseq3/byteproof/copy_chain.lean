@@ -231,7 +231,7 @@ theorem copy_chain_local_sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenam
 /-- `*P := copy src`: a pointer-chain destination, a pointer-chain source. -/
 theorem copy_chain_chaindst_sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {s_mir s_mir' : mirliteB.State MSB Γ} {s_osea : oseairL.State MSB}
-    {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)} {src : Place Γ τ} {cs : CompilerState}
+    {τ : LayoutTy} {P : Place Γ (LayoutTy.PtrL τ)} {src : Place Γ τ} {cs : CompilerState}
     (compProg : oseairL.Prog) (hWF : PtrPlacesWF L)
     (h_dchain : PtrChain (.deref P)) (h_schain : PtrChain src)
     (h_inv : InvAtB L ρt s_mir s_osea cs)

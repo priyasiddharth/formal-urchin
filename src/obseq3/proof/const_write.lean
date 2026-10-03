@@ -119,7 +119,7 @@ structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
             [Instr.CStore (layoutToTyVal τ) vs' (Register.R (cs.nextReg + 1))])
             [Instr.Die (Register.R (cs.nextReg + 1)) (blockSize τ)]
   /-- projection over a DEREF base -/
-  projDerefZeroVal : ∀ {σ : LayoutTy} (Q : Place Γ (obseq.LayoutTy.PtrL σ))
+  projDerefZeroVal : ∀ {σ : LayoutTy} (Q : Place Γ (LayoutTy.PtrL σ))
     (path : PathTo σ τ) (cs : CompilerState)
     {dOut : ResultWithEvidence PtrResult
       (PlaceToRegEvidence RefKind.Mut (Place.deref Q))},
@@ -130,7 +130,7 @@ structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
     ∃ so, CheckedCompilerM.value
       (compileStmtChecked (Stmt.assign (.proj (.deref Q) path) rhs)) cs
         = Except.ok so
-  projDerefOffsetVal : ∀ {σ : LayoutTy} (Q : Place Γ (obseq.LayoutTy.PtrL σ))
+  projDerefOffsetVal : ∀ {σ : LayoutTy} (Q : Place Γ (LayoutTy.PtrL σ))
     (path : PathTo σ τ) (cs : CompilerState)
     {dOut : ResultWithEvidence PtrResult
       (PlaceToRegEvidence RefKind.Mut (Place.deref Q))},
@@ -141,7 +141,7 @@ structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
     ∃ so, CheckedCompilerM.value
       (compileStmtChecked (Stmt.assign (.proj (.deref Q) path) rhs)) cs
         = Except.ok so
-  projDerefZeroRun : ∀ {σ : LayoutTy} (Q : Place Γ (obseq.LayoutTy.PtrL σ))
+  projDerefZeroRun : ∀ {σ : LayoutTy} (Q : Place Γ (LayoutTy.PtrL σ))
     (path : PathTo σ τ) (cs : CompilerState)
     {dOut : ResultWithEvidence PtrResult
       (PlaceToRegEvidence RefKind.Mut (Place.deref Q))},
@@ -155,7 +155,7 @@ structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
       = emit (CheckedCompilerM.run
           (placeToRegChecked RefKind.Mut (Place.deref Q)) cs)
         [Instr.CStore (layoutToTyVal τ) vs' dOut.result.reg]
-  projDerefOffsetRun : ∀ {σ : LayoutTy} (Q : Place Γ (obseq.LayoutTy.PtrL σ))
+  projDerefOffsetRun : ∀ {σ : LayoutTy} (Q : Place Γ (LayoutTy.PtrL σ))
     (path : PathTo σ τ) (cs : CompilerState)
     {dOut : ResultWithEvidence PtrResult
       (PlaceToRegEvidence RefKind.Mut (Place.deref Q))},
@@ -180,7 +180,7 @@ structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
           [Instr.Die (Register.R (CheckedCompilerM.run
             (placeToRegChecked RefKind.Mut (Place.deref Q)) cs).nextReg)
             (blockSize τ)]
-  projDerefIncr : ∀ {σ : LayoutTy} (Q : Place Γ (obseq.LayoutTy.PtrL σ))
+  projDerefIncr : ∀ {σ : LayoutTy} (Q : Place Γ (LayoutTy.PtrL σ))
     (path : PathTo σ τ) (cs : CompilerState),
     CompilerM.run (ensurePlaceRoot (Place.proj (Place.deref Q) path)) cs = cs →
     StateIncr
@@ -189,7 +189,7 @@ structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
       (CheckedCompilerM.run
         (compileStmtChecked (Stmt.assign (.proj (.deref Q) path) rhs)) cs)
   /-- a DEREF destination -/
-  derefVal : ∀ (Q : Place Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState)
+  derefVal : ∀ (Q : Place Γ (LayoutTy.PtrL τ)) (cs : CompilerState)
     {dOut : ResultWithEvidence PtrResult
       (PlaceToRegEvidence RefKind.Mut (Place.deref Q))},
     CompilerM.run (ensurePlaceRoot (Place.deref Q)) cs = cs →
@@ -197,7 +197,7 @@ structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
       = Except.ok dOut →
     ∃ so, CheckedCompilerM.value
       (compileStmtChecked (Stmt.assign (.deref Q) rhs)) cs = Except.ok so
-  derefRun : ∀ (Q : Place Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState)
+  derefRun : ∀ (Q : Place Γ (LayoutTy.PtrL τ)) (cs : CompilerState)
     {dOut : ResultWithEvidence PtrResult
       (PlaceToRegEvidence RefKind.Mut (Place.deref Q))},
     CompilerM.run (ensurePlaceRoot (Place.deref Q)) cs = cs →
@@ -219,14 +219,14 @@ structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
       (CompilerM.run (ensurePlaceRoot (Place.proj base path)) cs) = Except.ok dstOut →
     ∃ so, CheckedCompilerM.value
       (compileStmtChecked (Stmt.assign (.proj base path) rhs)) cs = Except.ok so
-  derefAnyVal : ∀ (Q : Place Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState)
+  derefAnyVal : ∀ (Q : Place Γ (LayoutTy.PtrL τ)) (cs : CompilerState)
     {dstOut : ResultWithEvidence PtrResult
       (PlaceToRegEvidence RefKind.Mut (Place.deref Q))},
     CheckedCompilerM.value (placeToRegChecked RefKind.Mut (Place.deref Q))
       (CompilerM.run (ensurePlaceRoot (Place.deref Q)) cs) = Except.ok dstOut →
     ∃ so, CheckedCompilerM.value
       (compileStmtChecked (Stmt.assign (.deref Q) rhs)) cs = Except.ok so
-  derefIncr : ∀ (Q : Place Γ (obseq.LayoutTy.PtrL τ)) (cs : CompilerState),
+  derefIncr : ∀ (Q : Place Γ (LayoutTy.PtrL τ)) (cs : CompilerState),
     CompilerM.run (ensurePlaceRoot (Place.deref Q)) cs = cs →
     StateIncr
       (CheckedCompilerM.run (placeToRegChecked RefKind.Mut (.deref Q)) cs)
@@ -243,7 +243,7 @@ structure ConstStoreFrags {Γ : Ctx} {τ : LayoutTy}
     arbitrary destination layout, and a source/target value pair related
     cell-by-cell by `MemValSim`; each rvalue supplies the pair.
 
-    `constInit` gives `[word v]` / `[Val.Dat v]` at `NatL` (width one);
+    `constInit` gives `[word v]` / `[Val.Dat v]` at an integer type (one cell);
     `uninit` gives `replicate (blockSize τ) undef` /
     `replicate (blockSize τ) Val.Undef` at ANY `τ`, whose `ListRel` is
     free because `MemValSim`'s first clause is `| .undef, _ => True`. -/
@@ -303,8 +303,8 @@ theorem ValuePkg.of_pureCStore {τ : LayoutTy} {rhs : RExpr Γ τ}
     by rw [h_run]; exact StoreStep.cstore compProg sA _ ty vs' h_size,
     h_rel⟩
 
-theorem constInit_valuePkg {Γ : Ctx} (v : Word) (compProg : oseair.Prog) :
-    ValuePkg compProg (RExpr.constInit (Γ := Γ) v) :=
+theorem constInit_valuePkg {Γ : Ctx} {t : IntTy} (v : Word) (compProg : oseair.Prog) :
+    ValuePkg compProg (RExpr.constInit (Γ := Γ) (t := t) v) :=
   ValuePkg.of_pureCStore compProg (constInit_pureCStore v) rfl rfl
     (fun _ _ _ _ h => by
       simp only [mirlite.evalRExpr, mirlite.evalCopy] at h
@@ -425,7 +425,7 @@ theorem CompilerInv_step_constStore
     h_step
 
 theorem CompilerInv_step_constWrite
-    {dst : Place Γ obseq.LayoutTy.NatL}
+    {dst : Place Γ (LayoutTy.IntL tN)}
     (compProg : oseair.Prog)
     (v : Word)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)

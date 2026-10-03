@@ -52,7 +52,7 @@ theorem code_two (rb : CompilerState) (i1 i2 : oseairL.Instr) :
 
 theorem refSlice_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (dstL : BLayout) (kind : RefKind) (prot : Bool) {σ τ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_low : LowersB L compProg src) (h_comp : CompilesB L src) :
+    {src : Place Γ (LayoutTy.PtrL σ)} (h_low : LowersB L compProg src) (h_comp : CompilesB L src) :
     ValuePkgB compProg L dstL (RExpr.refSlice (τ := τ) kind prot src) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
   -- the source: read the fat pointer, retag its extent
@@ -173,7 +173,7 @@ theorem refSlice_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pr
 
 theorem refSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) (kind : RefKind) (prot : Bool) {σ τ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : ChainB src) :
+    {src : Place Γ (LayoutTy.PtrL σ)} (h_chain : ChainB src) :
     ValuePkgB compProg L dstL (RExpr.refSlice (τ := τ) kind prot src) :=
   refSlice_core dstL kind prot (chainB_lowers hWF h_chain) (chainB_compilesB h_chain)
 

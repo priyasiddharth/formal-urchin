@@ -53,8 +53,8 @@ theorem word_of_storeSim {ρt : TagRenameMap} {x : Nat} {vals : List Val}
 
 theorem binOp_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) (op : BinOp)
-    {a b : Place Γ obseq.LayoutTy.NatL} (h_ca : ReadSrcB a) (h_cb : ReadSrcB b) :
-    ValuePkgB compProg L dstL (RExpr.binOp op a b) := by
+    {ta tb tr : IntTy} {a : Place Γ (LayoutTy.IntL ta)} {b : Place Γ (LayoutTy.IntL tb)} (h_ca : ReadSrcB a) (h_cb : ReadSrcB b) :
+    ValuePkgB compProg L dstL (RExpr.binOp (tr := tr) op a b) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
   have h_inv0 : InvAtB L ρt sM sA csA := ⟨h_pc, h_lbs, h_mem, h_alloc, h_psim, h_wf, h_tbd,
     h_unmap, h_prb⟩
@@ -87,7 +87,7 @@ theorem binOp_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
   have h_prmB : (CheckedCompilerM.run (readToReg L b) (CheckedCompilerM.run (readToReg L a) csA)).placeRegMap
       = csA.placeRegMap := h_prmB0.trans h_prmA
   -- the rvalue's shape
-  have h_pre : CheckedCompilerM.run (compileRExprPreChecked L dstL (RExpr.binOp op a b)) csA
+  have h_pre : CheckedCompilerM.run (compileRExprPreChecked L dstL (RExpr.binOp (tr := tr) op a b)) csA
       = emit (bumpReg (CheckedCompilerM.run (readToReg L b) (CheckedCompilerM.run (readToReg L a) csA)))
           [oseairL.Instr.Assgn
             (Register.R (CheckedCompilerM.run (readToReg L b)
@@ -101,7 +101,7 @@ theorem binOp_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
       CheckedCompilerM.run_pure]
     rfl
   have h_preV : ∃ pOut, CheckedCompilerM.value
-      (compileRExprPreChecked L dstL (RExpr.binOp op a b)) csA = .ok pOut ∧
+      (compileRExprPreChecked L dstL (RExpr.binOp (tr := tr) op a b)) csA = .ok pOut ∧
       (∀ d, pOut.store d = [oseairL.Instr.RStore dstL
         (Register.R (CheckedCompilerM.run (readToReg L b)
           (CheckedCompilerM.run (readToReg L a) csA)).nextReg) d]) ∧

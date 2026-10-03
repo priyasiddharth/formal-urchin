@@ -4,6 +4,28 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-03 (night) — Integer Types Now Say How Wide They Are
+
+Until now the model's type system had one integer type: a place either
+held "a number", a pointer, or a struct. The byte widths lived only in
+the separate byte layouts. Now every integer type carries its width and
+signedness — `u8`, `i32`, `usize` are different types — as in MiniRust.
+Copies and assignments must agree on the type, so a `u8` can no longer be
+silently copied into a `u64`; arithmetic and the other operations that
+produce integers take the type of the place they write.
+
+Making the loader produce well-typed programs exposed three spots where
+it had relied on all integers being the same: enum tags (Rust reads them
+as `isize`, we had `usize`), integer casts that keep the bit pattern
+(they were plain copies, now a typed operation), and a borrow guard whose
+pointee type the loader guessed. With those fixed, every test gives the
+same result as before, and the layout check now also confirms that every
+integer's byte width matches its type — 147 of 147 programs. The
+cell-level model still gives each integer one cell, so its proof needed
+only signature changes; the byte-level proof likewise.
+
+---
+
 ## 2026-10-03 (evening) — The Real Layouts Meet the Proof's Conditions
 
 The byte-level theorem holds under two conditions on layouts, and it was

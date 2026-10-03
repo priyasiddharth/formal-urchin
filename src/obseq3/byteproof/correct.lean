@@ -18,7 +18,7 @@ open obseq3.compileB
 
 inductive StmtB {Γ : Ctx} : Stmt Γ → Prop
   | base {stmt : Stmt Γ} : StmtB0 stmt → StmtB stmt
-  | assignIf {τ : LayoutTy} {discr : Place Γ obseq.LayoutTy.NatL} {val : Word}
+  | assignIf {τ : LayoutTy} {discr : Place Γ (LayoutTy.IntL tN)} {val : Word}
       {dst : Place Γ τ} {rhs : RExpr Γ τ} :
       ReadSrcB discr → StmtB0 (.assign dst rhs) → StmtB (.assignIf discr val dst rhs)
 

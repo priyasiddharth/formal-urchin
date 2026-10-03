@@ -199,8 +199,8 @@ theorem resolve_eq {Γ : Ctx} {L : mirliteB.LayEnv Γ} {sM : mirliteB.State MSB 
 /-! ## The instances -/
 
 theorem exposeAddr_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {σ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
-    LeafOpB L dstL (RExpr.exposeAddr src) src
+    (src : Place Γ (LayoutTy.PtrL σ)) :
+    LeafOpB L dstL (RExpr.exposeAddr (t := tE) src) src
       (oseairL.Rhs.ExposeAddr (mirliteB.leafKind (mirliteB.placeLayout L src))) where
   resolves sM output h := by
     simp only [mirliteB.evalRExpr] at h
@@ -234,7 +234,7 @@ theorem exposeAddr_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {
     · cases h
 
 theorem fromExposed_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {τ : LayoutTy}
-    (src : Place Γ obseq.LayoutTy.NatL) :
+    (src : Place Γ (LayoutTy.IntL tN)) :
     LeafOpB L dstL (RExpr.fromExposed (τ := τ) src) src
       (oseairL.Rhs.FromExposed (mirliteB.leafKind (mirliteB.placeLayout L src))) where
   resolves sM output h := by
@@ -274,7 +274,7 @@ theorem fromExposed_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) 
     · cases h
 
 theorem ptrOffset_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {σ τ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (delta : Int) :
+    (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int) :
     LeafOpB L dstL (RExpr.ptrOffset (τ := τ) src delta) src
       (fun r => oseairL.Rhs.PtrOffset (mirliteB.leafKind (mirliteB.placeLayout L src)) r
         (delta * ((mirliteB.pointeeLayout L src).size : Int))) where
@@ -322,7 +322,7 @@ theorem readL_leafLayout (m : bytes.Mem) (a : Nat) (k : Scalar) :
   cases k <;> simp [mirliteB.readL, leafLayout, BLayout.leaves]
 
 theorem ptrCast_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {σ τ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    (src : Place Γ (LayoutTy.PtrL σ)) :
     LeafOpB L dstL (RExpr.ptrCast (τ := τ) src) src
       (oseairL.Rhs.Load (leafLayout (mirliteB.leafKind (mirliteB.placeLayout L src)))) where
   resolves sM output h := by
@@ -376,28 +376,28 @@ theorem ptrCast_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {σ 
 
 theorem exposeAddr_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : ChainB src) :
-    ValuePkgB compProg L dstL (RExpr.exposeAddr src) :=
+    {src : Place Γ (LayoutTy.PtrL σ)} (h_chain : ChainB src) :
+    ValuePkgB compProg L dstL (RExpr.exposeAddr (t := tE) src) :=
   leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.exposeAddr src srcRes evd)
     (chainB_lowers hWF h_chain) (chainB_compilesB h_chain) (exposeAddr_leafop dstL src) rfl
 
 theorem fromExposed_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {τ : LayoutTy}
-    {src : Place Γ obseq.LayoutTy.NatL} (h_chain : ChainB src) :
+    {src : Place Γ (LayoutTy.IntL tN)} (h_chain : ChainB src) :
     ValuePkgB compProg L dstL (RExpr.fromExposed (τ := τ) src) :=
   leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.fromExposed src srcRes evd)
     (chainB_lowers hWF h_chain) (chainB_compilesB h_chain) (fromExposed_leafop dstL src) rfl
 
 theorem ptrOffset_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ τ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : ChainB src) (delta : Int) :
+    {src : Place Γ (LayoutTy.PtrL σ)} (h_chain : ChainB src) (delta : Int) :
     ValuePkgB compProg L dstL (RExpr.ptrOffset (τ := τ) src delta) :=
   leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.ptrOffset src delta srcRes evd)
     (chainB_lowers hWF h_chain) (chainB_compilesB h_chain) (ptrOffset_leafop dstL src delta) rfl
 
 theorem ptrCast_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ τ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : ChainB src) :
+    {src : Place Γ (LayoutTy.PtrL σ)} (h_chain : ChainB src) :
     ValuePkgB compProg L dstL (RExpr.ptrCast (τ := τ) src) :=
   leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.ptrCast src srcRes evd)
     (chainB_lowers hWF h_chain) (chainB_compilesB h_chain) (ptrCast_leafop dstL src) rfl

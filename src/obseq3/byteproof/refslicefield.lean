@@ -42,7 +42,7 @@ theorem code_borrow_load_die_post (ra : CompilerState) (i1 i2 i3 i4 : oseairL.In
 
 theorem refSlice_projoff {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (dstL : BLayout) (kind : RefKind) (prot : Bool) {ρ σ τ : LayoutTy} {b : Place Γ ρ}
-    {f : PathTo ρ (obseq.LayoutTy.PtrL σ)}
+    {f : PathTo ρ (LayoutTy.PtrL σ)}
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
     (h0 : pathOffset L b f ≠ 0) (hb : LowersB L compProg b) (hcb : CompilesB L b)
     (h_len : (mirliteB.leafKind (mirliteB.placeLayout L (.proj b f))).size = placeSize L (.proj b f)) :
@@ -239,7 +239,7 @@ theorem refSlice_projoff {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL
 
 theorem refSlice_pkgL {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) (dstL : BLayout) (kind : RefKind) (prot : Bool)
-    {σ τ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (h : LeafSrcB src) :
+    {σ τ : LayoutTy} (src : Place Γ (LayoutTy.PtrL σ)) (h : LeafSrcB src) :
     ValuePkgB compProg L dstL (RExpr.refSlice (τ := τ) kind prot src) := by
   cases h with
   | chain hc => exact refSlice_pkg hWF dstL kind prot hc

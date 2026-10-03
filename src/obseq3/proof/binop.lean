@@ -8,7 +8,7 @@ import obseq3.proof.alloc
 /-!
 # `binOp`: a REGISTER-ONLY value package
 
-`binOp op a b : RExpr Γ NatL` reads two `NatL` places — copy's read,
+`binOp op a b : RExpr Γ (IntL t)` reads two integer places — copy's read,
 twice — and combines the two words. The compiled shape is copy's read of
 `a` with its register exposed (`readToReg`), copy's read of `b`, and then
 ONE `Rhs.BinOp` on the two value registers: no memory, no permission
@@ -62,8 +62,9 @@ theorem resolvePlace?_perms {τ : LayoutTy} {M : PermissionModel}
 
 /-- `binOp` is a value package. -/
 theorem binOp_valuePkg {Γ : Ctx} (op : BinOp)
-    (a b : Place Γ obseq.LayoutTy.NatL) (compProg : oseair.Prog) :
-    ValuePkg compProg (RExpr.binOp (Γ := Γ) op a b) := by
+    {ta tb tr : IntTy} (a : Place Γ (LayoutTy.IntL ta)) (b : Place Γ (LayoutTy.IntL tb))
+    (compProg : oseair.Prog) :
+    ValuePkg compProg (RExpr.binOp (Γ := Γ) (tr := tr) op a b) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   -- §1 invert the source: two reads, each a concrete word
@@ -126,7 +127,7 @@ theorem binOp_valuePkg {Γ : Ctx} (op : BinOp)
   obtain ⟨h_bfr, h_bfv⟩ := readToReg_flat hDB
   -- §4 the compiled shape: the two reads, then the one `BinOp`
   have h_pre : CheckedCompilerM.run
-      (compileRExprPreChecked (RExpr.binOp (Γ := Γ) op a b)) csA
+      (compileRExprPreChecked (RExpr.binOp (Γ := Γ) (tr := tr) op a b)) csA
       = emit { (CheckedCompilerM.run (readToReg b)
             (CheckedCompilerM.run (readToReg a) csA)) with
           nextReg := (CheckedCompilerM.run (readToReg b)
@@ -209,7 +210,7 @@ theorem binOp_valuePkg {Γ : Ctx} (op : BinOp)
   have h_vregA' : oseair.RegMap.lookup sR2.reg
       (Register.R (CheckedCompilerM.run
         (placeToRegChecked RefKind.Shared (flattenPlace a)) csA).nextReg)
-      = some (layoutToTyVal obseq.LayoutTy.NatL, [Val.Dat x]) := by
+      = some (layoutToTyVal (LayoutTy.IntL ta), [Val.Dat x]) := by
     rw [h_frameB _ h_vbelowA]
     exact h_vregA
   -- §7 the `BinOp` step

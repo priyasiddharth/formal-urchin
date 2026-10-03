@@ -20,11 +20,11 @@ open obseq3.oseair (Val Register)
 open obseq3.compileB
 
 theorem exposeAddr_projoff {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    (dstL : BLayout) {ρ σ : LayoutTy} {b : Place Γ ρ} {f : PathTo ρ (obseq.LayoutTy.PtrL σ)}
+    (dstL : BLayout) {ρ σ : LayoutTy} {b : Place Γ ρ} {f : PathTo ρ (LayoutTy.PtrL σ)}
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
     (h0 : pathOffset L b f ≠ 0) (hb : LowersB L compProg b) (hcb : CompilesB L b)
     (h_len : (mirliteB.leafKind (mirliteB.placeLayout L (.proj b f))).size = placeSize L (.proj b f)) :
-    ValuePkgB compProg L dstL (RExpr.exposeAddr (.proj b f)) := by
+    ValuePkgB compProg L dstL (RExpr.exposeAddr (t := tE) (.proj b f)) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc _h_unmap output h_ev
   -- the source: read the pointer, expose its tag
   simp only [mirliteB.evalRExpr] at h_ev
@@ -36,8 +36,8 @@ theorem exposeAddr_projoff {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseai
   subst h_ev
   obtain ⟨resolved, permsR, h_res, h_free, h_bnd, h_rd, h_v⟩ := readCell_inv h_rc
   let mk := oseairL.Rhs.ExposeAddr (mirliteB.leafKind (mirliteB.placeLayout L (.proj b f)))
-  have h_pre : compileRExprPreChecked L dstL (RExpr.exposeAddr (.proj b f))
-      = readRhsPre L dstL (RExpr.exposeAddr (.proj b f)) (.proj b f) mk (fun _ => [])
+  have h_pre : compileRExprPreChecked L dstL (RExpr.exposeAddr (t := tE) (.proj b f))
+      = readRhsPre L dstL (RExpr.exposeAddr (t := tE) (.proj b f)) (.proj b f) mk (fun _ => [])
           (fun srcRes evd _ => RExprToEvidence.exposeAddr _ srcRes evd) := rfl
   obtain ⟨⟨bRes, permsB⟩, h_rb, h_addr, h_tag, h_ab, h_as, h_pb⟩ :=
     borrow_proj_res (L := L) f sM _ h_res
@@ -50,7 +50,7 @@ theorem exposeAddr_projoff {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseai
   obtain ⟨h_runP, outP, h_valP, h_resP⟩ :=
     (proj_lowering (kind := RefKind.Shared) f h_np h_bval).2 h0
   obtain ⟨h_run, pOut, h_val, h_store, h_post⟩ :=
-    readRhsPre_shapeG (dstL := dstL) (rhs := RExpr.exposeAddr (.proj b f)) (mk := mk) (post := fun _ => [])
+    readRhsPre_shapeG (dstL := dstL) (rhs := RExpr.exposeAddr (t := tE) (.proj b f)) (mk := mk) (post := fun _ => [])
       (ev := fun srcRes evd _ => RExprToEvidence.exposeAddr _ srcRes evd) h_valP
   rw [h_resP, h_bclean, h_runP] at h_run
   simp only [List.nil_append, cleanupInstrs, List.reverse_cons, List.reverse_nil,
@@ -191,8 +191,8 @@ theorem exposeAddr_projoff {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseai
 
 theorem exposeAddr_pkgL {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) (dstL : BLayout) {σ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (h : LeafSrcB src) :
-    ValuePkgB compProg L dstL (RExpr.exposeAddr src) := by
+    (src : Place Γ (LayoutTy.PtrL σ)) (h : LeafSrcB src) :
+    ValuePkgB compProg L dstL (RExpr.exposeAddr (t := tE) src) := by
   cases h with
   | chain hc => exact exposeAddr_pkg hWF dstL hc
   | field f hb =>
@@ -205,10 +205,10 @@ theorem exposeAddr_pkgL {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.
       · exact exposeAddr_projoff dstL h_np h0 (chainB_lowers hWF hb) (chainB_compilesB hb) (hLeaf.1 _)
   | nested hn =>
       rename_i ρ' σ' b q p
-      have ih := exposeAddr_pkgL (compProg := compProg) hWF hLeaf dstL (.proj b (q.append p)) hn
+      have ih := exposeAddr_pkgL (compProg := compProg) (tE := tE) hWF hLeaf dstL (.proj b (q.append p)) hn
       have h_as := readRhsPre_assoc (L := L) (dstL := dstL)
-          (rhs1 := RExpr.exposeAddr (.proj (.proj b q) p))
-          (rhs2 := RExpr.exposeAddr (.proj b (q.append p))) b q p
+          (rhs1 := RExpr.exposeAddr (t := tE) (.proj (.proj b q) p))
+          (rhs2 := RExpr.exposeAddr (t := tE) (.proj b (q.append p))) b q p
           (oseairL.Rhs.ExposeAddr (mirliteB.leafKind (mirliteB.placeLayout L (.proj b (q.append p)))))
           (fun _ => []) (fun srcRes evd _ => RExprToEvidence.exposeAddr _ srcRes evd)
           (fun srcRes evd _ => RExprToEvidence.exposeAddr _ srcRes evd)

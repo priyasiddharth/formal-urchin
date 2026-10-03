@@ -35,7 +35,7 @@ theorem PathTo.sizeOf_le {σ ρ : LayoutTy} (p : PathTo σ ρ) :
   | @field ρ' tys idx rest ih =>
       have h_lt : sizeOf (tys.get idx) < sizeOf tys :=
         List.sizeOf_lt_of_mem (List.get_mem tys idx)
-      grind [obseq.LayoutTy.TupL.sizeOf_spec]
+      grind [LayoutTy.TupL.sizeOf_spec]
 
 
 
@@ -49,7 +49,7 @@ theorem PathTo.sizeOf_le {σ ρ : LayoutTy} (p : PathTo σ ρ) :
     shape whose compiler state grows a `placeRegMap` entry. -/
 theorem compileStmt_ref_fresh_local_lowers
     {Γ : Ctx} {τ : LayoutTy}
-    {dstLoc : Local Γ (obseq.LayoutTy.PtrL τ)} {srcLoc : Local Γ τ}
+    {dstLoc : Local Γ (LayoutTy.PtrL τ)} {srcLoc : Local Γ τ}
     {cs : CompilerState} {srcReg : Register}
     (kind : RefKind) (prot : Bool) (mask : List Bool)
     (h_dst : getPlaceInfo cs dstLoc.idx.1 = none)
@@ -61,8 +61,8 @@ theorem compileStmt_ref_fresh_local_lowers
           { (setPlaceInfo
               (emit { cs with nextReg := cs.nextReg + 1 }
                 [Instr.Assgn (Register.R cs.nextReg)
-                  (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
-              dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ)) with
+                  (Rhs.Alloc (layoutToTyVal (LayoutTy.PtrL τ)))])
+              dstLoc.idx.1 (Register.R cs.nextReg, LayoutTy.PtrL τ)) with
               nextReg := cs.nextReg + 1 + 1 }
           [Instr.Assgn (Register.R (cs.nextReg + 1))
             (Rhs.Borrow kind prot mask (some (blockSize τ)) srcReg 0)])
@@ -73,14 +73,14 @@ theorem compileStmt_ref_fresh_local_lowers
       = setPlaceInfo
           (emit { cs with nextReg := cs.nextReg + 1 }
             [Instr.Assgn (Register.R cs.nextReg)
-              (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
-          dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ) := h_run
+              (Rhs.Alloc (layoutToTyVal (LayoutTy.PtrL τ)))])
+          dstLoc.idx.1 (Register.R cs.nextReg, LayoutTy.PtrL τ) := h_run
   have h_srcPost : getPlaceInfo
       (setPlaceInfo
         (emit { cs with nextReg := cs.nextReg + 1 }
           [Instr.Assgn (Register.R cs.nextReg)
-            (Rhs.Alloc (layoutToTyVal (obseq.LayoutTy.PtrL τ)))])
-        dstLoc.idx.1 (Register.R cs.nextReg, obseq.LayoutTy.PtrL τ))
+            (Rhs.Alloc (layoutToTyVal (LayoutTy.PtrL τ)))])
+        dstLoc.idx.1 (Register.R cs.nextReg, LayoutTy.PtrL τ))
       srcLoc.idx.1 = some (srcReg, τ) := by
     by_cases h_eq : srcLoc.idx.1 = dstLoc.idx.1
     · exfalso
@@ -227,7 +227,7 @@ structure RefSrcShape {Γ : Ctx} {σb τ : LayoutTy}
   preValue : ∀ (cs : CompilerState)
       (dOut : ResultWithEvidence PtrResult (PlaceToRegEvidence kindL B)),
     CheckedCompilerM.value (placeToRegChecked kindL B) cs = Except.ok dOut →
-    ∃ pOut : RhsPre Γ (obseq.LayoutTy.PtrL τ) (RExpr.ref kind prot mask src),
+    ∃ pOut : RhsPre Γ (LayoutTy.PtrL τ) (RExpr.ref kind prot mask src),
       CheckedCompilerM.value
           (compileRExprPreChecked (RExpr.ref kind prot mask src)) cs
         = Except.ok pOut ∧
@@ -329,7 +329,7 @@ theorem ref_valuePkg_chain
         h_ref_src h_dval _ rfl h_instS (hFrag.instrAt 0 rfl rfl)
     refine ⟨ρa, _, nB, sB, sM.mem, perms', _, AddrRenameIncr.refl ρa, h_id_a,
       h_incr_t, h_wf_t', rfl,
-      by simp [blockSize, obseq.layoutSize], h_runB,
+      by simp [blockSize, layoutSize], h_runB,
       by grind [emit],
       by rw [h_pre]; grind [emit],
       by rw [h_pre]; exact h_lbsB,
@@ -380,7 +380,7 @@ theorem refSrcShape_local {τ : LayoutTy} (srcLoc : Local Γ τ)
     needing more than a `simp only`: `placeToBorrowRegChecked`'s deref
     arm and `placeToRegChecked`'s share their first three steps, and
     only spelling both out lets the two sides meet. -/
-theorem refSrcShape_deref {τ : LayoutTy} (P : Place Γ (obseq.LayoutTy.PtrL τ))
+theorem refSrcShape_deref {τ : LayoutTy} (P : Place Γ (LayoutTy.PtrL τ))
     (kind : RefKind) (prot : Bool) (mask : List Bool)
     (h_chain : PtrChain (Place.deref P)) :
     RefSrcShape RefKind.Shared kind prot mask (Place.deref P) PathTo.nil
@@ -812,7 +812,7 @@ theorem compileRExprPreChecked_ref_flatten {τ : LayoutTy}
     on the DESTINATION alone, and every arm is three lines. -/
 theorem assignStep_ref
     {τ : LayoutTy}
-    {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {dst : Place Γ (LayoutTy.PtrL τ)}
     {src : Place Γ τ}
     (kind : RefKind) (prot : Bool) (mask : List Bool)
     (compProg : oseair.Prog)
@@ -863,7 +863,7 @@ theorem assignStep_ref
 
 theorem CompilerInv_step_ref
     {τ : LayoutTy}
-    {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {dst : Place Γ (LayoutTy.PtrL τ)}
     {src : Place Γ τ}
     (kind : RefKind) (prot : Bool) (mask : List Bool)
     (compProg : oseair.Prog)
@@ -952,7 +952,7 @@ theorem move_valuePkg_chain
     have h_pre := h_shape.movePreRun csA dOut h_dval h_dclean rfl
     obtain ⟨pOut, h_pval, h_store, h_clean⟩ := h_shape.movePreValue csA dOut h_dval rfl
     have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
-      obseq.typeSize_layoutToTyVal _
+      typeSize_layoutToTyVal _
     have h_prmTail : (moveTail (CheckedCompilerM.run (placeToRegChecked kindL B) csA)
         dOut.result.reg (pathOffset f) (blockSize τ) (layoutToTyVal τ)).placeRegMap
         = csA.placeRegMap := by

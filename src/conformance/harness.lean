@@ -91,7 +91,7 @@ def Loaded.layEnv (l : Loaded) : mirliteB.LayEnv l.Γ :=
     (`bytes.Agrees`). Empty means the byte proof's two layout conditions
     hold for every place of the program
     (`byteproof.compileB_correct_agrees`). -/
-def Loaded.layoutDisagreements (l : Loaded) : List (Nat × obseq.LayoutTy × bytes.BLayout) :=
+def Loaded.layoutDisagreements (l : Loaded) : List (Nat × obseq3.LayoutTy × bytes.BLayout) :=
   (List.finRange l.Γ.length).filterMap fun i =>
     if bytes.Agrees (l.Γ.get i) (l.layEnv i) then none else some (i.val, l.Γ.get i, l.layEnv i)
 
@@ -522,7 +522,7 @@ def loadCert (charonDir : String) (e : TestEntry) : IO (Except String (Option Ce
 /-- `--layouts`: load one entry and list the locals whose loader layout
     disagrees with its type (`none`: the entry does not load). -/
 def layoutCheck (charonDir : String) (e : TestEntry) :
-    IO (Option (List (Nat × obseq.LayoutTy × bytes.BLayout))) := do
+    IO (Option (List (Nat × obseq3.LayoutTy × bytes.BLayout))) := do
   try
     let content ← IO.FS.readFile s!"{charonDir}/{e.artifact}"
     match Json.parse content with

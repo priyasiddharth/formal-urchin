@@ -364,7 +364,7 @@ def borrowRhs (kind : RefKind) (len : Nat) (base : Register) (offset : Nat) : Rh
 
 /-- The pointer a deref place loads: one pointer leaf. -/
 abbrev derefLoad {Γ : Ctx} (L : LayEnv Γ) {σ : LayoutTy}
-    (ptrPlace : Place Γ (obseq.LayoutTy.PtrL σ)) : BLayout :=
+    (ptrPlace : Place Γ (LayoutTy.PtrL σ)) : BLayout :=
   .ptr (placeLayout L (.deref ptrPlace))
 
 inductive PlaceToRegEvidence {Γ : Ctx} (L : LayEnv Γ) :
@@ -393,7 +393,7 @@ inductive PlaceToRegEvidence {Γ : Ctx} (L : LayEnv Γ) :
       PlaceToRegEvidence L kind (.proj base path)
         { reg := tmpReg, cleanup := baseRes.cleanup ++ [(tmpReg, placeSize L (.proj base path))] }
   | deref
-      {σ : LayoutTy} (ptrPlace : Place Γ (obseq.LayoutTy.PtrL σ))
+      {σ : LayoutTy} (ptrPlace : Place Γ (LayoutTy.PtrL σ))
       (ptrRes : PtrResult) (loadedReg : Register)
       (ptrEv : PlaceToRegEvidence L RefKind.Shared ptrPlace ptrRes) :
       PlaceToRegEvidence L kind (.deref ptrPlace)
@@ -418,7 +418,7 @@ inductive PlaceToBorrowRegEvidence {Γ : Ctx} (L : LayEnv Γ) :
       PlaceToBorrowRegEvidence L kind (.proj base path)
         { reg := tmpReg, cleanup := baseRes.cleanup ++ [(tmpReg, placeSize L (.proj base path))] }
   | deref
-      {σ : LayoutTy} (ptrPlace : Place Γ (obseq.LayoutTy.PtrL σ))
+      {σ : LayoutTy} (ptrPlace : Place Γ (LayoutTy.PtrL σ))
       (ptrRes : PtrResult) (loadedReg tmpReg : Register)
       (ptrEv : PlaceToRegEvidence L RefKind.Shared ptrPlace ptrRes) :
       PlaceToBorrowRegEvidence L kind (.deref ptrPlace)
@@ -533,8 +533,8 @@ def placeToBorrowRegChecked {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}
 
 inductive RExprToEvidence {Γ : Ctx} (L : LayEnv Γ)
     (dstPtr : Register) : {τ : LayoutTy} → RExpr Γ τ → Type where
-  | constInit (value : Word) :
-      RExprToEvidence L dstPtr (.constInit value)
+  | constInit {t : IntTy} (value : Word) :
+      RExprToEvidence L dstPtr (.constInit (t := t) value)
   | copy
       {τ : LayoutTy} (src : Place Γ τ) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
@@ -552,33 +552,35 @@ inductive RExprToEvidence {Γ : Ctx} (L : LayEnv Γ)
       RExprToEvidence L dstPtr (.uninit (τ := τ))
   | alloc {τ : LayoutTy} (len : AllocLen Γ) (reg : Register) :
       RExprToEvidence L dstPtr (.alloc (τ := τ) len)
-  | binOp (op : BinOp) (a b : Place Γ obseq.LayoutTy.NatL) (r1 r2 tmp : Register) :
-      RExprToEvidence L dstPtr (.binOp op a b)
-  | sliceLen {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (r tmp : Register) :
-      RExprToEvidence L dstPtr (.sliceLen src)
-  | subSlice {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ))
-      (lo hi : Place Γ obseq.LayoutTy.NatL) (rp rLo rHi tmp : Register) :
+  | binOp (op : BinOp) {ta tb tr : IntTy} (a : Place Γ (LayoutTy.IntL ta))
+      (b : Place Γ (LayoutTy.IntL tb)) (r1 r2 tmp : Register) :
+      RExprToEvidence L dstPtr (.binOp (tr := tr) op a b)
+  | sliceLen {σ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.PtrL σ)) (r tmp : Register) :
+      RExprToEvidence L dstPtr (.sliceLen (t := t) src)
+  | subSlice {σ : LayoutTy} (src : Place Γ (LayoutTy.PtrL σ))
+      {tl th : IntTy} (lo : Place Γ (LayoutTy.IntL tl)) (hi : Place Γ (LayoutTy.IntL th))
+      (rp rLo rHi tmp : Register) :
       RExprToEvidence L dstPtr (.subSlice src lo hi)
   | exposeAddr
-      {σ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
+      {σ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.PtrL σ)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
-      RExprToEvidence L dstPtr (.exposeAddr src)
+      RExprToEvidence L dstPtr (.exposeAddr (t := t) src)
   | fromExposed
-      {τ : LayoutTy} (src : Place Γ obseq.LayoutTy.NatL) (srcRes : PtrResult)
+      {τ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.IntL t)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
       RExprToEvidence L dstPtr (.fromExposed (τ := τ) src)
   | ptrCast
-      {σ τ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
+      {σ τ : LayoutTy} (src : Place Γ (LayoutTy.PtrL σ)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
       RExprToEvidence L dstPtr (.ptrCast (τ := τ) src)
   | ptrOffset
-      {σ τ : LayoutTy} (src : Place Γ (obseq.LayoutTy.PtrL σ)) (delta : Int)
+      {σ τ : LayoutTy} (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int)
       (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
       RExprToEvidence L dstPtr (.ptrOffset (τ := τ) src delta)
   | refSlice
       {σ τ : LayoutTy} (kind : RefKind) (prot : Bool)
-      (src : Place Γ (obseq.LayoutTy.PtrL σ)) (srcRes : PtrResult)
+      (src : Place Γ (LayoutTy.PtrL σ)) (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
       RExprToEvidence L dstPtr (.refSlice (τ := τ) kind prot src)
 
@@ -619,7 +621,7 @@ def readToReg {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy} (p : Place Γ τ) :
       ++ cleanupInstrs pOut.result.cleanup))
   pure reg
 
-def guardRead {Γ : Ctx} (L : LayEnv Γ) (discr : Place Γ obseq.LayoutTy.NatL) :
+def guardRead {Γ : Ctx} (L : LayEnv Γ) {t : IntTy} (discr : Place Γ (LayoutTy.IntL t)) :
     CheckedCompilerM Register :=
   readToReg L discr
 
@@ -762,11 +764,11 @@ inductive StmtEvidence {Γ : Ctx} (L : LayEnv Γ) : Stmt Γ → Type where
   | popProtectors :
       StmtEvidence L .popProtectors
   | assignIf
-      {τ : LayoutTy} (discr : Place Γ obseq.LayoutTy.NatL) (val : Word)
+      {τ : LayoutTy} {t : IntTy} (discr : Place Γ (LayoutTy.IntL t)) (val : Word)
       (dst : Place Γ τ) (rhs : RExpr Γ τ) :
       StmtEvidence L (.assignIf discr val dst rhs)
   | dealloc
-      {τ : LayoutTy} (dst : Place Γ (obseq.LayoutTy.PtrL τ)) :
+      {τ : LayoutTy} (dst : Place Γ (LayoutTy.PtrL τ)) :
       StmtEvidence L (.dealloc dst)
 
 def compileAssignChecked {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}

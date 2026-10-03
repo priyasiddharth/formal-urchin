@@ -35,7 +35,7 @@ variable {Γ : Ctx}
 
 /-! ## The guard's read, shared with `alloc`'s dynamic length
 
-`guardRead` is copy's read of a `NatL` place with its register exposed;
+`guardRead` is copy's read of an integer (`IntL`) place with its register exposed;
 `assignIf`'s guard and `alloc`'s `fromPlace` length both consume it. -/
 
 /-- `copy` of the flattened place is `copy` of the place (the read
@@ -55,7 +55,7 @@ theorem readToReg_value_inv {τ : LayoutTy} {p : Place Γ τ} {cs : CompilerStat
   | error e => rw [hD] at h; simp at h
   | ok pOut => exact ⟨pOut, rfl⟩
 
-theorem guardRead_value_inv {discr : Place Γ obseq.LayoutTy.NatL} {cs : CompilerState}
+theorem guardRead_value_inv {discr : Place Γ (LayoutTy.IntL tN)} {cs : CompilerState}
     {r : Register} (h : CheckedCompilerM.value (guardRead discr) cs = .ok r) :
     ∃ discrOut, CheckedCompilerM.value (placeToRegChecked RefKind.Shared discr) cs
       = .ok discrOut :=
@@ -87,7 +87,7 @@ theorem readToReg_flat {τ : LayoutTy} {p : Place Γ τ} {cs : CompilerState}
       csRun, List.append_nil]
   · simp only [readToReg, csMonad, hD, h_runF, csRun]
 
-theorem guardRead_flat {discr : Place Γ obseq.LayoutTy.NatL} {cs : CompilerState}
+theorem guardRead_flat {discr : Place Γ (LayoutTy.IntL tN)} {cs : CompilerState}
     {discrOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared discr)}
     (hD : CheckedCompilerM.value (placeToRegChecked RefKind.Shared discr) cs = .ok discrOut) :
     CheckedCompilerM.run (guardRead discr) cs
@@ -149,7 +149,7 @@ theorem alloc_step_bundle {Γ : Ctx} (τ : LayoutTy) (n : Nat) (compProg : oseai
       IdentityOnDomain ρa' ∧
       TagRenameIncr ρt ρt' ∧
       TagRenameWF ρt' ∧
-      vals.length = blockSize (obseq.LayoutTy.PtrL τ) ∧
+      vals.length = blockSize (LayoutTy.PtrL τ) ∧
       oseair.runN MSB 1 sR1 compProg = oseair.Result.Ok sR ∧
       LocalBindingSim ρa' ρt' env sR (emit { cs1 with nextReg := cs1.nextReg + 1 } [instr]) ∧
       PermSim ρt' perms' sR.perms ∧
@@ -167,7 +167,7 @@ theorem alloc_step_bundle {Γ : Ctx} (τ : LayoutTy) (n : Nat) (compProg : oseai
   subst h_tagS_eq
   have h_addr_eq : sR1.mem.addrStart = memS.addrStart := h_alloc.1
   have h_sz : obseq.typeSize (layoutToTyVal τ) = blockSize τ :=
-    obseq.typeSize_layoutToTyVal _
+    typeSize_layoutToTyVal _
   have h_units : n * obseq.typeSize (layoutToTyVal τ) = n * blockSize τ := by rw [h_sz]
   have h_run := h_step tgtPerms (by rw [h_units, h_addr_eq]; exact h_own_tgt)
   -- §2 the identity block at the shared watermark
@@ -179,7 +179,7 @@ theorem alloc_step_bundle {Γ : Ctx} (τ : LayoutTy) (n : Nat) (compProg : oseai
     ρt.extend permsS.NextTag sR1.perms.NextTag, _,
     [Val.Ptr sR1.mem.addrStart 0 (n * obseq.typeSize (layoutToTyVal τ)) (n * obseq.typeSize (layoutToTyVal τ)) sR1.perms.NextTag],
     h_incr_a, h_id_a', h_incr_t, h_wf_t',
-    by simp [blockSize, obseq.layoutSize], h_run, ?_, h_psim', h_tbd', ?_, ?_, ?_, ?_, ?_⟩
+    by simp [blockSize, layoutSize], h_run, ?_, h_psim', h_tbd', ?_, ?_, ?_, ?_, ?_⟩
   · -- the locals: renames grow, the fresh register is above every mapped one
     refine LocalBindingSim.placeRegMap_congr (cs := cs1) rfl ?_
     exact LocalBindingSim.insert_fresh_reg
@@ -260,7 +260,7 @@ theorem alloc_const_valuePkg {Γ : Ctx} (τ : LayoutTy) (n : Nat) (compProg : os
     with its register exposed), then one `AllocDyn` on that register at
     the post-read states. -/
 theorem alloc_fromPlace_valuePkg {Γ : Ctx} (τ : LayoutTy)
-    (p : Place Γ obseq.LayoutTy.NatL) (compProg : oseair.Prog) :
+    (p : Place Γ (LayoutTy.IntL tN)) (compProg : oseair.Prog) :
     ValuePkg compProg (RExpr.alloc (Γ := Γ) (τ := τ) (.fromPlace p)) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval

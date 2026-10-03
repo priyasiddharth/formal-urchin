@@ -235,7 +235,7 @@ theorem move_local_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.P
     (ptrChain_lowers hWF (PtrChain.base loc)) (ptrChain_compilesB (PtrChain.base loc)) dstL
 
 theorem move_deref_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    (hWF : PtrPlacesWF L) {σ : LayoutTy} {q : Place Γ (obseq.LayoutTy.PtrL σ)}
+    (hWF : PtrPlacesWF L) {σ : LayoutTy} {q : Place Γ (LayoutTy.PtrL σ)}
     (h_chain : PtrChain (.deref q)) (dstL : BLayout) :
     ValuePkgB compProg L dstL (RExpr.move (.deref q)) :=
   move_pkg_core (borrow_deref_shape q) (borrow_deref_res q)

@@ -83,7 +83,7 @@ theorem borrow_local_res {Γ : Ctx} {L : mirliteB.LayEnv Γ} {τ : LayoutTy} (lo
   fun _ r h => ⟨r, h, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem borrow_deref_shape {Γ : Ctx} {L : mirliteB.LayEnv Γ} {σ : LayoutTy}
-    (q : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    (q : Place Γ (LayoutTy.PtrL σ)) :
     BorrowAnchorShape L (.deref q) (.deref q) 0 := by
   intro kind prot mask cs aOut h_val h_clean
   cases h_q : CheckedCompilerM.value (placeToRegChecked L RefKind.Shared q) cs with
@@ -114,7 +114,7 @@ theorem borrow_deref_shape {Γ : Ctx} {L : mirliteB.LayEnv Γ} {σ : LayoutTy}
       exact ⟨rfl, _, rfl, rfl, rfl⟩
 
 theorem borrow_deref_res {Γ : Ctx} {L : mirliteB.LayEnv Γ} {σ : LayoutTy}
-    (q : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    (q : Place Γ (LayoutTy.PtrL σ)) :
     BorrowAnchorRes L (.deref q) (.deref q) 0 :=
   fun _ r h => ⟨r, h, rfl, rfl, rfl, rfl, rfl⟩
 
@@ -299,7 +299,7 @@ theorem ref_local_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pr
 
 /-- `&*q`, `&*(*p).f`, …: a deref chain. -/
 theorem ref_deref_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    (hWF : PtrPlacesWF L) {σ : LayoutTy} {q : Place Γ (obseq.LayoutTy.PtrL σ)}
+    (hWF : PtrPlacesWF L) {σ : LayoutTy} {q : Place Γ (LayoutTy.PtrL σ)}
     (h_chain : PtrChain (.deref q))
     (dstL : BLayout) (kind : RefKind) (prot : Bool) (mask : List Bool) :
     ValuePkgB compProg L dstL (RExpr.ref kind prot mask (.deref q)) :=

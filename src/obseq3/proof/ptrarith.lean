@@ -42,8 +42,8 @@ open obseq3.oseair (Instr Register Rhs Val)
     difference between a source place and its flattening. -/
 theorem stepStmt_assign_ptroffsetsrc_anyflatten
     {Γ : Ctx} {σ τ : LayoutTy} {M : PermissionModel}
-    (s : mirlite.State M Γ) (dst : Place Γ (obseq.LayoutTy.PtrL τ))
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (delta : Int) :
+    (s : mirlite.State M Γ) (dst : Place Γ (LayoutTy.PtrL τ))
+    (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int) :
     mirlite.stepStmt M s (.assign dst (.ptrOffset src delta))
       = mirlite.stepStmt M s (.assign dst (.ptrOffset (flattenPlace src) delta)) := by
   have h1 : ∀ st : mirlite.State M Γ,
@@ -58,7 +58,7 @@ theorem stepStmt_assign_ptroffsetsrc_anyflatten
     TAG untouched — so the pointer clause of `MemValSim` holds with the
     same witnesses the source cell's relation supplied. -/
 theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (delta : Int)
+    {src : Place Γ (LayoutTy.PtrL σ)} (delta : Int)
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
     ReadPkgLowered compProg (.ptrOffset (τ := τ) src delta) src
       (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => []) := by
@@ -209,7 +209,7 @@ theorem ptroffset_readpkg_lowered {σ τ : LayoutTy}
     cancellation; unlike the two casts nothing touches the permissions
     between the read and the die, so the die applies unchanged. -/
 theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
-    {spath : PathTo σs (obseq.LayoutTy.PtrL σ)} (delta : Int)
+    {spath : PathTo σs (LayoutTy.PtrL σ)} (delta : Int)
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.ptrOffset (τ := τ) (.proj B spath) delta) B spath
       (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => []) := by
@@ -264,16 +264,16 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         rw [h_sval0] at h_sval
         exact (Except.ok.inj h_sval).symm
       subst h_sOut_eq
-      have h_bs : blockSize (obseq.LayoutTy.PtrL σ) = 1 := rfl
+      have h_bs : blockSize (LayoutTy.PtrL σ) = 1 := rfl
       -- code inclusion at the post-`Die` tower
       have h_instCS2 : CodeIncluded compProg (emit
         { (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
         [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
-          (borrowRhs RefKind.Shared (blockSize (obseq.LayoutTy.PtrL σ)) sOut.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 }
+          (borrowRhs RefKind.Shared (blockSize (LayoutTy.PtrL σ)) sOut.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 }
         [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
             (Rhs.PtrOffset (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (delta * (blockSize σ : Int))),
-          Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize (obseq.LayoutTy.PtrL σ))]) := by
+          Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize (LayoutTy.PtrL σ))]) := by
         have h := h_instCS
         rw [h_regP, h_clP] at h
         simp only [csCleanup, h_sclean, List.nil_append, List.append_nil,
@@ -306,7 +306,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
       -- the three source instructions
       have h_code1 : compProg s_mid1.pc
           = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
-              (borrowRhs RefKind.Shared (blockSize (obseq.LayoutTy.PtrL σ))
+              (borrowRhs RefKind.Shared (blockSize (LayoutTy.PtrL σ))
                 sOut.result.reg (pathOffset spath))) := by
         rw [h_spc]
         refine h_instCS2 _ _ ?_ ?_
@@ -316,7 +316,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
           have h := emit_code_at_new
             { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
             [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
-              (borrowRhs RefKind.Shared (blockSize (obseq.LayoutTy.PtrL σ))
+              (borrowRhs RefKind.Shared (blockSize (LayoutTy.PtrL σ))
                 sOut.result.reg (pathOffset spath))]
             (k := 0) (by simp)
           simpa using h
@@ -330,16 +330,16 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
             { (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
         [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
-          (borrowRhs RefKind.Shared (blockSize (obseq.LayoutTy.PtrL σ)) sOut.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 }
+          (borrowRhs RefKind.Shared (blockSize (LayoutTy.PtrL σ)) sOut.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 }
             [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
                 (Rhs.PtrOffset (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (delta * (blockSize σ : Int))),
               Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
-                (blockSize (obseq.LayoutTy.PtrL σ))]
+                (blockSize (LayoutTy.PtrL σ))]
             (k := 0) (by simp)
           simpa [emit] using h
       have h_code3 : compProg (s_mid1.pc + 1 + 1)
           = some (Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
-              (blockSize (obseq.LayoutTy.PtrL σ))) := by
+              (blockSize (LayoutTy.PtrL σ))) := by
         rw [h_spc]
         refine h_instCS2 _ _ ?_ ?_
         · grind [emit]
@@ -347,34 +347,34 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
             { (emit
         { (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 }
         [Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
-          (borrowRhs RefKind.Shared (blockSize (obseq.LayoutTy.PtrL σ)) sOut.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 }
+          (borrowRhs RefKind.Shared (blockSize (LayoutTy.PtrL σ)) sOut.result.reg (pathOffset spath))]) with nextReg := (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1 + 1 }
             [Instr.Assgn (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
                 (Rhs.PtrOffset (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (delta * (blockSize σ : Int))),
               Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
-                (blockSize (obseq.LayoutTy.PtrL σ))]
+                (blockSize (LayoutTy.PtrL σ))]
             (k := 1) (by simp)
           simpa [emit] using h
       -- execute Borrow, cast, Die
       have h_le1 : rs.allocBase + (rs.addr - rs.allocBase) + pathOffset spath
-          + blockSize (obseq.LayoutTy.PtrL σ) ≤ rs.allocBase + rs.allocSize := by
+          + blockSize (LayoutTy.PtrL σ) ≤ rs.allocBase + rs.allocSize := by
         rw [h_cancelS, h_bs]
         have := Nat.not_lt.mp h_fit
         grind
       have h_ref_tgt' : MSB.ref s_mid1.perms
           (rs.allocBase + (rs.addr - rs.allocBase) + pathOffset spath)
-          (blockSize (obseq.LayoutTy.PtrL σ)) tres RefKind.Shared false []
+          (blockSize (LayoutTy.PtrL σ)) tres RefKind.Shared false []
           = .ok (q1, s_mid1.perms.NextTag) := by
         rw [h_cancelS, h_bs]
         exact h_ref_tgt
       have h_run1 := runN_Assgn_Borrow_step compProg s_mid1
         (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) sOut.result.reg RefKind.Shared false []
-        (blockSize (obseq.LayoutTy.PtrL σ)) (pathOffset spath) h_code1 h_sentry
+        (blockSize (LayoutTy.PtrL σ)) (pathOffset spath) h_code1 h_sentry
         h_le1 h_ref_tgt'
       have h_bentry : PtrRegisterEntry (oseair.RegMap.insert s_mid1.reg
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
           (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
             (rs.addr - rs.allocBase + pathOffset spath)
-            (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]))
+            (blockSize (LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]))
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) rs.allocBase
           (rs.addr - rs.allocBase + pathOffset spath) rs.allocSize
           s_mid1.perms.NextTag :=
@@ -394,7 +394,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         rw [← Nat.add_assoc, h_cancelS, h_smem]
         exact h_find_tgt
       have h_run2 := runN_Assgn_PtrOffset_step compProg
-        { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 }
+        { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 }
         (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
         (delta * (blockSize σ : Int))
         h_code2 h_bentry h_lt h_read2 h_cell_tgt h_neg
@@ -406,32 +406,32 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
             (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
             (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
               (rs.addr - rs.allocBase + pathOffset spath)
-              (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]))
+              (blockSize (LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]))
             (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1))
             (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2]))
           (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
           = some (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
               (rs.addr - rs.allocBase + pathOffset spath)
-              (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]) := by
+              (blockSize (LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]) := by
         rw [RegMap.lookup_insert_ne _ h_regbv]
         exact RegMap.lookup_insert_self _ _ _
       -- the exposure slides past the `Die`
       have h_die1' : MSB.die q2
           (rs.allocBase + (rs.addr - rs.allocBase + pathOffset spath))
-          (blockSize (obseq.LayoutTy.PtrL σ)) s_mid1.perms.NextTag = .ok q3 := by
+          (blockSize (LayoutTy.PtrL σ)) s_mid1.perms.NextTag = .ok q3 := by
         rw [← Nat.add_assoc, h_cancelS, h_bs]
         exact h_die1
       have h_run3 := runN_Die_step compProg
-        { s_mid1 with perms := q2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2]), pc := s_mid1.pc + 1 + 1 }
-        (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize (obseq.LayoutTy.PtrL σ))
+        { s_mid1 with perms := q2, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2]), pc := s_mid1.pc + 1 + 1 }
+        (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (blockSize (LayoutTy.PtrL σ))
         h_code3 ⟨_, h_bentry2⟩ h_die1'
       have h_psim3 : PermSim ρt perms' q3 := h_psim2q
       -- the post-`Die` binding simulation: both temporaries are fresh
       have h_lbsB : LocalBindingSim ρa ρt sM.env
-          { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 } csA :=
+          { s_mid1 with perms := q1, reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag]), pc := s_mid1.pc + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl
       have h_lbsV : LocalBindingSim ρa ρt sM.env
-          { s_mid1 with perms := q3, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
+          { s_mid1 with perms := q3, reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg) (obseq.TyVal.PTy, [Val.Ptr rs.allocBase (rs.addr - rs.allocBase + pathOffset spath) (blockSize (LayoutTy.PtrL σ)) rs.allocSize s_mid1.perms.NextTag])) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (obseq.TyVal.PTy, [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2]), pc := s_mid1.pc + 1 + 1 + 1 } csA :=
         LocalBindingSim.insert_fresh_reg h_lbsB h_prb
           (Nat.le_trans h_sregmono (Nat.le_succ _)) rfl
       refine ⟨h_sclean, ρt, _, _, perms', [Val.Ptr pb2 ((po2 : Int) + delta * (blockSize σ : Int)).toNat pe2 ps2 pt2],
@@ -472,7 +472,7 @@ theorem ptroffset_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
 theorem ptrOffset_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (delta : Int)
     (compProg : oseair.Prog) :
     ReadRhsFamily (Γ := Γ) compProg
-      (fun src : Place Γ (obseq.LayoutTy.PtrL σ) =>
+      (fun src : Place Γ (LayoutTy.PtrL σ) =>
         RExpr.ptrOffset (τ := τ) src delta)
       (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => []) where
   shape := fun src => readRhsShape_ptrOffset src delta
@@ -483,8 +483,8 @@ theorem ptrOffset_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (delta : Int)
 /-- One `ptrOffset` statement, simulated. -/
 theorem CompilerInv_step_ptrOffset
     {σ τ : LayoutTy}
-    {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} {delta : Int}
+    {dst : Place Γ (LayoutTy.PtrL τ)}
+    {src : Place Γ (LayoutTy.PtrL σ)} {delta : Int}
     (compProg : oseair.Prog)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
@@ -509,10 +509,10 @@ copy's with only the mirlite inversion changed — `blockSize (PtrL σ)` is
 
 /-- **The `ptrCast` read package**, chain-class source. -/
 theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)}
+    {src : Place Γ (LayoutTy.PtrL σ)}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
     ReadPkgLowered compProg (.ptrCast (τ := τ) src) src
-      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) (fun _ => []) := by
+      (Rhs.Load (layoutToTyVal (LayoutTy.PtrL σ))) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
@@ -534,7 +534,7 @@ theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
     split at h_eval
     · simp at h_eval
     rename_i h_init0
-    have h_init : (mirlite.readWordSeq sM.mem rs.addr (blockSize (obseq.LayoutTy.PtrL σ))).any
+    have h_init : (mirlite.readWordSeq sM.mem rs.addr (blockSize (LayoutTy.PtrL σ))).any
         (fun v => v == mirlite.MemValue.undef) = false := by simpa using h_init0
     injection h_eval with h_out
     subst h_out
@@ -556,10 +556,10 @@ theorem ptrcast_readpkg_lowered {σ τ : LayoutTy}
     the projection's `Borrow(Shared)`, the `Load` through it, and the
     `Die`. Copy's `copy_projsrc_offset_read` does all of it. -/
 theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
-    {spath : PathTo σs (obseq.LayoutTy.PtrL σ)}
+    {spath : PathTo σs (LayoutTy.PtrL σ)}
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.ptrCast (τ := τ) (.proj B spath)) B spath
-      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) (fun _ => []) := by
+      (Rhs.Load (layoutToTyVal (LayoutTy.PtrL σ))) (fun _ => []) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
   simp only [mirlite.evalRExpr, mirlite.evalCopy] at h_eval
@@ -584,7 +584,7 @@ theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
     · simp at h_eval
     rename_i h_init0
     have h_init : (mirlite.readWordSeq sM.mem (rs.addr + PathTo.offset spath)
-        (blockSize (obseq.LayoutTy.PtrL σ))).any
+        (blockSize (LayoutTy.PtrL σ))).any
         (fun v => v == mirlite.MemValue.undef) = false := by simpa using h_init0
     injection h_eval with h_out
     subst h_out
@@ -607,8 +607,8 @@ theorem ptrcast_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
     between a source place and its flattening. -/
 theorem stepStmt_assign_ptrcastsrc_anyflatten
     {Γ : Ctx} {σ τ : LayoutTy} {M : PermissionModel}
-    (s : mirlite.State M Γ) (dst : Place Γ (obseq.LayoutTy.PtrL τ))
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    (s : mirlite.State M Γ) (dst : Place Γ (LayoutTy.PtrL τ))
+    (src : Place Γ (LayoutTy.PtrL σ)) :
     mirlite.stepStmt M s (.assign dst (.ptrCast src))
       = mirlite.stepStmt M s (.assign dst (.ptrCast (flattenPlace src))) := by
   have h1 : ∀ st : mirlite.State M Γ,
@@ -620,8 +620,8 @@ theorem stepStmt_assign_ptrcastsrc_anyflatten
 /-- `ptrCast` is a read-then-store family. -/
 theorem ptrCast_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (compProg : oseair.Prog) :
     ReadRhsFamily (Γ := Γ) compProg
-      (fun src : Place Γ (obseq.LayoutTy.PtrL σ) => RExpr.ptrCast (τ := τ) src)
-      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ))) (fun _ => []) where
+      (fun src : Place Γ (LayoutTy.PtrL σ) => RExpr.ptrCast (τ := τ) src)
+      (Rhs.Load (layoutToTyVal (LayoutTy.PtrL σ))) (fun _ => []) where
   shape := fun src => readRhsShape_ptrCast src
   stepFlat := fun s dst src => stepStmt_assign_ptrcastsrc_anyflatten s dst src
   pkgLowered := fun _ h => ptrcast_readpkg_lowered compProg h
@@ -630,8 +630,8 @@ theorem ptrCast_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (compProg : oseair.P
 /-- One `ptrCast` statement, simulated. -/
 theorem CompilerInv_step_ptrCast
     {σ τ : LayoutTy}
-    {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)}
+    {dst : Place Γ (LayoutTy.PtrL τ)}
+    {src : Place Γ (LayoutTy.PtrL σ)}
     (compProg : oseair.Prog)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)
@@ -672,10 +672,10 @@ the mint is a separate step that no borrow outlives. -/
 
 /-- **The `refSlice` read package**, chain-class source. -/
 theorem refslice_readpkg_lowered {σ τ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (kind : RefKind) (prot : Bool)
+    {src : Place Γ (LayoutTy.PtrL σ)} (kind : RefKind) (prot : Bool)
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg src) :
     ReadPkgLowered compProg (.refSlice (τ := τ) kind prot src) src
-      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+      (Rhs.Load (layoutToTyVal (LayoutTy.PtrL σ)))
       (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)]) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
@@ -745,7 +745,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
         obtain ⟨p2, h_read_tgt, h_psim2⟩ :=
           sb_read_respects_PermSim h_spsim h_wf_t h_srt h_read_src
         have h_emit2 : ∀ (k : Nat) (instr : Instr), k < 2 →
-            ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)) sOut.result.reg),
+            ([Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Load (layoutToTyVal (LayoutTy.PtrL σ)) sOut.result.reg),
               Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Borrow kind prot [] none (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) 0)]).get? k = some instr →
             compProg ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextLabel + k) = some instr := by
           intro k instr hk hget
@@ -756,7 +756,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             rw [emit_code_at_new _ _ (k := k) (by simpa using hk)]
             exact hget
         have h_code1 : compProg s_mid1.pc
-            = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)) sOut.result.reg)) := by
+            = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Load (layoutToTyVal (LayoutTy.PtrL σ)) sOut.result.reg)) := by
           rw [h_spc]; exact h_emit2 0 _ (by omega) rfl
         have h_code2 : compProg (s_mid1.pc + 1)
             = some (Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Rhs.Borrow kind prot [] none (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) 0)) := by
@@ -765,11 +765,11 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
           have h1 : rs.addr + 1 ≤ rs.allocBase + rs.allocSize := Nat.not_lt.mp h_fit
           have h2 := h_sle
           grind
-        have h_lt1 : (rs.addr - rs.allocBase) + obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL σ)) ≤ rs.allocSize := by
+        have h_lt1 : (rs.addr - rs.allocBase) + obseq.typeSize (layoutToTyVal (LayoutTy.PtrL σ)) ≤ rs.allocSize := by
           show (rs.addr - rs.allocBase) + 1 ≤ rs.allocSize
           exact h_lt
         have h_read2t : MSB.read s_mid1.perms
-            (rs.allocBase + (rs.addr - rs.allocBase)) (obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL σ))) tres
+            (rs.allocBase + (rs.addr - rs.allocBase)) (obseq.typeSize (layoutToTyVal (LayoutTy.PtrL σ))) tres
             = .ok p2 := by
           show MSB.read s_mid1.perms (rs.allocBase + (rs.addr - rs.allocBase)) 1 tres = _
           rw [h_cancel]
@@ -780,7 +780,7 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
           rw [h_cancel, h_smem]
           exact h_find_tgt
         have h_seq : oseair.readWordSeq s_mid1.mem
-            (rs.allocBase + (rs.addr - rs.allocBase)) (obseq.typeSize (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+            (rs.allocBase + (rs.addr - rs.allocBase)) (obseq.typeSize (layoutToTyVal (LayoutTy.PtrL σ)))
             = [Val.Ptr pb2 po2 pe2 ps2 pt2] := by
           show oseair.readWordSeq s_mid1.mem _ 1 = _
           simp [oseair.readWordSeq, h_cell_tgt]
@@ -789,10 +789,10 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             { s_mid1 with
               perms := p2,
               reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
+                ((layoutToTyVal (LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
               pc := s_mid1.pc + 1 } := by
           have h := runN_Assgn_Load_ptr_step compProg s_mid1 (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-            sOut.result.reg (layoutToTyVal (obseq.LayoutTy.PtrL σ)) h_code1 h_sentry h_lt1 h_read2t
+            sOut.result.reg (layoutToTyVal (LayoutTy.PtrL σ)) h_code1 h_sentry h_lt1 h_read2t
             (by rw [h_seq]; rfl)
           rwa [h_seq] at h
         -- the mint transports and EXTENDS the renaming
@@ -807,12 +807,12 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             { s_mid1 with
               perms := p2,
               reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
+                ((layoutToTyVal (LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
               pc := s_mid1.pc + 1 } compProg = oseair.Result.Ok
             { s_mid1 with
               perms := q,
               reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                  ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                  ((layoutToTyVal (LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
                 (obseq.TyVal.PTy, [Val.Ptr pb2 po2 pe2 ps2 p2.NextTag]),
               pc := s_mid1.pc + 1 + 1 } :=
           runN_Assgn_Borrow_rest_step compProg _ (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg) kind prot
@@ -822,14 +822,14 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
             { s_mid1 with
               perms := q,
               reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                  ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
+                  ((layoutToTyVal (LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2])) (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
                 (obseq.TyVal.PTy, [Val.Ptr pb2 po2 pe2 ps2 p2.NextTag]),
               pc := s_mid1.pc + 1 + 1 } csA :=
           LocalBindingSim.insert_fresh_reg
             (s := { s_mid1 with
               perms := p2,
               reg := oseair.RegMap.insert s_mid1.reg (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared src) csA).nextReg)
-                ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
+                ((layoutToTyVal (LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
               pc := s_mid1.pc + 1 })
             (LocalBindingSim.insert_fresh_reg h_slbs h_prb h_sregmono rfl)
             h_prb h_sregmono rfl
@@ -871,10 +871,10 @@ theorem refslice_readpkg_lowered {σ τ : LayoutTy}
     lets the three-instruction bracket lemma see through the emitted
     four. -/
 theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
-    {spath : PathTo σs (obseq.LayoutTy.PtrL σ)} (kind : RefKind) (prot : Bool)
+    {spath : PathTo σs (LayoutTy.PtrL σ)} (kind : RefKind) (prot : Bool)
     (compProg : oseair.Prog) (h_slower : LoweringSimAny compProg B) :
     ReadPkgProjOffset compProg (.refSlice (τ := τ) kind prot (.proj B spath))
-      B spath (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+      B spath (Rhs.Load (layoutToTyVal (LayoutTy.PtrL σ)))
       (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)]) := by
   intro ρa ρt sM sA csA h_id_a h_wf_t h_tbd h_lbs h_prb h_sms h_alloc h_psim h_pc
     output h_eval
@@ -951,7 +951,7 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
         subst h_ps
         subst h_pe
         have h_seq : oseair.readWordSeq s_mid1.mem (rs.addr + pathOffset spath)
-            (blockSize (obseq.LayoutTy.PtrL σ)) = [Val.Ptr pb2 po2 pe2 ps2 pt2] := by
+            (blockSize (LayoutTy.PtrL σ)) = [Val.Ptr pb2 po2 pe2 ps2 pt2] := by
           show oseair.readWordSeq s_mid1.mem _ 1 = _
           rw [h_smem]
           simp [oseair.readWordSeq, h_find_tgt]
@@ -973,9 +973,9 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
               reg := oseair.RegMap.insert (oseair.RegMap.insert s_mid1.reg
                   (Register.R (CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg)
                   (obseq.TyVal.PTy, [Val.Ptr rs.allocBase
-                    (rs.addr - rs.allocBase + pathOffset spath) (blockSize (obseq.LayoutTy.PtrL σ)) rs.allocSize
+                    (rs.addr - rs.allocBase + pathOffset spath) (blockSize (LayoutTy.PtrL σ)) rs.allocSize
                     s_mid1.perms.NextTag]))
-                (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) ((layoutToTyVal (obseq.LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
+                (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) ((layoutToTyVal (LayoutTy.PtrL σ)), [Val.Ptr pb2 po2 pe2 ps2 pt2]),
               pc := s_mid1.pc + 1 + 1 + 1 }
           (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) (Register.R ((CheckedCompilerM.run (placeToRegChecked RefKind.Shared B) csA).nextReg + 1)) kind prot
           h_code3 (RegMap.lookup_insert_self _ _ _) h_ref_tgt
@@ -1007,8 +1007,8 @@ theorem refslice_readpkg_projoffset {σ τ σs : LayoutTy} {B : Place Γ σs}
     difference between a source place and its flattening. -/
 theorem stepStmt_assign_refslicesrc_anyflatten
     {Γ : Ctx} {σ τ : LayoutTy} {M : PermissionModel}
-    (s : mirlite.State M Γ) (dst : Place Γ (obseq.LayoutTy.PtrL τ))
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (kind : RefKind) (prot : Bool) :
+    (s : mirlite.State M Γ) (dst : Place Γ (LayoutTy.PtrL τ))
+    (src : Place Γ (LayoutTy.PtrL σ)) (kind : RefKind) (prot : Bool) :
     mirlite.stepStmt M s (.assign dst (.refSlice kind prot src))
       = mirlite.stepStmt M s (.assign dst (.refSlice kind prot (flattenPlace src))) := by
   have h1 : ∀ st : mirlite.State M Γ,
@@ -1021,9 +1021,9 @@ theorem stepStmt_assign_refslicesrc_anyflatten
 theorem refSlice_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (kind : RefKind)
     (prot : Bool) (compProg : oseair.Prog) :
     ReadRhsFamily (Γ := Γ) compProg
-      (fun src : Place Γ (obseq.LayoutTy.PtrL σ) =>
+      (fun src : Place Γ (LayoutTy.PtrL σ) =>
         RExpr.refSlice (τ := τ) kind prot src)
-      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+      (Rhs.Load (layoutToTyVal (LayoutTy.PtrL σ)))
       (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)]) where
   shape := fun src => readRhsShape_refSlice kind prot src
   stepFlat := fun s dst src =>
@@ -1034,8 +1034,8 @@ theorem refSlice_readRhsFamily {Γ : Ctx} {σ τ : LayoutTy} (kind : RefKind)
 /-- One `refSlice` statement, simulated. -/
 theorem CompilerInv_step_refSlice
     {σ τ : LayoutTy} {kind : RefKind} {prot : Bool}
-    {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)}
+    {dst : Place Γ (LayoutTy.PtrL τ)}
+    {src : Place Γ (LayoutTy.PtrL σ)}
     (compProg : oseair.Prog)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)

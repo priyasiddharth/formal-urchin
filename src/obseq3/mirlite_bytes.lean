@@ -7,9 +7,10 @@ import obseq3.bytelayout
 The same language, permission model and evaluation order as
 `mirlite_semantics.lean`, with the memory replaced by `bytes.Mem`
 (MiniRust-style abstract bytes, provenance on every pointer byte). It runs
-ALONGSIDE the cell semantics: the compiler-correctness proof is still
-about the cell semantics; the conformance harness's `--bytes` mode runs
-both and requires the same verdict.
+ALONGSIDE the cell semantics, and has its own compiler-correctness proof
+(`byteproof/`, against the byte compiler `compileB`); the conformance
+harness judges verdicts on this model and `--cells` requires the cell
+model's to match.
 
 Values are still `List MemValue`, one per LEAF (scalar or pointer) of the
 value's layout. Every size, offset and range comes from a per-local BYTE
@@ -347,7 +348,7 @@ def readCell (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) (what : St
       | .ok perms' => .ok (decodeV k (state.mem.read resolved.addr k.size), perms')
 
 /-- The pointee layout of a pointer place. -/
-def pointeeLayout {σ : LayoutTy} (p : Place Γ (obseq.LayoutTy.PtrL σ)) : BLayout :=
+def pointeeLayout {σ : LayoutTy} (p : Place Γ (LayoutTy.PtrL σ)) : BLayout :=
   match placeLayout L p with
   | .ptr q => q
   | _ => ofLayoutTy σ

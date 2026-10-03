@@ -103,7 +103,7 @@ theorem alloc_const_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.
       fun _ _ => ⟨_, rfl⟩⟩
 
 theorem evalAllocLen_fromPlace_inv {Γ : Ctx} {L : mirliteB.LayEnv Γ} {sM s1 : mirliteB.State MSB Γ}
-    {p : Place Γ obseq.LayoutTy.NatL} {n : Nat}
+    {p : Place Γ (LayoutTy.IntL tN)} {n : Nat}
     (h : mirliteB.evalAllocLen MSB L sM (.fromPlace p) = .ok (n, s1)) :
     ∃ out, mirliteB.evalCopy MSB L sM p = .ok out ∧ out.values = [.word n] ∧ s1 = out.state := by
   simp only [mirliteB.evalAllocLen] at h
@@ -119,7 +119,7 @@ theorem evalAllocLen_fromPlace_inv {Γ : Ctx} {L : mirliteB.LayEnv Γ} {sM s1 : 
 
 theorem alloc_dyn_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ : LayoutTy}
-    {p : Place Γ obseq.LayoutTy.NatL} (h_c : ReadSrcB p) :
+    {p : Place Γ (LayoutTy.IntL tN)} (h_c : ReadSrcB p) :
     ValuePkgB compProg L dstL (RExpr.alloc (Γ := Γ) (τ := σ) (.fromPlace p)) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
   have h_inv0 : InvAtB L ρt sM sA csA := ⟨h_pc, h_lbs, h_mem, h_alloc, h_psim, h_wf, h_tbd,

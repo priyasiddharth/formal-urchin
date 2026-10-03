@@ -284,7 +284,7 @@ def evalCopy
             state := state'
           }
 
-/-- The length of an `alloc`: static, or copy's read of a `NatL` place
+/-- The length of an `alloc`: static, or copy's read of an integer (`IntL`) place
     (`evalCopy`), which must yield a concrete word. -/
 def evalAllocLen (M : PermissionModel) (state : State M Γ) :
     AllocLen Γ → Except String (Nat × State M Γ)
@@ -345,7 +345,7 @@ def evalRExpr
               }
   | .alloc (τ := τ) len =>
       -- a heap block of `n` pointees, `n` static or READ from a place
-      -- (copy's read of a `NatL` place), owned at a fresh tag; the value
+      -- (copy's read of an integer (`IntL`) place), owned at a fresh tag; the value
       -- is the pointer to it. An rvalue since 2026-09-21: `Box::new` and
       -- `std::alloc::alloc` are calls, evaluated before the destination
       -- is written — the assign's rvalue-first order.
@@ -649,7 +649,7 @@ def stepStmt
       -- the compiled code had to mirror with an access-free `SkipIf`, and
       -- one that made a projected discriminant (whose lowering is a
       -- `Borrow`/`Die` bracket, correctly) unprovable. The read IS `copy`
-      -- of the `NatL` place — resolve for access, bounds, `M.read` —
+      -- of the integer place — resolve for access, bounds, `M.read` —
       -- followed by a compare; the guarded assign runs from the post-read
       -- state, and so does the fall-through.
       match ensureRoot M state dst with

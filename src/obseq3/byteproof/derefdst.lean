@@ -268,7 +268,7 @@ theorem storereg_lowered_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRena
     `storereg_chaindst_simulation`). -/
 theorem storereg_chaindst_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {s_mir s_mir' : mirliteB.State MSB Γ} {s_osea : oseairL.State MSB}
-    {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)} {rhs : RExpr Γ τ} {cs : CompilerState}
+    {τ : LayoutTy} {P : Place Γ (LayoutTy.PtrL τ)} {rhs : RExpr Γ τ} {cs : CompilerState}
     (compProg : oseairL.Prog) (hWF : PtrPlacesWF L)
     (h_chain : PtrChain (.deref P))
     (h_pkg : ValuePkgB compProg L (mirliteB.placeLayout L (.deref P)) rhs)

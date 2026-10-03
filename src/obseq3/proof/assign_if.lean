@@ -17,7 +17,7 @@ row (2026-09-17):
    (mirlite `ensureRoot`, compiler `ensurePlaceRoot`) — on BOTH paths,
    so the two allocators stay in lockstep whether or not the guard is
    taken;
-2. the discriminant is READ, exactly as `copy` reads a `NatL` place;
+2. the discriminant is READ, exactly as `copy` reads an integer (`IntL`) place;
 3. the loaded word is compared with `val`: equal, and the assign runs
    from the post-read state; unequal, and the statement is over.
 
@@ -148,7 +148,7 @@ theorem ensureRoot_simulation {τ : LayoutTy} (dst : Place Γ τ) (compProg : os
             h_lbs h_prb h_pi_none h_incr_a (AddrRenameMap.extendBlock_base _ _ _)
             h_ra_dom
         have h_sz : obseq.typeSize (layoutToTyVal τ') = blockSize τ' :=
-          obseq.typeSize_layoutToTyVal _
+          typeSize_layoutToTyVal _
         have h_run : CompilerM.run (ensurePlaceRoot (Place.local loc)) cs
             = freshRootCS cs loc := by
           simp only [ensurePlaceRoot, CompilerM.run_bind]
@@ -238,7 +238,7 @@ theorem compileAssignChecked_stmt_value {τ : LayoutTy} (dst : Place Γ τ) (rhs
     ∃ so', CheckedCompilerM.value (compileAssignChecked dst rhs) cs = .ok so' := ⟨so, h⟩
 
 /-- The compiler state after a guard's root step and discriminant read. -/
-def guardReadCS (discr : Place Γ obseq.LayoutTy.NatL) {τ : LayoutTy} (dst : Place Γ τ)
+def guardReadCS (discr : Place Γ (LayoutTy.IntL tN)) {τ : LayoutTy} (dst : Place Γ τ)
     (cs : CompilerState) : CompilerState :=
   CheckedCompilerM.run (guardRead discr) (CompilerM.run (ensurePlaceRoot dst) cs)
 
@@ -246,7 +246,7 @@ def guardReadCS (discr : Place Γ obseq.LayoutTy.NatL) {τ : LayoutTy} (dst : Pl
     reserved state after the read, and its run is the body's run with the
     guard's label patched. -/
 theorem compileStmt_assignIf_shape {τ : LayoutTy}
-    (discr : Place Γ obseq.LayoutTy.NatL) (val : Word) (dst : Place Γ τ) (rhs : RExpr Γ τ)
+    (discr : Place Γ (LayoutTy.IntL tN)) (val : Word) (dst : Place Γ τ) (rhs : RExpr Γ τ)
     (cs : CompilerState)
     (h_ok : ∃ so, CheckedCompilerM.value
       (compileStmtChecked (.assignIf discr val dst rhs)) cs = .ok so) :
@@ -355,7 +355,7 @@ theorem assignLeaf_all {τ : LayoutTy} (compProg : oseair.Prog)
 
 /-- The `assignIf` step. -/
 theorem CompilerInv_step_assignIf {τ : LayoutTy}
-    {discr : Place Γ obseq.LayoutTy.NatL} {val : Word} {dst : Place Γ τ} {rhs : RExpr Γ τ}
+    {discr : Place Γ (LayoutTy.IntL tN)} {val : Word} {dst : Place Γ τ} {rhs : RExpr Γ τ}
     (compProg : oseair.Prog)
     (h_leaf : AssignLeaf compProg dst rhs)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)

@@ -32,7 +32,7 @@ open obseq3.compileB
 
 /-- Every pointer-typed place has a pointer-sized layout. -/
 def PtrPlacesWF {Γ : Ctx} (L : mirliteB.LayEnv Γ) : Prop :=
-  ∀ {τ : LayoutTy} (p : Place Γ (obseq.LayoutTy.PtrL τ)), (mirliteB.placeLayout L p).size = ptrSize
+  ∀ {τ : LayoutTy} (p : Place Γ (LayoutTy.PtrL τ)), (mirliteB.placeLayout L p).size = ptrSize
 
 /-! ## Decoding a pointer on both sides -/
 
@@ -83,7 +83,7 @@ abbrev bumpReg (cs : CompilerState) : CompilerState := { cs with nextReg := cs.n
 /-- The deref arm: the pointer place's lowering, a `Load` of one pointer
     leaf into a fresh register, then the pointer place's cleanups. -/
 theorem deref_lowering {Γ : Ctx} {L : mirliteB.LayEnv Γ} {σ : LayoutTy} {kind : RefKind}
-    {q : Place Γ (obseq.LayoutTy.PtrL σ)} {cs : CompilerState}
+    {q : Place Γ (LayoutTy.PtrL σ)} {cs : CompilerState}
     {qOut : ResultWithEvidence PtrResult (PlaceToRegEvidence L RefKind.Shared q)}
     (h_qval : CheckedCompilerM.value (placeToRegChecked L RefKind.Shared q) cs = .ok qOut) :
     CheckedCompilerM.run (placeToRegChecked L kind (.deref q)) cs
@@ -183,7 +183,7 @@ theorem bumpReg_state_incr' (cs : CompilerState) : StateIncr cs (bumpReg cs) :=
   freshReg_state_incr cs
 
 theorem deref_incr {Γ : Ctx} {L : mirliteB.LayEnv Γ} {σ : LayoutTy} {kind : RefKind}
-    (q : Place Γ (obseq.LayoutTy.PtrL σ)) (cs : CompilerState) :
+    (q : Place Γ (LayoutTy.PtrL σ)) (cs : CompilerState) :
     StateIncr (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared q) cs)
       (CheckedCompilerM.run (placeToRegChecked L kind (.deref q)) cs) := by
   have h_bind : placeToRegChecked L kind (.deref q)
@@ -315,7 +315,7 @@ structure LoweredB {Γ : Ctx} (L : mirliteB.LayEnv Γ) (ρt : TagRenameMap)
     resolved pointer in a fresh register. -/
 theorem deref_level {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {sM : mirliteB.State MSB Γ} {compProg : oseairL.Prog} (hwf : TagRenameWF ρt)
-    {σ : LayoutTy} {q : Place Γ (obseq.LayoutTy.PtrL σ)} {kind : RefKind} {cs : CompilerState}
+    {σ : LayoutTy} {q : Place Γ (LayoutTy.PtrL σ)} {kind : RefKind} {cs : CompilerState}
     {sA : oseairL.State MSB} {qRes : PlaceRes} {permsQ permsQ' : MSB.State}
     {qOut : ResultWithEvidence PtrResult (PlaceToRegEvidence L RefKind.Shared q)}
     {n1 : Nat} {s_mid : oseairL.State MSB} {qtag : Tag}

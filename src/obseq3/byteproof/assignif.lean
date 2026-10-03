@@ -90,7 +90,7 @@ theorem emitSkipIfAround_ok {α : Type} (r : Register) (val : Word) (body : Chec
     exact ⟨⟨a, h_a⟩, rfl⟩
 
 theorem assignIf_shape {Γ : Ctx} {L : mirliteB.LayEnv Γ} {τ : LayoutTy}
-    (discr : Place Γ obseq.LayoutTy.NatL) (val : Word) (dst : Place Γ τ) (rhs : RExpr Γ τ)
+    (discr : Place Γ (LayoutTy.IntL tN)) (val : Word) (dst : Place Γ τ) (rhs : RExpr Γ τ)
     (cs : CompilerState) {u : ResultWithEvidence Unit (fun _ => StmtEvidence L (.assignIf discr val dst rhs))}
     (h : CheckedCompilerM.value (compileStmtChecked L (.assignIf discr val dst rhs)) cs = .ok u) :
     ∃ r, CheckedCompilerM.value (guardRead L discr) (CompilerM.run (ensurePlaceRoot L dst) cs) = .ok r ∧
@@ -198,7 +198,7 @@ theorem InvAtB.src_pc {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
 /-! ## The leaf -/
 
 theorem assignIf_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    (hWF : PtrPlacesWF L) {τ : LayoutTy} {discr : Place Γ obseq.LayoutTy.NatL} {val : Word}
+    (hWF : PtrPlacesWF L) {τ : LayoutTy} {discr : Place Γ (LayoutTy.IntL tN)} {val : Word}
     {dst : Place Γ τ} {rhs : RExpr Γ τ}
     (h_d : ReadSrcB discr) (h_body : StmtSimB L compProg (.assign dst rhs))
     {ρt : TagRenameMap} {s_mir s_mir' : mirliteB.State MSB Γ} {s_osea : oseairL.State MSB}

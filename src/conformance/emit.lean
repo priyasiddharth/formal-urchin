@@ -53,8 +53,8 @@ structure LowerSt where
   refOf : List (ConstKey × UPlace) := []   -- a pointer-holding place ↦ the place it was taken from
   -- certificate-guided lowering (none = the straight-line-only seam)
   cert : Option CertCursor := none
-  certBad : Nat := 0     -- scratch NatL local the checks poison
-  certTmp : Nat := 0     -- scratch NatL local the checks read into
+  certBad : Nat := 0     -- scratch usize local the checks poison
+  certTmp : Nat := 0     -- scratch usize local the checks read into
   halted : Bool := false -- the certificate's UB/panic prefix ended here
   -- places MOVED OUT (local, field path): a `Drop` of such a place, or of
   -- a place inside it, does nothing; assigning a place re-initialises it

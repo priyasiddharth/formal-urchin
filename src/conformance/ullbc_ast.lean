@@ -513,7 +513,8 @@ def constOfInt (t : UIntTy) (v : Int) : UOperand :=
     converted while loading; otherwise narrowing keeps the low `dst.bits`
     (a `BitAnd`), widening a SIGNED source sign-extends (`SExt.<bits>`,
     lowered as `(x ^ s) - s` with `s` the source's sign bit), and every
-    other cast keeps the bit pattern. -/
+    other cast keeps the bit pattern — as a copy when the types are equal,
+    else as `x | 0` at the destination type, so the result is typed at it. -/
 def intCast (src dst : UIntTy) (a : UOperand) : URvalue :=
   match constIntValue src a with
   | some v => .use (constOfInt dst v)
@@ -522,7 +523,10 @@ def intCast (src dst : UIntTy) (a : UOperand) : URvalue :=
         .binOp "BitAnd" dst a (.const (2 ^ dst.bits - 1))
       else if src.signed && src.bits < dst.bits then
         .binOp s!"SExt.{src.bits}" dst a (.const 0)
-      else .use a
+      else if src == dst then .use a
+      -- the bit pattern is kept, but the TYPE changes (widening, or a
+      -- signedness change): a typed op at the destination type, `x | 0`
+      else .binOp "BitOr" dst a (.const 0)
 
 /-- The decl id of a type Json when it is a (monomorphised, opaque)
     wrapper named `name` (`Box`, `NonNull`, `ManuallyDrop`). -/
@@ -805,9 +809,11 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     -- (raw, not ref: guards are NOT protected/retagged at
                     -- seams — see the ref_protector pass test)
                     let mutbl := info.path.getLast? == some "RefMut"
-                    match ctx.cellPointee.lookup did with
-                    | some inner => .raw mutbl (parseTy ctx (fuel - 1) inner)
-                    | none => .raw mutbl .nat
+                    match ctx.cellPointee.lookup did, info.tyArgs with
+                    | some inner, _ => .raw mutbl (parseTy ctx (fuel - 1) inner)
+                    -- no constructor call reveals it: the instantiation does
+                    | none, [inner] => .raw mutbl (parseTy ctx (fuel - 1) inner)
+                    | none, _ => .raw mutbl .nat
                   else if last.startsWith "Atomic" then
                     -- Atomic* = UnsafeCell around its integer
                     match info.tyArgs with

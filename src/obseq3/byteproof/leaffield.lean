@@ -62,9 +62,9 @@ theorem proj_nested_compiles {Γ : Ctx} {L : mirliteB.LayEnv Γ}
 /-- Integer- and pointer-typed places have a one-leaf layout: the leaf a
     one-leaf read decodes spans the whole place. -/
 def LeafWF {Γ : Ctx} (L : mirliteB.LayEnv Γ) : Prop :=
-  (∀ {σ : LayoutTy} (p : Place Γ (obseq.LayoutTy.PtrL σ)),
+  (∀ {σ : LayoutTy} (p : Place Γ (LayoutTy.PtrL σ)),
     (mirliteB.leafKind (mirliteB.placeLayout L p)).size = (mirliteB.placeLayout L p).size) ∧
-  (∀ (p : Place Γ obseq.LayoutTy.NatL),
+  (∀ {t : IntTy} (p : Place Γ (LayoutTy.IntL t)),
     (mirliteB.leafKind (mirliteB.placeLayout L p)).size = (mirliteB.placeLayout L p).size)
 
 /-! ## Read-only one-leaf ops -/
@@ -120,7 +120,7 @@ theorem readCellThrough_ro {ρt : TagRenameMap} (hwf : TagRenameWF ρt)
     PermissionModel.stackedBorrows, h_rd]
 
 theorem ptrOffset_ro {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {σ τ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (delta : Int) :
+    (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int) :
     ReadOnlyOpB L dstL (RExpr.ptrOffset (τ := τ) src delta) src
       (fun r => oseairL.Rhs.PtrOffset (mirliteB.leafKind (mirliteB.placeLayout L src)) r
         (delta * ((mirliteB.pointeeLayout L src).size : Int))) where
@@ -162,7 +162,7 @@ theorem ptrOffset_ro {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {σ τ
     · cases h
 
 theorem fromExposed_ro {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {τ : LayoutTy}
-    (src : Place Γ obseq.LayoutTy.NatL) :
+    (src : Place Γ (LayoutTy.IntL tN)) :
     ReadOnlyOpB L dstL (RExpr.fromExposed (τ := τ) src) src
       (oseairL.Rhs.FromExposed (mirliteB.leafKind (mirliteB.placeLayout L src))) where
   source sM output h := by
@@ -201,7 +201,7 @@ theorem fromExposed_ro {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {τ 
     · cases h
 
 theorem ptrCast_ro {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {σ τ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    (src : Place Γ (LayoutTy.PtrL σ)) :
     ReadOnlyOpB L dstL (RExpr.ptrCast (τ := τ) src) src
       (oseairL.Rhs.Load (leafLayout (mirliteB.leafKind (mirliteB.placeLayout L src)))) where
   source sM output h := by
@@ -500,7 +500,7 @@ inductive LeafSrcB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
 
 theorem ptrCast_pkgL {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) (dstL : BLayout) {σ τ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (h : LeafSrcB src) :
+    (src : Place Γ (LayoutTy.PtrL σ)) (h : LeafSrcB src) :
     ValuePkgB compProg L dstL (RExpr.ptrCast (τ := τ) src) := by
   cases h with
   | chain hc => exact ptrCast_pkg hWF dstL hc
@@ -540,7 +540,7 @@ decreasing_by all_goals (subst_vars; simp_all [Place.depth]; try omega)
 
 theorem ptrOffset_pkgL {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) (dstL : BLayout) {σ τ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (h : LeafSrcB src) (delta : Int) :
+    (src : Place Γ (LayoutTy.PtrL σ)) (h : LeafSrcB src) (delta : Int) :
     ValuePkgB compProg L dstL (RExpr.ptrOffset (τ := τ) src delta) := by
   cases h with
   | chain hc => exact ptrOffset_pkg hWF dstL hc delta
@@ -577,7 +577,7 @@ decreasing_by all_goals (subst_vars; simp_all [Place.depth]; try omega)
 
 theorem fromExposed_pkgL {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) (dstL : BLayout) {τ : LayoutTy}
-    (src : Place Γ obseq.LayoutTy.NatL) (h : LeafSrcB src) :
+    (src : Place Γ (LayoutTy.IntL tN)) (h : LeafSrcB src) :
     ValuePkgB compProg L dstL (RExpr.fromExposed (τ := τ) src) := by
   cases h with
   | chain hc => exact fromExposed_pkg hWF dstL hc

@@ -1526,7 +1526,7 @@ theorem placeToRegChecked_proj_ok_of_baseOk
 theorem placeToRegChecked_deref_ok_of_ptrOk
     {Γ : Ctx} {σ : LayoutTy}
     {kind : RefKind} {cs : CompilerState}
-    {ptrPlace : Place Γ (obseq.LayoutTy.PtrL σ)}
+    {ptrPlace : Place Γ (LayoutTy.PtrL σ)}
     (ptrOut : ResultWithEvidence PtrResult (PlaceToRegEvidence RefKind.Shared ptrPlace))
     (h_ptrOut : CheckedCompilerM.value (placeToRegChecked RefKind.Shared ptrPlace) cs = Except.ok ptrOut) :
     ∃ placeOut,
@@ -1774,8 +1774,8 @@ def PureCStore {Γ : Ctx} {τ : LayoutTy} (rhs : RExpr Γ τ)
     ∃ pre, CheckedCompilerM.value (compileRExprPreChecked rhs) cs = Except.ok pre ∧
       (∀ r, pre.store r = [Instr.CStore ty vs' r]) ∧ pre.postCleanup = []
 
-theorem constInit_pureCStore {Γ : Ctx} (v : Word) :
-    PureCStore (Γ := Γ) (.constInit v) obseq.TyVal.NatTy [Val.Dat v] :=
+theorem constInit_pureCStore {Γ : Ctx} {t : IntTy} (v : Word) :
+    PureCStore (Γ := Γ) (.constInit (t := t) v) obseq.TyVal.NatTy [Val.Dat v] :=
   fun _ => ⟨rfl, _, rfl, fun _ => rfl, rfl⟩
 
 theorem uninit_pureCStore {Γ : Ctx} (τ : LayoutTy) :
@@ -1797,13 +1797,13 @@ theorem readRhsShape_copy {Γ : Ctx} {τ : LayoutTy} (src : Place Γ τ) :
     ReadRhsShape (.copy src) src (Rhs.Load (layoutToTyVal τ)) (fun _ => []) :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.copy src srcRes srcEv, rfl⟩
 
-theorem readRhsShape_exposeAddr {Γ : Ctx} {σ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
-    ReadRhsShape (.exposeAddr src) src Rhs.ExposeAddr (fun _ => []) :=
+theorem readRhsShape_exposeAddr {Γ : Ctx} {σ : LayoutTy} {t : IntTy}
+    (src : Place Γ (LayoutTy.PtrL σ)) :
+    ReadRhsShape (.exposeAddr (t := t) src) src Rhs.ExposeAddr (fun _ => []) :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.exposeAddr src srcRes srcEv, rfl⟩
 
 theorem readRhsShape_fromExposed {Γ : Ctx} {τ : LayoutTy}
-    (src : Place Γ obseq.LayoutTy.NatL) :
+    (src : Place Γ (LayoutTy.IntL tN)) :
     ReadRhsShape (.fromExposed (τ := τ) src) src Rhs.FromExposed (fun _ => []) :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.fromExposed src srcRes srcEv, rfl⟩
 
@@ -1813,25 +1813,25 @@ theorem readRhsShape_fromExposed {Γ : Ctx} {τ : LayoutTy}
     emitted after the source cleanup. Unlike every other member it mints,
     which is why the read packages let the renaming grow. -/
 theorem readRhsShape_refSlice {Γ : Ctx} {σ τ : LayoutTy}
-    (kind : RefKind) (prot : Bool) (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    (kind : RefKind) (prot : Bool) (src : Place Γ (LayoutTy.PtrL σ)) :
     ReadRhsShape (.refSlice (τ := τ) kind prot src) src
-      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL σ)))
+      (Rhs.Load (layoutToTyVal (LayoutTy.PtrL σ)))
       (fun tmp => [Instr.Assgn tmp (Rhs.Borrow kind prot [] none tmp 0)]) :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.refSlice kind prot src srcRes srcEv, rfl⟩
 
 /-- A ptr-to-ptr cast is read-then-store: it IS a one-cell `Load` at
     `PTy`, the same instruction `copy` emits at a pointer layout. -/
 theorem readRhsShape_ptrCast {Γ : Ctx} {σ τ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) :
+    (src : Place Γ (LayoutTy.PtrL σ)) :
     ReadRhsShape (.ptrCast (τ := τ) src) src
-      (Rhs.Load (layoutToTyVal (obseq.LayoutTy.PtrL τ))) (fun _ => []) :=
+      (Rhs.Load (layoutToTyVal (LayoutTy.PtrL τ))) (fun _ => []) :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.ptrCast src srcRes srcEv, rfl⟩
 
 /-- Pointer arithmetic is read-then-store too: the delta is pre-scaled to
     cells at compile time, so `mk` is a CLOSED function of the source
     register just like the casts'. -/
 theorem readRhsShape_ptrOffset {Γ : Ctx} {σ τ : LayoutTy}
-    (src : Place Γ (obseq.LayoutTy.PtrL σ)) (delta : Int) :
+    (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int) :
     ReadRhsShape (.ptrOffset (τ := τ) src delta) src
       (fun r => Rhs.PtrOffset r (delta * (blockSize σ : Int))) (fun _ => []) :=
   ⟨fun srcRes srcEv _ => RExprToEvidence.ptrOffset src delta srcRes srcEv, rfl⟩
@@ -3243,7 +3243,7 @@ theorem readToReg_placeRegMap_any {Γ : Ctx} {τ : LayoutTy} (p : Place Γ τ)
   · simp [csMonad, csRun, emit_placeRegMap, ih]
   · exact ih
 
-theorem guardRead_placeRegMap_any {Γ : Ctx} (p : Place Γ obseq.LayoutTy.NatL)
+theorem guardRead_placeRegMap_any {Γ : Ctx} (p : Place Γ (LayoutTy.IntL tN))
     (cs : CompilerState) :
     (CheckedCompilerM.run (guardRead p) cs).placeRegMap = cs.placeRegMap :=
   readToReg_placeRegMap_any p cs

@@ -308,7 +308,7 @@ theorem ListRel_ptr_inv {b o e s : Word} {t : Tag} {vals : List Val}
     exposed-register package, then one `Dealloc`, with the two
     transports above closing the invariant. Neither renaming grows. -/
 theorem CompilerInv_step_dealloc {τ : LayoutTy}
-    {dst : Place Γ (obseq.LayoutTy.PtrL τ)}
+    {dst : Place Γ (LayoutTy.PtrL τ)}
     (compProg : oseair.Prog)
     (h_comp : compileProgFromChecked cs0 prog = Except.ok compProg)
     (h_inv  : CompilerInv cs0 prog ρa ρt s_mir s_osea)

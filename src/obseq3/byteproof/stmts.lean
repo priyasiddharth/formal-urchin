@@ -109,7 +109,7 @@ theorem ByteAllocLockstep.free {mS mT : bytes.Mem} (h : ByteAllocLockstep mS mT)
 
 theorem dealloc_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {s_mir s_mir' : mirliteB.State MSB Γ} {s_osea : oseairL.State MSB} {cs : CompilerState}
-    {σ : LayoutTy} {dst : Place Γ (obseq.LayoutTy.PtrL σ)}
+    {σ : LayoutTy} {dst : Place Γ (LayoutTy.PtrL σ)}
     (compProg : oseairL.Prog) (hWF : PtrPlacesWF L) (h_chain : ReadSrcB dst)
     (h_inv : InvAtB L ρt s_mir s_osea cs)
     (h_code : CodeIncludedB compProg (CheckedCompilerM.run (compileStmtChecked L (.dealloc dst)) cs))

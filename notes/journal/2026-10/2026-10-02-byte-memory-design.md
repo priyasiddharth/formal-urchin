@@ -697,3 +697,36 @@ unchanged). Now 147/147 loaded programs agree: the byte-level theorem
 applies to every program the corpus compiles with its real layouts.
 `--layouts` exits 1 on any disagreement; worth adding to the validation
 list. 522 byteproof declarations, axioms unchanged.
+
+### 2026-10-03: integer types carry their width (`IntL t`)
+
+[DEC] obseq3 has its own `LayoutTy` (`types.lean`): `IntL (t : IntTy) |
+PtrL | TupL` replaces v1's width-free `NatL` (v1 and obseq2 keep
+`obseq.LayoutTy`). This is the static half of MiniRust's `Type::Int`;
+offsets and padding stay in the per-local byte layout. Choices:
+- cell model: `IntL _` is one cell (`layoutSize`, `layoutToTyVal ↦ NatTy`),
+  so the cell semantics, compiled code and golden tests are unchanged;
+- typing: integer-PRODUCING rvalues (`constInit`, `binOp`, `exposeAddr`,
+  `sliceLen`) and integer OPERAND places (binOp operands, subSlice bounds,
+  `fromExposed`, `alloc` length, `assignIf` discriminant) take any width
+  (implicit `IntTy` indices); `copy`/`move`/`assign` are width-strict
+  because they share one index. Tightening ops to their `BinOp`'s width is
+  possible later, not needed by either proof;
+- `ofLayoutTy` (the uniform layout) keeps 8-byte integers; `Agrees` now
+  checks widths (`.int n` agrees with `IntL t` iff `n = t.bytes`), so
+  `--layouts` checks the loader's widths against the types.
+Loader: `toLayout` keeps `UIntTy` widths; integer rvalues are elaborated at
+the destination's type (`elabRvalue … expected`). Corpus drift on the first
+run (141/6): (a) enum tags were `usize` but MIR's `discriminant()` is
+`isize` → the tag field is `IntL i64`; (b) a bit-pattern-preserving
+`IntToInt` cast (widening unsigned, signedness change) was a plain copy,
+now ill-typed → `x | 0` at the destination type; (c) `Ref`/`RefMut` guards
+with an uninferred pointee fell back to `*usize`, which had unified with
+`*i32` only because both were `NatL` → the pointee now comes from the type
+arguments, as for cells. After: corpus 147/0/26, osea/osea bytes 147,
+cells 144 + 3 recorded, `--layouts` 147/147 with widths, units 31 + 131.
+Proof repair was signature-only: ~10 binders (`{t : IntTy}` /
+`(t := t)`) in each proof; no proof body changed beyond naming a width.
+Main audit unchanged (3 axioms, 0 sorries); byteproof 522 declarations,
+axioms unchanged. Repair cost was far below the 2026-10-01 C0 estimate
+because the cell SIZE did not change — only the type's name for it.

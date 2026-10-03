@@ -4,13 +4,9 @@ import obseq3.sb
 namespace obseq3
 
 abbrev TyVal := obseq.TyVal
-abbrev LayoutTy := obseq.LayoutTy
 
 abbrev typeSize : TyVal → Nat := obseq.typeSize
 abbrev typeSizeList : List TyVal → Nat := obseq.typeSizeList
-
-abbrev layoutSize : LayoutTy → Nat := obseq.layoutSize
-abbrev layoutSizeList : List LayoutTy → Nat := obseq.layoutSizeList
 
 /-- An integer type: width in bits and signedness. A word of this type
     holds the type's BIT PATTERN, below `2 ^ bits` (two's complement when
@@ -26,6 +22,9 @@ def u64 : IntTy := ⟨64, false⟩
 
 def modulus (t : IntTy) : Nat := 2 ^ t.bits
 
+/-- The width in bytes (at least one: `bool` is a byte). -/
+def bytes (t : IntTy) : Nat := max 1 (t.bits / 8)
+
 /-- The mathematical value of a bit pattern. -/
 def toInt (t : IntTy) (w : Word) : Int :=
   let w := w % t.modulus
@@ -40,6 +39,68 @@ def inRange (t : IntTy) (i : Int) : Bool :=
   else 0 ≤ i && i < t.modulus
 
 end IntTy
+
+/-- A layout type: what a place holds. `IntL t` is an integer of type `t`
+    (width and signedness — the static half of MiniRust's
+    `Type::Int(IntType)`); `PtrL τ` a pointer to a `τ`; `TupL` a tuple.
+    Byte offsets and padding are not here: the byte model takes them from a
+    per-local byte layout (`mirliteB.LayEnv`); the cell model gives every
+    integer and pointer one cell whatever its width. -/
+inductive LayoutTy where
+  | IntL (t : IntTy)
+  | PtrL (inner : LayoutTy)
+  | TupL (tys : List LayoutTy)
+deriving Repr, BEq, Inhabited
+
+instance : ToString LayoutTy where
+  toString t := reprStr t
+
+/-- The pointer-sized unsigned integer (`usize`): sizes, addresses, and the
+    loader's model words. -/
+abbrev LayoutTy.usize : LayoutTy := .IntL IntTy.u64
+
+mutual
+  /-- Size in CELLS (the cell model): an integer or pointer is one cell. -/
+  def layoutSize : LayoutTy → Nat
+    | .IntL _ => 1
+    | .PtrL _ => 1
+    | .TupL tys => layoutSizeList tys
+
+  def layoutSizeList : List LayoutTy → Nat
+    | [] => 0
+    | ty :: tys => layoutSize ty + layoutSizeList tys
+end
+
+mutual
+  /-- The cell model's value type of a layout (integer width erased). -/
+  def layoutToTyVal : LayoutTy → TyVal
+    | .IntL _ => .NatTy
+    | .PtrL _ => .PTy
+    | .TupL tys => .TupTy (layoutToTyValList tys)
+
+  def layoutToTyValList : List LayoutTy → List TyVal
+    | [] => []
+    | ty :: tys => layoutToTyVal ty :: layoutToTyValList tys
+end
+
+mutual
+  @[simp] theorem typeSize_layoutToTyVal : ∀ ty, typeSize (layoutToTyVal ty) = layoutSize ty
+    | .IntL _ => rfl
+    | .PtrL _ => rfl
+    | .TupL tys => by
+        simp only [layoutToTyVal, layoutSize]
+        exact typeSizeList_layoutToTyValList tys
+
+  @[simp] theorem typeSizeList_layoutToTyValList :
+      ∀ tys, typeSizeList (layoutToTyValList tys) = layoutSizeList tys
+    | [] => rfl
+    | ty :: tys => by
+        simp only [layoutToTyValList, layoutSizeList]
+        show obseq.typeSize _ + obseq.typeSizeList _ = _
+        rw [show obseq.typeSize (layoutToTyVal ty) = layoutSize ty from typeSize_layoutToTyVal ty,
+          show obseq.typeSizeList (layoutToTyValList tys) = layoutSizeList tys from
+            typeSizeList_layoutToTyValList tys]
+end
 
 /-- Integer binary operations, as MIR has them (rustc
     `interpret/operator.rs`, `binary_int_op`), each at an integer type:
@@ -112,15 +173,16 @@ def binOpUB : BinOp → Word → Word → Option String
 def blockSize (layout : LayoutTy) : Nat :=
   layoutSize layout
 
-/- Decidable equality for `LayoutTy` (obseq derives only `BEq`).
+/- Decidable equality for `LayoutTy`.
    Needed by the conformance elaborator to produce `Local`/`Place`
    type-equality proofs from runtime-parsed programs. -/
 mutual
   def layoutDecEq : (a b : LayoutTy) → Decidable (a = b)
-    | .NatL, .NatL => .isTrue rfl
-    | .NatL, .PtrL _ | .NatL, .TupL _ => .isFalse (by intro h; cases h)
-    | .PtrL _, .NatL | .PtrL _, .TupL _ => .isFalse (by intro h; cases h)
-    | .TupL _, .NatL | .TupL _, .PtrL _ => .isFalse (by intro h; cases h)
+    | .IntL s, .IntL t =>
+        if h : s = t then .isTrue (by rw [h]) else .isFalse (by intro hc; cases hc; exact h rfl)
+    | .IntL _, .PtrL _ | .IntL _, .TupL _ => .isFalse (by intro h; cases h)
+    | .PtrL _, .IntL _ | .PtrL _, .TupL _ => .isFalse (by intro h; cases h)
+    | .TupL _, .IntL _ | .TupL _, .PtrL _ => .isFalse (by intro h; cases h)
     | .PtrL a, .PtrL b =>
         match layoutDecEq a b with
         | .isTrue h => .isTrue (by rw [h])
