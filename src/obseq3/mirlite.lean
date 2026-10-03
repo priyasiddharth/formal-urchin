@@ -473,8 +473,11 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
       match resolvePlaceAcc M L state src with
       | .error e => .err e
       | .ok (resolved, permsR) =>
-          if state.mem.isFreed resolved.allocBase then .err freedMsg
-          else if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
+          -- a retag of zero bytes performs no access, so it needs no live,
+          -- in-bounds memory (Miri: zero-sized accesses are always allowed)
+          if lay.size != 0 && state.mem.isFreed resolved.allocBase then .err freedMsg
+          else if lay.size != 0 &&
+              resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
             .err "retag of an out-of-bounds range"
           else
           match M.ref permsR resolved.addr lay.size resolved.tag kind prot (maskBytes lay mask) with

@@ -440,8 +440,10 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   basic::zst then fails only on the zero-sized retag through an OOB /
   dangling pointer (line 21). Skipping liveness+bounds when the retag covers
   0 bytes, in mirlite `ref` and oseair `Borrow (some n)`, makes it pass with
-  NO other verdict moving (152/0/23, osea 152). Not adopted: needs the ref
-  and Borrow proof cases. Entry is `xfail-model` until then. [OBS]
+  NO other verdict moving (152/0/23, osea 152). **ADOPTED 2026-10-03**:
+  mirlite `ref` and oseair `Borrow (some n)` check liveness and bounds only
+  when the size is nonzero; proofs: `runN_Borrow'` (conditional checks),
+  `ref_pkg_core` transports the conditional facts. basic::zst passes.
 - p. [STEP 1 DONE 2026-10-01: weak Box protectors — see § B2. STEP 2 DONE
   2026-10-01: `UTerm.drop`; moved-place tracking (`LowerSt.moved`, keys
   as the trackers'; a move operand moves, an assignment/call destination

@@ -242,13 +242,19 @@ theorem ref_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   obtain ⟨tgt', h_ref', h_fresh, h_incr, h_wf', h_tbd', h_psim'⟩ :=
     sb_ref_respects_PermSim hA.psim h_wf h_tbd1 hA.rt h_ref
   subst h_fresh
-  have h_freeT : s1.mem.isFreed aRes.allocBase = false := by
+  -- the source checked liveness and bounds only for a nonzero size; so
+  -- does the target's `Borrow`
+  have h_freeT : placeSize L src ≠ 0 → s1.mem.isFreed aRes.allocBase = false := fun hn => by
     have h_lock1 : ByteAllocLockstep sM.mem s1.mem := by rw [hA.mem]; exact h_alloc
-    rw [h_ab] at h_free
+    have hn' : ((mirlite.placeLayout L src).size != 0) = true := by simpa using hn
+    rw [hn', Bool.true_and, h_ab] at h_free
     simp only [bytes.Mem.isFreed, ← h_lock1.2.2] at h_free ⊢
     simpa using h_free
-  have h_bnd' : aRes.allocBase + (aRes.addr - aRes.allocBase) + o + placeSize L src
-      ≤ aRes.allocBase + aRes.allocSize := by
+  have h_bnd' : placeSize L src ≠ 0 → aRes.allocBase + (aRes.addr - aRes.allocBase) + o
+      + placeSize L src ≤ aRes.allocBase + aRes.allocSize := fun hn => by
+    have hn' : ((mirlite.placeLayout L src).size != 0) = true := by simpa using hn
+    rw [hn', Bool.true_and] at h_bnd
+    simp only [decide_eq_true_eq] at h_bnd
     rw [hB, ← h_addr, ← h_ab, ← h_as]; exact Nat.le_of_not_gt h_bnd
   have h_instr : compProg s1.pc = some (oseair.Instr.Assgn
       (Register.R (CheckedCompilerM.run (placeToRegChecked L kind a) csA).nextReg)
@@ -258,7 +264,7 @@ theorem ref_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     apply h_code
     · simp [emit]
     · simp [emit]
-  have h_run1 := runN_Borrow (s := s1) h_instr h_aentry h_freeT h_bnd'
+  have h_run1 := runN_Borrow' (s := s1) h_instr h_aentry h_freeT h_bnd'
     (by rw [hB]; exact h_ref')
   refine ⟨ρt.extend permsR.NextTag s1.perms.NextTag, n1 + 1, _, sM.mem, perms',
     [Val.Ptr aRes.allocBase (aRes.addr - aRes.allocBase + o) (placeSize L src) aRes.allocSize

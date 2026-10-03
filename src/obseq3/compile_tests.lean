@@ -2582,6 +2582,36 @@ def d109_expose_rebuilt_pointer : IO Unit :=
      .assign (.deref qE) (.constInit 9)]
     .ok "d109 exposeAddr exposes"
 
+/-- Zero-sized retags (Miri: a 0-byte retag performs no access): a `&mut`
+    to a `()` behind a pointer 16 bytes into its 8-byte allocation (8 past
+    the end) is fine on both machines, while a borrow of the `u64` one past
+    the end is out of bounds on both. -/
+def unitZ0 : LayoutTy := .TupL []
+def ΓZ0 : Ctx := [natL, ptrNat, ptrNat, .PtrL unitZ0, .PtrL unitZ0, ptrNat]
+def xZ0 : Place ΓZ0 natL := .local ⟨⟨0, by decide⟩, rfl⟩
+def pZ0 : Place ΓZ0 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
+def oZ0 : Place ΓZ0 ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
+def uZ0 : Place ΓZ0 (.PtrL unitZ0) := .local ⟨⟨3, by decide⟩, rfl⟩
+def rZ0 : Place ΓZ0 (.PtrL unitZ0) := .local ⟨⟨4, by decide⟩, rfl⟩
+def wZ0 : Place ΓZ0 ptrNat := .local ⟨⟨5, by decide⟩, rfl⟩
+
+def d110_zero_sized_retag_out_of_bounds : IO Unit :=
+  expectDiff ΓZ0
+    [.assign xZ0 (.constInit 1),
+     .assign pZ0 (.ref (.Raw true) false [] xZ0),
+     .assign oZ0 (.ptrOffset pZ0 2),
+     .assign uZ0 (.ptrCast oZ0),
+     .assign rZ0 (.ref .Mut false [] (.deref uZ0))]
+    .ok "d110 zero-sized retag out of bounds"
+
+def d111_sized_retag_out_of_bounds : IO Unit :=
+  expectDiff ΓZ0
+    [.assign xZ0 (.constInit 1),
+     .assign pZ0 (.ref (.Raw true) false [] xZ0),
+     .assign oZ0 (.ptrOffset pZ0 1),
+     .assign wZ0 (.ref .Mut false [] (.deref oZ0))]
+    (.ub 3) "d111 sized retag out of bounds"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2715,7 +2745,9 @@ def allTests : List (IO Unit) := [
   d107_sub_slice_narrows_the_retag,
   g18_addr,
   d108_addr_rebuilt_pointer,
-  d109_expose_rebuilt_pointer]
+  d109_expose_rebuilt_pointer,
+  d110_zero_sized_retag_out_of_bounds,
+  d111_sized_retag_out_of_bounds]
 
 def runAll : IO Unit := do
   allTests.forM id

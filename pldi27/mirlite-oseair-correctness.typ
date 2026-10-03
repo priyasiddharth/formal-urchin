@@ -671,7 +671,7 @@ they use three judgments, which we introduce before the interpreter.
     [$S tack p #dP (⟨a,t,b,sz⟩, Pi_1)$, #h(3pt) $beta=Lambda(p)$, #h(3pt) $b$ live, #h(3pt) $a+|beta| <= b+sz$, \ $"ref"(Pi_1,a,|beta|,t,"mutable","false",[])=(Pi_2,u)$, \ $"read"(Pi_2,a,|beta|,u)=Pi_3$, #h(3pt) $"die"(Pi_3,a,|beta|,u)=Pi_4$, \ $overline(v)="rd"_beta (S.mu,a)$, #h(3pt) $"undef" in.not overline(v)$],
     [$S tack "move"(p) #dE (overline(v), S[Pi |-> Pi_4])$]),
   ir(m-ref,
-    [$S tack p #dP (⟨a,t,b,sz⟩, Pi_1)$, #h(3pt) $beta=Lambda(p)$, #h(3pt) $b$ live, \ $a+|beta| <= b+sz$, #h(3pt) $"ref"(Pi_1,a,|beta|,t,k,c,"bytes"_beta (m))=(Pi_2,u)$],
+    [$S tack p #dP (⟨a,t,b,sz⟩, Pi_1)$, #h(3pt) $beta=Lambda(p)$, \ $|beta|=0$ or ($b$ live and $a+|beta| <= b+sz$), \ $"ref"(Pi_1,a,|beta|,t,k,c,"bytes"_beta (m))=(Pi_2,u)$],
     [$S tack "ref"(k,c,m,p) #dE$ \ $quad (["ptr"(b,a-b,|beta|,sz,u)], S[Pi |-> Pi_2])$]),
   ir(m-assgn,
     [$P(S.i) = (d := e)$, #h(3pt) $beta=Lambda(d)$, #h(3pt) $"prepare"(S,d)=S_1$, \ $S_1 tack e #dE (overline(v), S_2)$, #h(3pt) $S_2 tack d #dP (⟨a,t,b,sz⟩, Pi_3)$, #h(3pt) $b$ live, \ $a+|beta| <= b+sz$, #h(3pt) $"useMut"(Pi_3,a,|beta|,t)=Pi_4$, \ $"wr"_beta (S_2.mu,a,overline(v))=mu'$],
@@ -710,7 +710,9 @@ that would read an uninitialized leaf is undefined behavior, as in Miri.
 #m-move reads through a mutable borrow of the range that it retires at
 once. The pointer built by #m-ref carries the fresh tag $u$, the
 allocation's base and size, and the referent's size as its extent, so
-later bounds checks are against the whole allocation.
+later bounds checks are against the whole allocation. A reference to a
+zero-sized place touches no byte: as in Miri, it needs no live, in-bounds
+memory, so it may be formed through a dangling pointer.
 
 *Interpreter ($smir$).* A step fetches $P(i)$. #m-assgn runs four phases in
 a fixed order: prepare the destination's root, evaluate the expression,
@@ -867,7 +869,7 @@ rules.
     [$"alloc"(T.mu,|beta|,"al"(beta))=(b,mu')$, \ $"own"(T.Pi,b,|beta|)=(Pi',u)$],
     [$T tack "alloc"_beta #dH$ \ $quad (["ptr"(b,0,|beta|,|beta|,u)], T[mu |-> mu', Pi |-> Pi'])$]),
   ir(t-borrow,
-    [$T.R(r)=["ptr"(b,o,e,sz,t)]$, #h(3pt) $a=b+o+delta$, #h(3pt) $b$ live, \ $a+n <= b+sz$, #h(3pt) $"ref"(T.Pi,a,n,t,k,c,m)=(Pi',u)$],
+    [$T.R(r)=["ptr"(b,o,e,sz,t)]$, #h(3pt) $a=b+o+delta$, \ $n=0$ or ($b$ live and $a+n <= b+sz$), \ $"ref"(T.Pi,a,n,t,k,c,m)=(Pi',u)$],
     [$T tack "borrow"(k,c,m,n,r,delta) #dH$ \ $quad (["ptr"(b,o+delta,n,sz,u)], T[Pi |-> Pi'])$]),
   ir(t-assgn,
     [$Q(j) = (r := h)$, \ $(j,R,mu,Pi) tack h #dH (overline(v), (j,R,mu_1,Pi_1))$],
@@ -893,7 +895,8 @@ advance $j$. #t-load checks liveness and the complete byte range, reads it
 through the pointer's tag, and decodes it leaf by leaf, failing on an
 uninitialized leaf exactly as #m-copy does. #t-borrow retags $n$ bytes at
 offset $delta$ from the pointer and returns the same pointer, moved by
-$delta$, claiming $n$ bytes, and carrying the fresh tag; offsets are
+$delta$, claiming $n$ bytes, and carrying the fresh tag; like #m-ref it checks
+liveness and bounds only when $n != 0$; offsets are
 natural numbers, so there is no negative-offset case. #t-alloc is the only
 rule of the main text that changes both memory and permissions.
 
@@ -1568,23 +1571,20 @@ that directory, which also hold the Stacked Borrows lemmas it rests on.
 None of it contains an admitted goal. A checked audit prints the axioms
 that @thm:run and its corollaries depend on and fails if that set differs
 in either direction from a pinned whitelist; a second check covers every
-one of the directory's 779 declarations. The whitelist contains exactly the
+one of the directory's 780 declarations. The whitelist contains exactly the
 three standard Lean axioms, propositional extensionality, choice, and
 quotient soundness, and no `sorryAx`.
 
 The executable compiler is additionally validated by testing: a compiler
-witness corpus of 133 programs, run on both machines at the uniform layout
+witness corpus of 135 programs, run on both machines at the uniform layout
 and pinned as golden listings where the shape of the code matters; a
 corpus of 175 entries, drawn from Miri's Stacked Borrows tests and
 completed by local witnesses, loaded from rustc's MIR through Charon with
-rustc's own layouts, whose 151 supported programs reach Miri's verdict
+rustc's own layouts, whose 152 supported programs reach Miri's verdict
 and, where Miri reports undefined behavior, the same statement and, with
-four documented exceptions, the same reason; and a differential run that compiles each of those 151
+four documented exceptions, the same reason; and a differential run that compiles each of those 152
 programs and requires the same verdict from both machines. The layout
-check of @def:layoutwf passes on all 152 programs that load; the one not
-counted above is a recorded divergence, a zero-sized retag through a
-dangling pointer, which Miri accepts and the model's `ref` rejects for
-its bounds check. The running program of this
+check of @def:layoutwf passes on all of them. The running program of this
 paper is part of the witness corpus, both as a golden listing
 (@fig:compile-example) and as a differential test; the states of
 @tab:mir-example and @tab:osea-example are printed by the mechanized

@@ -804,3 +804,18 @@ from_size_align(..).unwrap()` rewritten to the unchecked form in the prep.
 Remaining gap is model-level: a 0-byte retag must skip liveness and bounds
 (Miri). Probed by editing the two machines only: zst passes, nothing else
 moves. Kept as xfail-model pending the proof update.
+
+### 2026-10-03: zero-sized retags adopted
+
+[DEC] (user) A retag of 0 bytes needs no live, in-bounds memory (Miri:
+zero-sized accesses are always allowed). Source `ref`: the liveness and
+bounds checks are guarded by `lay.size != 0`; target `Borrow (some n)`: by
+`n != 0`. `move` and route borrows keep their checks (the source is
+stricter there, which a forward simulation tolerates). Proof: a new
+`runN_Borrow'` takes the checks as `n ≠ 0 → …`; the old `runN_Borrow` is
+derived from it, so moves, route borrows and refSlice needed nothing;
+`ref_pkg_core` turns the source's conditional facts into the target's.
+Tests d110 (zero-sized `&mut` 8 bytes past the end: ok on both) and d111
+(the sized one: UB on both); d110 fails under the old semantics (teeth
+checked — a first version at one-past-the-end had none). basic::zst
+passes; corpus 152/0/23 of 175; units 31 + 135; 780 proof declarations.

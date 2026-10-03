@@ -171,8 +171,9 @@ def evalRhs (M : PermissionModel) (state : State M) (rhs : Rhs) : RhsResult M :=
        let addr := base + baseOff + offset
        match len with
        | some n =>
-         if state.mem.isFreed base then RhsResult.Err freedMsg
-         else if addr + n > base + size then RhsResult.Err "OOB"
+         -- a zero-byte retag needs no live, in-bounds memory (as the source)
+         if n != 0 && state.mem.isFreed base then RhsResult.Err freedMsg
+         else if n != 0 && addr + n > base + size then RhsResult.Err "OOB"
          else
            match M.ref state.perms addr n tag kind prot mask with
            | .ok (perms2, newTag) =>

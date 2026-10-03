@@ -231,6 +231,31 @@ theorem LocalBindingSimB.of_frame {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagR
   obtain ⟨r, t, hpi, ⟨e, hr⟩, hrt, hnw⟩ := h loc b h_env
   exact ⟨r, t, hpi, ⟨e, by rw [h_frame r (h_prb _ _ _ hpi)]; exact hr⟩, hrt, hnw⟩
 
+/-- A `Borrow` of `n` bytes at `off` past the register's pointer, with the
+    liveness and bounds checks as the machine makes them: only for `n ≠ 0`
+    (a zero-byte retag needs no live, in-bounds memory). -/
+theorem runN_Borrow' {compProg : oseair.Prog} {s : oseair.State MSB}
+    {rN preg : Register} {kind : RefKind} {prot : Bool} {mask : List Bool} {n off : Nat}
+    {base boff ext size : Nat} {tagT newTag : Tag} {p' : AccessPerms}
+    (h_code : compProg s.pc = some (oseair.Instr.Assgn rN
+      (oseair.Rhs.Borrow kind prot mask (some n) preg off)))
+    (h_reg : s.reg.lookup preg = some [Val.Ptr base boff ext size tagT])
+    (h_freed : n ≠ 0 → s.mem.isFreed base = false)
+    (h_bnd : n ≠ 0 → base + boff + off + n ≤ base + size)
+    (h_ref : sb_ref s.perms (base + boff + off) n tagT kind prot mask = .ok (p', newTag)) :
+    oseair.runN MSB 1 s compProg =
+      .Ok { s with perms := p', reg := s.reg.insert rN [Val.Ptr base (boff + off) n size newTag],
+                   pc := s.pc + 1 } := by
+  by_cases hn : n = 0
+  · subst hn
+    simp only [oseair.runN, oseair.step, h_code, oseair.evalRhs, h_reg, bne_self_eq_false,
+      Bool.false_and, Bool.false_eq_true, if_false, PermissionModel.stackedBorrows, h_ref]
+  · have h_nb : ¬ (base + boff + off + n > base + size) := by have := h_bnd hn; omega
+    have hn' : (n != 0) = true := by simpa using hn
+    simp only [oseair.runN, oseair.step, h_code, oseair.evalRhs, h_reg, h_freed hn, hn',
+      Bool.true_and, Bool.false_eq_true, if_false, h_nb, decide_false,
+      PermissionModel.stackedBorrows, h_ref]
+
 /-- A `Borrow` of `n` bytes at `off` past the register's pointer. -/
 theorem runN_Borrow {compProg : oseair.Prog} {s : oseair.State MSB}
     {rN preg : Register} {kind : RefKind} {prot : Bool} {mask : List Bool} {n off : Nat}
@@ -243,10 +268,8 @@ theorem runN_Borrow {compProg : oseair.Prog} {s : oseair.State MSB}
     (h_ref : sb_ref s.perms (base + boff + off) n tagT kind prot mask = .ok (p', newTag)) :
     oseair.runN MSB 1 s compProg =
       .Ok { s with perms := p', reg := s.reg.insert rN [Val.Ptr base (boff + off) n size newTag],
-                   pc := s.pc + 1 } := by
-  have h_nb : ¬ (base + boff + off + n > base + size) := by omega
-  simp only [oseair.runN, oseair.step, h_code, oseair.evalRhs, h_reg, h_freed,
-    Bool.false_eq_true, if_false, h_nb, PermissionModel.stackedBorrows, h_ref]
+                   pc := s.pc + 1 } :=
+  runN_Borrow' h_code h_reg (fun _ => h_freed) (fun _ => h_bnd) h_ref
 
 theorem runN_Die {compProg : oseair.Prog} {s : oseair.State MSB} {r : Register} {len : Nat}
     {base off ext size : Nat} {tagT : Tag} {p' : AccessPerms}

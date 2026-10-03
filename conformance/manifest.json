@@ -1492,8 +1492,8 @@
       "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
       "prep": "prep/basic_aliasing_model__zst.rs",
       "artifact": "basic_aliasing_model__zst.ullbc.json",
-      "status": "xfail-model",
-      "reason": "zero-sized retags: Miri performs no liveness or bounds check for a 0-byte retag; the model checks both, so `&mut *ptr` through an out-of-bounds or dangling pointer to () is a false UB (line 21). Probed 2026-10-03: skipping the two checks when the retag covers 0 bytes, in the source ref and the target Borrow, makes it pass with no other verdict changing; adopting it needs the ref and Borrow proof cases updated.",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ok"
       },

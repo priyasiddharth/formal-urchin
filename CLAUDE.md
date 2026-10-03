@@ -27,12 +27,12 @@ notes at: notes/
 
       ./.lake/build/bin/sb_conformance --unit
         # obseq3 tests           31/31   (mirlite SB semantics on bytes)
-        # obseq3 compiler tests  133/133 (compiler witness corpus)
+        # obseq3 compiler tests  135/135 (compiler witness corpus)
 
       ./.lake/build/bin/sb_conformance \
         --manifest conformance/manifest.json --charon-dir conformance/charon
         # ULLBC corpus, Charon artifacts vs Miri verdicts
-        # 151 pass / 0 fail / 1 xfail / 23 unsupported (175 total)
+        # 152 pass / 0 fail / 23 unsupported (175 total)
 
       ...same, plus --osea
         # differential: compile each program and require the SAME verdict
