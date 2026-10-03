@@ -597,3 +597,33 @@ it: extending coverage is adding `StmtB` constructors and their cases in
 
 Not in the fragment yet: assignIf; nested projections; derefs of non-chain
 places; one-leaf rvalues and refSlice with a field operand.
+
+### 2026-10-03: nested fields and assignIf
+
+- `assoc.lean`: the source agrees with the compiler's reassociation:
+  `(b.q).p` and `b.(q ++ p)` have the same byte layout, offset, access and
+  pure resolution (`fieldLayout_append`, `fieldOffset_append` over index
+  lists); the compiler's reassociation arms have the flattened place's
+  run and result. Fragment closed under nesting: `StmtB0.nested`
+  (`StmtSimB.congr`), `ReadSrcB.nested` (read lemmas by induction),
+  `BorrowSrcB.nested` (`ValuePkgB.congr`).
+- `prmpres.lean`: compile-only — only a root's `Alloc` changes the place
+  map (`PrmPres`, closure tactic `prm_tac`); every place lowering, borrow,
+  read and rvalue pre-phase preserves it.
+- `assignif.lean`: root prologue (`ensureRoot_sim`), `assignIf_shape`
+  (SkipIf over a reserved label), `assignIf_simB`. Taken: the assignment's
+  own `StmtSimB` from the reserved label's successor. Not taken: the jump
+  lands on the body's end label; the invariant moves there because the
+  body's compile state has the guard's place map (`compileAssign_prm` +
+  `ensurePlaceRoot_idem`) — the source never evaluated the body, so no
+  value package could have said it.
+- [DEC] The program theorem now takes `StmtSimBc` (a statement's
+  simulation may use its own compile success — the skipped body must
+  compile, which only whole-program compile success says); `StmtSimB.toC`
+  lifts every other leaf. `correct.lean`: `StmtB` = `StmtB0` + assignIf,
+  and `compileB_correct_fragment` (426 byteproof declarations; axioms the
+  three whitelisted only).
+
+Remaining outside the fragment: derefs of non-chain places (e.g.
+`*(x.f.g)` as a pointer, `*((*p).f.g)`) and the one-leaf rvalues /
+refSlice with a field operand.

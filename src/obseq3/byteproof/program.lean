@@ -243,7 +243,8 @@ theorem stmt_in_prog {Γ : Ctx} {L : mirliteB.LayEnv Γ} :
       StateIncr (CheckedCompilerM.run (compileStmtChecked L stmt) (csAtB L cs prog i))
         (CheckedCompilerM.run (compileStmtsChecked L prog) cs) ∧
       csAtB L cs prog (i + 1)
-        = CheckedCompilerM.run (compileStmtChecked L stmt) (csAtB L cs prog i)
+        = CheckedCompilerM.run (compileStmtChecked L stmt) (csAtB L cs prog i) ∧
+      ∃ v, CheckedCompilerM.value (compileStmtChecked L stmt) (csAtB L cs prog i) = .ok v
   | [], _, i, _, _, _, h_get => by simp [List.get?] at h_get
   | s :: rest, cs, i, stmt, u, h_val, h_get => by
       simp only [compileStmtsChecked, CheckedCompilerM.value_bind] at h_val
@@ -258,7 +259,7 @@ theorem stmt_in_prog {Γ : Ctx} {L : mirliteB.LayEnv Γ} :
         | zero =>
             have h_eq : s = stmt := by simpa [List.get?] using h_get
             subst h_eq
-            exact ⟨CheckedCompilerM.incr _ _, by cases rest <;> rfl⟩
+            exact ⟨CheckedCompilerM.incr _ _, by cases rest <;> rfl, ⟨a, h_s⟩⟩
         | succ j =>
             have h_get' : rest.get? j = some stmt := by simpa [List.get?] using h_get
             exact stmt_in_prog rest _ j stmt u h_val h_get'
@@ -300,10 +301,27 @@ def StmtSimB {Γ : Ctx} (L : mirliteB.LayEnv Γ) (compProg : oseairL.Prog) (stmt
       TagRenameIncr ρt ρt' ∧ oseairL.runN MSB n s_osea compProg = .Ok s_osea' ∧
       InvAtB L ρt' s_mir' s_osea' (CheckedCompilerM.run (compileStmtChecked L stmt) cs)
 
+/-- `StmtSimB` that may also use the statement's compile success (the
+    guarded assignment needs it for the body it skips). -/
+def StmtSimBc {Γ : Ctx} (L : mirliteB.LayEnv Γ) (compProg : oseairL.Prog) (stmt : Stmt Γ) : Prop :=
+  ∀ (ρt : TagRenameMap) (s_mir s_mir' : mirliteB.State MSB Γ) (s_osea : oseairL.State MSB)
+    (cs : CompilerState),
+    InvAtB L ρt s_mir s_osea cs →
+    (∃ v, CheckedCompilerM.value (compileStmtChecked L stmt) cs = .ok v) →
+    CodeIncludedB compProg (CheckedCompilerM.run (compileStmtChecked L stmt) cs) →
+    mirliteB.stepStmt MSB L s_mir stmt = .ok s_mir' →
+    ∃ (ρt' : TagRenameMap) (s_osea' : oseairL.State MSB) (n : Nat),
+      TagRenameIncr ρt ρt' ∧ oseairL.runN MSB n s_osea compProg = .Ok s_osea' ∧
+      InvAtB L ρt' s_mir' s_osea' (CheckedCompilerM.run (compileStmtChecked L stmt) cs)
+
+theorem StmtSimB.toC {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog} {stmt : Stmt Γ}
+    (h : StmtSimB L compProg stmt) : StmtSimBc L compProg stmt :=
+  fun ρt s_mir s_mir' s_osea cs h_inv _ h_code h_step => h ρt s_mir s_mir' s_osea cs h_inv h_code h_step
+
 theorem compileB_run_sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {prog : Prog Γ} {cs0 : CompilerState}
     {u : Unit} (h_comp : CheckedCompilerM.value (compileStmtsChecked L prog) cs0 = .ok u)
     (h_sim : ∀ stmt, stmt ∈ prog → stmt ≠ .halt →
-      StmtSimB L (CheckedCompilerM.run (compileStmtsChecked L prog) cs0).code stmt) :
+      StmtSimBc L (CheckedCompilerM.run (compileStmtsChecked L prog) cs0).code stmt) :
     ∀ (n : Nat) (ρt : TagRenameMap) (s_mir s_mir' : mirliteB.State MSB Γ)
       (s_osea : oseairL.State MSB),
       InvAtB L ρt s_mir s_osea (csAtB L cs0 prog s_mir.pc) →
@@ -334,14 +352,14 @@ theorem compileB_run_sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {prog : Prog Γ} {c
         split at h_run
         · rename_i s1 h_step
           have h_ne : stmt ≠ .halt := h_nh
-          obtain ⟨h_incr, h_next⟩ := stmt_in_prog prog cs0 s_mir.pc stmt u h_comp h_get
+          obtain ⟨h_incr, h_next, h_okS⟩ := stmt_in_prog prog cs0 s_mir.pc stmt u h_comp h_get
           have h_code : CodeIncludedB (CheckedCompilerM.run (compileStmtsChecked L prog) cs0).code
               (CheckedCompilerM.run (compileStmtChecked L stmt) (csAtB L cs0 prog s_mir.pc)) :=
             fun q instr hq hc => by rw [h_incr.code_eq q hq]; exact hc
           obtain ⟨ρt1, s1', n1, h_i1, h_r1, h_inv1⟩ :=
             h_sim stmt (by
               obtain ⟨hi, he⟩ := List.get?_eq_some_iff.mp h_get
-              exact he ▸ List.get_mem prog ⟨_, hi⟩) h_ne ρt s_mir s1 s_osea _ h_inv h_code h_step
+              exact he ▸ List.get_mem prog ⟨_, hi⟩) h_ne ρt s_mir s1 s_osea _ h_inv h_okS h_code h_step
           rw [← h_next, ← stepStmt_pc h_ne h_step] at h_inv1
           obtain ⟨ρt2, s2', n2, h_i2, h_r2, h_inv2⟩ := ih ρt1 s1 s_mir' s1' h_inv1 h_run
           exact ⟨ρt2, s2', n1 + n2, h_i1.trans h_i2, runN_trans h_r1 h_r2, h_inv2⟩
@@ -353,7 +371,7 @@ theorem compileB_run_sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {prog : Prog Γ} {c
     initial state, related by the byte invariant. -/
 theorem compileB_correct {Γ : Ctx} (L : mirliteB.LayEnv Γ) (prog : Prog Γ)
     (compProg : oseairL.Prog) (h_comp : compileProg L prog = .ok compProg)
-    (h_sim : ∀ stmt, stmt ∈ prog → stmt ≠ .halt → StmtSimB L compProg stmt)
+    (h_sim : ∀ stmt, stmt ∈ prog → stmt ≠ .halt → StmtSimBc L compProg stmt)
     (n : Nat) {s_mir' : mirliteB.State MSB Γ}
     (h_run : mirliteB.runN MSB L n (mirliteB.State.initial MSB Γ) prog = .ok s_mir') :
     ∃ (ρt : TagRenameMap) (s_osea' : oseairL.State MSB) (m : Nat),

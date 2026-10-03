@@ -204,19 +204,19 @@ inductive DstB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
       PtrChain (.deref P) → DstB (.proj (.deref P) f)
 
 /-- The statements covered. -/
-inductive StmtB {Γ : Ctx} : Stmt Γ → Prop
+inductive StmtB0 {Γ : Ctx} : Stmt Γ → Prop
   | assign {τ : LayoutTy} {dst : Place Γ τ} {rhs : RExpr Γ τ} :
-      DstB dst → RhsB rhs → StmtB (.assign dst rhs)
-  | pushProtectors : StmtB .pushProtectors
-  | popProtectors : StmtB .popProtectors
+      DstB dst → RhsB rhs → StmtB0 (.assign dst rhs)
+  | pushProtectors : StmtB0 .pushProtectors
+  | popProtectors : StmtB0 .popProtectors
   | dealloc {σ : LayoutTy} {dst : Place Γ (obseq.LayoutTy.PtrL σ)} :
-      ReadSrcB dst → StmtB (.dealloc dst)
+      ReadSrcB dst → StmtB0 (.dealloc dst)
   /-- `x.f.g := rhs` is `x.(f ++ g) := rhs` on both machines. -/
   | nested {ρ σ τ : LayoutTy} {b : Place Γ ρ} {q : PathTo ρ σ} {p : PathTo σ τ} {rhs : RExpr Γ τ} :
-      StmtB (.assign (.proj b (q.append p)) rhs) → StmtB (.assign (.proj (.proj b q) p) rhs)
+      StmtB0 (.assign (.proj b (q.append p)) rhs) → StmtB0 (.assign (.proj (.proj b q) p) rhs)
 
-theorem StmtB.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    (hWF : PtrPlacesWF L) {stmt : Stmt Γ} (h : StmtB stmt) : StmtSimB L compProg stmt := by
+theorem StmtB0.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
+    (hWF : PtrPlacesWF L) {stmt : Stmt Γ} (h : StmtB0 stmt) : StmtSimB L compProg stmt := by
   induction h with
   | nested _ ih =>
       rename_i b q p rhs _
@@ -251,22 +251,5 @@ theorem StmtB.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
   | dealloc hd =>
       intro ρt s_mir s_mir' s_osea cs h_inv h_code h_step
       exact dealloc_simB compProg hWF hd h_inv h_code h_step
-
-/-- **Byte-level compiler correctness, for the proved fragment.** If every
-    pointer-typed place has a pointer-sized layout, `prog` compiles, and
-    every non-halt statement of `prog` is in the fragment, then every
-    successful source run from the initial state is matched by a
-    successful target run from the initial state, the two related by the
-    byte invariant at the statement-prefix compile state. -/
-theorem compileB_correct_fragment {Γ : Ctx} (L : mirliteB.LayEnv Γ) (hWF : PtrPlacesWF L)
-    (prog : Prog Γ) (compProg : oseairL.Prog) (h_comp : compileProg L prog = .ok compProg)
-    (h_frag : ∀ stmt, stmt ∈ prog → stmt ≠ .halt → StmtB stmt)
-    (n : Nat) {s_mir' : mirliteB.State MSB Γ}
-    (h_run : mirliteB.runN MSB L n (mirliteB.State.initial MSB Γ) prog = .ok s_mir') :
-    ∃ (ρt : TagRenameMap) (s_osea' : oseairL.State MSB) (m : Nat),
-      oseairL.runN MSB m (oseairL.State.initial MSB) compProg = .Ok s_osea' ∧
-      InvAtB L ρt s_mir' s_osea' (csAtB L (initialState Γ) prog s_mir'.pc) :=
-  compileB_correct L prog compProg h_comp
-    (fun stmt h_mem h_nh => (h_frag stmt h_mem h_nh).sim hWF) n h_run
 
 end obseq3.byteproof

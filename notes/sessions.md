@@ -5070,3 +5070,7 @@ Later: the byte-level program theorem — `byteproof/program.lean`,
 whitelisted only). Next: grow the fragment (assignIf, nested projections,
 field operands for the one-leaf rvalues), then the cleanup pass (helpers,
 grind).
+Later: nested fields (`assoc.lean`) and assignIf (`prmpres.lean`,
+`assignif.lean`, `correct.lean`); `compileB_correct_fragment` now in
+`correct.lean`, 426 byteproof declarations, axioms unchanged. Next:
+non-chain derefs, field operands for the one-leaf rvalues, then cleanup.
