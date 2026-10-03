@@ -11,10 +11,13 @@ import obseq3.byteproof.move
 import obseq3.byteproof.leafops
 import obseq3.byteproof.readreg
 import obseq3.byteproof.readsrc
+import obseq3.byteproof.leaffield
 import obseq3.byteproof.binop
 import obseq3.byteproof.slice
 import obseq3.byteproof.alloc
 import obseq3.byteproof.refslice
+import obseq3.byteproof.refslicefield
+import obseq3.byteproof.exposefield
 import obseq3.byteproof.stmts
 import obseq3.byteproof.program
 import obseq3.byteproof.fragment
@@ -23,6 +26,7 @@ import obseq3.byteproof.chainb
 import obseq3.byteproof.prmpres
 import obseq3.byteproof.assignif
 import obseq3.byteproof.correct
+import obseq3.byteproof.coverage
 open Lean Elab Command
 
 -- The byte-level proof (obseq3.byteproof, branch `byteaddress`) may rest

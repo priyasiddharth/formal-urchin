@@ -627,3 +627,50 @@ places; one-leaf rvalues and refSlice with a field operand.
 Remaining outside the fragment: derefs of non-chain places (e.g.
 `*(x.f.g)` as a pointer, `*((*p).f.g)`) and the one-leaf rvalues /
 refSlice with a field operand.
+
+### 2026-10-03: field operands; every program is in the fragment
+
+- `leaffield.lean`: one-leaf rvalues (`ptrCast`, `ptrOffset`,
+  `fromExposed`) with a field operand (`LeafSrcB` = chain | field of a
+  chain | nested). Offset zero: the field lowers as its base
+  (`proj_zero_lowers`), the chain skeleton applies. Nonzero offset:
+  `leaf_pkg_projoff`, the bracket `Borrow(Shared); op; Die` cancelled by
+  keystone's `sb_ref_read_die_cancels`, with the op given as a
+  `ReadOnlyOpB` (source = one checked read; target = the op's value from
+  the target read's outcome). Nested: `ValuePkgB.congr` +
+  `readRhsPre_assoc`, well-founded on `Place.depth` (`cases` on the
+  `LeafSrcB` at a fixed `PtrL` index; `induction` refuses it).
+- [DEC] New layout hypothesis `LeafWF L`: integer- and pointer-typed places
+  have a one-leaf layout (`leafKind` size = layout size). A nonzero-offset
+  field's borrow covers the field's layout size while the op reads the
+  leaf's; the keystone cancellation needs them equal.
+- `refslicefield.lean`: the nonzero-offset bracket followed by the retag
+  `Borrow … none` on the loaded pointer (`sb_ref_respects_PermSim` from the
+  post-`Die` state). `exposefield.lean`: the exposure sits INSIDE the
+  bracket; the cell proof's `sb_die_expose_comm` (a `die` never reads the
+  exposed set) moves it past the `Die`, then the bracket cancels as before.
+  Both are copies of `leaf_pkg_projoff`'s bracket (~200 lines each);
+  factoring the bracket out is cleanup-pass item one.
+- `coverage.lean`: [DEC] the place predicates are TOTAL. Every
+  non-projection place is a `ChainB` (`ChainB.deref_all`: a deref of a
+  deref recurses, a deref of a field flattens nesting by `derefNested`),
+  every projection is a (nested) field of one. So "derefs of non-chain
+  places" were never outside the fragment — `*(x.f.g)` and `*((*p).f.g)`
+  are `derefNested`/`derefProj` chains since 9658d26 — and with field
+  operands done every rvalue has an `RhsB` case: `StmtB.all` holds for
+  every non-`halt` statement. `compileB_correct_all`: the byte-level
+  theorem with no fragment hypothesis, assuming only `PtrPlacesWF L` and
+  `LeafWF L`. Both are proved for `uniformEnv` (`placeLayout_uniform`:
+  every place's layout is `ofLayoutTy` of its type), giving
+  `compileB_correct_uniform` with no hypotheses beyond compilation.
+  512 byteproof declarations, axioms the three whitelisted only; main
+  audit unchanged (3 axioms, 0 sorries).
+
+[Q] Do the LOADER's layouts (`conformance.toBLayout`) satisfy the two
+conditions? Not proved: `toBLayout` is `partial` and maps `UTy`, not
+`LayoutTy`, so a `NatL` place whose real layout is not an `.int` leaf
+(an enum, a `Cell` wrapper flattened differently) would break `LeafWF`.
+Cheap way to know: a decidable per-program check that each local's
+`BLayout` has its `LayoutTy`'s shape (int ↔ NatL, ptr ↔ PtrL, tup ↔ TupL
+fieldwise), which implies both conditions for every place; run it over
+the corpus in the harness.

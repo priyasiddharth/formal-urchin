@@ -23,13 +23,14 @@ inductive StmtB {Γ : Ctx} : Stmt Γ → Prop
       ReadSrcB discr → StmtB0 (.assign dst rhs) → StmtB (.assignIf discr val dst rhs)
 
 theorem StmtB.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    (hWF : PtrPlacesWF L) {stmt : Stmt Γ} (h : StmtB stmt) : StmtSimBc L compProg stmt := by
+    (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) {stmt : Stmt Γ} (h : StmtB stmt) :
+    StmtSimBc L compProg stmt := by
   cases h with
-  | base h0 => exact (h0.sim hWF).toC
+  | base h0 => exact (h0.sim hWF hLeaf).toC
   | assignIf hd hb =>
       intro ρt s_mir s_mir' s_osea cs h_inv h_ok h_code h_step
       obtain ⟨v, hv⟩ := h_ok
-      exact assignIf_simB hWF hd (hb.sim hWF) h_inv hv h_code h_step
+      exact assignIf_simB hWF hd (hb.sim hWF hLeaf) h_inv hv h_code h_step
 
 /-- **Byte-level compiler correctness, for the proved fragment.** If every
     pointer-typed place has a pointer-sized layout, `prog` compiles, and
@@ -38,6 +39,7 @@ theorem StmtB.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     successful target run from the initial state, the two related by the
     byte invariant at the statement-prefix compile state. -/
 theorem compileB_correct_fragment {Γ : Ctx} (L : mirliteB.LayEnv Γ) (hWF : PtrPlacesWF L)
+    (hLeaf : LeafWF L)
     (prog : Prog Γ) (compProg : oseairL.Prog) (h_comp : compileProg L prog = .ok compProg)
     (h_frag : ∀ stmt, stmt ∈ prog → stmt ≠ .halt → StmtB stmt)
     (n : Nat) {s_mir' : mirliteB.State MSB Γ}
@@ -46,6 +48,6 @@ theorem compileB_correct_fragment {Γ : Ctx} (L : mirliteB.LayEnv Γ) (hWF : Ptr
       oseairL.runN MSB m (oseairL.State.initial MSB) compProg = .Ok s_osea' ∧
       InvAtB L ρt s_mir' s_osea' (csAtB L (initialState Γ) prog s_mir'.pc) :=
   compileB_correct L prog compProg h_comp
-    (fun stmt h_mem h_nh => (h_frag stmt h_mem h_nh).sim hWF) n h_run
+    (fun stmt h_mem h_nh => (h_frag stmt h_mem h_nh).sim hWF hLeaf) n h_run
 
 end obseq3.byteproof

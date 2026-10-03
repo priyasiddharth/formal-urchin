@@ -4,6 +4,31 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-03 (later) — The Byte-Level Proof Covers Every Program
+
+The byte-level correctness theorem no longer needs a list of covered
+statement kinds. The last missing pieces were operations applied directly
+to a field — reading a pointer stored in a struct field and casting it,
+offsetting it, turning it into an integer, or re-borrowing the slice it
+points to. When the field is not at the start of its struct, the compiled
+code borrows the field, does the operation through that borrow, and
+retires the borrow; the proof shows the three steps leave the
+permissions exactly as the source's single read does. Turning a pointer
+into an integer also publishes its permission, and that happens inside
+the borrow, so the proof first shows that publishing commutes with
+retiring the borrow.
+
+With those done, it turned out the remaining restriction — "dereferences
+of unusual places" — was already empty: every place the language can
+write is either a chain of dereferences or a field of one, and both were
+covered. So the theorem now holds for every program that compiles, under
+two conditions on the layouts: pointers are pointer-sized, and every
+integer or pointer is a single scalar. Both conditions are proved for the
+simple layout where every scalar is eight bytes. Whether the real layouts
+the Rust loader produces always meet them is not yet checked.
+
+---
+
 ## 2026-10-03 — The Byte-Level Compiler Is Proved Correct, for Most Programs
 
 The compiler that knows real byte layouts now has its correctness theorem:

@@ -5074,3 +5074,11 @@ Later: nested fields (`assoc.lean`) and assignIf (`prmpres.lean`,
 `assignif.lean`, `correct.lean`); `compileB_correct_fragment` now in
 `correct.lean`, 426 byteproof declarations, axioms unchanged. Next:
 non-chain derefs, field operands for the one-leaf rvalues, then cleanup.
+Later: field operands for the one-leaf rvalues, refSlice and exposeAddr
+(`leaffield`, `refslicefield`, `exposefield`; new hypothesis `LeafWF`), and
+`coverage.lean`: the fragment predicates are total, so
+`compileB_correct_all` has no fragment hypothesis (only `PtrPlacesWF`,
+`LeafWF`; both proved for `uniformEnv` → `compileB_correct_uniform`). 512
+byteproof declarations, axioms unchanged. Next: check the two layout
+conditions for the loader's real layouts (a decidable shape-agreement check
+over the corpus), then the cleanup pass (factor the projoff bracket, grind).

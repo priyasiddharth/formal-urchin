@@ -1,4 +1,7 @@
 import obseq3.byteproof.program
+import obseq3.byteproof.leaffield
+import obseq3.byteproof.refslicefield
+import obseq3.byteproof.exposefield
 import obseq3.byteproof.const_write
 
 /-!
@@ -6,9 +9,9 @@ import obseq3.byteproof.const_write
 
 Which statements the byte-level proof covers, as predicates, and the
 lemma turning each into a `StmtSimB` — so `compileB_correct_fragment` is
-the program theorem for every program in the fragment. Not yet covered:
-`assignIf`, nested projections (`x.f.g`), derefs of non-chain places, and
-the one-leaf rvalues / `refSlice` with a FIELD operand.
+the program theorem for every program in the fragment. The predicates
+turn out to be total (`coverage.lean`): every statement is in the
+fragment.
 -/
 
 namespace obseq3.byteproof
@@ -29,25 +32,6 @@ inductive BorrowSrcB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
       BorrowSrcB (.proj b (q.append p)) → BorrowSrcB (.proj (.proj b q) p)
 
 /-! ## Congruences for nested projections -/
-
-theorem ValuePkgB.congr {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    {dstL : BLayout} {τ : LayoutTy} {r1 r2 : RExpr Γ τ}
-    (h_eval : ∀ sM, mirliteB.evalRExpr MSB L sM dstL r1 = mirliteB.evalRExpr MSB L sM dstL r2)
-    (h_run : ∀ cs, CheckedCompilerM.run (compileRExprPreChecked L dstL r1) cs
-      = CheckedCompilerM.run (compileRExprPreChecked L dstL r2) cs)
-    (h_val : ∀ cs p2, CheckedCompilerM.value (compileRExprPreChecked L dstL r2) cs = .ok p2 →
-      ∃ p1, CheckedCompilerM.value (compileRExprPreChecked L dstL r1) cs = .ok p1 ∧
-        (∀ d, p1.store d = p2.store d) ∧ p1.postCleanup = p2.postCleanup)
-    (h : ValuePkgB compProg L dstL r2) : ValuePkgB compProg L dstL r1 := by
-  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
-  rw [h_eval] at h_ev
-  obtain ⟨mkStore, p2, h_v2, h_st2, h_po2, h_prm2, h_rest⟩ :=
-    h ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
-  obtain ⟨p1, h_v1, h_st, h_po⟩ := h_val csA p2 h_v2
-  refine ⟨mkStore, p1, h_v1, fun d => (h_st d).trans (h_st2 d), h_po.trans h_po2,
-    by rw [h_run]; exact h_prm2, fun hc => ?_⟩
-  rw [h_run] at hc ⊢
-  exact h_rest hc
 
 theorem ref_assoc_pre {Γ : Ctx} {L : mirliteB.LayEnv Γ} {dstL : BLayout} {ρ σ τ : LayoutTy}
     (kind : RefKind) (prot : Bool) (mask : List Bool)
@@ -162,15 +146,15 @@ inductive RhsB {Γ : Ctx} : {τ : LayoutTy} → RExpr Γ τ → Prop
   | ref {τ : LayoutTy} {src : Place Γ τ} (kind : RefKind) (prot : Bool) (mask : List Bool) :
       BorrowSrcB src → RhsB (.ref kind prot mask src)
   | ptrCast {σ τ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} :
-      ChainB src → RhsB (.ptrCast (τ := τ) src)
+      LeafSrcB src → RhsB (.ptrCast (τ := τ) src)
   | ptrOffset {σ τ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} (delta : Int) :
-      ChainB src → RhsB (.ptrOffset (τ := τ) src delta)
+      LeafSrcB src → RhsB (.ptrOffset (τ := τ) src delta)
   | refSlice {σ τ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} (kind : RefKind)
-      (prot : Bool) : ChainB src → RhsB (.refSlice (τ := τ) kind prot src)
+      (prot : Bool) : LeafSrcB src → RhsB (.refSlice (τ := τ) kind prot src)
   | exposeAddr {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} :
-      ChainB src → RhsB (.exposeAddr src)
+      LeafSrcB src → RhsB (.exposeAddr src)
   | fromExposed {τ : LayoutTy} {src : Place Γ obseq.LayoutTy.NatL} :
-      ChainB src → RhsB (.fromExposed (τ := τ) src)
+      LeafSrcB src → RhsB (.fromExposed (τ := τ) src)
   | sliceLen {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} :
       ReadSrcB src → RhsB (.sliceLen src)
   | subSlice {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)}
@@ -183,7 +167,8 @@ inductive RhsB {Γ : Ctx} : {τ : LayoutTy} → RExpr Γ τ → Prop
       ReadSrcB a → ReadSrcB b → RhsB (.binOp op a b)
 
 theorem RhsB.pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    (hWF : PtrPlacesWF L) {τ : LayoutTy} {rhs : RExpr Γ τ} (h : RhsB rhs) (dstL : BLayout) :
+    (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) {τ : LayoutTy} {rhs : RExpr Γ τ} (h : RhsB rhs)
+    (dstL : BLayout) :
     ValuePkgB compProg L dstL rhs := by
   cases h with
   | constInit v => exact constInit_pkg dstL v
@@ -191,11 +176,11 @@ theorem RhsB.pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
   | copy h => exact copy_pkgR hWF dstL h
   | move h => exact h.move_pkg hWF dstL
   | ref kind prot mask h => exact h.ref_pkg hWF dstL kind prot mask
-  | ptrCast h => exact ptrCast_pkg hWF dstL h
-  | ptrOffset delta h => exact ptrOffset_pkg hWF dstL h delta
-  | refSlice kind prot h => exact refSlice_pkg hWF dstL kind prot h
-  | exposeAddr h => exact exposeAddr_pkg hWF dstL h
-  | fromExposed h => exact fromExposed_pkg hWF dstL h
+  | ptrCast h => exact ptrCast_pkgL hWF hLeaf dstL _ h
+  | ptrOffset delta h => exact ptrOffset_pkgL hWF hLeaf dstL _ h delta
+  | refSlice kind prot h => exact refSlice_pkgL hWF hLeaf dstL kind prot _ h
+  | exposeAddr h => exact exposeAddr_pkgL hWF hLeaf dstL _ h
+  | fromExposed h => exact fromExposed_pkgL hWF hLeaf dstL _ h
   | sliceLen h => exact sliceLen_pkg hWF dstL h
   | subSlice h1 h2 h3 => exact subSlice_pkg hWF dstL h1 h2 h3
   | allocConst n => exact alloc_const_pkg dstL n
@@ -224,7 +209,8 @@ inductive StmtB0 {Γ : Ctx} : Stmt Γ → Prop
       StmtB0 (.assign (.proj b (q.append p)) rhs) → StmtB0 (.assign (.proj (.proj b q) p) rhs)
 
 theorem StmtB0.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    (hWF : PtrPlacesWF L) {stmt : Stmt Γ} (h : StmtB0 stmt) : StmtSimB L compProg stmt := by
+    (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) {stmt : Stmt Γ} (h : StmtB0 stmt) :
+    StmtSimB L compProg stmt := by
   induction h with
   | nested _ ih =>
       rename_i b q p rhs _
@@ -236,9 +222,9 @@ theorem StmtB0.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
       | «local» loc =>
           cases h_env : s_mir.env.lookup loc with
           | none =>
-              exact storereg_localfresh_simB compProg (hr.pkg hWF _) h_inv h_code h_env h_step
+              exact storereg_localfresh_simB compProg (hr.pkg hWF hLeaf _) h_inv h_code h_env h_step
           | some b =>
-              exact storereg_local_simB compProg (hr.pkg hWF _) h_inv h_code h_env h_step
+              exact storereg_local_simB compProg (hr.pkg hWF hLeaf _) h_inv h_code h_env h_step
       | deref hc =>
           exact storereg_lowered_simB compProg (chainB_lowers hWF hc)
             (fun s1 h_prep => by
@@ -247,14 +233,14 @@ theorem StmtB0.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
               · rename_i r h_r
                 exact ⟨(mirliteB.Result.ok.inj h_prep).symm, r, h_r⟩
               · simp [mirliteB.allocateRoot] at h_prep)
-            (hr.pkg hWF _) h_inv h_code h_step
+            (hr.pkg hWF hLeaf _) h_inv h_code h_step
       | projLocal loc f =>
           cases h_env : s_mir.env.lookup loc with
           | none =>
-              exact storereg_projlocalfresh_simB compProg hWF (hr.pkg hWF _) h_inv h_code h_env
+              exact storereg_projlocalfresh_simB compProg hWF (hr.pkg hWF hLeaf _) h_inv h_code h_env
                 h_step
           | some b =>
-              exact storereg_projlocal_simB compProg hWF h_env (hr.pkg hWF _) h_inv h_code h_step
+              exact storereg_projlocal_simB compProg hWF h_env (hr.pkg hWF hLeaf _) h_inv h_code h_step
       | projDeref f hc =>
           exact storereg_proj_simB compProg (fun _ _ _ h => by cases h) (chainB_lowers hWF hc)
             (fun s1 h_prep => by
@@ -263,7 +249,7 @@ theorem StmtB0.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
               · rename_i r h_r
                 exact ⟨(mirliteB.Result.ok.inj h_prep).symm, r, h_r⟩
               · simp [mirliteB.allocateRoot] at h_prep)
-            (hr.pkg hWF _) h_inv h_code h_step
+            (hr.pkg hWF hLeaf _) h_inv h_code h_step
   | pushProtectors =>
       intro ρt s_mir s_mir' s_osea cs h_inv h_code h_step
       exact pushProt_simB compProg h_inv h_code h_step
