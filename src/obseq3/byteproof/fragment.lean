@@ -23,8 +23,8 @@ open obseq3.compileB
 inductive BorrowSrcB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
   | local {τ : LayoutTy} (loc : Local Γ τ) : BorrowSrcB (.local loc)
   | deref {σ : LayoutTy} {q : Place Γ (obseq.LayoutTy.PtrL σ)} :
-      PtrChain (.deref q) → BorrowSrcB (.deref q)
-  | field {ρ τ : LayoutTy} {b : Place Γ ρ} (f : PathTo ρ τ) : PtrChain b → BorrowSrcB (.proj b f)
+      ChainB (.deref q) → BorrowSrcB (.deref q)
+  | field {ρ τ : LayoutTy} {b : Place Γ ρ} (f : PathTo ρ τ) : ChainB b → BorrowSrcB (.proj b f)
   | nested {ρ σ τ : LayoutTy} {b : Place Γ ρ} {q : PathTo ρ σ} {p : PathTo σ τ} :
       BorrowSrcB (.proj b (q.append p)) → BorrowSrcB (.proj (.proj b q) p)
 
@@ -111,8 +111,12 @@ theorem BorrowSrcB.ref_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseai
     ValuePkgB compProg L dstL (RExpr.ref kind prot mask src) := by
   induction h with
   | «local» loc => exact ref_local_pkg hWF loc dstL kind prot mask
-  | deref hc => exact ref_deref_pkg hWF hc dstL kind prot mask
-  | field f hc => exact ref_proj_pkg hWF f hc dstL kind prot mask
+  | deref hc =>
+      exact ref_pkg_core (borrow_deref_shape _) (borrow_deref_res _)
+        (chainB_lowers hWF hc) (chainB_compilesB hc) dstL kind prot mask
+  | field f hc =>
+      exact ref_pkg_core (borrow_proj_shape f (ChainB.not_proj hc)) (borrow_proj_res f)
+        (chainB_lowers hWF hc) (chainB_compilesB hc) dstL kind prot mask
   | nested _ ih =>
       rename_i b q p _
       exact ValuePkgB.congr
@@ -125,8 +129,12 @@ theorem BorrowSrcB.move_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : osea
     ValuePkgB compProg L dstL (RExpr.move src) := by
   induction h with
   | «local» loc => exact move_local_pkg hWF loc dstL
-  | deref hc => exact move_deref_pkg hWF hc dstL
-  | field f hc => exact move_proj_pkg hWF f hc dstL
+  | deref hc =>
+      exact move_pkg_core (borrow_deref_shape _) (borrow_deref_res _)
+        (chainB_lowers hWF hc) (chainB_compilesB hc) dstL
+  | field f hc =>
+      exact move_pkg_core (borrow_proj_shape f (ChainB.not_proj hc)) (borrow_proj_res f)
+        (chainB_lowers hWF hc) (chainB_compilesB hc) dstL
   | nested _ ih =>
       rename_i b q p _
       exact ValuePkgB.congr
@@ -154,15 +162,15 @@ inductive RhsB {Γ : Ctx} : {τ : LayoutTy} → RExpr Γ τ → Prop
   | ref {τ : LayoutTy} {src : Place Γ τ} (kind : RefKind) (prot : Bool) (mask : List Bool) :
       BorrowSrcB src → RhsB (.ref kind prot mask src)
   | ptrCast {σ τ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} :
-      PtrChain src → RhsB (.ptrCast (τ := τ) src)
+      ChainB src → RhsB (.ptrCast (τ := τ) src)
   | ptrOffset {σ τ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} (delta : Int) :
-      PtrChain src → RhsB (.ptrOffset (τ := τ) src delta)
+      ChainB src → RhsB (.ptrOffset (τ := τ) src delta)
   | refSlice {σ τ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} (kind : RefKind)
-      (prot : Bool) : PtrChain src → RhsB (.refSlice (τ := τ) kind prot src)
+      (prot : Bool) : ChainB src → RhsB (.refSlice (τ := τ) kind prot src)
   | exposeAddr {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} :
-      PtrChain src → RhsB (.exposeAddr src)
+      ChainB src → RhsB (.exposeAddr src)
   | fromExposed {τ : LayoutTy} {src : Place Γ obseq.LayoutTy.NatL} :
-      PtrChain src → RhsB (.fromExposed (τ := τ) src)
+      ChainB src → RhsB (.fromExposed (τ := τ) src)
   | sliceLen {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)} :
       ReadSrcB src → RhsB (.sliceLen src)
   | subSlice {σ : LayoutTy} {src : Place Γ (obseq.LayoutTy.PtrL σ)}
@@ -198,10 +206,10 @@ theorem RhsB.pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
 inductive DstB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
   | local {τ : LayoutTy} (loc : Local Γ τ) : DstB (.local loc)
   | deref {τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL τ)} :
-      PtrChain (.deref P) → DstB (.deref P)
+      ChainB (.deref P) → DstB (.deref P)
   | projLocal {ρ τ : LayoutTy} (loc : Local Γ ρ) (f : PathTo ρ τ) : DstB (.proj (.local loc) f)
   | projDeref {ρ τ : LayoutTy} {P : Place Γ (obseq.LayoutTy.PtrL ρ)} (f : PathTo ρ τ) :
-      PtrChain (.deref P) → DstB (.proj (.deref P) f)
+      ChainB (.deref P) → DstB (.proj (.deref P) f)
 
 /-- The statements covered. -/
 inductive StmtB0 {Γ : Ctx} : Stmt Γ → Prop
@@ -232,7 +240,14 @@ theorem StmtB0.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
           | some b =>
               exact storereg_local_simB compProg (hr.pkg hWF _) h_inv h_code h_env h_step
       | deref hc =>
-          exact storereg_chaindst_simB compProg hWF hc (hr.pkg hWF _) h_inv h_code h_step
+          exact storereg_lowered_simB compProg (chainB_lowers hWF hc)
+            (fun s1 h_prep => by
+              simp only [mirliteB.preparePlaceAssign] at h_prep
+              split at h_prep
+              · rename_i r h_r
+                exact ⟨(mirliteB.Result.ok.inj h_prep).symm, r, h_r⟩
+              · simp [mirliteB.allocateRoot] at h_prep)
+            (hr.pkg hWF _) h_inv h_code h_step
       | projLocal loc f =>
           cases h_env : s_mir.env.lookup loc with
           | none =>
@@ -241,7 +256,14 @@ theorem StmtB0.sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
           | some b =>
               exact storereg_projlocal_simB compProg hWF h_env (hr.pkg hWF _) h_inv h_code h_step
       | projDeref f hc =>
-          exact storereg_projchain_simB compProg hWF hc (hr.pkg hWF _) h_inv h_code h_step
+          exact storereg_proj_simB compProg (fun _ _ _ h => by cases h) (chainB_lowers hWF hc)
+            (fun s1 h_prep => by
+              simp only [mirliteB.preparePlaceAssign] at h_prep
+              split at h_prep
+              · rename_i r h_r
+                exact ⟨(mirliteB.Result.ok.inj h_prep).symm, r, h_r⟩
+              · simp [mirliteB.allocateRoot] at h_prep)
+            (hr.pkg hWF _) h_inv h_code h_step
   | pushProtectors =>
       intro ρt s_mir s_mir' s_osea cs h_inv h_code h_step
       exact pushProt_simB compProg h_inv h_code h_step

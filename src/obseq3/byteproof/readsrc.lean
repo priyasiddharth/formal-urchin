@@ -1,5 +1,6 @@
 import obseq3.byteproof.readreg
 import obseq3.byteproof.assoc
+import obseq3.byteproof.chainb
 
 /-!
 # Reading from a field
@@ -258,8 +259,8 @@ theorem readToReg_projoff_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRen
 /-! ## Read sources: a chain, or a field of one -/
 
 inductive ReadSrc0 {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
-  | chain {τ : LayoutTy} {p : Place Γ τ} : PtrChain p → ReadSrc0 p
-  | field {ρ τ : LayoutTy} {b : Place Γ ρ} (f : PathTo ρ τ) : PtrChain b → ReadSrc0 (.proj b f)
+  | chain {τ : LayoutTy} {p : Place Γ τ} : ChainB p → ReadSrc0 p
+  | field {ρ τ : LayoutTy} {b : Place Γ ρ} (f : PathTo ρ τ) : ChainB b → ReadSrc0 (.proj b f)
 
 /-- Compile-time facts of a register read: its value register, the place
     map untouched, one register past the place's lowering. -/
@@ -284,16 +285,16 @@ theorem readToReg_factsR0 {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMa
         = cs.placeRegMap := by
     cases h with
     | chain hc =>
-        obtain ⟨o, h1, -, h3⟩ := ptrChain_compiles h_map hc RefKind.Shared r h_r
+        obtain ⟨o, h1, -, h3⟩ := chainB_compiles h_map hc RefKind.Shared r h_r
         exact ⟨o, h1, h3⟩
     | field f hb =>
         rename_i ρ b
-        have h_np := PtrChain.not_proj hb
+        have h_np := ChainB.not_proj hb
         simp only [mirliteB.resolvePlaceAcc] at h_r
         cases h_rb : mirliteB.resolvePlaceAcc MSB L sM b with
         | error e => simp [h_rb] at h_r
         | ok rb =>
-        obtain ⟨bOut, h_bval, -, h_bprm⟩ := ptrChain_compiles h_map hb RefKind.Shared rb h_rb
+        obtain ⟨bOut, h_bval, -, h_bprm⟩ := chainB_compiles h_map hb RefKind.Shared rb h_rb
         obtain ⟨hz, hnz⟩ := proj_lowering (kind := RefKind.Shared) f h_np h_bval
         by_cases h0 : pathOffset L b f = 0
         · obtain ⟨h_run, o, h_v, -⟩ := hz h0
@@ -325,14 +326,14 @@ theorem readToReg_simR0 {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
       cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg ∧
       (∀ r, RegisterBelow cs.nextReg r → s'.reg.lookup r = sA.reg.lookup r) := by
   cases h with
-  | chain hc => exact readToReg_simB hWF hc h_inv h_ev h_code
+  | chain hc => exact readToReg_simG (chainB_lowers hWF hc) (chainB_compilesB hc) h_inv h_ev h_code
   | field f hb =>
       rename_i ρ b
-      have h_np := PtrChain.not_proj hb
+      have h_np := ChainB.not_proj hb
       by_cases h0 : pathOffset L b f = 0
-      · exact readToReg_simG (proj_zero_lowers f h_np h0 (ptrChain_lowers hWF hb))
-          (proj_zero_compiles f h_np h0 (ptrChain_compilesB hb)) h_inv h_ev h_code
-      · exact readToReg_projoff_simB h_np h0 (ptrChain_lowers hWF hb) (ptrChain_compilesB hb)
+      · exact readToReg_simG (proj_zero_lowers f h_np h0 (chainB_lowers hWF hb))
+          (proj_zero_compiles f h_np h0 (chainB_compilesB hb)) h_inv h_ev h_code
+      · exact readToReg_projoff_simB h_np h0 (chainB_lowers hWF hb) (chainB_compilesB hb)
           h_inv h_ev h_code
 
 /-! ## Nested fields -/

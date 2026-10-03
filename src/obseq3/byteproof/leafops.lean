@@ -1,4 +1,5 @@
 import obseq3.byteproof.move
+import obseq3.byteproof.chainb
 
 /-!
 # One-leaf reads: casts, exposure, pointer offsets
@@ -48,11 +49,11 @@ theorem runN_Assgn {compProg : oseairL.Prog} {s s' : oseairL.State MSB} {r : Reg
   simp only [oseairL.runN, oseairL.step, h_code, h_ev]
 
 theorem leaf_pkg_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    (hWF : PtrPlacesWF L) {dstL : BLayout} {σ τ : LayoutTy} {rhs : RExpr Γ τ} {src : Place Γ σ}
+    {dstL : BLayout} {σ τ : LayoutTy} {rhs : RExpr Γ τ} {src : Place Γ σ}
     {mk : Register → oseairL.Rhs}
     {ev : (srcRes : PtrResult) → PlaceToRegEvidence L RefKind.Shared src srcRes →
       (dstPtr : Register) → RExprToEvidence L dstPtr rhs}
-    (h_chain : PtrChain src) (h_op : LeafOpB L dstL rhs src mk)
+    (h_low : LowersB L compProg src) (h_comp : CompilesB L src) (h_op : LeafOpB L dstL rhs src mk)
     (h_pre : compileRExprPreChecked L dstL rhs = readRhsPre L dstL rhs src mk (fun _ => []) ev) :
     ValuePkgB compProg L dstL rhs := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc _h_unmap output h_ev
@@ -62,14 +63,14 @@ theorem leaf_pkg_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pr
     obtain ⟨r, t, hpi, -⟩ := h_lbs loc b h
     exact ⟨r, _, hpi⟩
   obtain ⟨sOut, h_sval, h_sclean, h_sprm⟩ :=
-    ptrChain_compiles (L := L) h_map h_chain RefKind.Shared _ h_res
+    h_comp sM csA RefKind.Shared _ h_map h_res
   obtain ⟨h_run, pOut, h_val, h_store, h_post⟩ :=
     readRhsPre_shape (dstL := dstL) (rhs := rhs) (mk := mk) (ev := ev) h_sval h_sclean
   rw [h_pre]
   refine ⟨_, pOut, h_val, h_store, h_post, by rw [h_run]; exact h_sprm, fun h_code => ?_⟩
   rw [h_run] at h_code ⊢
   obtain ⟨sOut', n1, s1, tres, hS⟩ :=
-    ptrChain_lowering_simB hWF h_wf h_chain RefKind.Shared csA sA resolved permsR h_res h_tbd
+    h_low ρt sM RefKind.Shared csA sA resolved permsR h_wf h_res h_tbd
       h_lbs h_prb h_mem h_alloc h_psim h_pc
       (h_code.mono ((bumpReg_state_incr' _).trans (emit_state_incr _ _)))
   have h_same : sOut' = sOut := by
@@ -375,30 +376,30 @@ theorem ptrCast_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {σ 
 
 theorem exposeAddr_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : PtrChain src) :
+    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : ChainB src) :
     ValuePkgB compProg L dstL (RExpr.exposeAddr src) :=
-  leaf_pkg_core hWF (ev := fun srcRes evd _ => RExprToEvidence.exposeAddr src srcRes evd)
-    h_chain (exposeAddr_leafop dstL src) rfl
+  leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.exposeAddr src srcRes evd)
+    (chainB_lowers hWF h_chain) (chainB_compilesB h_chain) (exposeAddr_leafop dstL src) rfl
 
 theorem fromExposed_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {τ : LayoutTy}
-    {src : Place Γ obseq.LayoutTy.NatL} (h_chain : PtrChain src) :
+    {src : Place Γ obseq.LayoutTy.NatL} (h_chain : ChainB src) :
     ValuePkgB compProg L dstL (RExpr.fromExposed (τ := τ) src) :=
-  leaf_pkg_core hWF (ev := fun srcRes evd _ => RExprToEvidence.fromExposed src srcRes evd)
-    h_chain (fromExposed_leafop dstL src) rfl
+  leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.fromExposed src srcRes evd)
+    (chainB_lowers hWF h_chain) (chainB_compilesB h_chain) (fromExposed_leafop dstL src) rfl
 
 theorem ptrOffset_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ τ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : PtrChain src) (delta : Int) :
+    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : ChainB src) (delta : Int) :
     ValuePkgB compProg L dstL (RExpr.ptrOffset (τ := τ) src delta) :=
-  leaf_pkg_core hWF (ev := fun srcRes evd _ => RExprToEvidence.ptrOffset src delta srcRes evd)
-    h_chain (ptrOffset_leafop dstL src delta) rfl
+  leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.ptrOffset src delta srcRes evd)
+    (chainB_lowers hWF h_chain) (chainB_compilesB h_chain) (ptrOffset_leafop dstL src delta) rfl
 
 theorem ptrCast_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ τ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : PtrChain src) :
+    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : ChainB src) :
     ValuePkgB compProg L dstL (RExpr.ptrCast (τ := τ) src) :=
-  leaf_pkg_core hWF (ev := fun srcRes evd _ => RExprToEvidence.ptrCast src srcRes evd)
-    h_chain (ptrCast_leafop dstL src) rfl
+  leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.ptrCast src srcRes evd)
+    (chainB_lowers hWF h_chain) (chainB_compilesB h_chain) (ptrCast_leafop dstL src) rfl
 
 end obseq3.byteproof

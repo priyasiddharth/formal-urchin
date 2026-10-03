@@ -50,9 +50,9 @@ theorem code_two (rb : CompilerState) (i1 i2 : oseairL.Instr) :
     (emit (bumpReg rb) ([i1] ++ [i2])).nextLabel = rb.nextLabel + 2 := by
   refine ⟨?_, ?_, ?_⟩ <;> simp [emit]
 
-theorem refSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
-    (hWF : PtrPlacesWF L) (dstL : BLayout) (kind : RefKind) (prot : Bool) {σ τ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : PtrChain src) :
+theorem refSlice_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
+    (dstL : BLayout) (kind : RefKind) (prot : Bool) {σ τ : LayoutTy}
+    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_low : LowersB L compProg src) (h_comp : CompilesB L src) :
     ValuePkgB compProg L dstL (RExpr.refSlice (τ := τ) kind prot src) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
   -- the source: read the fat pointer, retag its extent
@@ -76,7 +76,7 @@ theorem refSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
     obtain ⟨r, t, hpi, -⟩ := h_lbs loc b h
     exact ⟨r, _, hpi⟩
   obtain ⟨sOut, h_sval, h_sclean, h_sprm⟩ :=
-    ptrChain_compiles (L := L) h_map h_chain RefKind.Shared _ h_res
+    h_comp sM csA RefKind.Shared _ h_map h_res
   have h_pre : compileRExprPreChecked L dstL (RExpr.refSlice (τ := τ) kind prot src)
       = readRhsPre L dstL (RExpr.refSlice (τ := τ) kind prot src) src
           (oseairL.Rhs.Load (leafLayout (mirliteB.leafKind (mirliteB.placeLayout L src))))
@@ -92,7 +92,7 @@ theorem refSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
   rw [h_run] at h_code ⊢
   -- the source place's lowering
   obtain ⟨sOut', n1, s1, tres, hS⟩ :=
-    ptrChain_lowering_simB hWF h_wf h_chain RefKind.Shared csA sA resolved permsR h_res h_tbd
+    h_low ρt sM RefKind.Shared csA sA resolved permsR h_wf h_res h_tbd
       h_lbs h_prb h_mem h_alloc h_psim h_pc
       (h_code.mono ((bumpReg_state_incr' _).trans (emit_state_incr _ _)))
   have h_same : sOut' = sOut := by
@@ -170,5 +170,11 @@ theorem refSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
     simp only [ValSim, oseairB.Val.toMem, oseairB.ofMem, MemValSim, idA, Nat.add_zero]
     exact ⟨trivial, trivial, trivial, trivial, TagRenameMap.extend_self _ _ _,
       fun _ _ => ⟨_, rfl⟩⟩
+
+theorem refSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
+    (hWF : PtrPlacesWF L) (dstL : BLayout) (kind : RefKind) (prot : Bool) {σ τ : LayoutTy}
+    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_chain : ChainB src) :
+    ValuePkgB compProg L dstL (RExpr.refSlice (τ := τ) kind prot src) :=
+  refSlice_core dstL kind prot (chainB_lowers hWF h_chain) (chainB_compilesB h_chain)
 
 end obseq3.byteproof

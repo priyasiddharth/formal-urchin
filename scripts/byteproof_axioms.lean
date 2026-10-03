@@ -19,6 +19,7 @@ import obseq3.byteproof.stmts
 import obseq3.byteproof.program
 import obseq3.byteproof.fragment
 import obseq3.byteproof.assoc
+import obseq3.byteproof.chainb
 import obseq3.byteproof.prmpres
 import obseq3.byteproof.assignif
 import obseq3.byteproof.correct
