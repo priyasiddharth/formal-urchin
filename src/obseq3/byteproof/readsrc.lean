@@ -1,4 +1,5 @@
 import obseq3.byteproof.readreg
+import obseq3.byteproof.assoc
 
 /-!
 # Reading from a field
@@ -256,16 +257,16 @@ theorem readToReg_projoff_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRen
 
 /-! ## Read sources: a chain, or a field of one -/
 
-inductive ReadSrcB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
-  | chain {τ : LayoutTy} {p : Place Γ τ} : PtrChain p → ReadSrcB p
-  | field {ρ τ : LayoutTy} {b : Place Γ ρ} (f : PathTo ρ τ) : PtrChain b → ReadSrcB (.proj b f)
+inductive ReadSrc0 {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
+  | chain {τ : LayoutTy} {p : Place Γ τ} : PtrChain p → ReadSrc0 p
+  | field {ρ τ : LayoutTy} {b : Place Γ ρ} (f : PathTo ρ τ) : PtrChain b → ReadSrc0 (.proj b f)
 
 /-- Compile-time facts of a register read: its value register, the place
     map untouched, one register past the place's lowering. -/
-theorem readToReg_factsR {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
+theorem readToReg_factsR0 {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {sM : mirliteB.State MSB Γ} {sA : oseairL.State MSB} {cs : CompilerState}
     {σ : LayoutTy} {p : Place Γ σ} {out : mirliteB.EvalOutput MSB Γ}
-    (h : ReadSrcB p) (h_lbs : LocalBindingSimB L ρt sM.env sA cs)
+    (h : ReadSrc0 p) (h_lbs : LocalBindingSimB L ρt sM.env sA cs)
     (h_ev : mirliteB.evalCopy MSB L sM p = .ok out) :
     CheckedCompilerM.value (readToReg L p) cs
       = .ok (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg) ∧
@@ -305,11 +306,11 @@ theorem readToReg_factsR {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap
   · rw [h_run]; exact h_sprm
   · rw [h_run]; rfl
 
-theorem readToReg_simR {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
+theorem readToReg_simR0 {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {compProg : oseairL.Prog} (hWF : PtrPlacesWF L)
     {sM : mirliteB.State MSB Γ} {sA : oseairL.State MSB} {cs : CompilerState}
     {σ : LayoutTy} {p : Place Γ σ} {out : mirliteB.EvalOutput MSB Γ}
-    (h : ReadSrcB p) (h_inv : InvAtB L ρt sM sA cs)
+    (h : ReadSrc0 p) (h_inv : InvAtB L ρt sM sA cs)
     (h_ev : mirliteB.evalCopy MSB L sM p = .ok out)
     (h_code : CodeIncludedB compProg (CheckedCompilerM.run (readToReg L p) cs)) :
     ∃ n s' vals, oseairL.runN MSB n sA compProg = .Ok s' ∧
@@ -333,6 +334,92 @@ theorem readToReg_simR {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
           (proj_zero_compiles f h_np h0 (ptrChain_compilesB hb)) h_inv h_ev h_code
       · exact readToReg_projoff_simB h_np h0 (ptrChain_lowers hWF hb) (ptrChain_compilesB hb)
           h_inv h_ev h_code
+
+/-! ## Nested fields -/
+
+/-- Read sources: a chain, a field of one, and nestings of fields
+    (`x.f.g` reads as `x.(f ++ g)`). -/
+inductive ReadSrcB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
+  | base {τ : LayoutTy} {p : Place Γ τ} : ReadSrc0 p → ReadSrcB p
+  | nested {ρ σ τ : LayoutTy} {b : Place Γ ρ} {q : PathTo ρ σ} {p : PathTo σ τ} :
+      ReadSrcB (.proj b (q.append p)) → ReadSrcB (.proj (.proj b q) p)
+
+theorem evalCopy_assoc {Γ : Ctx} {L : mirliteB.LayEnv Γ} (s : mirliteB.State MSB Γ)
+    {ρ σ τ : LayoutTy} (b : Place Γ ρ) (q : PathTo ρ σ) (p : PathTo σ τ) :
+    mirliteB.evalCopy MSB L s (.proj (.proj b q) p) = mirliteB.evalCopy MSB L s (.proj b (q.append p)) := by
+  simp only [mirliteB.evalCopy, placeLayout_assoc, resolvePlaceAcc_assoc]
+
+theorem readToReg_assoc {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρ σ τ : LayoutTy}
+    (b : Place Γ ρ) (q : PathTo ρ σ) (p : PathTo σ τ) (cs : CompilerState) :
+    CheckedCompilerM.run (readToReg L (.proj (.proj b q) p)) cs
+      = CheckedCompilerM.run (readToReg L (.proj b (q.append p))) cs ∧
+    CheckedCompilerM.value (readToReg L (.proj (.proj b q) p)) cs
+      = CheckedCompilerM.value (readToReg L (.proj b (q.append p))) cs := by
+  obtain ⟨h_run, h_val⟩ := placeToReg_assoc (L := L) RefKind.Shared b q p cs
+  cases h1 : CheckedCompilerM.value (placeToRegChecked L RefKind.Shared (.proj (.proj b q) p)) cs with
+  | ok o1 =>
+      cases h2 : CheckedCompilerM.value (placeToRegChecked L RefKind.Shared (.proj b (q.append p))) cs with
+      | ok o2 =>
+          rw [h1, h2] at h_val
+          simp only [Except.map, Except.ok.injEq] at h_val
+          obtain ⟨hr1, hv1⟩ := readToReg_factsG h1
+          obtain ⟨hr2, hv2⟩ := readToReg_factsG h2
+          rw [hr1, hr2, hv1, hv2, h_run, h_val, placeLayout_assoc]
+          exact ⟨by first | rfl | trivial, by first | rfl | trivial⟩
+      | error e => rw [h1, h2] at h_val; simp [Except.map] at h_val
+  | error e =>
+      cases h2 : CheckedCompilerM.value (placeToRegChecked L RefKind.Shared (.proj b (q.append p))) cs with
+      | ok o2 => rw [h1, h2] at h_val; simp [Except.map] at h_val
+      | error e' =>
+          rw [h1, h2] at h_val
+          simp only [Except.map, Except.error.injEq] at h_val
+          subst h_val
+          simp only [readToReg, CheckedCompilerM.run_bind, CheckedCompilerM.value_bind, h1, h2, h_run]
+          exact ⟨by first | rfl | trivial, by first | rfl | trivial⟩
+
+theorem readToReg_factsR {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
+    {sM : mirliteB.State MSB Γ} {sA : oseairL.State MSB} {cs : CompilerState}
+    {σ : LayoutTy} {p : Place Γ σ} {out : mirliteB.EvalOutput MSB Γ}
+    (h : ReadSrcB p) (h_lbs : LocalBindingSimB L ρt sM.env sA cs)
+    (h_ev : mirliteB.evalCopy MSB L sM p = .ok out) :
+    CheckedCompilerM.value (readToReg L p) cs
+      = .ok (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg) ∧
+    (CheckedCompilerM.run (readToReg L p) cs).placeRegMap = cs.placeRegMap ∧
+    (CheckedCompilerM.run (readToReg L p) cs).nextReg
+      = (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg + 1 := by
+  induction h with
+  | base h0 => exact readToReg_factsR0 h0 h_lbs h_ev
+  | nested _ ih =>
+      rename_i b q p' _
+      rw [(readToReg_assoc b q p' cs).1, (readToReg_assoc b q p' cs).2,
+        (placeToReg_assoc (L := L) RefKind.Shared b q p' cs).1]
+      exact ih (by rw [← evalCopy_assoc]; exact h_ev)
+
+theorem readToReg_simR {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
+    {compProg : oseairL.Prog} (hWF : PtrPlacesWF L)
+    {sM : mirliteB.State MSB Γ} {sA : oseairL.State MSB} {cs : CompilerState}
+    {σ : LayoutTy} {p : Place Γ σ} {out : mirliteB.EvalOutput MSB Γ}
+    (h : ReadSrcB p) (h_inv : InvAtB L ρt sM sA cs)
+    (h_ev : mirliteB.evalCopy MSB L sM p = .ok out)
+    (h_code : CodeIncludedB compProg (CheckedCompilerM.run (readToReg L p) cs)) :
+    ∃ n s' vals, oseairL.runN MSB n sA compProg = .Ok s' ∧
+      InvAtB L ρt out.state s' (CheckedCompilerM.run (readToReg L p) cs) ∧
+      out.state = { sM with perms := out.state.perms } ∧
+      s'.reg.lookup
+        (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg)
+        = some vals ∧
+      CheckedCompilerM.value (readToReg L p) cs
+        = .ok (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg) ∧
+      ListRel (StoreSim ρt) out.values (vals.map oseairB.Val.toMem) ∧
+      cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg ∧
+      (∀ r, RegisterBelow cs.nextReg r → s'.reg.lookup r = sA.reg.lookup r) := by
+  induction h with
+  | base h0 => exact readToReg_simR0 hWF h0 h_inv h_ev h_code
+  | nested _ ih =>
+      rename_i b q p' _
+      rw [(readToReg_assoc b q p' cs).1] at h_code ⊢
+      rw [(readToReg_assoc b q p' cs).2, (placeToReg_assoc (L := L) RefKind.Shared b q p' cs).1]
+      exact ih (by rw [← evalCopy_assoc]; exact h_ev) h_code
 
 /-! ## Copy from any read source -/
 
