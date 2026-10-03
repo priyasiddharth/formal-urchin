@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-03 (late night) — Reading a Pointer as a Plain Number
+
+Rust has two ways to turn a pointer into a number. `ptr as usize` (or
+`expose_provenance`) publishes the pointer's permission, so a pointer made
+back from that number may still be used. `ptr.addr()` and transmuting a
+pointer to an integer do not: they give the number and nothing else. The
+model only had the first kind. It now has the second, called `addr`: it
+reads the pointer's bytes as an integer, exactly as Miri does, and the
+compiler turns it into an ordinary integer load. The correctness proof
+covers it, and two new test programs, checked against Miri, show both
+sides: the number is right and the pointer stays usable, but a pointer
+rebuilt from the number may not touch the memory.
+
+The same change also shrank the proof: three copies of one argument (how
+the compiler briefly borrows a struct field to read through it) became one
+shared lemma, and five near-identical wrappers became one.
+
+---
+
 ## 2026-10-03 (late) — One Model: Bytes
 
 The project used to carry two versions of everything: a "cell" model, in

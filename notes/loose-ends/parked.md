@@ -279,6 +279,11 @@ feature-level view.
     `exposeAddr` only; a provenance-stripping `addr` rvalue is new
     semantics + proof leaves, and the byte-level ones need a byte-level
     pointer representation the cell model does not have. [OBS 2026-10-01]
+    **2026-10-03: `addr` DONE** (RExpr.addr: the pointer's bytes decoded
+    at integer type; compiled to a `Load` at integer layout; proof via
+    `ro_pkgL`; loader: `ptr.addr()` shims, `Transmute` casts ptr→int;
+    witnesses local/addr_ok, local/addr_strips_provenance). Still open
+    here: `with_addr`, byte-wise pointer copies, int literals as pointers.
     Byte-addressing cost MEASURED (journal/2026-10/2026-10-01-byte-probe.md):
     splitting byte size from slot count breaks 20 theorems / ~3.5k proof
     lines (68 mechanical sites besides), SB layer untouched; a faithful

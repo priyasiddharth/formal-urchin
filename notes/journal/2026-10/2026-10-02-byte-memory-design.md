@@ -764,3 +764,27 @@ fat-pointer extent in provenance, determinized wildcard. Also fixed a
 pre-existing numbering bug: references to Theorem/Definition took the
 section number of the REFERENCE ("Theorem 3.7" for §2.5's theorem).
 Built with typst 0.15.1 (musl release; typst is not installed system-wide).
+
+### 2026-10-03: one bracket; `addr` (provenance-stripping read)
+
+Dedup: `projoff_bracket` is the nonzero-offset `Borrow(Shared); op; Die`
+argument once, parameterized by the op's target effect = the read then a
+permission transform `g` commuting with `Die` (id; `sb_expose · t'`) and a
+caller predicate `P vals g`; `projoff_compile` is the compile half.
+`leaf_pkg_projoff`, `exposeAddr_projoff`, `refSlice_projoff` (bracket, then
+its retag) use it. `leaf_pkgL` is the one chain/field/nested wrapper,
+`ro_pkgL` its read-only instance. 1118 → 962 lines.
+
+[DEC] `addr p` (Rust `ptr.addr()`, `transmute::<*T, usize>`): the source
+decodes the place's leaf bytes at `int(|κ|)` (`readCellAs`), NOT "decode a
+pointer then take base+offset" — those differ on mixed-provenance bytes,
+and the byte decode is MiniRust's. Compiled to `Load (int |κ|)` (no new
+target instruction); proof = `addr_leafop` + `addr_ro` + `ro_pkgL` (~170
+lines). Loader: `URvalue.addr`; `Transmute` casts (ptr→int ↦ addr,
+ptr→ptr ↦ copy); shims for `*const/*mut T::addr` and the `transmute`
+intrinsic to an integer. Witnesses (Miri agrees 2/2): local/addr_ok (ok),
+local/addr_strips_provenance (UB at the write; reason recorded as known —
+Miri: dangling, no provenance, since it resolves addresses only to EXPOSED
+allocations; ours: no exposed tag at the borrow stack, the determinized
+wildcard). Corpus 149/0/26 of 175, --osea 149, --layouts 149, units
+31 + 133; 779 proof declarations, axioms unchanged.

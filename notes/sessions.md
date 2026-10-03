@@ -5100,3 +5100,8 @@ the byte model takes the plain names; tests ported (30 + 130); paper
 rewritten for the byte model from the code at HEAD (typst 0.15.1, 26
 pages); `stmt_sim` added for the one-step theorem. Audit 3 axioms / 0
 sorries; 768 proof declarations checked. Next: the cleanup pass.
+Later: proof dedup (`projoff_bracket`, `leaf_pkgL`; −156 lines) and the
+provenance-stripping `addr` rvalue end to end (semantics, compiler as an
+integer `Load`, proof, loader for `.addr()`/`transmute`, two Miri-verified
+witnesses, paper appendix). Corpus 149/0/26 of 175; units 31 + 133.
+Next: `with_addr` (parked 12-B) or UB preservation.

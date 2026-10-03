@@ -1563,25 +1563,25 @@ declaration in `src/obseq3/proof/`:
   ([@cor:uniform], [`compile_correct_uniform`], [`coverage.lean`]),
 ) <tab:lean>
 
-The proof is about 12,800 lines and 400 theorems across the 35 files of
+The proof is about 12,900 lines and 410 theorems across the 36 files of
 that directory, which also hold the Stacked Borrows lemmas it rests on.
 None of it contains an admitted goal. A checked audit prints the axioms
 that @thm:run and its corollaries depend on and fails if that set differs
 in either direction from a pinned whitelist; a second check covers every
-one of the directory's 768 declarations. The whitelist contains exactly the
+one of the directory's 779 declarations. The whitelist contains exactly the
 three standard Lean axioms, propositional extensionality, choice, and
 quotient soundness, and no `sorryAx`.
 
 The executable compiler is additionally validated by testing: a compiler
-witness corpus of 130 programs, run on both machines at the uniform layout
+witness corpus of 133 programs, run on both machines at the uniform layout
 and pinned as golden listings where the shape of the code matters; a
-corpus of 173 entries, drawn from Miri's Stacked Borrows tests and
+corpus of 175 entries, drawn from Miri's Stacked Borrows tests and
 completed by local witnesses, loaded from rustc's MIR through Charon with
-rustc's own layouts, whose 147 supported programs reach Miri's verdict
+rustc's own layouts, whose 149 supported programs reach Miri's verdict
 and, where Miri reports undefined behavior, the same statement and, with
-three documented exceptions, the same reason; and a differential run that compiles each of those 147
+four documented exceptions, the same reason; and a differential run that compiles each of those 149
 programs and requires the same verdict from both machines. The layout
-check of @def:layoutwf passes on all 147. The running program of this
+check of @def:layoutwf passes on all 149. The running program of this
 paper is part of the witness corpus, both as a golden listing
 (@fig:compile-example) and as a differential test; the states of
 @tab:mir-example and @tab:osea-example are printed by the mechanized
@@ -1603,7 +1603,7 @@ same format, to the language the compiler and the theorem actually cover.
 #grammarfig(
   [The remaining syntax of MIRLite (left) and OSEA-IR (right), extending @fig:mir-grammar and @fig:oseair-grammar. $d$ in `ptrOffset` and $delta$ in `offset` are integers; a `borrow` of length $bot$ retags the pointer's extent; $"op"$ is an integer operation at an integer type.],
   panel([MIRLite], bnf(
-    prod($"Expr" in.rev e$, $dots$, $"uninit" | "alloc"("len")$, $"exposeAddr"(p) | "fromExposed"(p)$, $"ptrCast"(p) | "ptrOffset"(p,d)$, $"refSlice"(k,c,p)$, $"sliceLen"(p) | "subSlice"(p, p_l, p_h)$, $"binOp"("op", p_a, p_b)$),
+    prod($"Expr" in.rev e$, $dots$, $"uninit" | "alloc"("len")$, $"exposeAddr"(p) | "addr"(p)$, $"fromExposed"(p)$, $"ptrCast"(p) | "ptrOffset"(p,d)$, $"refSlice"(k,c,p)$, $"sliceLen"(p) | "subSlice"(p, p_l, p_h)$, $"binOp"("op", p_a, p_b)$),
     prod($"Stmt" in.rev s$, $dots$, $"assignIf"(p = w, thick d := e)$, $"dealloc"(p)$, $"pushProtectors" | "popProtectors"$),
     prod($"len"$, $"const"(n) | "from"(p)$),
   )),
@@ -1616,8 +1616,8 @@ same format, to the language the compiler and the theorem actually cover.
 Typing follows @sec:mirlite: $"uninit"$ has any type; $"alloc"("len")$
 and the pointer expressions have pointer types, with $"ptrCast"$,
 $"ptrOffset"$, $"refSlice"$, $"sliceLen"$, and $"subSlice"$ taking a
-pointer place; $"exposeAddr"(p)$, $"sliceLen"(p)$, and $"binOp"$ have any
-integer type, the destination's; integer operands, slice bounds,
+pointer place; $"exposeAddr"(p)$, $"addr"(p)$, $"sliceLen"(p)$, and
+$"binOp"$ have any integer type, the destination's; integer operands, slice bounds,
 allocation lengths, and guard discriminants are integer places of any
 width. An integer operation carries its own integer type: it wraps at that
 width, compares by its signedness, and is undefined behavior on overflow
@@ -1628,9 +1628,13 @@ destination's type.
 The source semantics of these forms follows the pattern of @tab:mir: each
 expression resolves its place, performs the permission events listed for
 its target counterpart in @tab:surface-osea in the same order, and
-produces values. The one-leaf expressions, `exposeAddr`, `fromExposed`,
-`ptrCast`, `ptrOffset`, and `refSlice`, read the first leaf of their place,
-of scalar $kappa$, rather than the whole place. A guarded assignment first
+produces values. The one-leaf expressions, `exposeAddr`, `addr`,
+`fromExposed`, `ptrCast`, `ptrOffset`, and `refSlice`, read the first leaf
+of their place, of scalar $kappa$, rather than the whole place. `addr`
+decodes that leaf's bytes at integer type, as a pointer-to-integer
+`transmute` or `ptr.addr()` does: the address, with the provenance stripped
+and nothing exposed, so a pointer later rebuilt from it by `fromExposed`
+may not access the allocation unless some other cast exposed it. A guarded assignment first
 prepares the root of its destination, _on both paths_, then reads its
 discriminant exactly as $"copy"$ does, a real read access, and performs
 the assignment when the value read equals $w$.
@@ -1772,6 +1776,7 @@ before the destination is lowered.
   ([`alloc(const(n))`], [$r_v := "allocN"_(beta_e) (n)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`alloc(from(p))`], [Read $p$ into $r_n$; $r_v := "allocDyn"_(beta_e) (r_n)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`exposeAddr(p)`], [Lower $p$; $r_v := "expose"_kappa (r_s)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
+  ([`addr(p)`], [Lower $p$; $r_v := "load"_("int"(|kappa|)) (r_s)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`fromExposed(p)`], [Lower $p$; $r_v := "fromExposed"_kappa (r_s)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`ptrCast(p)`], [Lower $p$; $r_v := "load"_(beta_kappa) (r_s)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`ptrOffset(p,d)`], [Lower $p$; $r_v := "offset"_kappa (r_s, d dot |beta_e|)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
