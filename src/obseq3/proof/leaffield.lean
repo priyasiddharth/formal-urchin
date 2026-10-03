@@ -277,19 +277,81 @@ theorem readRhsPre_shapeG {Γ : Ctx} {L : mirlite.LayEnv Γ} {dstL : BLayout}
     CheckedCompilerM.value_pure, h_sval]
   exact ⟨rfl, _, rfl, fun _ => rfl, rfl⟩
 
-theorem leaf_pkg_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
+/-- The compile-time half of a nonzero-offset field read: the projection
+    lowers to one route borrow with one cleanup entry, and its lowering
+    leaves the place map alone. -/
+theorem projoff_compile {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρ τ : LayoutTy} {b : Place Γ ρ}
+    {f : PathTo ρ τ} {ρt : TagRenameMap} {sM : mirlite.State MSB Γ} {sA : oseair.State MSB}
+    {csA : CompilerState} {r : PlaceRes × MSB.State}
+    (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
+    (h0 : pathOffset L b f ≠ 0) (hcb : CompilesB L b)
+    (h_lbs : LocalBindingSimB L ρt sM.env sA csA)
+    (h_res : mirlite.resolvePlaceAcc MSB L sM (.proj b f) = .ok r) :
+    ∃ outP, CheckedCompilerM.value (placeToRegChecked L RefKind.Shared (.proj b f)) csA = .ok outP ∧
+      outP.result.cleanup.length = 1 ∧
+      (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared (.proj b f)) csA).placeRegMap
+        = csA.placeRegMap := by
+  obtain ⟨_, h_rb, -⟩ := borrow_proj_res (L := L) f sM _ h_res
+  obtain ⟨bOut, h_bval, h_bclean, h_bprm⟩ := hcb sM csA RefKind.Shared _ (fun loc bnd h => by
+    obtain ⟨r, t, hpi, -⟩ := h_lbs loc bnd h
+    exact ⟨r, _, hpi⟩) h_rb
+  obtain ⟨h_runP, outP, h_valP, h_resP⟩ :=
+    (proj_lowering (kind := RefKind.Shared) f h_np h_bval).2 h0
+  refine ⟨outP, h_valP, by rw [h_resP, h_bclean]; rfl, by rw [h_runP]; exact h_bprm⟩
+
+/-- The one-leaf bracket at a nonzero field offset, `Borrow(Shared); op;
+    Die`, for any op whose target effect, given the read through the fresh
+    tag, is that read followed by a permission transform `g` that commutes
+    with `Die` (the identity for a plain read, the exposure for
+    `exposeAddr`). The source's one read of the field is matched: the
+    bracket ends in `g q3` with `q3` related to the source's post-read
+    state, the op's values in the load register, and memory unchanged.
+    `post` (code after the bracket, e.g. `refSlice`'s retag) is not run. -/
+theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     {dstL : BLayout} {ρ τ τr : LayoutTy} {b : Place Γ ρ} {f : PathTo ρ τ} {rhs : RExpr Γ τr}
-    {mk : Register → oseair.Rhs}
+    {mk : Register → oseair.Rhs} {post : Register → List oseair.Instr}
     {ev : (srcRes : PtrResult) → PlaceToRegEvidence L RefKind.Shared (.proj b f) srcRes →
       (dstPtr : Register) → RExprToEvidence L dstPtr rhs}
+    {P : List Val → (AccessPerms → AccessPerms) → Prop}
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
     (h0 : pathOffset L b f ≠ 0) (hb : LowersB L compProg b) (hcb : CompilesB L b)
     (h_len : (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size = placeSize L (.proj b f))
-    (h_op : ReadOnlyOpB L dstL rhs (.proj b f) mk)
-    (h_pre : compileRExprPreChecked L dstL rhs = readRhsPre L dstL rhs (.proj b f) mk (fun _ => []) ev) :
-    ValuePkgB compProg L dstL rhs := by
-  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc _h_unmap output h_ev
-  obtain ⟨resolved, permsR, perms', h_res, h_free, h_bnd, h_rd, h_ost⟩ := h_op.source sM output h_ev
+    {ρt : TagRenameMap} {sM : mirlite.State MSB Γ} {sA : oseair.State MSB} {csA : CompilerState}
+    (h_wf : TagRenameWF ρt) (h_tbd : TagRenameBounded ρt sM.perms.NextTag sA.perms.NextTag)
+    (h_lbs : LocalBindingSimB L ρt sM.env sA csA) (h_prb : PlaceRegMapBoundB csA)
+    (h_mem : ByteMemSim ρt sM.mem sA.mem) (h_alloc : ByteAllocLockstep sM.mem sA.mem)
+    (h_psim : PermSim ρt sM.perms sA.perms) (h_pc : sA.pc = csA.nextLabel)
+    {resolved : PlaceRes} {permsR perms' : MSB.State}
+    (h_res : mirlite.resolvePlaceAcc MSB L sM (.proj b f) = .ok (resolved, permsR))
+    (h_free : ¬ sM.mem.isFreed resolved.allocBase = true)
+    (h_bnd : ¬ (resolved.addr + (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size
+        > resolved.allocBase + resolved.allocSize))
+    (h_rd : sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size
+        resolved.tag = .ok perms')
+    (h_op : ∀ (S1 : oseair.State MSB) (reg : Register) (ext : Nat) (T : Tag) (pmid : AccessPerms),
+      ByteMemSim ρt sM.mem S1.mem → ByteAllocLockstep sM.mem S1.mem →
+      S1.reg.lookup reg = some [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase) ext
+        resolved.allocSize T] →
+      resolved.allocBase ≤ resolved.addr →
+      sb_read S1.perms resolved.addr (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size T
+        = .ok pmid →
+      ∃ vals g, oseair.evalRhs MSB S1 (mk reg) = .Ok vals { S1 with perms := g pmid } ∧
+        (∀ (p p' : AccessPerms) a n t, sb_die p a n t = .ok p' → sb_die (g p) a n t = .ok (g p')) ∧
+        P vals g)
+    (h_code : CodeIncludedB compProg
+      (CheckedCompilerM.run (readRhsPre L dstL rhs (.proj b f) mk post ev) csA)) :
+    ∃ (n : Nat) (s3 : oseair.State MSB) (q3 : AccessPerms) (vals : List Val)
+      (g : AccessPerms → AccessPerms),
+      oseair.runN MSB n sA compProg = .Ok s3 ∧
+      s3.pc = (CheckedCompilerM.run (readRhsPre L dstL rhs (.proj b f) mk (fun _ => []) ev) csA).nextLabel ∧
+      s3.mem = sA.mem ∧ s3.perms = g q3 ∧
+      PermSim ρt perms' q3 ∧ TagRenameBounded ρt perms'.NextTag q3.NextTag ∧
+      s3.reg.lookup
+        (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared (.proj b f)) csA).nextReg)
+        = some vals ∧
+      (∀ r, RegisterBelow csA.nextReg r → s3.reg.lookup r = sA.reg.lookup r) ∧
+      csA.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared (.proj b f)) csA).nextReg ∧
+      P vals g := by
   obtain ⟨⟨bRes, permsB⟩, h_rb, h_addr, h_tag, h_ab, h_as, h_pb⟩ :=
     borrow_proj_res (L := L) f sM _ h_res
   simp only at h_addr h_tag h_ab h_as h_pb
@@ -300,20 +362,21 @@ theorem leaf_pkg_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.P
     exact ⟨r, _, hpi⟩) h_rb
   obtain ⟨h_runP, outP, h_valP, h_resP⟩ :=
     (proj_lowering (kind := RefKind.Shared) f h_np h_bval).2 h0
-  obtain ⟨h_run, pOut, h_val, h_store, h_post⟩ :=
+  obtain ⟨h_run0, -⟩ :=
     readRhsPre_shapeG (dstL := dstL) (rhs := rhs) (mk := mk) (post := fun _ => []) (ev := ev) h_valP
-  rw [h_resP, h_bclean, h_runP] at h_run
+  obtain ⟨h_runG, -⟩ :=
+    readRhsPre_shapeG (dstL := dstL) (rhs := rhs) (mk := mk) (post := post) (ev := ev) h_valP
+  rw [h_resP, h_bclean, h_runP] at h_run0 h_runG
   simp only [List.nil_append, cleanupInstrs, List.reverse_cons, List.reverse_nil,
-    List.map_cons, List.map_nil, List.append_nil] at h_run
-  rw [h_pre]
-  refine ⟨_, pOut, h_val, h_store, h_post, ?_, fun h_code => ?_⟩
-  · rw [h_run]; exact h_bprm
-  rw [h_run] at h_code ⊢
-  rw [h_runP] at h_store
+    List.map_cons, List.map_nil, List.append_nil] at h_run0 h_runG
+  rw [h_runG] at h_code
+  have h_code3 := h_code.mono (emit_append_state_incr _ _ _)
+  rw [h_runP]
+  rw [h_run0]
   -- the base's lowering
   obtain ⟨bOut', n1, s1, tres, hB⟩ :=
     hb ρt sM RefKind.Shared csA sA bRes permsR h_wf h_rb h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc
-      (h_code.mono (((bumpReg_state_incr' _).trans (emit_state_incr _ _)).trans
+      (h_code3.mono (((bumpReg_state_incr' _).trans (emit_state_incr _ _)).trans
         ((bumpReg_state_incr' _).trans (emit_state_incr _ _))))
   have h_same : bOut' = bOut := by
     have := hB.val
@@ -362,7 +425,7 @@ theorem leaf_pkg_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.P
           (s1.pc + k) = some i →
       compProg (s1.pc + k) = some i := by
     intro k i hk hc
-    refine h_code _ i ?_ hc
+    refine h_code3 _ i ?_ hc
     rw [(hct _ _ _).2.2.2, hB.pc]; omega
   -- §1 Borrow
   have h1 := runN_Borrow (s := s1) (h_at 0 _ (by omega) (by rw [hB.pc]; exact (hct _ _ _).1))
@@ -383,50 +446,77 @@ theorem leaf_pkg_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.P
     rw [h_ab, h_as, h_addr]
     show (s1.reg.insert tmp _).lookup tmp = _
     rw [RegMap.lookup_insert_self, Nat.sub_add_comm hB.le]
-  obtain ⟨vals, h_evT, h_rel⟩ := h_op.target ρt sM S1 tmp resolved permsR _ _ output q2 h_ev h_res h_wf
-    h_mem1 h_lock1 h_regS1 h_le (by rw [h_len, h_addr]; exact h_rd1)
+  obtain ⟨vals, g, h_evT, h_gdie, hP⟩ := h_op S1 tmp _ _ q2 h_mem1 h_lock1 h_regS1 h_le
+    (by rw [h_len, h_addr]; exact h_rd1)
   have h2 := runN_Assgn (h_at 1 _ (by omega) (by rw [hB.pc]; exact (hct _ _ _).2.1)) h_evT
   -- §3 Die
-  let S2 : oseair.State MSB := { S1 with perms := q2, reg := S1.reg.insert ld vals, pc := S1.pc + 1 }
+  let S2 : oseair.State MSB := { S1 with perms := g q2, reg := S1.reg.insert ld vals, pc := S1.pc + 1 }
   have hne : tmp ≠ ld := by simp [tmp, ld]
   have h3 := runN_Die (s := S2) (h_at 2 _ (by omega) (by rw [hB.pc]; exact (hct _ _ _).2.2.1))
     (by
       show (S1.reg.insert ld vals).lookup tmp = _
       rw [RegMap.lookup_insert_ne _ _ hne]
       exact RegMap.lookup_insert_self _ _ _)
-    (by rw [← Nat.add_assoc, hA]; exact h_die1)
-  have h_frame : ∀ r, RegisterBelow csA.nextReg r → (S2.reg).lookup r = sA.reg.lookup r :=
-    fun r hr => by
-      have hr' := RegisterBelow.mono hB.regmono hr
-      have hne1 : r ≠ tmp := RegisterBelow.ne_fresh hr'
-      have hne2 : r ≠ ld := RegisterBelow.ne_fresh (RegisterBelow.mono (Nat.le_succ _) hr')
-      show ((s1.reg.insert tmp _).insert ld vals).lookup r = _
-      rw [RegMap.lookup_insert_ne _ _ hne2, RegMap.lookup_insert_ne _ _ hne1]
-      exact hB.frame r hr
-  refine ⟨ρt, n1 + 1 + 1 + 1, { S2 with perms := q3, pc := S2.pc + 1 }, sM.mem, perms', vals,
-    TagRenameIncr.refl ρt, h_wf, h_ost,
-    runN_trans (runN_trans (runN_trans hB.run h1) h2) h3, ?_, ?_, ?_, ?_, h_mem1, h_lock1, ?_, ?_,
-    h_rel⟩
-  · show csA.nextReg ≤ _ + 1 + 1
-    have := hB.regmono
-    omega
-  · exact LocalBindingSimB.prm_congr (LocalBindingSimB.of_frame h_lbs h_prb h_frame) hB.prm
+    (by rw [← Nat.add_assoc, hA]; exact h_gdie _ _ _ _ _ h_die1)
+  refine ⟨n1 + 1 + 1 + 1, { S2 with perms := g q3, pc := S2.pc + 1 }, q3, vals, g,
+    runN_trans (runN_trans (runN_trans hB.run h1) h2) h3, ?_, hB.mem, rfl, ?_, ?_, ?_, ?_, ?_, hP⟩
+  · show s1.pc + 1 + 1 + 1 = _
+    rw [(hct _ _ _).2.2.2, hB.pc]
   · exact ⟨by rw [h_sm]; exact h_psim2.1, by rw [h_pf]; exact h_psim2.2.1,
       by rw [h_ex]; exact h_psim2.2.2.1, Nat.le_trans h_psim2.2.2.2.1 h_ntle,
       by rw [h_wk]; exact h_psim2.2.2.2.2⟩
-  · show TagRenameBounded ρt perms'.NextTag q3.NextTag
-    rw [sb_read_NextTag h_rd, hB.srcNT]
+  · rw [sb_read_NextTag h_rd, hB.srcNT]
     refine TagRenameBounded.mono h_tbd (Nat.le_refl _) (Nat.le_trans hB.tgtNT ?_)
     rw [← sb_read_NextTag h_rd']; exact h_ntle
-  · show s1.pc + 1 + 1 + 1 = _
-    rw [(hct _ _ _).2.2.2, hB.pc]
-  · rw [h_runP]
-    refine StoreStepB.rstore compProg _ _ dstL ld vals ?_ ?_
-    · show (S1.reg.insert ld vals).lookup ld = _
-      exact RegMap.lookup_insert_self _ _ _
-    · show (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) csA).nextReg + 1
-          < (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) csA).nextReg + 1 + 1
-      omega
+  · show (S1.reg.insert ld vals).lookup ld = _
+    exact RegMap.lookup_insert_self _ _ _
+  · intro r hr
+    have hr' := RegisterBelow.mono hB.regmono hr
+    have hne1 : r ≠ tmp := RegisterBelow.ne_fresh hr'
+    have hne2 : r ≠ ld := RegisterBelow.ne_fresh (RegisterBelow.mono (Nat.le_succ _) hr')
+    show ((s1.reg.insert tmp _).insert ld vals).lookup r = _
+    rw [RegMap.lookup_insert_ne _ _ hne2, RegMap.lookup_insert_ne _ _ hne1]
+    exact hB.frame r hr
+  · show csA.nextReg ≤ _ + 1
+    have := hB.regmono
+    omega
+
+theorem leaf_pkg_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
+    {dstL : BLayout} {ρ τ τr : LayoutTy} {b : Place Γ ρ} {f : PathTo ρ τ} {rhs : RExpr Γ τr}
+    {mk : Register → oseair.Rhs}
+    {ev : (srcRes : PtrResult) → PlaceToRegEvidence L RefKind.Shared (.proj b f) srcRes →
+      (dstPtr : Register) → RExprToEvidence L dstPtr rhs}
+    (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
+    (h0 : pathOffset L b f ≠ 0) (hb : LowersB L compProg b) (hcb : CompilesB L b)
+    (h_len : (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size = placeSize L (.proj b f))
+    (h_op : ReadOnlyOpB L dstL rhs (.proj b f) mk)
+    (h_pre : compileRExprPreChecked L dstL rhs = readRhsPre L dstL rhs (.proj b f) mk (fun _ => []) ev) :
+    ValuePkgB compProg L dstL rhs := by
+  intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc _h_unmap output h_ev
+  obtain ⟨resolved, permsR, perms', h_res, h_free, h_bnd, h_rd, h_ost⟩ := h_op.source sM output h_ev
+  obtain ⟨outP, h_valP, -, h_prmP⟩ := projoff_compile h_np h0 hcb h_lbs h_res
+  obtain ⟨h_run, pOut, h_val, h_store, h_post⟩ :=
+    readRhsPre_shapeG (dstL := dstL) (rhs := rhs) (mk := mk) (post := fun _ => []) (ev := ev) h_valP
+  have h_prmR : (CheckedCompilerM.run (readRhsPre L dstL rhs (.proj b f) mk (fun _ => []) ev)
+      csA).placeRegMap = csA.placeRegMap := by rw [h_run]; exact h_prmP
+  rw [h_pre]
+  refine ⟨_, pOut, h_val, h_store, h_post, h_prmR, fun h_code => ?_⟩
+  obtain ⟨n, s3, q3, vals, g, h_runT, h_pc3, h_mem3, h_g, h_ps, h_tb, h_ld, h_fr, h_nr, rfl, h_rel⟩ :=
+    projoff_bracket (P := fun vals g => g = id ∧
+        ListRel (StoreSim ρt) output.values (vals.map oseair.Val.toMem))
+      h_np h0 hb hcb h_len h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_res h_free h_bnd h_rd
+      (fun S1 reg ext T pmid hm hl hr hle hrd => by
+        obtain ⟨vals, h_ev', h_rel⟩ :=
+          h_op.target ρt sM S1 reg resolved permsR ext T output pmid h_ev h_res h_wf hm hl hr hle hrd
+        exact ⟨vals, id, h_ev', fun _ _ _ _ _ h => h, rfl, h_rel⟩)
+      h_code
+  refine ⟨ρt, n, s3, sM.mem, perms', vals, TagRenameIncr.refl ρt, h_wf, h_ost, h_runT,
+    ?_, ?_, by rw [h_g]; exact h_ps, by rw [h_g]; exact h_tb, by rw [h_mem3]; exact h_mem,
+    by rw [h_mem3]; exact h_alloc, h_pc3, ?_, h_rel⟩
+  · rw [h_run]; show csA.nextReg ≤ _ + 1; omega
+  · exact LocalBindingSimB.prm_congr (LocalBindingSimB.of_frame h_lbs h_prb h_fr) h_prmR
+  · rw [h_run]
+    exact StoreStepB.rstore compProg _ _ dstL _ vals h_ld (show _ < _ + 1 by omega)
 
 /-! ## Nested fields: congruence -/
 
@@ -498,117 +588,112 @@ inductive LeafSrcB {Γ : Ctx} : {τ : LayoutTy} → Place Γ τ → Prop
   | nested {ρ σ τ : LayoutTy} {b : Place Γ ρ} {q : PathTo ρ σ} {p : PathTo σ τ} :
       LeafSrcB (.proj b (q.append p)) → LeafSrcB (.proj (.proj b q) p)
 
-theorem ptrCast_pkgL {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
-    (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) (dstL : BLayout) {σ τ : LayoutTy}
-    (src : Place Γ (LayoutTy.PtrL σ)) (h : LeafSrcB src) :
-    ValuePkgB compProg L dstL (RExpr.ptrCast (τ := τ) src) := by
+/-- One wrapper for every one-leaf rvalue `F p` compiled as
+    `readRhsPre … (mk p) post`: a chain operand by its core package, a field
+    of a chain at offset zero by the same core (the field lowers as its
+    base), at a nonzero offset by the op's bracket package, and a nested
+    field by reassociation. -/
+theorem leaf_pkgL {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog} {dstL : BLayout}
+    {σ τr : LayoutTy} (F : Place Γ σ → RExpr Γ τr) (mk : Place Γ σ → Register → oseair.Rhs)
+    (post : Register → List oseair.Instr)
+    (ev : (p : Place Γ σ) → (srcRes : PtrResult) → PlaceToRegEvidence L RefKind.Shared p srcRes →
+      (dstPtr : Register) → RExprToEvidence L dstPtr (F p))
+    (h_pre : ∀ p, compileRExprPreChecked L dstL (F p) = readRhsPre L dstL (F p) p (mk p) post (ev p))
+    (h_mk : ∀ {ρ σ' : LayoutTy} (b : Place Γ ρ) (q : PathTo ρ σ') (p : PathTo σ' σ),
+      mk (.proj (.proj b q) p) = mk (.proj b (q.append p)))
+    (h_eval : ∀ {ρ σ' : LayoutTy} (b : Place Γ ρ) (q : PathTo ρ σ') (p : PathTo σ' σ) sM,
+      mirlite.evalRExpr MSB L sM dstL (F (.proj (.proj b q) p))
+        = mirlite.evalRExpr MSB L sM dstL (F (.proj b (q.append p))))
+    (h_core : ∀ p, LowersB L compProg p → CompilesB L p → ValuePkgB compProg L dstL (F p))
+    (h_off : ∀ {ρ : LayoutTy} (b : Place Γ ρ) (f : PathTo ρ σ),
+      (∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False) →
+      pathOffset L b f ≠ 0 → LowersB L compProg b → CompilesB L b →
+      (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size = placeSize L (.proj b f) →
+      ValuePkgB compProg L dstL (F (.proj b f)))
+    (hWF : PtrPlacesWF L)
+    (h_len : ∀ p : Place Γ σ,
+      (mirlite.leafKind (mirlite.placeLayout L p)).size = (mirlite.placeLayout L p).size)
+    (src : Place Γ σ) (h : LeafSrcB src) : ValuePkgB compProg L dstL (F src) := by
   cases h with
-  | chain hc => exact ptrCast_pkg hWF dstL hc
+  | chain hc => exact h_core _ (chainB_lowers hWF hc) (chainB_compilesB hc)
   | field f hb =>
       rename_i ρ b
       have h_np := ChainB.not_proj hb
       by_cases h0 : pathOffset L b f = 0
-      · exact leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.ptrCast _ srcRes evd)
-          (proj_zero_lowers f h_np h0 (chainB_lowers hWF hb))
-          (proj_zero_compiles f h_np h0 (chainB_compilesB hb)) (ptrCast_leafop dstL _) rfl
-      · exact leaf_pkg_projoff (ev := fun srcRes evd _ => RExprToEvidence.ptrCast _ srcRes evd)
-          h_np h0 (chainB_lowers hWF hb) (chainB_compilesB hb) (hLeaf.1 _) (ptrCast_ro dstL _) rfl
+      · exact h_core _ (proj_zero_lowers f h_np h0 (chainB_lowers hWF hb))
+          (proj_zero_compiles f h_np h0 (chainB_compilesB hb))
+      · exact h_off b f h_np h0 (chainB_lowers hWF hb) (chainB_compilesB hb) (h_len _)
   | nested hn =>
       rename_i ρ' σ' b q p
-      have ih := ptrCast_pkgL (compProg := compProg) hWF hLeaf dstL (τ := τ) (.proj b (q.append p)) hn
-      refine ValuePkgB.congr
-        (fun sM => by simp only [mirlite.evalRExpr, mirlite.readCell, placeLayout_assoc,
-          resolvePlaceAcc_assoc]) (fun cs => ?_) (fun cs => ?_) ih
-      · have := (readRhsPre_assoc (L := L) (dstL := dstL)
-          (rhs1 := RExpr.ptrCast (τ := τ) (.proj (.proj b q) p))
-          (rhs2 := RExpr.ptrCast (τ := τ) (.proj b (q.append p))) b q p
-          (oseair.Rhs.Load (leafLayout (mirlite.leafKind (mirlite.placeLayout L (.proj b (q.append p))))))
-          (fun _ => []) (fun srcRes evd _ => RExprToEvidence.ptrCast _ srcRes evd)
-          (fun srcRes evd _ => RExprToEvidence.ptrCast _ srcRes evd) cs).1
-        simp only [compileRExprPreChecked, placeLayout_assoc]
-        exact this
-      · have := (readRhsPre_assoc (L := L) (dstL := dstL)
-          (rhs1 := RExpr.ptrCast (τ := τ) (.proj (.proj b q) p))
-          (rhs2 := RExpr.ptrCast (τ := τ) (.proj b (q.append p))) b q p
-          (oseair.Rhs.Load (leafLayout (mirlite.leafKind (mirlite.placeLayout L (.proj b (q.append p))))))
-          (fun _ => []) (fun srcRes evd _ => RExprToEvidence.ptrCast _ srcRes evd)
-          (fun srcRes evd _ => RExprToEvidence.ptrCast _ srcRes evd) cs).2
-        simp only [compileRExprPreChecked, placeLayout_assoc]
-        exact this
+      have ih := leaf_pkgL F mk post ev h_pre h_mk h_eval h_core h_off hWF h_len
+        (.proj b (q.append p)) hn
+      have h_as := readRhsPre_assoc (L := L) (dstL := dstL) (rhs1 := F (.proj (.proj b q) p))
+        (rhs2 := F (.proj b (q.append p))) b q p (mk (.proj b (q.append p))) post (ev _) (ev _)
+      refine ValuePkgB.congr (fun sM => h_eval b q p sM) (fun cs => ?_) (fun cs => ?_) ih
+      · rw [h_pre, h_pre, h_mk]; exact (h_as cs).1
+      · rw [h_pre, h_pre, h_mk]; exact (h_as cs).2
 termination_by src.depth
 decreasing_by all_goals (subst_vars; simp_all [Place.depth]; try omega)
+
+/-- A read-only one-leaf op: its core package and its bracket package. -/
+theorem ro_pkgL {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog} {dstL : BLayout}
+    {σ τr : LayoutTy} (F : Place Γ σ → RExpr Γ τr) (mk : Place Γ σ → Register → oseair.Rhs)
+    (ev : (p : Place Γ σ) → (srcRes : PtrResult) → PlaceToRegEvidence L RefKind.Shared p srcRes →
+      (dstPtr : Register) → RExprToEvidence L dstPtr (F p))
+    (h_pre : ∀ p, compileRExprPreChecked L dstL (F p)
+      = readRhsPre L dstL (F p) p (mk p) (fun _ => []) (ev p))
+    (h_mk : ∀ {ρ σ' : LayoutTy} (b : Place Γ ρ) (q : PathTo ρ σ') (p : PathTo σ' σ),
+      mk (.proj (.proj b q) p) = mk (.proj b (q.append p)))
+    (h_eval : ∀ {ρ σ' : LayoutTy} (b : Place Γ ρ) (q : PathTo ρ σ') (p : PathTo σ' σ) sM,
+      mirlite.evalRExpr MSB L sM dstL (F (.proj (.proj b q) p))
+        = mirlite.evalRExpr MSB L sM dstL (F (.proj b (q.append p))))
+    (h_leafop : ∀ p, LeafOpB L dstL (F p) p (mk p)) (h_ro : ∀ p, ReadOnlyOpB L dstL (F p) p (mk p))
+    (hWF : PtrPlacesWF L)
+    (h_len : ∀ p : Place Γ σ,
+      (mirlite.leafKind (mirlite.placeLayout L p)).size = (mirlite.placeLayout L p).size)
+    (src : Place Γ σ) (h : LeafSrcB src) : ValuePkgB compProg L dstL (F src) :=
+  leaf_pkgL F mk (fun _ => []) ev h_pre h_mk h_eval
+    (fun p hl hc => leaf_pkg_core (ev := ev p) hl hc (h_leafop p) (h_pre p))
+    (fun _ _ h_np h0 hl hc h_l => leaf_pkg_projoff (ev := ev _) h_np h0 hl hc h_l (h_ro _) (h_pre _))
+    hWF h_len src h
+
+theorem ptrCast_pkgL {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
+    (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) (dstL : BLayout) {σ τ : LayoutTy}
+    (src : Place Γ (LayoutTy.PtrL σ)) (h : LeafSrcB src) :
+    ValuePkgB compProg L dstL (RExpr.ptrCast (τ := τ) src) :=
+  ro_pkgL (fun p => RExpr.ptrCast (τ := τ) p)
+    (fun p => oseair.Rhs.Load (leafLayout (mirlite.leafKind (mirlite.placeLayout L p))))
+    (fun p srcRes evd _ => RExprToEvidence.ptrCast p srcRes evd) (fun _ => rfl)
+    (fun _ _ _ => by simp only [placeLayout_assoc])
+    (fun _ _ _ _ => by simp only [mirlite.evalRExpr, mirlite.readCell, placeLayout_assoc,
+      resolvePlaceAcc_assoc])
+    (fun p => ptrCast_leafop dstL p) (fun p => ptrCast_ro dstL p) hWF (fun p => hLeaf.1 p) src h
 
 theorem ptrOffset_pkgL {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) (dstL : BLayout) {σ τ : LayoutTy}
     (src : Place Γ (LayoutTy.PtrL σ)) (h : LeafSrcB src) (delta : Int) :
-    ValuePkgB compProg L dstL (RExpr.ptrOffset (τ := τ) src delta) := by
-  cases h with
-  | chain hc => exact ptrOffset_pkg hWF dstL hc delta
-  | field f hb =>
-      rename_i ρ b
-      have h_np := ChainB.not_proj hb
-      by_cases h0 : pathOffset L b f = 0
-      · exact leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.ptrOffset _ delta srcRes evd)
-          (proj_zero_lowers f h_np h0 (chainB_lowers hWF hb))
-          (proj_zero_compiles f h_np h0 (chainB_compilesB hb)) (ptrOffset_leafop dstL _ delta) rfl
-      · exact leaf_pkg_projoff (ev := fun srcRes evd _ => RExprToEvidence.ptrOffset _ delta srcRes evd)
-          h_np h0 (chainB_lowers hWF hb) (chainB_compilesB hb) (hLeaf.1 _) (ptrOffset_ro dstL _ delta) rfl
-  | nested hn =>
-      rename_i ρ' σ' b q p
-      have ih := ptrOffset_pkgL (compProg := compProg) hWF hLeaf dstL (τ := τ) (.proj b (q.append p)) hn delta
-      have h_as := readRhsPre_assoc (L := L) (dstL := dstL)
-          (rhs1 := RExpr.ptrOffset (τ := τ) (.proj (.proj b q) p) delta)
-          (rhs2 := RExpr.ptrOffset (τ := τ) (.proj b (q.append p)) delta) b q p
-          (fun r => oseair.Rhs.PtrOffset (mirlite.leafKind (mirlite.placeLayout L (.proj b (q.append p)))) r
-            (delta * ((mirlite.pointeeLayout L (.proj b (q.append p))).size : Int)))
-          (fun _ => []) (fun srcRes evd _ => RExprToEvidence.ptrOffset _ delta srcRes evd)
-          (fun srcRes evd _ => RExprToEvidence.ptrOffset _ delta srcRes evd)
-      refine ValuePkgB.congr
-        (fun sM => by simp only [mirlite.evalRExpr, mirlite.readCell, placeLayout_assoc,
-          resolvePlaceAcc_assoc, mirlite.pointeeLayout]) (fun cs => ?_) (fun cs => ?_) ih
-      · have := (h_as cs).1
-        simp only [compileRExprPreChecked, mirlite.pointeeLayout, placeLayout_assoc] at this ⊢
-        exact this
-      · have := (h_as cs).2
-        simp only [compileRExprPreChecked, mirlite.pointeeLayout, placeLayout_assoc] at this ⊢
-        exact this
-termination_by src.depth
-decreasing_by all_goals (subst_vars; simp_all [Place.depth]; try omega)
+    ValuePkgB compProg L dstL (RExpr.ptrOffset (τ := τ) src delta) :=
+  ro_pkgL (fun p => RExpr.ptrOffset (τ := τ) p delta)
+    (fun p r => oseair.Rhs.PtrOffset (mirlite.leafKind (mirlite.placeLayout L p)) r
+      (delta * ((mirlite.pointeeLayout L p).size : Int)))
+    (fun p srcRes evd _ => RExprToEvidence.ptrOffset p delta srcRes evd) (fun _ => rfl)
+    (fun _ _ _ => by simp only [mirlite.pointeeLayout, placeLayout_assoc])
+    (fun _ _ _ _ => by simp only [mirlite.evalRExpr, mirlite.readCell, placeLayout_assoc,
+      resolvePlaceAcc_assoc, mirlite.pointeeLayout])
+    (fun p => ptrOffset_leafop dstL p delta) (fun p => ptrOffset_ro dstL p delta) hWF
+    (fun p => hLeaf.1 p) src h
 
 theorem fromExposed_pkgL {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) (dstL : BLayout) {τ : LayoutTy}
     (src : Place Γ (LayoutTy.IntL tN)) (h : LeafSrcB src) :
-    ValuePkgB compProg L dstL (RExpr.fromExposed (τ := τ) src) := by
-  cases h with
-  | chain hc => exact fromExposed_pkg hWF dstL hc
-  | field f hb =>
-      rename_i ρ b
-      have h_np := ChainB.not_proj hb
-      by_cases h0 : pathOffset L b f = 0
-      · exact leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.fromExposed _ srcRes evd)
-          (proj_zero_lowers f h_np h0 (chainB_lowers hWF hb))
-          (proj_zero_compiles f h_np h0 (chainB_compilesB hb)) (fromExposed_leafop dstL _) rfl
-      · exact leaf_pkg_projoff (ev := fun srcRes evd _ => RExprToEvidence.fromExposed _ srcRes evd)
-          h_np h0 (chainB_lowers hWF hb) (chainB_compilesB hb) (hLeaf.2 _) (fromExposed_ro dstL _) rfl
-  | nested hn =>
-      rename_i ρ' σ' b q p
-      have ih := fromExposed_pkgL (compProg := compProg) hWF hLeaf dstL (τ := τ) (.proj b (q.append p)) hn
-      have h_as := readRhsPre_assoc (L := L) (dstL := dstL)
-          (rhs1 := RExpr.fromExposed (τ := τ) (.proj (.proj b q) p))
-          (rhs2 := RExpr.fromExposed (τ := τ) (.proj b (q.append p))) b q p
-          (oseair.Rhs.FromExposed (mirlite.leafKind (mirlite.placeLayout L (.proj b (q.append p)))))
-          (fun _ => []) (fun srcRes evd _ => RExprToEvidence.fromExposed _ srcRes evd)
-          (fun srcRes evd _ => RExprToEvidence.fromExposed _ srcRes evd)
-      refine ValuePkgB.congr
-        (fun sM => by simp only [mirlite.evalRExpr, mirlite.readCell, placeLayout_assoc,
-          resolvePlaceAcc_assoc]) (fun cs => ?_) (fun cs => ?_) ih
-      · have := (h_as cs).1
-        simp only [compileRExprPreChecked, placeLayout_assoc] at this ⊢
-        exact this
-      · have := (h_as cs).2
-        simp only [compileRExprPreChecked, placeLayout_assoc] at this ⊢
-        exact this
-termination_by src.depth
-decreasing_by all_goals (subst_vars; simp_all [Place.depth]; try omega)
+    ValuePkgB compProg L dstL (RExpr.fromExposed (τ := τ) src) :=
+  ro_pkgL (fun p => RExpr.fromExposed (τ := τ) p)
+    (fun p => oseair.Rhs.FromExposed (mirlite.leafKind (mirlite.placeLayout L p)))
+    (fun p srcRes evd _ => RExprToEvidence.fromExposed p srcRes evd) (fun _ => rfl)
+    (fun _ _ _ => by simp only [placeLayout_assoc])
+    (fun _ _ _ _ => by simp only [mirlite.evalRExpr, mirlite.readCell, placeLayout_assoc,
+      resolvePlaceAcc_assoc])
+    (fun p => fromExposed_leafop dstL p) (fun p => fromExposed_ro dstL p) hWF
+    (fun p => hLeaf.2 p) src h
 
 end obseq3.proof
