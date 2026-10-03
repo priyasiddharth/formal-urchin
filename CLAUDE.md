@@ -24,7 +24,7 @@ notes at: notes/
 
       ./.lake/build/bin/sb_conformance --unit
         # obseq3 tests           17/17   (mirlite SB semantics)
-        # obseq3 compiler tests  104/104 (compiler witness corpus)
+        # obseq3 compiler tests  110/110 (compiler witness corpus)
 
       ./.lake/build/bin/sb_conformance \
         --manifest conformance/manifest.json --charon-dir conformance/charon
@@ -35,12 +35,18 @@ notes at: notes/
         # differential: compile each program and require the SAME verdict
         # from both machines. 82 matched / 0 mismatch / 0 skipped
 
-  Run all four before committing, not just `--unit`. The last two need
+  The validation build above does NOT relink this binary: run
+  `lake build sb_conformance` after touching a test file, or `--unit`
+  silently reports the old count. Run all four before committing, not just `--unit`. The last two need
   no Charon binary — they read the committed JSON under
   `conformance/charon/`.
 - `notes/` is the agent-maintained research notebook (better-than-fish
   conventions — see notes/CLAUDE.md). Start sessions by reading the
   last entry in notes/sessions.md. That file is always chronological,
   oldest first; append new entries at the end.
+- The paper is `pldi27/mirlite-oseair-correctness.typ` (Typst; build line
+  in its header). Its running example is executed, not hand-computed:
+  `notes/2026-09-18-paper-running-example.lean` prints every state, and
+  witnesses `g14`/`d92` pin the listing. Change them together.
 - The human-facing dev log is `obseq2-comparison.md` (newest-first
   dated entries).

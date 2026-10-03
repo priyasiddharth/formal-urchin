@@ -3,7 +3,7 @@
 //   pldi27/mirlite-oseair-correctness.typ
 //
 // Presentation follows oopsla26/opsem.tex: for each language, SYNTAX is one
-// grammar | configuration | types figure, SEMANTICS is one
+// grammar | semantic domains | types figure, SEMANTICS is one
 // Premises | Conclusion | Rule Name table, and the EXAMPLE is a stepwise
 // post-state table followed by a walkthrough that cites rule names.
 // Every number in the example tables is printed by
@@ -77,19 +77,24 @@
 )
 
 // ---------------------------------------------------------------------
-// Syntax: BNF panels and the grammar | configuration | types figure.
+// Syntax: BNF panels and the grammar | semantic domains | types figure.
 // ---------------------------------------------------------------------
 // prod(lhs, alt-line, alt-line, ...): the first line is introduced by ::=,
 // every further line by |.
-#let prod(lhs, ..lines) = {
+#let prod(lhs, rel: $::=$, ..lines) = {
   let out = ()
   for (i, l) in lines.pos().enumerate() {
     out.push(if i == 0 { lhs } else { [] })
-    out.push(if i == 0 { $::=$ } else { $|$ })
+    out.push(if i == 0 { rel } else { $|$ })
     out.push(l)
   }
   out
 }
+// Every line is headed `Name ∋ x`. `::=` is reserved for productions;
+// defn gives a set that simply equals something (maps, lists, numbers);
+// decl declares a further metavariable over a set defined elsewhere.
+#let defn(lhs, rhs) = prod(lhs, rel: $=$, rhs)
+#let decl(lhs) = (lhs, [], [])
 #let bnf(..prods) = {
   set text(size: 7.6pt)
   set par(first-line-indent: 0pt, justify: false, leading: 0.4em)
@@ -165,11 +170,13 @@
 #let sPr = $attach(arrow.r, br: "p")$
 #let emit = $plus.o$
 #let dr = $class("normal", ast)$
+// The extent (size in cells) of the allocation a pointer points into.
+#let sz = $italic("sz")$
 
 // ---------------------------------------------------------------------
 // Example: stepwise post-state tables and side-by-side listings.
 // ---------------------------------------------------------------------
-#let statetable(caption, header, cols, ..rows, placement: auto, size: 7.3pt) = figure(
+#let statetable(caption, header, cols, ..rows, placement: auto, size: 7.3pt, pad: 3.2pt) = figure(
   kind: table,
   placement: placement,
   caption: caption,
@@ -179,7 +186,7 @@
     table(
       columns: cols,
       align: left + horizon,
-      inset: (x: 3.5pt, y: 3.2pt),
+      inset: (x: 3.5pt, y: pad),
       stroke: (x, y) => (
         top: 0.45pt + rule,
         bottom: 0.45pt + rule,
@@ -191,6 +198,23 @@
     )
   },
 )
+// Full-configuration tables: one column per memory cell, value over borrow
+// stack; `chg` shades what the step changed.
+#let chg = rgb("fdf0cf")
+#let stk(body) = text(size: 0.92em, fill: rgb("4d5963"), body)
+#let nocell = text(fill: rgb("9aa5ad"))[---]
+// The place a cell column holds, under its address in a table header.
+#let plc(body) = text(weight: "regular", size: 0.95em, body)
+// A walkthrough: one labelled item per statement or label group.
+#let walk(..items) = block(width: 100%, above: 0.8em, below: 0.9em, {
+  set par(first-line-indent: 0pt)
+  grid(
+    columns: (auto, 1fr),
+    column-gutter: 7pt,
+    row-gutter: 0.75em,
+    ..items.pos().map(((l, b)) => (text(font: "Libertinus Sans", size: 7.6pt, weight: "semibold", fill: accent, l), b)).flatten()
+  )
+})
 // A prose-style two/three-column table in the same dress (appendix).
 #let proptable(caption, header, cols, ..rows, placement: none) = statetable(
   caption, header, cols, ..rows, placement: placement, size: 7.7pt)
@@ -226,6 +250,7 @@
 #let m-palloc = rn[prep-alloc]
 #let m-const = rn[e-const]
 #let m-copy = rn[e-copy]
+#let m-move = rn[e-move]
 #let m-ref = rn[e-ref]
 #let m-assgn = rn[assgn]
 #let m-halt = rn[halt]
@@ -251,6 +276,7 @@
 #let c-bderef = rn[bplace-deref]
 #let c-const = rn[rhs-const]
 #let c-copy = rn[rhs-copy]
+#let c-move = rn[rhs-move]
 #let c-ref = rn[rhs-ref]
 #let c-assign = rn[stmt-assign]
 #let c-halt = rn[stmt-halt]
@@ -297,8 +323,8 @@ tags that have no source counterpart. @sec:compiler names them route tags.
 
 We use cells as the unit of layout. Write $|tau|$ for the number of cells in a
 layout $tau$. Naturals and pointers occupy one cell; a tuple occupies the sum
-of its fields. A pointer value $"ptr"(b,o,n,t)$ denotes address $b+o$ in an
-allocation with base $b$, extent $n$, and provenance tag $t$. A memory $mu$
+of its fields. A pointer value $"ptr"(b,o,sz,t)$ denotes address $b+o$ in an
+allocation with base $b$, size $sz$, and provenance tag $t$. A memory $mu$
 maps cell addresses to words, pointers, or undefined values. A permission
 state $Pi$ records the per-cell borrow stacks.
 
@@ -316,44 +342,31 @@ from the constructs shown in the main text to the full executable surface.
 
 #takeaway([READING GUIDE], [
   Subsections @sec:perm[] to @sec:compiler[] share one layout. _Syntax_ is a
-  single figure: grammar, configuration, types. _Semantics_ is a single
+  single figure: grammar, semantic domains, types. _Semantics_ is a single
   table of named rules, read as premises, conclusion, name. The _example_ is
   a stepwise table giving the state after each instruction, and a
-  walkthrough that names the rule each row fires. The same program is used
-  in all of them, and once more in @sec:correctness as a simulation.
+  walkthrough that names the rule each row fires. From
+  @sec:mirlite on the example is one program, read once more in
+  @sec:correctness as a simulation.
 ])
 
 = Compiling MIRLite to OSEA-IR with ownership <sec:opsem>
 
-The running program declares a nested tuple $x$ and a pointer $y$, and is
-small enough to execute by hand:
-
-#align(center, box(width: 70%, listing(
-  [MIRLITE #h(6pt) $Gamma = [x : ("Nat",("Nat","Nat")), thick y : "Ptr" "Nat"]$],
-  [
-    0: #h(3pt) $x.0 := "const"(5)$ \
-    1: #h(3pt) $x.1.0 := "const"(42)$ \
-    2: #h(3pt) $y := "ref"("mutable", "false", [], x.1.0)$ \
-    3: #h(3pt) $#dr y := "const"(7)$ \
-    4: #h(3pt) $"halt"$
-  ],
-)))
-
-Statement 0 allocates $x$, because an assignment to an unbound root
-allocates it. Statement 1 writes one cell in the middle of $x$; it is the
-statement for which the compiler must introduce, and then retire, a tag the
-source never sees. Statement 2 allocates $y$ and stores a mutable reference
-to the cell just written. Statement 3 writes through that reference. Both
-machines start from empty states, allocate from address 0 with a bump
-allocator, and mint tags from 1 upward; tag 0 is reserved for the wildcard
-of @sec:surface. All concrete addresses, tags, registers, and labels below
-are those of the mechanized semantics running this program.
+This section formalizes the compilation from MIRLite to OSEA-IR and the
+sense in which it preserves ownership. The order is bottom-up. Stacked
+Borrows comes first (@sec:perm), because both languages are defined over
+it. MIRLite (@sec:mirlite) and OSEA-IR (@sec:oseair) follow, then the
+compiler between them (@sec:compiler), then its correctness
+(@sec:correctness). Each subsection ends with an example. The example of
+@sec:perm is a command sequence on a single cell; from @sec:mirlite on it
+is one MIRLite program, introduced there and carried through the rest of
+the section.
 
 == Stacked Borrows <sec:perm>
 
 #figure(
   kind: image,
-  caption: [A Stacked Borrows command sequence on the one cell $a$, with the stack after each command. It is the permission trace of the compiled statement 1 at $a=1$ with $t=1$, $u=2$.],
+  caption: [A Stacked Borrows command sequence on the one cell $a$, with the stack after each command.],
   text(size: 7.8pt)[
     $Pi(a)=[] quad
      attach(arrow.r.long, t: "own"(a)) quad ["Own"(t)] quad
@@ -374,12 +387,13 @@ fails; a failure is undefined behavior and aborts the execution. The
 correctness result instantiates the model with the per-cell Stacked Borrows
 of this subsection. The full executable language uses four further
 operations, for deallocation, exposed provenance, and protector frames;
-they are in @sec:surface.
+they are in @sec:surface-perm.
 
 A permission state is $Pi=("stacks","NextTag","frames","exposed")$. The
 component `stacks` is a partial map from cell addresses to _borrow
 stacks_; `NextTag` is the next fresh tag; `frames` and `exposed` are the
-protector frames and exposed tags of @sec:surface. We write $Pi(a)$ for the
+protector frames and the list of exposed tags, which only the full
+language uses (@sec:surface-perm). We write $Pi(a)$ for the
 stack at $a$ and leave the other three components implicit when a rule does
 not change them. A borrow stack is a list of _items_, topmost first,
 
@@ -388,7 +402,25 @@ not change them. A borrow stack is a list of _items_, topmost first,
 ]
 
 where $t$ is the item's tag and $m'$ a mutability flag. The top of the stack
-is the most recently derived permission. @tab:sb gives the rules. A rule
+is the most recently derived permission. A new item is derived from an
+existing one by a _retag_, and the _retag kind_
+
+#align(center)[
+  $k ::= "shared" | "mutable" | "raw-const" | "raw-mut" | "two-phase"$
+]
+
+says which item it pushes: a shared reference $"Ref"$, a mutable reference
+$"MutRef"$, a read-only or mutable raw pointer $"RawPtr"("false",dot)$ or
+$"RawPtr"("true",dot)$, or a reserved mutable borrow. The kinds `shared`
+and `mutable` are Rust's `&T` and `&mut T`, and `raw-const` and `raw-mut`
+are its raw pointers `*const T` and `*mut T`. A `raw-const` retag acts on
+the stack exactly as a `shared` one does, but pushes a differently named
+item; the name matters because related stacks must agree item by item
+(@def:permsim). A retag also takes a
+protector flag $c$ and an interior-mutability mask $m$, a list of booleans
+with one entry per cell of the retagged range. Both are inert in
+the main text, where $c="false"$ and $m=[]$, and so is `two-phase`; all
+three are defined in @sec:surface-perm. @tab:sb gives the rules. A rule
 $⟨ "op", Pi ⟩ #dA Pi'$ acts on one cell $a$; "$u$ fresh" means
 $u=Pi."NextTag"$, and the conclusion increments the counter. @fig:sb-example
 runs four of them: #sb-own pushes the owning item of a new allocation,
@@ -396,10 +428,12 @@ runs four of them: #sb-own pushes the owning item of a new allocation,
 #sb-use validates a write through $u$, and #sb-die pops $u$'s item, which is
 how a borrow is retired. After the four commands the stack is what it was
 after the first; only the tag counter remembers that $u$ existed. That
-observation is @lem:cancel, on which the correctness proof turns.
+observation is what makes a route tag unobservable at the next statement
+boundary, and it is why the simulation of @sec:correctness compares tag
+counters by an inequality.
 
 #ruletable(
-  [Stacked Borrows rules at one cell $a$. $x$ and $y$ range over lists of items, $x$ being the part of the stack above the granting item; $"tag"(iota)$ is the tag an item carries; $"dis"(x)$ replaces each $"MutRef"(u)$ in $x$ by $"Disabled"(u)$. No rule applies when a removed or disabled item is protected (@sec:surface).],
+  [Stacked Borrows rules at one cell $a$. $x$ and $y$ range over lists of items, $x$ being the part of the stack above the granting item; $"tag"(iota)$ is the tag an item carries; $"dis"(x)$ replaces each $"MutRef"(u)$ in $x$ by $"Disabled"(u)$. In #sb-refs, $iota'$ is the item that a retag of kind $k$ pushes. No rule applies when a removed or disabled item is protected (@sec:surface-perm).],
   ir(sb-own,
     [$Pi(a) in {bot, []}$, #h(3pt) $t$ fresh],
     [$⟨ "own"(a), Pi ⟩ #dA (Pi[a |-> ["Own"(t)]], t)$]),
@@ -428,8 +462,9 @@ observation is @lem:cancel, on which the correctness proof turns.
 
 Three points of the model matter later. A read through $t$ does not remove
 the mutable borrows above $t$: #sb-read _disables_ them in place, because
-removing them would merge the raw-pointer groups on either side. A
-raw-mutable retag performs no access and inserts its item directly above
+removing them would merge the raw-pointer groups on either side. A shared or
+raw-constant retag is a read through its parent followed by a push
+(#sb-refs). A raw-mutable retag performs no access and inserts its item directly above
 its parent (#sb-refr), so sibling raw pointers share one group instead of
 invalidating each other. And every operation of the interface ranges over
 $n$ cells from $a$ (#sb-range): $"own"(Pi,a,n)=(Pi',t)$,
@@ -445,30 +480,34 @@ for `sb_write` to keep the source-level reading.
 == MIRLite <sec:mirlite>
 
 #grammarfig(
-  [Grammar, configuration, and types of MIRLite. The main text covers these forms; @fig:surface-grammar has the rest.],
+  [Grammar, semantic domains, and types of MIRLite. Every line is headed $X in.rev x$: the metavariable $x$ ranges over the set $X$. With $::=$ the line is a production: $X$ is generated by the constructors on the right. With $=$ the set $X$ is built from other sets: $times$ is a product, $harpoon.rt$ a partial map, and $X^*$ the lists over $X$; $"Perm"$ is the set of permission states of @sec:perm. With nothing on the right it declares a further metavariable over a set defined elsewhere. Retag kinds $k$, flags $c$, and masks $m$ are those of @sec:perm, repeated here. The main text covers these forms; @fig:surface-grammar has the rest.],
   panel([Terms], bnf(
     prod($"Program"$, $"Stmt"^* thick "halt"$),
-    prod($"Stmt" in.rev s$, $d := e$, $"halt"$),
-    prod($"Place" in.rev p, d$, $ell$, $p.q$, $#dr p$),
-    prod($"Path" in.rev q$, $epsilon$, $j.q$),
-    prod($"Expr" in.rev e$, $"const"(w)$, $"copy"(p)$, $"ref"(k,c,m,p)$),
+    prod($"Stmt" in.rev s$, $d := e thick | thick "halt"$),
+    prod($"Place" in.rev p$, $ell thick | thick p.q thick | thick #dr p$),
+    decl($"Place" in.rev d$),
+    defn($"Local" in.rev ell$, $NN$),
+    prod($"Path" in.rev q$, $epsilon thick | thick f.q$),
+    decl($NN in.rev f$),
+    prod($"Expr" in.rev e$, $"const"(w) thick | thick "copy"(p) thick | thick "move"(p)$, $"ref"(k,c,m,p)$),
     prod($"Kind" in.rev k$, $"shared" | "mutable"$, $"raw-const" | "raw-mut"$, $"two-phase"$),
-    prod($c$, $"true" | "false"$),
-    prod($m$, $[c_0,dots,c_(n-1)]$),
+    defn($"Flag" in.rev c$, $"Bool"$),
+    defn($"Mask" in.rev m$, $"Bool"^*$),
   )),
   [
-    #panel([Configuration], bnf(
-      prod($"State" in.rev S$, $(i, E, mu, Pi)$),
-      prod($E$, $ell harpoon.rt (a, t)$),
-      prod($mu$, $a harpoon.rt v$),
-      prod($"Value" in.rev v$, $"undef"$, $"word"(w)$, $"ptr"(b,o,N,t)$),
-      prod($"Res"$, $"res"(a,t,b,N)$),
-      prod($i, a, b, o, N$, $NN$),
-      prod($"Tag" in.rev t, u$, $NN$),
+    #panel([Semantic domains], bnf(
+      defn($"State" in.rev S$, $NN times "Env" times "Mem" times "Perm"$),
+      defn($"Env" in.rev E$, $"Local" harpoon.rt NN times "Tag"$),
+      defn($"Mem" in.rev mu$, $NN harpoon.rt "Value"$),
+      prod($"Value" in.rev v$, $"undef" thick | thick "word"(w)$, $"ptr"(b,o,sz,t)$),
+      decl($NN in.rev i, a, b, o, sz$),
+      defn($"Tag" in.rev t, u$, $NN$),
+      decl($"Perm" in.rev Pi$),
     ))
     #panel([Types], bnf(
-      prod($"Layout" in.rev tau, sigma$, $"Nat"$, $"Ptr" tau$, $(tau_0,dots,tau_(n-1))$),
-      prod($Gamma$, $[tau_0,dots,tau_(n-1)]$),
+      prod($"Layout" in.rev tau$, $"Nat" thick | thick "Ptr" tau$, $(tau_0,dots,tau_(n-1))$),
+      decl($"Layout" in.rev sigma$),
+      defn($"Ctx" in.rev Gamma$, $"Layout"^*$),
     ))
   ],
 ) <fig:mir-grammar>
@@ -477,8 +516,15 @@ MIRLite is a typed, sequential language for the memory-level part of Rust
 that matters to borrow reasoning (@fig:mir-grammar). A program is a list of
 statements. A statement assigns an expression to a place, or halts. A
 _place_ is a local $ell$, a projection $p.q$ of a place along a path, or a
-dereference $#dr p$. An _expression_ is a constant, a copy of a place, or a
-reference to a place. We do not model control flow in the main text; the
+dereference $#dr p$. Both $p$ and $d$ range over places; we write $d$ when
+the place is the _destination_ of an assignment, as in $d := e$, and $p$
+otherwise. An _expression_ is a constant, a copy or a move of a place, or
+a reference to a place. A move is MIR's `move` operand. As in Miri's
+Stacked Borrows it has the semantics of a copy, a read of the source: that
+a moved-from place is not used again is enforced statically by Rust's
+borrow checker and has no effect on the borrow stacks. The mechanization
+accordingly has one constructor for the two, and everything proved of
+$"copy"$ holds of $"move"$. We do not model control flow in the main text; the
 guarded assignment of the full language is in @sec:surface.
 
 *Types.* A _layout_ $tau$ describes the shape of a memory region, and $|tau|$
@@ -489,33 +535,53 @@ is its width in cells:
     |(tau_0,...,tau_(n-1))|=sum_(j=0)^(n-1)|tau_j|.$
 ]
 
-The pointee of $"Ptr" tau$ is statically significant even though every
-pointer occupies one cell. Both $sigma$ and $tau$ range over layouts; the
+In the pointer layout $"Ptr" tau$, $tau$ is the layout of the _pointee_, the
+region the pointer refers to. It is statically significant even though
+every pointer occupies one cell: it is what gives $#dr p$ a layout, and
+hence a width. Both $sigma$ and $tau$ range over layouts; the
 choice records a role. When a judgment involves two layouts, $sigma$ is the
-region being traversed and $tau$ the region selected from it. A context
-$Gamma$ lists the layouts of the locals, and a typed local $ell:tau$ is an
-index $j$ with $Gamma_j=tau$. Paths are typed: $q:sigma arrow.r tau$ means
-that following $q$ through a $sigma$-shaped region selects a $tau$-shaped
-one, at cell offset $"off"(q)$ with $"off"(q)+|tau| <= |sigma|$. Places are
+region being traversed and $tau$ the region selected from it. A _local_
+$ell$ is a program variable, the counterpart of a MIR local such as `_0`.
+A context $Gamma$ lists the layouts of a program's locals, a local is an
+index into that list, and $ell:tau$ means that entry $ell$ of $Gamma$ is
+$tau$. We write $x$ and $y$ for the locals 0 and 1 of the running program. A _path_ $q$ is a list of tuple-field indices, read left to right:
+$epsilon$ selects the whole region and $f.q$ selects field $f$ and then
+follows $q$. The rules use only two facts about a path. It is typed,
+$q:sigma arrow.r tau$, meaning that following $q$ through a $sigma$-shaped
+region selects a $tau$-shaped one. And it has a cell offset $"off"(q)$,
+the total width of the fields it skips, with
+$"off"(q)+|tau| <= |sigma|$. Places are
 indexed by the layout they select: $Gamma tack ell:tau$ if
 $ell:tau in Gamma$; $Gamma tack p.q:tau$ if $Gamma tack p:sigma$ and
 $q:sigma arrow.r tau$; and $Gamma tack #dr p:tau$ if
 $Gamma tack p:"Ptr" tau$. Expressions and statements are indexed the same
-way: $"const"(w)$ has layout `Nat`, $"copy"(p)$ the layout of $p$,
+way: $"const"(w)$ has layout `Nat`, $"copy"(p)$ and $"move"(p)$ the layout of $p$,
 $"ref"(k,c,m,p)$ the layout $"Ptr" tau$ when $Gamma tack p:tau$, and
-$d:=e$ requires $d$ and $e$ to have the same layout. In the running program
-$x.1.0$ is the nested place $(x.q_1).q_0$ with
-$q_1:("Nat",("Nat","Nat")) arrow.r ("Nat","Nat")$, $"off"(q_1)=1$ and
-$q_0:("Nat","Nat") arrow.r "Nat"$, $"off"(q_0)=0$.
+$d:=e$ requires $d$ and $e$ to have the same layout. For example, for a local
+$x:("Nat",("Nat","Nat"))$ the place written $x.1.0$ is the nested place
+$(x.q_1).q_0$ with the one-field paths $q_1 = 1.epsilon$ and
+$q_0 = 0.epsilon$. Field 1 of $x$ starts after the one cell of field 0, so
+$q_1:("Nat",("Nat","Nat")) arrow.r ("Nat","Nat")$ with $"off"(q_1)=1$;
+field 0 of that pair starts at once, so
+$q_0:("Nat","Nat") arrow.r "Nat"$ with $"off"(q_0)=0$.
 
-*Reference formation.* The retag kind $k$ is not limited to Rust
-references: `raw-const` and `raw-mut` create read-only and mutable
-raw-pointer items, and `two-phase` creates a reserved mutable borrow.
-Reference formation also takes a protector flag $c$ and an
-interior-mutability mask $m$; both are inert in the main text
-($c="false"$, $m=[]$) and are defined in @sec:surface.
+*Reference formation.* $"ref"(k,c,m,p)$ carries the retag kind $k$,
+protector flag $c$, and mask $m$ of @sec:perm and hands them unchanged to
+the permission model (#m-ref). The kind is therefore not limited to Rust
+references: a MIRLite program can form raw pointers and two-phase borrows
+as well.
 
-*Configuration.* A _cell value_ is undefined, a machine word, or a pointer.
+*Semantic domains.* A _cell value_ $v$ is undefined, a machine word $w$, or a
+pointer; $overline(v)$ is a list of cell values and $"len"(overline(v))$ its
+length. A pointer $"ptr"(b,o,sz,t)$ has four fields. The _base_ $b$ and
+_size_ $sz$, in cells, identify the allocation $[b,b+sz)$ it points into, and every
+access through the pointer is checked against those bounds. The _offset_
+$o$ locates the pointer inside that allocation, so the address it denotes
+is $b+o$; pointer arithmetic changes $o$ and nothing else. The _tag_ $t$
+is its provenance, the identity under which the permission model of
+@sec:perm admits or rejects the access. Two pointers to the same address
+with different tags are different values, and only one of them may be
+allowed to write.
 A memory $mu$ is a partial map from addresses to cell values together with
 the next bump-allocation address and the list of allocated ranges. Write
 $mu(a)$ for the cell at $a$, which is `undef` when the map has no entry
@@ -524,47 +590,55 @@ $mu[a |-> overline(v)]$ for the memory with the cells from $a$ replaced by
 the list $overline(v)$. The environment $E$ maps a local either to no
 binding or to an allocation base and its owning tag. A state is
 $S=(i,E,mu,Pi)$ with $i$ the program counter. @tab:mir gives the rules;
-<sec:state> they use three judgments, which we introduce before the
+they use three judgments, which we introduce before the
 interpreter.
 
 #ruletable(
-  [MIRLite semantics. All rules describe successful branches. An unbound local in a read, a malformed or out-of-bounds pointer, or a rejection by the permission model is an error and has no successor.],
+  [MIRLite semantics. $S.i$, $S.E$, $S.mu$, and $S.Pi$ are the components of a state $S=(i,E,mu,Pi)$, and $S[Pi |-> Pi']$ is $S$ with its permission state replaced by $Pi'$. $Gamma$ is the context of the program $P$ being run; both are fixed throughout. All rules describe successful branches. An unbound local in a read, a malformed or out-of-bounds pointer, or a rejection by the permission model is an error and has no successor.],
   ir(m-local,
-    [$E(ell)=(a,t)$, #h(3pt) $ell : tau$],
-    [$S tack ell #dP ("res"(a,t,a,|tau|), Pi)$]),
+    [$S.E(ell)=(a,t)$, #h(3pt) $ell : tau in Gamma$],
+    [$S tack ell #dP (⟨a,t,a,|tau|⟩, S.Pi)$]),
   ir(m-proj,
-    [$S tack p #dP ("res"(a,t,b,N), Pi')$],
-    [$S tack p.q #dP ("res"(a+"off"(q),t,b,N), Pi')$]),
+    [$S tack p #dP (⟨a,t,b,sz⟩, Pi')$],
+    [$S tack p.q #dP (⟨a+"off"(q),t,b,sz⟩, Pi')$]),
   ir(m-deref,
-    [$S tack p #dP ("res"(a,t,b,N), Pi_1)$, #h(3pt) $b <= a < b+N$, \ $"read"(Pi_1,a,1,t)=Pi_2$, #h(3pt) $mu(a)="ptr"(b',o',N',t')$],
-    [$S tack #dr p #dP ("res"(b'+o',t',b',N'), Pi_2)$]),
+    [$S tack p #dP (⟨a,t,b,sz⟩, Pi_1)$, #h(3pt) $b <= a < b+sz$, \ $"read"(Pi_1,a,1,t)=Pi_2$, #h(3pt) $S.mu(a)="ptr"(b',o',sz',t')$],
+    [$S tack #dr p #dP (⟨b'+o',t',b',sz'⟩, Pi_2)$]),
   ir(m-pbound,
     [$"lookup"(S,d)$ is defined],
     [$"prepare"(S,d)=S$]),
   ir(m-palloc,
-    [$"lookup"(S,d)$ undefined, #h(3pt) $"root"(d)=ell:tau$, #h(3pt) $E(ell)=bot$, \ $"alloc"(mu,|tau|)=(b,mu')$, #h(3pt) $"own"(Pi,b,|tau|)=(Pi',t)$],
-    [$"prepare"(S,d)=(i, E[ell |-> (b,t)], mu', Pi')$]),
+    [$"lookup"(S,d)$ undefined, #h(3pt) $"root"(d)=ell$, #h(3pt) $ell:tau in Gamma$, #h(3pt) $S.E(ell)=bot$, \ $"alloc"(S.mu,|tau|)=(b,mu')$, #h(3pt) $"own"(S.Pi,b,|tau|)=(Pi',t)$],
+    [$"prepare"(S,d)=$ \ $quad (S.i, thick S.E[ell |-> (b,t)], thick mu', thick Pi')$]),
   ir(m-const,
     [],
     [$S tack "const"(w) #dE (["word"(w)], S)$]),
   ir(m-copy,
-    [$S tack p #dP ("res"(a,t,b,N), Pi_1)$, #h(3pt) $p:tau$, \ $a+|tau| <= b+N$, #h(3pt) $"read"(Pi_1,a,|tau|,t)=Pi_2$],
-    [$S tack "copy"(p) #dE (mu[a..a+|tau|), S[Pi |-> Pi_2])$]),
+    [$S tack p #dP (⟨a,t,b,sz⟩, Pi_1)$, #h(3pt) $Gamma tack p:tau$, \ $a+|tau| <= b+sz$, #h(3pt) $"read"(Pi_1,a,|tau|,t)=Pi_2$],
+    [$S tack "copy"(p) #dE (S.mu[a..a+|tau|), S[Pi |-> Pi_2])$]),
+  ir(m-move,
+    [$S tack "copy"(p) #dE (overline(v), S')$],
+    [$S tack "move"(p) #dE (overline(v), S')$]),
   ir(m-ref,
-    [$S tack p #dP ("res"(a,t,b,N), Pi_1)$, #h(3pt) $p:tau$, \ $a+|tau| <= b+N$, #h(3pt) $"ref"(Pi_1,a,|tau|,t,k,c,m)=(Pi_2,u)$],
-    [$S tack "ref"(k,c,m,p) #dE$ \ $quad (["ptr"(b,a-b,N,u)], S[Pi |-> Pi_2])$]),
+    [$S tack p #dP (⟨a,t,b,sz⟩, Pi_1)$, #h(3pt) $Gamma tack p:tau$, \ $a+|tau| <= b+sz$, #h(3pt) $"ref"(Pi_1,a,|tau|,t,k,c,m)=(Pi_2,u)$],
+    [$S tack "ref"(k,c,m,p) #dE$ \ $quad (["ptr"(b,a-b,sz,u)], S[Pi |-> Pi_2])$]),
   ir(m-assgn,
-    [$P(i) = (d := e)$, #h(3pt) $"prepare"(S,d)=S_1$, \ $S_1 tack e #dE (overline(v), S_2)$, #h(3pt) $S_2 tack d #dP ("res"(a,t,b,N), Pi_3)$, \ $a+"len"(overline(v)) <= b+N$, #h(3pt) $"useMut"(Pi_3,a,"len"(overline(v)),t)=Pi_4$],
-    [$(i,E,mu,Pi) smir$ \ $quad (i+1, E_2, mu_2[a |-> overline(v)], Pi_4)$]),
+    [$P(S.i) = (d := e)$, #h(3pt) $"prepare"(S,d)=S_1$, \ $S_1 tack e #dE (overline(v), S_2)$, #h(3pt) $S_2 tack d #dP (⟨a,t,b,sz⟩, Pi_3)$, \ $a+"len"(overline(v)) <= b+sz$, #h(3pt) $"useMut"(Pi_3,a,"len"(overline(v)),t)=Pi_4$],
+    [$S smir$ \ $quad (S.i+1, thick S_2.E, thick S_2.mu[a |-> overline(v)], thick Pi_4)$]),
   ir(m-halt,
-    [$P(i) = "halt"$ or $P(i)=bot$],
+    [$P(S.i) = "halt"$ or $P(S.i)=bot$],
     [$S smir S$]),
 ) <tab:mir>
 
 *Place resolution ($#dP$).* The judgment
-$S tack p #dP ("res"(a,t,b,N),Pi')$ turns a well-typed place into a
-_resolved place_: current address $a$, access tag $t$, allocation base $b$,
-and allocation extent $N$. It does not write memory, but it can change the
+$S tack p #dP (⟨a,t,b,sz⟩,Pi')$ reads: in state $S$, the well-typed
+place $p$ resolves to $⟨a,t,b,sz⟩$, and the permission state becomes
+$Pi'$. The four components of a _resolved place_ are the address $a$ the
+place denotes, the tag $t$ through which it is to be accessed, and the
+base $b$ and size $sz$ of the allocation it lies in. It is to a place what
+a list of cell values is to an expression, the result of evaluating it,
+and it is never stored. The state is on the left because resolution consults all of it:
+the environment for a local, memory and permissions for a dereference. It does not write memory, but it can change the
 permission state. #m-local reads the environment. #m-proj is typed address
 arithmetic: it preserves provenance, bounds, and permissions. #m-deref
 changes provenance, because the pointer _value_, not the place holding it,
@@ -578,10 +652,10 @@ decide whether an assignment root must be allocated.
 *Expression evaluation ($#dE$).* The judgment
 $S tack e #dE (overline(v),S')$ produces exactly $|tau|$ cells for an
 expression of layout $tau$. #m-copy and #m-ref resolve their place and then
-act on the entire selected range: one `read`, or one `ref`, of width
+act on the entire selected range, and #m-move is #m-copy: one `read`, or one `ref`, of width
 $|tau|$. Reading an absent but permitted cell yields `undef`. The pointer
 built by #m-ref carries the fresh tag $u$ and the allocation's base and
-extent, so later bounds checks are against the whole allocation.
+size, so later bounds checks are against the whole allocation.
 
 *Interpreter ($smir$).* A step fetches $P(i)$. #m-assgn runs four phases in
 a fixed order: prepare the destination's root, evaluate the expression,
@@ -591,78 +665,109 @@ fresh base $b$, `own` a fresh tag $t$, and $E$ is extended. A destination
 rooted through a dereference is never allocated implicitly; that case is
 an error. Crucially, _the whole expression is evaluated before the
 destination is resolved_. Hence $"copy"(p)$ materializes its cells before
-a destination access can invalidate a tag that $p$ needs. $E_2$ and $mu_2$
-in the conclusion are the environment and memory of $S_2$. We write
+a destination access can invalidate a tag that $p$ needs. The conclusion takes
+its environment and memory from $S_2$, the state after the expression, so
+allocation during preparation and any effect of the expression survive. We write
 $S attach(arrow.r.double.long, t: P, b: n) S'$ for $n$ steps; `halt` and a
 missing statement are fixed points (#m-halt), so extra fuel is harmless.
 
+*Example.* The running program of this paper declares a nested tuple $x$
+and a pointer $y$, and is small enough to execute by hand:
+
+#align(center, box(width: 70%, listing(
+  [MIRLITE #h(6pt) $Gamma = [x : ("Nat",("Nat","Nat")), thick y : "Ptr" "Nat"]$],
+  [
+    0: #h(3pt) $x.0 := "const"(5)$ \
+    1: #h(3pt) $x.1.0 := "const"(42)$ \
+    2: #h(3pt) $y := "ref"("mutable", "false", [], x.1.0)$ \
+    3: #h(3pt) $#dr y := "const"(7)$ \
+    4: #h(3pt) $"halt"$
+  ],
+)))
+
+Statement 0 allocates $x$, because an assignment to an unbound root
+allocates it. Statement 1 writes one cell in the middle of $x$; it is the
+statement for which the compiler of @sec:compiler must introduce, and then
+retire, a tag the source never sees. Statement 2 allocates $y$ and stores a
+mutable reference to the cell just written. Statement 3 writes through
+that reference. Execution starts from the empty state: the bump allocator
+hands out addresses from 0 and tags are minted from 1 upward, tag 0 being
+reserved (@sec:surface-perm). The program thus touches four cells: $x$ has
+width 3 and occupies addresses 0 to 2, holding $x.0$, $x.1.0$, and
+$x.1.1$, and $y$ has width 1 and occupies address 3. All concrete addresses, tags, registers, and
+labels in this section are those of the mechanized semantics running this
+program.
+
 #statetable(
-  [Stepwise execution of the running program in MIRLite: the state after each statement. $E$, $mu$, and the stacks are cumulative; a dash means unchanged. "next" is $Pi."NextTag"$.],
-  ([Statement], [$E$], [$mu$], [$Pi$]),
-  (23%, 17%, 25%, 35%),
-  ([0: #h(3pt) $x.0 := "const"(5)$],
-   [$x |-> (0,1)$],
-   [$0 |-> "word"(5)$],
-   [$0,1,2 |-> ["Own"(1)]$; next 2]),
-  ([1: #h(3pt) $x.1.0 := "const"(42)$],
-   [---],
-   [$1 |-> "word"(42)$],
-   [---]),
-  ([2: #h(3pt) $y := "ref"("mutable",dots,x.1.0)$],
-   [$y |-> (3,2)$],
-   [$3 |-> "ptr"(0,1,3,3)$],
-   [$3 |-> ["Own"(2)]$, \ $1 |-> ["MutRef"(3),"Own"(1)]$; next 4]),
-  ([3: #h(3pt) $#dr y := "const"(7)$],
-   [---],
-   [$1 |-> "word"(7)$],
-   [---]),
-  ([4: #h(3pt) $"halt"$], [---], [---], [---]),
+  [The MIRLite configuration after every statement of the running program. A cell column gives the cell's value over its borrow stack; "---" is an unallocated cell, shading marks what the statement changed, and "next" is $Pi."NextTag"$.],
+  ([after statement], [$E$], [cell 0 \ #plc[$x.0$]], [cell 1 \ #plc[$x.1.0$]], [cell 2 \ #plc[$x.1.1$]], [cell 3 \ #plc[$y$]], [next]),
+  (25%, 11%, 11%, 18%, 11%, 17%, 7%),
+  placement: none,
+  size: 7pt,
+  pad: 2.4pt,
+  ([_initially_], [---], [#nocell], [#nocell], [#nocell], [#nocell], [1]),
+  ([0: #h(3pt) $x.0 := "const"(5)$], table.cell(fill: chg)[$x |-> (0,1)$], table.cell(fill: chg)[$"word"(5)$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"undef"$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"undef"$ \ #stk[$["Own"(1)]$]], [#nocell], table.cell(fill: chg)[2]),
+  ([1: #h(3pt) $x.1.0 := "const"(42)$], [$x |-> (0,1)$], [$"word"(5)$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"word"(42)$ \ #stk[$["Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [#nocell], [2]),
+  ([2: #h(3pt) $y := "ref"("mutable",dots,x.1.0)$], table.cell(fill: chg)[$x |-> (0,1)$ \ $y |-> (3,2)$], [$"word"(5)$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"word"(42)$ \ #stk[$["MutRef"(3),"Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"ptr"(0,1,3,3)$ \ #stk[$["Own"(2)]$]], table.cell(fill: chg)[4]),
+  ([3: #h(3pt) $#dr y := "const"(7)$], [$x |-> (0,1)$ \ $y |-> (3,2)$], [$"word"(5)$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"word"(7)$ \ #stk[$["MutRef"(3),"Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [$"ptr"(0,1,3,3)$ \ #stk[$["Own"(2)]$]], [4]),
+  ([4: #h(3pt) $"halt"$], [$x |-> (0,1)$ \ $y |-> (3,2)$], [$"word"(5)$ \ #stk[$["Own"(1)]$]], [$"word"(7)$ \ #stk[$["MutRef"(3),"Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [$"ptr"(0,1,3,3)$ \ #stk[$["Own"(2)]$]], [4]),
 ) <tab:mir-example>
 
-*Example.* @tab:mir-example executes the running program from the empty
-state. Statement 0: $x$ is unbound, so #m-palloc allocates the three cells
-$[0,3)$ and #sb-own gives each the item $"Own"(1)$; #m-const produces
-$["word"(5)]$; #m-local and #m-proj resolve $x.0$ to
-$"res"(0,1,0,3)$; and #m-assgn writes cell 0 after a `useMut` through tag
-1, which #sb-use accepts without changing the stack. Statement 1:
-preparation is #m-pbound. Two applications of #m-proj resolve $(x.q_1).q_0$
-to $"res"(1,1,0,3)$; the inner, zero-offset projection changes neither the
-address nor the provenance. There is no source retag: both projections are
-structural, and the write uses the owner's tag directly. Cell 2, the
-sibling $x.1.1$, is untouched. Statement 2: #m-palloc allocates $y$ at
-address 3 with owning tag 2, _before_ the expression is evaluated; #m-ref
-resolves $x.1.0$ as before and #sb-refm pushes $"MutRef"(3)$ on cell 1
-only; the pointer $"ptr"(0,1,3,3)$ is stored in $y$. Statement 3: #m-deref
-resolves $y$ to $"res"(3,2,3,1)$, performs a one-cell `read` of cell 3
-through tag 2 (#sb-read, no change), and returns
-$"res"(1,3,0,3)$, the address and tag _loaded from memory_. #m-assgn then
-writes 7 through tag 3, which is on top of cell 1's stack.
+@tab:mir-example gives the whole configuration after each statement; the
+program counter, not shown, is $k+1$ after statement $k$, and `halt`
+leaves it at 4. Read a row against the one above it: the shaded entries
+are exactly what the rules below change.
+
+#walk(
+  ([0], [$x$ is unbound, so #m-palloc allocates the three cells $[0,3)$, binds
+    $x |-> (0,1)$, and #sb-own gives each cell the stack $["Own"(1)]$. #m-const
+    produces $["word"(5)]$. #m-local and #m-proj resolve $x.0$ to
+    $⟨0,1,0,3⟩$. #m-assgn then writes cell 0 after a `useMut` through tag 1,
+    which #sb-use accepts without changing the stack. Cells 1 and 2 are
+    allocated but still `undef`.]),
+  ([1], [Preparation is #m-pbound: nothing is allocated. Two applications of
+    #m-proj resolve $(x.q_1).q_0$ to $⟨1,1,0,3⟩$; the inner, zero-offset
+    projection changes neither the address nor the tag. #m-assgn writes cell
+    1 through the owner's tag. There is no source retag, so the stack of
+    cell 1 does not change, and the sibling cell 2, $x.1.1$, is untouched.]),
+  ([2], [#m-palloc allocates $y$ at address 3 with owning tag 2, _before_ the
+    expression is evaluated. #m-ref resolves $x.1.0$ as in statement 1, and
+    #sb-refm pushes $"MutRef"(3)$ on cell 1 only. The pointer
+    $"ptr"(0,1,3,3)$ is stored in $y$. The tag counter moves from 2 to 4: one
+    tag for $y$, one for the reference.]),
+  ([3], [#m-deref resolves $y$ to $⟨3,2,3,1⟩$, performs a one-cell `read` of
+    cell 3 through tag 2 (#sb-read, which changes nothing here), and returns
+    $⟨1,3,0,3⟩$, the address and tag _loaded from memory_. #m-assgn writes 7
+    through tag 3, which is on top of cell 1's stack, so that stack does not
+    change either.]),
+  ([4], [#m-halt: the configuration is a fixed point.]),
+)
 
 #source([Formalization of the typed syntax and source transition system: `src/obseq3/syntax.lean` and `src/obseq3/mirlite_semantics.lean`.])
 
 == OSEA-IR <sec:oseair>
 
 #grammarfig(
-  [Grammar and configuration of OSEA-IR (left, top right), and the state of the compiler (bottom right). @fig:surface-grammar has the remaining instructions.],
+  [Grammar and semantic domains of OSEA-IR (left, top right), and the state of the compiler (bottom right). @fig:surface-grammar has the remaining instructions.],
   panel([Terms], bnf(
-    prod($"Program" in.rev Q$, $j harpoon.rt "Instr"$),
+    defn($"Program" in.rev Q$, $NN harpoon.rt "Instr"$),
     prod($"Instr" in.rev I$, $r := h$, $"store"_theta (r_s, r_p)$, $"storec"_theta (overline(v), r_p)$, $"die"(r, n)$, $"halt"$),
     prod($"Rhs" in.rev h$, $"load"_theta (r)$, $"alloc"_theta$, $"borrow"(k,c,m,n,r,delta)$),
     prod($"Register" in.rev r$, $"R"_0 | "R"_1 | dots$),
   )),
   [
-    #panel([Configuration], bnf(
-      prod($"State" in.rev T$, $(j, R, mu_t, Pi_t)$),
-      prod($R$, $r harpoon.rt (theta, overline(v))$),
-      prod($mu_t$, $a harpoon.rt v$),
-      prod($"Value" in.rev v$, $"undef"$, $"dat"(w)$, $"ptr"(b,o,s,t)$),
+    #panel([Semantic domains], bnf(
+      defn($"State" in.rev T$, $NN times "RegFile" times "Mem" times "Perm"$),
+      defn($"RegFile" in.rev R$, $"Register" harpoon.rt "Type" times "Value"^*$),
+      defn($"Mem" in.rev mu_t$, $NN harpoon.rt "Value"$),
+      prod($"Value" in.rev v$, $"undef" thick | thick "dat"(w)$, $"ptr"(b,o,sz,t)$),
       prod($"Type" in.rev theta$, $"NatTy" | "PTy"$, $"TupTy"([theta_0,dots,theta_(n-1)])$),
     ))
     #panel([Compiler state], bnf(
-      prod($C$, $(n_r, n_l, K, L)$),
-      prod($K$, $j harpoon.rt "Instr"$),
-      prod($L$, $ell harpoon.rt (r, tau)$),
-      prod($D$, $[(r_0,n_0),dots]$),
+      defn($"CState" in.rev C$, $NN times NN times "Code" times "LocalMap"$),
+      defn($"Code" in.rev K$, $NN harpoon.rt "Instr"$),
+      defn($"LocalMap" in.rev L$, $"Local" harpoon.rt "Register" times "Layout"$),
+      defn($"Cleanup" in.rev D$, $("Register" times NN)^*$),
     ))
   ],
 ) <fig:oseair-grammar>
@@ -677,9 +782,8 @@ compiler extend code without renumbering an earlier fragment. Instructions
 are register assignments $r := h$, stores of a register or of a constant
 through a pointer, the retirement `die` of a borrow, and `halt`. A
 right-hand side $h$ loads through a pointer, allocates, or borrows.
-<sec:target-values>
 
-*Configuration.* Target values mirror source values, with `dat` for a
+*Semantic domains.* Target values mirror source values, with `dat` for a
 machine word; the pointer fields have the same meaning as at the source. A
 register holds a runtime type and an _entire cell list_; the register file
 is a finite shadowing map. Runtime types are distinct from layouts. The
@@ -698,27 +802,27 @@ allocation table as at the source, and the permission state is the same
 Stacked Borrows instance. @tab:osea gives the rules.
 
 #ruletable(
-  [OSEA-IR semantics. In every rule that reads $R(r)$, the register must hold exactly one pointer; its stored runtime type $theta_r$ is immaterial.],
+  [OSEA-IR semantics. $T.R$, $T.mu_t$, and $T.Pi_t$ are components of a state $T=(j,R,mu_t,Pi_t)$, and $T[dots |-> dots]$ replaces components, as in @tab:mir; the instruction rules write the state out as a tuple instead. $Q$ is the program being run. In every rule that reads $R(r)$, the register must hold exactly one pointer; its stored runtime type $theta_r$ is immaterial.],
   ir(t-load,
-    [$R(r)=(theta_r,["ptr"(b,o,s,t)])$, #h(3pt) $a=b+o$, \ $a+"typeSize"(theta) <= b+s$, \ $"read"(Pi_t,a,"typeSize"(theta),t)=Pi'_t$],
-    [$T tack "load"_theta (r) #dH$ \ $quad (theta, mu_t [a..a+"typeSize"(theta)), T[Pi_t |-> Pi'_t])$]),
+    [$T.R(r)=(theta_r,["ptr"(b,o,sz,t)])$, #h(3pt) $a=b+o$, \ $a+"typeSize"(theta) <= b+sz$, \ $"read"(T.Pi_t,a,"typeSize"(theta),t)=Pi'_t$],
+    [$T tack "load"_theta (r) #dH$ \ $quad (theta, T.mu_t [a..a+"typeSize"(theta)), T[Pi_t |-> Pi'_t])$]),
   ir(t-alloc,
-    [$n = "typeSize"(theta)$, #h(3pt) $"alloc"(mu_t,n)=(b,mu'_t)$, \ $"own"(Pi_t,b,n)=(Pi'_t,u)$],
+    [$n = "typeSize"(theta)$, #h(3pt) $"alloc"(T.mu_t,n)=(b,mu'_t)$, \ $"own"(T.Pi_t,b,n)=(Pi'_t,u)$],
     [$T tack "alloc"_theta #dH$ \ $quad ("PTy", ["ptr"(b,0,n,u)], T[mu_t |-> mu'_t, Pi_t |-> Pi'_t])$]),
   ir(t-borrow,
-    [$R(r)=(theta_r,["ptr"(b,o,s,t)])$, #h(3pt) $a=b+o+delta$, \ $a+n <= b+s$, #h(3pt) $"ref"(Pi_t,a,n,t,k,c,m)=(Pi'_t,u)$],
-    [$T tack "borrow"(k,c,m,n,r,delta) #dH$ \ $quad ("PTy", ["ptr"(b,o+delta,s,u)], T[Pi_t |-> Pi'_t])$]),
+    [$T.R(r)=(theta_r,["ptr"(b,o,sz,t)])$, #h(3pt) $a=b+o+delta$, \ $a+n <= b+sz$, #h(3pt) $"ref"(T.Pi_t,a,n,t,k,c,m)=(Pi'_t,u)$],
+    [$T tack "borrow"(k,c,m,n,r,delta) #dH$ \ $quad ("PTy", ["ptr"(b,o+delta,sz,u)], T[Pi_t |-> Pi'_t])$]),
   ir(t-assgn,
     [$Q(j) = (r := h)$, \ $(j,R,mu_t,Pi_t) tack h #dH (theta, overline(v), (j,R,mu_1,Pi_1))$],
     [$(j,R,mu_t,Pi_t) ssea$ \ $quad (j+1, R[r |-> (theta,overline(v))], mu_1, Pi_1)$]),
   ir(t-store,
-    [$Q(j) = "store"_theta (r_s,r_p)$, #h(3pt) $R(r_s)=(theta,overline(v))$, \ $R(r_p)=(theta_p,["ptr"(b,o,s,t)])$, #h(3pt) $a=b+o$, \ $a+"len"(overline(v)) <= b+s$, #h(3pt) $"useMut"(Pi_t,a,"len"(overline(v)),t)=Pi'_t$],
+    [$Q(j) = "store"_theta (r_s,r_p)$, #h(3pt) $R(r_s)=(theta,overline(v))$, \ $R(r_p)=(theta_p,["ptr"(b,o,sz,t)])$, #h(3pt) $a=b+o$, \ $a+"len"(overline(v)) <= b+sz$, #h(3pt) $"useMut"(Pi_t,a,"len"(overline(v)),t)=Pi'_t$],
     [$(j,R,mu_t,Pi_t) ssea$ \ $quad (j+1, R, mu_t [a |-> overline(v)], Pi'_t)$]),
   ir(t-storec,
-    [$Q(j) = "storec"_theta (overline(v),r_p)$, #h(3pt) $"len"(overline(v))="typeSize"(theta)$, \ $R(r_p)=(theta_p,["ptr"(b,o,s,t)])$, #h(3pt) $a=b+o$, \ $a+"len"(overline(v)) <= b+s$, #h(3pt) $"useMut"(Pi_t,a,"len"(overline(v)),t)=Pi'_t$],
+    [$Q(j) = "storec"_theta (overline(v),r_p)$, #h(3pt) $"len"(overline(v))="typeSize"(theta)$, \ $R(r_p)=(theta_p,["ptr"(b,o,sz,t)])$, #h(3pt) $a=b+o$, \ $a+"len"(overline(v)) <= b+sz$, #h(3pt) $"useMut"(Pi_t,a,"len"(overline(v)),t)=Pi'_t$],
     [$(j,R,mu_t,Pi_t) ssea$ \ $quad (j+1, R, mu_t [a |-> overline(v)], Pi'_t)$]),
   ir(t-die,
-    [$Q(j) = "die"(r,n)$, #h(3pt) $R(r)=(theta_r,["ptr"(b,o,s,t)])$, \ $"die"(Pi_t,b+o,n,t)=Pi'_t$],
+    [$Q(j) = "die"(r,n)$, #h(3pt) $R(r)=(theta_r,["ptr"(b,o,sz,t)])$, \ $"die"(Pi_t,b+o,n,t)=Pi'_t$],
     [$(j,R,mu_t,Pi_t) ssea (j+1, R, mu_t, Pi'_t)$]),
   ir(t-halt,
     [$Q(j) = "halt"$ or $Q(j)=bot$],
@@ -751,47 +855,51 @@ Iteration does not stop early at a fixed point (#t-halt), which makes the
 target step count of the simulation existential without a separate
 reflexive-transitive closure.
 
+*Example.* @tab:osea-example executes the code the compiler emits for the
+running program (@fig:compile-example), one group of labels per source
+statement. Compare each group's last row with the corresponding row of
+@tab:mir-example: the cells agree up to `word`/`dat`, the stacks agree up
+to the tags, and the tag counter runs ahead.
+
 #statetable(
-  [Stepwise execution of the compiled running program in OSEA-IR: the state after each instruction. The $R$ column shows the binding added; registers are never removed. Label groups are source statements 0 to 4. $theta_x = "TupTy"(["NatTy","TupTy"(["NatTy","NatTy"])])$; $"mut"$ abbreviates $"mutable","false",[]$.],
-  ([Instruction], [$R$], [$mu_t$], [$Pi_t$]),
-  (31%, 21%, 19%, 29%),
-  ([0: #h(3pt) $"R"_0 := "alloc"_(theta_x)$],
-   [$"R"_0 |-> "ptr"(0,0,3,1)$], [---], [$0,1,2 |-> ["Own"(1)]$; next 2]),
-  ([1: #h(3pt) $"storec"_"NatTy" (["dat"(5)], "R"_0)$],
-   [---], [$0 |-> "dat"(5)$], [---]),
-  ([2: #h(3pt) $"R"_1 := "borrow"("mut",1,"R"_0,1)$],
-   [$"R"_1 |-> "ptr"(0,1,3,2)$], [---], [$1 |-> ["MutRef"(2),"Own"(1)]$; next 3]),
-  ([3: #h(3pt) $"storec"_"NatTy" (["dat"(42)], "R"_1)$],
-   [---], [$1 |-> "dat"(42)$], [---]),
-  ([4: #h(3pt) $"die"("R"_1, 1)$],
-   [---], [---], [$1 |-> ["Own"(1)]$]),
-  ([5: #h(3pt) $"R"_2 := "alloc"_"PTy"$],
-   [$"R"_2 |-> "ptr"(3,0,1,3)$], [---], [$3 |-> ["Own"(3)]$; next 4]),
-  ([6: #h(3pt) $"R"_3 := "borrow"("mut",1,"R"_0,1)$],
-   [$"R"_3 |-> "ptr"(0,1,3,4)$], [---], [$1 |-> ["MutRef"(4),"Own"(1)]$; next 5]),
-  ([7: #h(3pt) $"store"_"PTy" ("R"_3, "R"_2)$],
-   [---], [$3 |-> "ptr"(0,1,3,4)$], [---]),
-  ([8: #h(3pt) $"R"_4 := "load"_"PTy" ("R"_2)$],
-   [$"R"_4 |-> "ptr"(0,1,3,4)$], [---], [---]),
-  ([9: #h(3pt) $"storec"_"NatTy" (["dat"(7)], "R"_4)$],
-   [---], [$1 |-> "dat"(7)$], [---]),
-  ([10: #h(3pt) $"halt"$], [---], [---], [---]),
+  [The OSEA-IR configuration after every instruction of the compiled running program, in the format of @tab:mir-example. The $R$ column shows the binding the instruction adds; registers are never removed, so the register file is the union of the rows above. After label $k$ the program counter is $k+1$. $theta_x = "TupTy"(["NatTy","TupTy"(["NatTy","NatTy"])])$; $"mut"$ abbreviates $"mutable","false",[]$. Labels 0--1, 2--4, 5--7, 8--9, and 10 are source statements 0 to 4.],
+  ([after instruction], [$R$ gains], [cell 0 \ #plc[$x.0$]], [cell 1 \ #plc[$x.1.0$]], [cell 2 \ #plc[$x.1.1$]], [cell 3 \ #plc[$y$]], [next]),
+  (30%, 17%, 8%, 16%, 8%, 15%, 6%),
+  size: 7pt,
+  placement: none,
+  ([_initially_], [---], [#nocell], [#nocell], [#nocell], [#nocell], [1]),
+  ([0: #h(3pt) $"R"_0 := "alloc"_(theta_x)$], table.cell(fill: chg)[$"R"_0 |-> "ptr"(0,0,3,1)$], table.cell(fill: chg)[$"undef"$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"undef"$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"undef"$ \ #stk[$["Own"(1)]$]], [#nocell], table.cell(fill: chg)[2]),
+  ([1: #h(3pt) $"storec"_"NatTy" (["dat"(5)], "R"_0)$], [---], table.cell(fill: chg)[$"dat"(5)$ \ #stk[$["Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [#nocell], [2]),
+  ([2: #h(3pt) $"R"_1 := "borrow"("mut",1,"R"_0,1)$], table.cell(fill: chg)[$"R"_1 |-> "ptr"(0,1,3,2)$], [$"dat"(5)$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"undef"$ \ #stk[$["MutRef"(2),"Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [#nocell], table.cell(fill: chg)[3]),
+  ([3: #h(3pt) $"storec"_"NatTy" (["dat"(42)], "R"_1)$], [---], [$"dat"(5)$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"dat"(42)$ \ #stk[$["MutRef"(2),"Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [#nocell], [3]),
+  ([4: #h(3pt) $"die"("R"_1, 1)$], [---], [$"dat"(5)$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"dat"(42)$ \ #stk[$["Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [#nocell], [3]),
+  ([5: #h(3pt) $"R"_2 := "alloc"_"PTy"$], table.cell(fill: chg)[$"R"_2 |-> "ptr"(3,0,1,3)$], [$"dat"(5)$ \ #stk[$["Own"(1)]$]], [$"dat"(42)$ \ #stk[$["Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"undef"$ \ #stk[$["Own"(3)]$]], table.cell(fill: chg)[4]),
+  ([6: #h(3pt) $"R"_3 := "borrow"("mut",1,"R"_0,1)$], table.cell(fill: chg)[$"R"_3 |-> "ptr"(0,1,3,4)$], [$"dat"(5)$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"dat"(42)$ \ #stk[$["MutRef"(4),"Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(3)]$]], table.cell(fill: chg)[5]),
+  ([7: #h(3pt) $"store"_"PTy" ("R"_3, "R"_2)$], [---], [$"dat"(5)$ \ #stk[$["Own"(1)]$]], [$"dat"(42)$ \ #stk[$["MutRef"(4),"Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"ptr"(0,1,3,4)$ \ #stk[$["Own"(3)]$]], [5]),
+  ([8: #h(3pt) $"R"_4 := "load"_"PTy" ("R"_2)$], table.cell(fill: chg)[$"R"_4 |-> "ptr"(0,1,3,4)$], [$"dat"(5)$ \ #stk[$["Own"(1)]$]], [$"dat"(42)$ \ #stk[$["MutRef"(4),"Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [$"ptr"(0,1,3,4)$ \ #stk[$["Own"(3)]$]], [5]),
+  ([9: #h(3pt) $"storec"_"NatTy" (["dat"(7)], "R"_4)$], [---], [$"dat"(5)$ \ #stk[$["Own"(1)]$]], table.cell(fill: chg)[$"dat"(7)$ \ #stk[$["MutRef"(4),"Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [$"ptr"(0,1,3,4)$ \ #stk[$["Own"(3)]$]], [5]),
+  ([10: #h(3pt) $"halt"$], [---], [$"dat"(5)$ \ #stk[$["Own"(1)]$]], [$"dat"(7)$ \ #stk[$["MutRef"(4),"Own"(1)]$]], [$"undef"$ \ #stk[$["Own"(1)]$]], [$"ptr"(0,1,3,4)$ \ #stk[$["Own"(3)]$]], [5]),
 ) <tab:osea-example>
 
-*Example.* @tab:osea-example executes the code the compiler emits for the
-running program (@fig:compile-example). Label 0 allocates by #t-alloc,
-which issues #sb-own\; label 1 stores a constant by #t-storec through the
-owner's tag. Labels 2 to 4 are one source write: #t-borrow issues #sb-refm
-on cell 1 alone, minting tag 2; #t-storec writes through tag 2; and #t-die
-issues #sb-die, after which cell 1's stack is again $["Own"(1)]$. The
-target's only memory update is the source's one-cell update, but its tag
-counter is now one ahead of the source's. Labels 5 to 7 allocate $y$, mint
-the reference, and store it with #t-store: the owning tag of $y$ is 3 here
-and 2 at the source, and the stored reference carries tag 4 here and 3 at
-the source. Label 8 loads that pointer by #t-load, a read of cell 3 through
-tag 3, and label 9 writes through the loaded tag 4. The register $"R"_1$
-still holds a pointer with the dead tag 2; registers are not observable, so
-the simulation of @sec:correctness ignores it.
+#walk(
+  ([0--1], [#t-alloc allocates $[0,3)$ and issues #sb-own, so $"R"_0$ holds the
+    owner's pointer with tag 1. #t-storec writes cell 0 through it. The state
+    equals the source's after statement 0.]),
+  ([2--4], [One source write takes three instructions, and their permission
+    trace is @fig:sb-example at $a=1$, $t=1$, $u=2$. #t-borrow issues #sb-refm
+    on cell 1 alone and mints tag 2; #t-storec writes through tag 2; #t-die
+    issues #sb-die, after which cell 1's stack is again $["Own"(1)]$. The
+    memory and the stacks now equal the source's after statement 1, but the
+    tag counter is 3 where the source's is 2.]),
+  ([5--7], [#t-alloc allocates $y$, #t-borrow mints the reference, and #t-store
+    stores it. Because the counter ran ahead, $y$'s owning tag is 3 here and 2
+    at the source, and the stored reference carries tag 4 here and 3 at the
+    source. Nothing is retired: this borrow is the program's own.]),
+  ([8--9], [#t-load reads cell 3 through tag 3 and leaves $"ptr"(0,1,3,4)$ in
+    $"R"_4$; #t-storec writes cell 1 through the loaded tag 4.]),
+  ([10], [#t-halt. $"R"_1$ still holds a pointer with the dead tag 2; registers
+    are not observable, so the simulation of @sec:correctness ignores it.]),
+)
 
 #source([Formalization of target values, RHS evaluation, instruction stepping, and fuelled execution: `src/obseq3/oseair.lean`.])
 
@@ -851,6 +959,9 @@ $"cleanup"(D)$ reverses $D$ and maps each entry $(r,n)$ to $"die"(r,n)$.
   ir(c-copy,
     [$C scripts(tack)_"shared" p #dCP (r_s, D_s, C_1)$, #h(3pt) $p:tau$, \ $r_v$ fresh in $C_1$],
     [$C tack "copy"(p) #dCR (lambda r_d. ["store"_(floor(tau)) (r_v, r_d)],$ \ $quad C_1 emit [r_v := "load"_(floor(tau)) (r_s)] emit "cleanup"(D_s))$]),
+  ir(c-move,
+    [$C tack "copy"(p) #dCR (F, C')$],
+    [$C tack "move"(p) #dCR (F, C')$]),
   ir(c-ref,
     [$C scripts(tack)_(k,c,m) p #dCB (r_v, C_1)$],
     [$C tack "ref"(k,c,m,p) #dCR$ \ $quad (lambda r_d. ["store"_"PTy" (r_v, r_d)], C_1)$]),
@@ -942,8 +1053,8 @@ extends the source-to-target tag map with it.
 *Expression-to-instructions compilation ($#dCR$).*
 The judgment $C tack e #dCR (F,C')$ emits all the work that precedes the
 destination and returns a _store function_ $F$ that awaits the destination
-register. #c-const emits nothing. #c-copy materializes the copied cells in
-a register _before_ the destination is lowered. This is what realizes the
+register. #c-const emits nothing. #c-copy, and with it #c-move, materializes the
+copied cells in a register _before_ the destination is lowered. This is what realizes the
 source rule's order, evaluate, then resolve the destination, then write,
 when both resolutions have observable permission effects. #c-ref retains
 the escaping tag. Every expression of the full language has the same
@@ -957,8 +1068,8 @@ rule, for every destination: the emitted intervals concatenate as
   $"root"(d) ; quad "pre-code of" e ; quad "lowering of" d ; quad F(r_d) ; quad "cleanup"(D_d).$
 ]]
 
-#c-pstep folds statement compilation from left to right from the initial
-state $C_"init"=(0,0,emptyset,emptyset)$; the target program is the final
+#c-pempty and #c-pstep fold statement compilation from left to right from
+the initial state $C_"init"=(0,0,emptyset,emptyset)$; the target program is the final
 code map, or the first compiler error. For source
 statement index $i$, compiling the prefix $P[0..i)$ from $C_0$ produces a
 state $C_i$ whose next label $C_i.n_l$ is the target entry label of
@@ -1032,9 +1143,10 @@ Correctness is a forward simulation of successful executions. Literal state
 equality is impossible: the target has registers and introduces route
 tags (@def:route). The relation instead compares source-observable memory, local pointers,
 and permission stacks at source-statement boundaries. This section defines
-the relation (@def:rename to @def:inv), states the two lemmas the proof
-turns on (@lem:mono and @lem:cancel), and then states the simulation
-theorems (@thm:step to @cor:closed).
+exactly the machinery needed to state that relation (@def:rename to
+@def:inv), states the simulation theorems (@thm:step to @cor:closed), and
+reads the running program as a simulation (@tab:sim-example). The proofs
+are mechanized (@sec:mech) and are not reproduced here.
 
 === Renamings and value simulation
 
@@ -1058,12 +1170,12 @@ every statement boundary, and each fresh block receives the same base on
 both sides:
 
 #align(center)[
-  $rho_a(a)=a quad "for every address" a.$
+  $rho_a (a)=a quad "for every address" a.$
 ]
 
 Totality is what gives a meaning to the degenerate pointer that an
 integer-to-pointer cast of an unallocated address yields
-(@sec:surface-open). Tags genuinely require renaming: route borrows advance the
+(#rn[rval-fromexposed], @tab:surface-osea). Tags genuinely require renaming: route borrows advance the
 target tag counter, so a later source and target `ref` may mint different
 numeric tags.
 
@@ -1071,8 +1183,8 @@ numeric tags.
   Source cell value $v$ is simulated by target value $v'$ under
   $(rho_a,rho_t)$, written $v approx v'$, when one of the following holds.
   - $v="word"(w)$ and $v'="dat"(w)$.
-  - $v="ptr"(b,o,s,t)$, $v'="ptr"(b',o,s,t')$, $rho_a(b)=b'$,
-    $rho_t(t)=t'$, and every address in $[b,b+s)$ is in the domain of
+  - $v="ptr"(b,o,sz,t)$, $v'="ptr"(b',o,sz,t')$, $rho_a (b)=b'$,
+    $rho_t (t)=t'$, and every address in $[b,b+sz)$ is in the domain of
     $rho_a$.
   - $v="undef"$, and $v'$ is arbitrary.
 ] <def:valsim>
@@ -1083,7 +1195,7 @@ run cannot observe the missing information.
 #definition("Memory simulation")[
   Source memory $mu_s$ is simulated by target memory $mu_t$ under
   $(rho_a,rho_t)$ when, for every address $a$ at which $mu_s$ has a cell $v$,
-  $rho_a(a)$ is defined and $v approx mu_t(rho_a(a))$.
+  $rho_a (a)$ is defined and $v approx mu_t (rho_a (a))$.
 ] <def:memsim>
 
 The relation is forward only: every present source cell has a related target
@@ -1122,7 +1234,7 @@ When a source-visible reference is formed, both machines mint a tag. If they
 produce $t_s$ and $t_t$, the proof extends
 
 #align(center)[
-  $rho_t' = rho_t[t_s mapsto t_t].$
+  $rho'_t = rho_t[t_s mapsto t_t].$
 ]
 
 Because both fresh tags are minted at their machine's counter, and the
@@ -1137,15 +1249,15 @@ $rho_t$, since there is no source tag to use as a key.
   Let $C_0$ be a compiler state and $P$ a source program. Source state
   $S=(i,E,mu_s,Pi_s)$ and target state $T=(j,R,mu_t,Pi_t)$ satisfy the
   _boundary invariant_ under $(rho_a,rho_t)$, written
-  $S approx_(rho_a,rho_t)^(C_0,P) T$, when there is a compiler state $C_i$
+  $S scripts(approx)_(rho_a,rho_t)^(C_0,P) T$, when there is a compiler state $C_i$
   such that the following ten clauses hold.
   #set enum(numbering: n => [(I#n)])
   + _Control alignment._ Compiling the prefix $P[0..i)$ from $C_0$
     succeeds with state $C_i$, and $j=C_i.n_l$.
   + _Bound locals._ If $E(ell)=(a,t)$ for $ell:tau$, then
-    $L_i(ell)=(r,tau)$ and $R(r)=("PTy",["ptr"(a,0,|tau|,t')])$ with
-    $rho_a(a)=a$ and $rho_t(t)=t'$, and every address of $[a,a+|tau|)$ is in
-    the domain of $rho_a$.
+    $L_i (ell)=(r,tau)$ and $R(r)=("PTy",["ptr"(a,0,|tau|,t')])$ with
+    $rho_a (a)=a$ and $rho_t (t)=t'$; $t$ is not the wildcard tag; and every
+    address of $[a,a+|tau|)$ is in the domain of $rho_a$.
   + _Source memory._ $mu_s$ is simulated by $mu_t$ (@def:memsim).
   + _Permissions._ $Pi_s approx Pi_t$ (@def:permsim).
   + _Address identity._ $rho_a$ is the identity wherever defined.
@@ -1169,66 +1281,12 @@ a route tag's item inside a fragment, but `die` removes it before the
 invariant is re-established. Numeric next-tag counters may still differ,
 which is why tags are renamed and the target counter need only be greater.
 
-Each auxiliary clause discharges a specific obligation in the step proof.
-
-- (I1) with @lem:mono: the instruction fetched at $j$ belongs to the fragment
-  compiled for statement $i$, and compiling later statements has not
-  overwritten it.
-- (I2) with (I9): exactly one allocation regime applies to a destination
-  root. Either a corresponding target pointer register exists, or both sides
-  allocate.
-- (I3) with (I5): a successful source read yields related target cells at
-  the same concrete range, and writes update corresponding addresses.
-- (I4) with (I6): related source-visible operations accept corresponding
-  tags and leave related stacks after renaming.
-- (I6) with (I7): a newly minted source and target tag pair extends $rho_t$
-  without overwriting or aliasing an old pair.
-- (I8) with (I5): fresh roots receive the same base on both sides, which
-  is what makes the identity renaming of @def:rename sound, and both
-  machines resolve an integer address to the same block.
-- (I10): a fresh register cannot collide with a register that the target
-  uses as a source-local pointer.
-
-Dropping any clause leaves a concrete compiler case underdetermined. Memory
-agreement alone cannot show that a fresh `load` register does not overwrite
-$r_x$, and equal watermarks alone cannot show that an unbound source local
-corresponds to a target fragment containing `alloc`.
-
-=== Two lemmas
-
-The step proof relies on a fact about the compiler and a fact about the
-permission model.
-
-#lemma("Prefix monotonicity")[
-  Let $C_i$ and $C_(i+1)$ be the states obtained by compiling
-  $P[0..i)$ and $P[0..i+1)$ from $C_0$. Then
-  $C_i.n_l <= C_(i+1).n_l$, and $C_(i+1).K(q')=C_i.K(q')$ for every label
-  $q'<C_i.n_l$.
-] <lem:mono>
-
-This is the monotonicity property of @sec:compiler specialized to
-consecutive prefixes. It lets the proof locate a source boundary by replaying
-prefix compilation, with no fixed instruction-per-statement ratio.
-
-#lemma("Route borrow cancellation")[
-  Let $Pi$ be a permission state whose next tag is not the wildcard and is
-  not protected in any frame. Suppose
-  $"ref"(Pi,a,n,t,"mutable","false",[])=(Pi_1,u)$. Then there are
-  $Pi_2$, $Pi_3$, and $Pi_"acc"$ with
-  $ "useMut"(Pi_1,a,n,u)=Pi_2, quad
-    "die"(Pi_2,a,n,u)=Pi_3, quad
-    "useMut"(Pi,a,n,t)=Pi_"acc", $
-  such that $Pi_3$ and $Pi_"acc"$ have the same stack map, protector frames,
-  and exposed list, and $Pi_"acc"."NextTag" <= Pi_3."NextTag"$.
-] <lem:cancel>
-
-@lem:cancel is the semantic content of the compiled write pattern
-`borrow; store; die`. The three target events have exactly the stack effect
-of the single source `useMut` through the parent tag, and differ only in the
-tag counter. That difference is absorbed by the inequality in @def:permsim.
-The two side conditions are invariants of every reachable permission state:
-tags are minted from one upward, and protector frames only ever contain
-already-minted tags.
+Each clause beyond (I3) and (I4) is there because a statement of the
+theorem without it is false or unprovable for some compiled fragment:
+memory agreement alone cannot show that a fresh `load` register does not
+overwrite a local's register (I10), and equal watermarks alone cannot show
+that an unbound source local corresponds to a target fragment containing
+`alloc` (I9).
 
 === Simulation theorems
 
@@ -1247,12 +1305,12 @@ program is _core_ when every statement in it is.
 #theorem("One-step forward simulation")[
   Let $P$ be a core program, $C_0$ any compiler state, and $Q$ the result
   of compiling $P$ from $C_0$. If
-  $ S approx_(rho_a,rho_t)^(C_0,P) T quad "and" quad
+  $ S scripts(approx)_(rho_a,rho_t)^(C_0,P) T quad "and" quad
     "srcStep"(P,S)="ok"(S'), $
-  then there exist $rho_a' supset.eq rho_a$, $rho_t' supset.eq rho_t$, a
+  then there exist $rho'_a supset.eq rho_a$, $rho'_t supset.eq rho_t$, a
   target state $T'$, and $n_t$ such that
   $ Q tack T arrow.r^(n_t) T' quad "and" quad
-    S' approx_(rho_a',rho_t')^(C_0,P) T'. $
+    S' scripts(approx)_(rho'_a,rho'_t)^(C_0,P) T'. $
 ] <thm:step>
 
 The compiler state in the final invariant is still $C_0$. Compilation is not
@@ -1262,137 +1320,59 @@ grow during simulation. The target step count $n_t$ is existential because
 fragments have different lengths. For `halt` or a missing source statement,
 $n_t=0$.
 
-#proof[
-  Case on the source statement at $i$. For `halt` or a missing statement the
-  source state is unchanged, and the invariant is re-established with
-  $n_t=0$ and the same renamings. For an assignment $d:=e$, (I1) and
-  @lem:mono recover the emitted label interval for statement $i$, and the
-  proof executes it phase by phase, following the operational order of
-  @tab:mir and the compiler order of @tab:compile:
-
-  #align(center)[
-  #table(
-    columns: (1fr, auto, 1fr, auto, 1fr, auto, 1fr),
-    inset: 3pt,
-    stroke: 0.45pt + rule,
-    fill: rgb("fafbfc"),
-    align: center,
-    [source RHS], [→], [target pre-code], [→], [destination and store], [→], [boundary invariant],
-  )
-  ]
-
-  _RHS._ For a constant, source and target stores will write related
-  singleton values. For a copy, (I3) and (I5) give related reads producing
-  cell lists of equal length; the target register holds that list across
-  destination resolution, which is what makes the source's
-  evaluate-then-resolve order simulable. For an escaping reference, (I4)
-  gives corresponding `ref` events that mint a fresh tag pair
-  $(t_s,t_t)$; (I6) and (I7) let $rho_t$ extend by that pair, after which
-  the two pointer values are related by @def:valsim.
-
-  _Destination._ If the root is already bound, (I2) identifies the target
-  register holding its pointer. If it is unbound, (I9) guarantees the
-  compiled fragment contains the matching `alloc`; (I8) gives both
-  allocators the same fresh base; corresponding `own` events mint a tag
-  pair; $rho_a$ already covers the block, by (I8), and $rho_t$ extends by
-  the tag pair. Typed paths give exact offsets and widths. A dereference
-  destination loads a pointer related by (I3). (I10) ensures the loads and
-  route borrows do not overwrite a register named by $L_i$.
-
-  _Store and cleanup._ For a nonzero-offset destination the fragment ends in
-  `borrow; store; die`. @lem:cancel shows the three target permission
-  events equal the single source `useMut` up to the tag counter, under the
-  _unchanged_ $rho_t$. Related writes restore (I3). The final target PC is
-  $C_(i+1).n_l$, which re-establishes (I1) for $i+1$; the remaining
-  clauses are preserved or extended as described.
-]
-
-The sketch shows the three expressions of the main text. Every other
-expression lowers to the read-then-store shape of #c-copy
-(@tab:surface-expr), so abstracting the copy case over the emitted
-right-hand side makes its lemmas serve them all; what remains is one
-simulation lemma per right-hand side. A guarded assignment adds a control
-argument, that both outcomes of the guard land on the prefix label that
-follows the assignment's fragment, and the protector-frame statements
-preserve the nested tag-list relation of @def:permsim.
-
 #theorem("Forward simulation of finite runs")[
   Let $P$ be a core program, $C_"init"$ the compiler state with empty code,
   counters zero, and an empty local map, and $Q$ the result of compiling
   $P$ from $C_"init"$. If
-  $ S approx_(rho_a,rho_t)^(C_"init",P) T quad "and" quad
+  $ S scripts(approx)_(rho_a,rho_t)^(C_"init",P) T quad "and" quad
     "runS"^(n_s)(P,S)="ok"(S'), $
-  then there exist $rho_a' supset.eq rho_a$, $rho_t' supset.eq rho_t$, a
+  then there exist $rho'_a supset.eq rho_a$, $rho'_t supset.eq rho_t$, a
   target state $T'$, and $n_t$ such that
   $ "runT"^(n_t)(Q,T)="ok"(T') quad "and" quad
-    S' approx_(rho_a',rho_t')^(C_"init",P) T'. $
+    S' scripts(approx)_(rho'_a,rho'_t)^(C_"init",P) T'. $
 ] <thm:run>
 
-#proof[
-  Induction on $n_s$. Each successful source statement uses @thm:step, and
-  the induction hypothesis simulates the remainder. Extension of renamings
-  is transitive, so the two extensions compose; target step counts compose
-  by addition. When the source encounters `halt` or the end of the program,
-  its fuelled semantics stops and the proof chooses zero further target
-  steps.
-]
-
 @thm:run takes the initial invariant as a premise; it does not hide
-initialization inside compilation. The premise is discharged for closed
-programs by the following lemma.
-
-#lemma("Initial relation")[
-  Let $S_"init"$ and $T_"init"$ be the source and target states with empty
-  environment, register file, and memory, PC zero, both bump allocators at
-  watermark zero, and both permission states initialized. Let $rho_a$ be
-  the identity and let $rho_t$ map only the wildcard tag to itself. Then
-  $S_"init" approx_(rho_a,rho_t)^(C_"init",P) T_"init"$ for every $P$.
-] <lem:init>
-
-#proof[
-  Each clause has a direct witness. Compiling the empty prefix returns
-  $C_"init"$, whose next label is zero, giving (I1). (I2) and (I3) are
-  vacuous. The two initial permission states have identical stack maps,
-  frames, and exposed lists and compatible counters, giving (I4). (I5) and
-  (I8) are immediate. The wildcard-only map is injective and lies below the
-  initialized counters, giving (I6) and (I7). The empty local map gives (I9)
-  and (I10).
-]
+initialization inside compilation. For closed programs the premise holds
+outright. Let $S_"init"$ and $T_"init"$ be the source and target states
+with empty environment, register file, and memory, PC zero, both bump
+allocators at watermark zero, and both permission states initialized. They
+satisfy the boundary invariant for every program $P$, under the identity
+$rho_a$ and the $rho_t$ that maps only the wildcard tag to itself.
 
 #corollary("Closed programs")[
   Let $P$ be a core program and $Q$ its compilation from $C_"init"$. If
-  $"runS"^(n_s)(P,S_"init")="ok"(S')$, then there exist $rho_a'$,
-  $rho_t'$, $T'$, and $n_t$ with
+  $"runS"^(n_s)(P,S_"init")="ok"(S')$, then there exist $rho'_a$,
+  $rho'_t$, $T'$, and $n_t$ with
   $"runT"^(n_t)(Q,T_"init")="ok"(T')$ and
-  $S' approx_(rho_a',rho_t')^(C_"init",P) T'$.
+  $S' scripts(approx)_(rho'_a,rho'_t)^(C_"init",P) T'$.
 ] <cor:closed>
-
-#proof[
-  @thm:run with @lem:init.
-]
 
 These results are preservation of successful finite executions. They are
 not backward simulation, divergence preservation, or an equivalence between
 source and target error strings. Their observable consequences are the
 memory and permission clauses of the final invariant, made explicit in
-@cor:observe below.
+@cor:observe.
 
 === The running program as a simulation
 
 #statetable(
   [The running program as a simulation: the boundary invariant at each source-statement boundary. $i$ is the source PC and $j=C_i.n_l$ the target label (@fig:compile-example); the $rho_t$ column shows what the step _adds_ ($rho_a$ is the identity throughout); "next" is the pair of tag counters.],
-  ([$i$], [$j$], [added to $rho_t$], [next], [how the invariant is re-established]),
+  ([$i$], [$j$], [added to $rho_t$], [next], [what the invariant records at this boundary]),
   (5%, 5%, 15%, 8%, 67%),
-  ([0], [0], [$0 |-> 0$], [1, 1], [@lem:init: empty states, wildcard-only tag map.]),
-  ([1], [2], [$1 |-> 1$], [2, 2], [Unbound root: (I9) puts `alloc` in the fragment, (I8) gives both allocators base 0, the two `own` events mint the pair $(1,1)$.]),
-  ([2], [5], [---], [2, 3], [@lem:cancel: `borrow; storec; die` has the stack effect of the source's one `useMut`. Route tag 2 is in no renaming; the counters part.]),
-  ([3], [8], [$2 |-> 3$, \ $3 |-> 4$], [4, 5], [Unbound root again, then an escaping reference: (I4) relates the two `ref` events and (I6), (I7) let $rho_t$ grow by pairs that are _not_ numerically equal.]),
-  ([4], [10], [---], [4, 5], [Dereferenced destination: (I3) relates the loaded $"ptr"(0,1,3,3)$ to $"ptr"(0,1,3,4)$, so both writes go through related tags to the same cell.]),
+  placement: none,
+  ([0], [0], [$0 |-> 0$], [1, 1], [Initial states: nothing is bound, and $rho_t$ fixes only the wildcard.]),
+  ([1], [2], [$1 |-> 1$], [2, 2], [$x$ is bound on both sides, (I2): equal watermarks (I8) gave both allocations base 0, and the two owning tags form the pair $(1,1)$.]),
+  ([2], [5], [---], [2, 3], [The stacks at cell 1 are again related (I4): `borrow; storec; die` left the stack effect of the source's one `useMut`. Route tag 2 is in no renaming; the counters part.]),
+  ([3], [8], [$2 |-> 3$, \ $3 |-> 4$], [4, 5], [$y$ is bound, and the reference it holds is related (I3): $rho_t$ grew by two pairs that are _not_ numerically equal, which (I6) and (I7) permit.]),
+  ([4], [10], [---], [4, 5], [Cell 1 holds related words (I3): the loaded $"ptr"(0,1,3,3)$ and $"ptr"(0,1,3,4)$ were related, so both writes went through related tags to the same cell.]),
 ) <tab:sim-example>
 
 #example[
   @tab:sim-example replays @tab:mir-example against @tab:osea-example.
-  Each row is one application of @thm:step, and the first is @lem:init.
+  Each row is an instance of the invariant that @cor:closed asserts; the
+  first is the initial relation and each later one follows from the
+  previous by @thm:step.
 
   _Boundary 1._ Statement 0 assigns to the unbound local $x$. Source
   preparation allocates $|tau_x|=3$ cells and obtains the owning tag 1;
@@ -1406,8 +1386,8 @@ memory and permission clauses of the final invariant, made explicit in
   $ "ref"(Pi_t,1,1,1,"mutable","false",[])=(Pi_1,2), quad
     "useMut"(Pi_1,1,1,2)=Pi_2, quad
     "die"(Pi_2,1,1,2)=Pi'_t. $
-  @lem:cancel removes the route tag's item and recovers (I4) under the
-  _unchanged_ $rho_t$: tag 2 has no source counterpart and never escapes.
+  The third event removes the route tag's item, so the two stacks at cell
+  1 are again related (I4) under the _unchanged_ $rho_t$: tag 2 has no source counterpart and never escapes.
   Both memories update only cell 1, where source word 42 relates to target
   `dat(42)`, so (I3) is restored and cells 0 and 2 are framed. (I1)
   advances from source PC 1 to 2 and from target label 2 to the next prefix
@@ -1430,7 +1410,7 @@ memory and permission clauses of the final invariant, made explicit in
 
   Flattening is semantically load-bearing at boundary 2. A route borrow of
   the intermediate width two would operate on cell 2 as well, so
-  @lem:cancel would not simulate the source's one-cell write in the
+  the target would not simulate the source's one-cell write in the
   presence of a borrow of the sibling $x.1.1$. The compiled path must use
   the composed offset and the final width.
 ] <ex:sim>
@@ -1455,23 +1435,18 @@ the next fragment exactly when the source reaches the next statement:
 === Observable consequences
 
 #corollary("Observations at a boundary")[
-  If $S approx_(rho_a,rho_t)^(C_0,P) T$, then:
-  - if $mu_s(a)="word"(w)$, then $mu_t(a)="dat"(w)$;
-  - if $mu_s(a)="ptr"(b,o,s,t)$, then $mu_t(a)="ptr"(b,o,s,t')$ with
-    $rho_t(t)=t'$ and the referent range $[b,b+s)$ mapped;
-  - if $E(ell)=(a,t)$ for $ell:tau$, then the register $L_i(ell)$ holds
+  If $S scripts(approx)_(rho_a,rho_t)^(C_0,P) T$, then:
+  - if $mu_s (a)="word"(w)$, then $mu_t (a)="dat"(w)$;
+  - if $mu_s (a)="ptr"(b,o,sz,t)$, then $mu_t (a)="ptr"(b,o,sz,t')$ with
+    $rho_t (t)=t'$ and the referent range $[b,b+sz)$ mapped;
+  - if $E(ell)=(a,t)$ for $ell:tau$, then the register $L_i (ell)$ holds
     `PTy` and exactly one pointer with base $a$, offset zero, size
-    $|tau|$, and tag $rho_t(t)$;
+    $|tau|$, and tag $rho_t (t)$;
   - the target stack at every address has the same length and item
     constructors as the source stack, with every source tag renamed by
     $rho_t$;
   - the target PC is the next label after compiling exactly $P[0..i)$.
 ] <cor:observe>
-
-#proof[
-  Clauses (I3) and (I5) give the first two items, (I2) the third, (I4) the
-  fourth, and (I1) the fifth.
-]
 
 Several asymmetries are intentional. The target may contain extra registers,
 because value temporaries remain after use. Source `undef` refines any target
@@ -1508,14 +1483,14 @@ declaration in `src/obseq3/proof/`:
   ([@def:permsim], [`PermSim`], [`common.lean`]),
   ([@def:inv], [`CompilerInv`], [`common.lean`]),
   ([core fragment], [`CoreRhs`, `CoreStmt`, `CoreProg`], [`common.lean`]),
-  ([@lem:cancel], [`sb_ref_use_die_cancels`], [`keystone.lean`]),
   ([@thm:step], [`CompilerInv_step`], [`compiler.lean`]),
   ([@thm:run], [`compile_correct`], [`compiler.lean`]),
-  ([@lem:init], [`CompilerInv_initial`], [`compiler.lean`]),
+  ([initial relation], [`CompilerInv_initial`], [`compiler.lean`]),
   ([@cor:closed], [`compile_correct_from_initial`], [`compiler.lean`]),
 ) <tab:lean>
 
-None of these contains an admitted goal. A checked audit prints the axioms
+The proof is about 17,700 lines and 426 lemmas across the 13 files of that
+directory. None of it contains an admitted goal. A checked audit prints the axioms
 that @thm:run and @cor:closed depend on and fails if that set differs in
 either direction from a pinned whitelist. The whitelist contains exactly the
 three standard Lean axioms, propositional extensionality, choice, and
@@ -1535,7 +1510,7 @@ simulation case moves a construct inside @thm:step.
 #source([Invariant and simulation vocabulary: `src/obseq3/proof/common.lean`. Statement and whole-program forward simulations: `src/obseq3/proof/compiler.lean`. Witness corpus: `src/obseq3/compile_tests.lean`; state dump of the running program: `notes/2026-09-18-paper-running-example.lean`.])
 
 #counter(heading).update(0)
-#set heading(numbering: "A.1")
+#set heading(numbering: "A.1", supplement: [Appendix])
 
 = The full executable surface <sec:surface>
 
@@ -1570,7 +1545,7 @@ guarded assignment first prepares the root of its destination, _on both
 paths_, then reads its discriminant exactly as $"copy"$ does, a real read
 access, and performs the assignment when the value read equals $w$.
 
-== The permission model
+== The permission model <sec:surface-perm>
 
 #proptable(
   [The remaining operations of the permission interface of @sec:perm.],
@@ -1588,10 +1563,16 @@ all earlier ones and a tag minted later is numerically larger. The rules of
 @tab:sb extend as follows. _Protectors:_ if the flag $c$ of a `ref` is set,
 the fresh tag is registered in the innermost protector frame; #sb-read,
 #sb-use, and #sb-die fail when an item they would disable or remove is
-protected. _Masks:_ on cells that the mask $m$ marks as interior-mutable, a
+protected. _Masks:_ entry $i$ of the mask $m$ says whether cell $a+i$ of the retagged
+range lies inside an `UnsafeCell`; a cell beyond the end of $m$ counts as
+unmarked, so the empty mask marks nothing. On the cells that $m$ marks, a
 shared or raw-constant retag performs no access and inserts
 $"RawPtr"("true",u)$ directly above the item carrying $t$, as #sb-refr
-does. _Two-phase:_ a two-phase retag performs a read and inserts
+does. The mask has one entry per cell, rather than being a single flag,
+because one reference may cover both kinds of cell: in
+`&(i32, Cell<i32>)` the first field is frozen and the second is not, so a
+single retag with mask $["false","true"]$ pushes $"Ref"(u)$ on the first
+cell and inserts $"RawPtr"("true",u)$ on the second. _Two-phase:_ a two-phase retag performs a read and inserts
 $"RawPtr"("true",u)$ likewise, modelling a reservation that stays writable
 until activation. _Raw-pointer groups:_ #sb-use also accepts
 $iota="RawPtr"("true",t)$, and then keeps the contiguous run of mutable
@@ -1604,32 +1585,32 @@ rather than about Miri's angelic choice.
 == OSEA-IR
 
 #ruletable(
-  [The remaining OSEA-IR rules, extending @tab:osea. In the rules that read through $r$, $R(r)=(theta_r,["ptr"(b,o,s,t)])$, $a=b+o$, and $a<b+s$. $"wild"$ is the wildcard tag and $"resolve"(mu_t,n)$ looks $n$ up in the allocation table.],
+  [The remaining OSEA-IR rules, extending @tab:osea. In the rules that read through $r$, $T.R(r)=(theta_r,["ptr"(b,o,sz,t)])$, $a=b+o$, and $a<b+sz$. $"wild"$ is the wildcard tag and $"resolve"(mu_t,n)$ looks $n$ up in the allocation table.],
   placement: none,
   ir(rn[rval-allocn],
-    [$N = n dot "typeSize"(theta)$, #h(3pt) $"alloc"(mu_t,N)=(b,mu'_t)$, \ $"own"(Pi_t,b,N)=(Pi'_t,u)$],
-    [$T tack "allocN"_theta (n) #dH$ \ $quad ("PTy", ["ptr"(b,0,N,u)], T[mu_t |-> mu'_t, Pi_t |-> Pi'_t])$]),
+    [$sz = n dot "typeSize"(theta)$, #h(3pt) $"alloc"(T.mu_t,sz)=(b,mu'_t)$, \ $"own"(T.Pi_t,b,sz)=(Pi'_t,u)$],
+    [$T tack "allocN"_theta (n) #dH$ \ $quad ("PTy", ["ptr"(b,0,sz,u)], T[mu_t |-> mu'_t, Pi_t |-> Pi'_t])$]),
   ir(rn[rval-allocdyn],
-    [$"read"(Pi_t,a,1,t)=Pi_1$, #h(3pt) $mu_t (a)="dat"(n)$, \ $N = n dot "typeSize"(theta)$, #h(3pt) $"alloc"(mu_t,N)=(b',mu'_t)$, \ $"own"(Pi_1,b',N)=(Pi_2,u)$],
-    [$T tack "allocDyn"_theta (r) #dH$ \ $quad ("PTy", ["ptr"(b',0,N,u)], T[mu_t |-> mu'_t, Pi_t |-> Pi_2])$]),
+    [$"read"(T.Pi_t,a,1,t)=Pi_1$, #h(3pt) $T.mu_t (a)="dat"(n)$, \ $sz = n dot "typeSize"(theta)$, #h(3pt) $"alloc"(T.mu_t,sz)=(b',mu'_t)$, \ $"own"(Pi_1,b',sz)=(Pi_2,u)$],
+    [$T tack "allocDyn"_theta (r) #dH$ \ $quad ("PTy", ["ptr"(b',0,sz,u)], T[mu_t |-> mu'_t, Pi_t |-> Pi_2])$]),
   ir(rn[rval-expose],
-    [$"read"(Pi_t,a,1,t)=Pi_1$, #h(3pt) $mu_t (a)="ptr"(b',o',s',t')$, \ $"expose"(Pi_1,t')=Pi_2$],
+    [$"read"(T.Pi_t,a,1,t)=Pi_1$, #h(3pt) $T.mu_t (a)="ptr"(b',o',sz',t')$, \ $"expose"(Pi_1,t')=Pi_2$],
     [$T tack "expose"(r) #dH$ \ $quad ("NatTy", ["dat"(b'+o')], T[Pi_t |-> Pi_2])$]),
   ir(rn[rval-fromexposed],
-    [$"read"(Pi_t,a,1,t)=Pi_1$, #h(3pt) $mu_t (a)="dat"(n)$, \ $"resolve"(mu_t,n)=(b',o',s')$],
-    [$T tack "fromExposed"(r) #dH$ \ $quad ("PTy", ["ptr"(b',o',s',"wild")], T[Pi_t |-> Pi_1])$]),
+    [$"read"(T.Pi_t,a,1,t)=Pi_1$, #h(3pt) $T.mu_t (a)="dat"(n)$, \ $"resolve"(T.mu_t,n)=(b',o',sz')$],
+    [$T tack "fromExposed"(r) #dH$ \ $quad ("PTy", ["ptr"(b',o',sz',"wild")], T[Pi_t |-> Pi_1])$]),
   ir(rn[rval-offset],
-    [$"read"(Pi_t,a,1,t)=Pi_1$, #h(3pt) $mu_t (a)="ptr"(b',o',s',t')$, \ $o'+d >= 0$],
-    [$T tack "offset"(r,d) #dH$ \ $quad ("PTy", ["ptr"(b',o'+d,s',t')], T[Pi_t |-> Pi_1])$]),
+    [$"read"(T.Pi_t,a,1,t)=Pi_1$, #h(3pt) $T.mu_t (a)="ptr"(b',o',sz',t')$, \ $o'+d >= 0$],
+    [$T tack "offset"(r,d) #dH$ \ $quad ("PTy", ["ptr"(b',o'+d,sz',t')], T[Pi_t |-> Pi_1])$]),
   ir(rn[rval-borrow-rest],
-    [$R(r)=(theta_r,["ptr"(b,o,s,t)])$, #h(3pt) $a'=b+o+delta$, \ $"ref"(Pi_t,a',s-(o+delta),t,k,c,m)=(Pi'_t,u)$],
-    [$T tack "borrow"(k,c,m,bot,r,delta) #dH$ \ $quad ("PTy", ["ptr"(b,o+delta,s,u)], T[Pi_t |-> Pi'_t])$]),
+    [$T.R(r)=(theta_r,["ptr"(b,o,sz,t)])$, #h(3pt) $a'=b+o+delta$, \ $"ref"(T.Pi_t,a',sz-(o+delta),t,k,c,m)=(Pi'_t,u)$],
+    [$T tack "borrow"(k,c,m,bot,r,delta) #dH$ \ $quad ("PTy", ["ptr"(b,o+delta,sz,u)], T[Pi_t |-> Pi'_t])$]),
   ir(rn[exec-memcpy],
-    [$Q(j)="memcpy"_theta (r_d,r_s)$, #h(3pt) $n="typeSize"(theta)$, \ $R(r_d)=(theta_d,["ptr"(b_d,o_d,s_d,t_d)])$, #h(3pt) $a_d=b_d+o_d$, \ $R(r_s)=(theta_s,["ptr"(b_s,o_s,s_s,t_s)])$, #h(3pt) $a_s=b_s+o_s$, \ both ranges fit and do not overlap, \ $"read"(Pi_t,a_s,n,t_s)=Pi_1$, #h(3pt) $"useMut"(Pi_1,a_d,n,t_d)=Pi_2$],
+    [$Q(j)="memcpy"_theta (r_d,r_s)$, #h(3pt) $n="typeSize"(theta)$, \ $R(r_d)=(theta_d,["ptr"(b_d,o_d,sz_d,t_d)])$, #h(3pt) $a_d=b_d+o_d$, \ $R(r_s)=(theta_s,["ptr"(b_s,o_s,sz_s,t_s)])$, #h(3pt) $a_s=b_s+o_s$, \ both ranges fit and do not overlap, \ $"read"(Pi_t,a_s,n,t_s)=Pi_1$, #h(3pt) $"useMut"(Pi_1,a_d,n,t_d)=Pi_2$],
     [$(j,R,mu_t,Pi_t) ssea$ \ $quad (j+1, R, mu_t [a_d |-> mu_t [a_s..a_s+n)], Pi_2)$]),
   ir(rn[exec-dealloc],
-    [$Q(j)="dealloc"(r)$, #h(3pt) $R(r)=(theta_r,["ptr"(b,0,s,t)])$, \ $"dealloc"(Pi_t,b,s,t)=Pi'_t$],
-    [$(j,R,mu_t,Pi_t) ssea$ \ $quad (j+1, R, mu_t without [b,b+s), Pi'_t)$]),
+    [$Q(j)="dealloc"(r)$, #h(3pt) $R(r)=(theta_r,["ptr"(b,0,sz,t)])$, \ $"dealloc"(Pi_t,b,sz,t)=Pi'_t$],
+    [$(j,R,mu_t,Pi_t) ssea$ \ $quad (j+1, R, mu_t without [b,b+sz), Pi'_t)$]),
   ir(rn[exec-skipif],
     [$Q(j)="skipIf"(r,w,n)$, #h(3pt) $R(r)=(theta_r,["dat"(w')])$, \ $j'=j+1$ if $w'=w$, else $j'=j+1+n$],
     [$(j,R,mu_t,Pi_t) ssea (j',R,mu_t,Pi_t)$]),
@@ -1734,25 +1715,3 @@ must synchronize a runtime or constant length and extend both renamings
 over the fresh heap block. For `dealloc`, it must relate the offset-zero
 checks, the permission retirement, and the removal of the same memory
 range. Neither follows merely from successful differential tests.
-
-The rest of this appendix was on that list until it was discharged, and
-how it left is instructive. `exposeAddr` and `fromExposed` compile exactly
-as `copy` does, so abstracting the copy leaves over the emitted right-hand
-side made every leaf, write seam, and fragment lemma serve all three; what
-remained was one simulation lemma per cast. The exposure is a cons onto
-the exposed list, which @def:permsim already relates positionally. The
-int-to-ptr direction needed two invariant strengthenings: the two
-allocation tables travel in lockstep, so both machines resolve an integer
-to the same block, and the address renaming is total, which supplies the
-base of the degenerate pointer an unallocated address yields. It also
-needed wildcard-tagged pointers to be admissible values, and hence
-accesses through the wildcard to transport: both machines pick the topmost
-exposed granting item out of related stacks, so they pick corresponding
-items. Pointer casts, pointer offsets, `uninit`, and slice retags then
-joined through the same read-then-store family, the slice retag once its
-mint had been moved out of the route bracket (@tab:surface-expr). Guarded
-assignment needed the control argument about the measured skip length and
-the both-paths rooting of its destination; protector frames needed push
-and successful pop to preserve the nested tag-list relation of
-@def:permsim, including protected tags introduced by source-visible
-references.
