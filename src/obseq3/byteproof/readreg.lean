@@ -46,7 +46,21 @@ theorem evalCopy_resolves {Γ : Ctx} {L : mirliteB.LayEnv Γ} {sM : mirliteB.Sta
   | error e => simp [h_r] at h
   | ok r => exact ⟨r, rfl⟩
 
-/-- Compile-time: a chain the source reads compiles to `readToReg`'s shape. -/
+/-- Compile-time: a place the source reads compiles (`CompilesB`). -/
+theorem readToReg_compilesG {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
+    {sM : mirliteB.State MSB Γ} {sA : oseairL.State MSB} {cs : CompilerState}
+    {σ : LayoutTy} {p : Place Γ σ} {out : mirliteB.EvalOutput MSB Γ}
+    (h_comp : CompilesB L p) (h_lbs : LocalBindingSimB L ρt sM.env sA cs)
+    (h_ev : mirliteB.evalCopy MSB L sM p = .ok out) :
+    ∃ sOut, CheckedCompilerM.value (placeToRegChecked L RefKind.Shared p) cs = .ok sOut ∧
+      sOut.result.cleanup = [] ∧
+      (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).placeRegMap
+        = cs.placeRegMap := by
+  obtain ⟨r, h_r⟩ := evalCopy_resolves h_ev
+  exact h_comp sM cs RefKind.Shared r (fun loc b h => by
+    obtain ⟨reg, t, hpi, -⟩ := h_lbs loc b h
+    exact ⟨reg, _, hpi⟩) h_r
+
 theorem readToReg_compiles {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {sM : mirliteB.State MSB Γ} {sA : oseairL.State MSB} {cs : CompilerState}
     {σ : LayoutTy} {p : Place Γ σ} {out : mirliteB.EvalOutput MSB Γ}
@@ -55,17 +69,14 @@ theorem readToReg_compiles {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameM
     ∃ sOut, CheckedCompilerM.value (placeToRegChecked L RefKind.Shared p) cs = .ok sOut ∧
       sOut.result.cleanup = [] ∧
       (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).placeRegMap
-        = cs.placeRegMap := by
-  obtain ⟨r, h_r⟩ := evalCopy_resolves h_ev
-  exact ptrChain_compiles (fun loc b h => by
-    obtain ⟨reg, t, hpi, -⟩ := h_lbs loc b h
-    exact ⟨reg, _, hpi⟩) h_chain RefKind.Shared r h_r
+        = cs.placeRegMap :=
+  readToReg_compilesG (ptrChain_compilesB h_chain) h_lbs h_ev
 
-theorem readToReg_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
-    {compProg : oseairL.Prog} (hWF : PtrPlacesWF L)
+theorem readToReg_simG {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
+    {compProg : oseairL.Prog}
     {sM : mirliteB.State MSB Γ} {sA : oseairL.State MSB} {cs : CompilerState}
     {σ : LayoutTy} {p : Place Γ σ} {out : mirliteB.EvalOutput MSB Γ}
-    (h_chain : PtrChain p) (h_inv : InvAtB L ρt sM sA cs)
+    (h_low : LowersB L compProg p) (h_comp : CompilesB L p) (h_inv : InvAtB L ρt sM sA cs)
     (h_ev : mirliteB.evalCopy MSB L sM p = .ok out)
     (h_code : CodeIncludedB compProg (CheckedCompilerM.run (readToReg L p) cs)) :
     ∃ n s' vals, oseairL.runN MSB n sA compProg = .Ok s' ∧
@@ -79,7 +90,7 @@ theorem readToReg_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
       ListRel (StoreSim ρt) out.values (vals.map oseairB.Val.toMem) ∧
       cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg ∧
       (∀ r, RegisterBelow cs.nextReg r → s'.reg.lookup r = sA.reg.lookup r) := by
-  obtain ⟨sOut, h_sval, h_sclean, h_sprm⟩ := readToReg_compiles h_chain h_inv.lbs h_ev
+  obtain ⟨sOut, h_sval, h_sclean, h_sprm⟩ := readToReg_compilesG h_comp h_inv.lbs h_ev
   obtain ⟨h_run, h_val⟩ := readToReg_shape h_sval h_sclean
   rw [h_run] at h_code ⊢
   -- the source read
@@ -105,7 +116,7 @@ theorem readToReg_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
   subst h_ev
   -- the place's lowering
   obtain ⟨sOut', n1, s1, tres, hS⟩ :=
-    ptrChain_lowering_simB hWF h_inv.wf_t h_chain RefKind.Shared cs sA resolved permsR h_res
+    h_low ρt sM RefKind.Shared cs sA resolved permsR h_inv.wf_t h_res
       h_inv.tbd h_inv.lbs h_inv.prb h_inv.mem h_inv.alloc h_inv.psim h_inv.pc
       (h_code.mono ((bumpReg_state_incr' _).trans (emit_state_incr _ _)))
   have h_same : sOut' = sOut := by
@@ -173,5 +184,25 @@ theorem readToReg_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
         rw [← hS.prm]; exact h
       exact RegisterBelow.mono (Nat.le_trans hS.regmono (Nat.le_succ _)) (h_inv.prb idx r τ' this)
   }
+
+theorem readToReg_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
+    {compProg : oseairL.Prog} (hWF : PtrPlacesWF L)
+    {sM : mirliteB.State MSB Γ} {sA : oseairL.State MSB} {cs : CompilerState}
+    {σ : LayoutTy} {p : Place Γ σ} {out : mirliteB.EvalOutput MSB Γ}
+    (h_chain : PtrChain p) (h_inv : InvAtB L ρt sM sA cs)
+    (h_ev : mirliteB.evalCopy MSB L sM p = .ok out)
+    (h_code : CodeIncludedB compProg (CheckedCompilerM.run (readToReg L p) cs)) :
+    ∃ n s' vals, oseairL.runN MSB n sA compProg = .Ok s' ∧
+      InvAtB L ρt out.state s' (CheckedCompilerM.run (readToReg L p) cs) ∧
+      out.state = { sM with perms := out.state.perms } ∧
+      s'.reg.lookup
+        (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg)
+        = some vals ∧
+      CheckedCompilerM.value (readToReg L p) cs
+        = .ok (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg) ∧
+      ListRel (StoreSim ρt) out.values (vals.map oseairB.Val.toMem) ∧
+      cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg ∧
+      (∀ r, RegisterBelow cs.nextReg r → s'.reg.lookup r = sA.reg.lookup r) :=
+  readToReg_simG (ptrChain_lowers hWF h_chain) (ptrChain_compilesB h_chain) h_inv h_ev h_code
 
 end obseq3.byteproof

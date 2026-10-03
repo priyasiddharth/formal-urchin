@@ -35,7 +35,7 @@ theorem ptr_of_storeSim {ρt : TagRenameMap} {b o e sz : Nat} {t : Tag} {vals : 
 
 theorem sliceLen_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ : LayoutTy}
-    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_c : PtrChain src) :
+    {src : Place Γ (obseq.LayoutTy.PtrL σ)} (h_c : ReadSrcB src) :
     ValuePkgB compProg L dstL (RExpr.sliceLen src) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
   have h_inv0 : InvAtB L ρt sM sA csA := ⟨h_pc, h_lbs, h_mem, h_alloc, h_psim, h_wf, h_tbd,
@@ -50,10 +50,7 @@ theorem sliceLen_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
   simp only [mirliteB.EvalResult.ok.injEq] at h_ev
   subst h_ev
   have h_st1 := evalCopy_state h_e1
-  obtain ⟨sOutA, h_saval, h_saclean, h_saprm⟩ := readToReg_compiles h_c h_lbs h_e1
-  obtain ⟨h_runA, h_valA⟩ := readToReg_shape h_saval h_saclean
-  have h_prmA : (CheckedCompilerM.run (readToReg L src) csA).placeRegMap = csA.placeRegMap := by
-    rw [h_runA]; exact h_saprm
+  obtain ⟨h_valA, h_prmA, -⟩ := readToReg_factsR h_c h_lbs h_e1
   have h_pre : CheckedCompilerM.run (compileRExprPreChecked L dstL (RExpr.sliceLen src)) csA
       = emit (bumpReg (CheckedCompilerM.run (readToReg L src) csA))
           [oseairL.Instr.Assgn (Register.R (CheckedCompilerM.run (readToReg L src) csA).nextReg)
@@ -74,7 +71,7 @@ theorem sliceLen_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
   refine ⟨_, pOut, h_pval, h_store, h_post, by rw [h_pre]; exact h_prmA, fun h_code => ?_⟩
   rw [h_pre] at h_code ⊢
   obtain ⟨n1, s1, vals1, h_run1, h_inv1, -, h_r1, -, h_rel1, -, -⟩ :=
-    readToReg_simB hWF h_c h_inv0 h_e1 (h_code.mono ((bumpReg_state_incr' _).trans (emit_state_incr _ _)))
+    readToReg_simR hWF h_c h_inv0 h_e1 (h_code.mono ((bumpReg_state_incr' _).trans (emit_state_incr _ _)))
   rw [h_p] at h_rel1
   obtain ⟨t', rfl, -⟩ := ptr_of_storeSim h_rel1
   have h_instr : compProg s1.pc = some (oseairL.Instr.Assgn
@@ -110,7 +107,7 @@ theorem sliceLen_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
 theorem subSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ : LayoutTy}
     {src : Place Γ (obseq.LayoutTy.PtrL σ)} {lo hi : Place Γ obseq.LayoutTy.NatL}
-    (h_c : PtrChain src) (h_cl : PtrChain lo) (h_ch : PtrChain hi) :
+    (h_c : ReadSrcB src) (h_cl : ReadSrcB lo) (h_ch : ReadSrcB hi) :
     ValuePkgB compProg L dstL (RExpr.subSlice src lo hi) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
   have h_inv0 : InvAtB L ρt sM sA csA := ⟨h_pc, h_lbs, h_mem, h_alloc, h_psim, h_wf, h_tbd,
@@ -144,25 +141,20 @@ theorem subSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
   have h_st2 := evalCopy_state h_e2
   have h_st3 := evalCopy_state h_e3
   -- compile-time
-  obtain ⟨sO1, h_v1, h_c1, h_p1⟩ := readToReg_compiles h_c h_lbs h_e1
-  obtain ⟨h_run1c, h_val1⟩ := readToReg_shape h_v1 h_c1
-  have h_prm1 : (CheckedCompilerM.run (readToReg L src) csA).placeRegMap = csA.placeRegMap := by
-    rw [h_run1c]; exact h_p1
+  obtain ⟨h_val1, h_prm1, h_nr1⟩ := readToReg_factsR h_c h_lbs h_e1
   have h_lbs1 : LocalBindingSimB L ρt out1.state.env sA (CheckedCompilerM.run (readToReg L src) csA) := by
     rw [h_st1]; exact LocalBindingSimB.prm_congr h_lbs h_prm1
-  obtain ⟨sO2, h_v2, h_c2, h_p2⟩ := readToReg_compiles h_cl h_lbs1 h_e2
-  obtain ⟨h_run2c, h_val2⟩ := readToReg_shape h_v2 h_c2
+  obtain ⟨h_val2, h_p2, h_nr2⟩ := readToReg_factsR h_cl h_lbs1 h_e2
   have h_prm2 : (CheckedCompilerM.run (readToReg L lo)
-      (CheckedCompilerM.run (readToReg L src) csA)).placeRegMap = csA.placeRegMap := by
-    rw [h_run2c]; exact h_p2.trans h_prm1
+      (CheckedCompilerM.run (readToReg L src) csA)).placeRegMap = csA.placeRegMap :=
+    h_p2.trans h_prm1
   have h_lbs2 : LocalBindingSimB L ρt out2.state.env sA (CheckedCompilerM.run (readToReg L lo)
       (CheckedCompilerM.run (readToReg L src) csA)) := by
     rw [h_st2, h_st1]; exact LocalBindingSimB.prm_congr h_lbs h_prm2
-  obtain ⟨sO3, h_v3, h_c3, h_p3⟩ := readToReg_compiles h_ch h_lbs2 h_e3
-  obtain ⟨h_run3c, h_val3⟩ := readToReg_shape h_v3 h_c3
+  obtain ⟨h_val3, h_p3, -⟩ := readToReg_factsR h_ch h_lbs2 h_e3
   have h_prm3 : (CheckedCompilerM.run (readToReg L hi) (CheckedCompilerM.run (readToReg L lo)
-      (CheckedCompilerM.run (readToReg L src) csA))).placeRegMap = csA.placeRegMap := by
-    rw [h_run3c]; exact h_p3.trans h_prm2
+      (CheckedCompilerM.run (readToReg L src) csA))).placeRegMap = csA.placeRegMap :=
+    h_p3.trans h_prm2
   have h_pre : CheckedCompilerM.run (compileRExprPreChecked L dstL (RExpr.subSlice src lo hi)) csA
       = emit (bumpReg (CheckedCompilerM.run (readToReg L hi) (CheckedCompilerM.run (readToReg L lo)
           (CheckedCompilerM.run (readToReg L src) csA))))
@@ -196,11 +188,11 @@ theorem subSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
     (CheckedCompilerM.run (readToReg L src) csA))
   have h_i2 := CheckedCompilerM.incr (readToReg L lo) (CheckedCompilerM.run (readToReg L src) csA)
   obtain ⟨n1, s1, vals1, h_r1, h_inv1, -, h_l1, -, h_rel1, -, -⟩ :=
-    readToReg_simB hWF h_c h_inv0 h_e1 ((h_code3.mono h_i3).mono h_i2)
+    readToReg_simR hWF h_c h_inv0 h_e1 ((h_code3.mono h_i3).mono h_i2)
   obtain ⟨n2, s2, vals2, h_r2, h_inv2, -, h_l2, -, h_rel2, -, h_fr2⟩ :=
-    readToReg_simB hWF h_cl h_inv1 h_e2 (h_code3.mono h_i3)
+    readToReg_simR hWF h_cl h_inv1 h_e2 (h_code3.mono h_i3)
   obtain ⟨n3, s3, vals3, h_r3, h_inv3, -, h_l3, -, h_rel3, -, h_fr3⟩ :=
-    readToReg_simB hWF h_ch h_inv2 h_e3 h_code3
+    readToReg_simR hWF h_ch h_inv2 h_e3 h_code3
   rw [h_p] at h_rel1
   rw [h_l] at h_rel2
   rw [h_h] at h_rel3
@@ -211,12 +203,12 @@ theorem subSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
   -- earlier registers survive later reads
   have hb1 : RegisterBelow (CheckedCompilerM.run (readToReg L src) csA).nextReg
       (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared src) csA).nextReg) := by
-    rw [h_run1c]; show _ < _ + 1; omega
+    show _ < _; rw [h_nr1]; omega
   have hb2 : RegisterBelow (CheckedCompilerM.run (readToReg L lo)
       (CheckedCompilerM.run (readToReg L src) csA)).nextReg
       (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared lo)
         (CheckedCompilerM.run (readToReg L src) csA)).nextReg) := by
-    rw [h_run2c]; show _ < _ + 1; omega
+    show _ < _; rw [h_nr2]; omega
   have h_l1' : s3.reg.lookup
       (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared src) csA).nextReg)
       = some [Val.Ptr pb po pe ps t'] := by

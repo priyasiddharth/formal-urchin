@@ -119,7 +119,7 @@ theorem evalAllocLen_fromPlace_inv {Γ : Ctx} {L : mirliteB.LayEnv Γ} {sM s1 : 
 
 theorem alloc_dyn_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ : LayoutTy}
-    {p : Place Γ obseq.LayoutTy.NatL} (h_c : PtrChain p) :
+    {p : Place Γ obseq.LayoutTy.NatL} (h_c : ReadSrcB p) :
     ValuePkgB compProg L dstL (RExpr.alloc (Γ := Γ) (τ := σ) (.fromPlace p)) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
   have h_inv0 : InvAtB L ρt sM sA csA := ⟨h_pc, h_lbs, h_mem, h_alloc, h_psim, h_wf, h_tbd,
@@ -140,10 +140,7 @@ theorem alloc_dyn_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pr
   obtain ⟨out1, h_e1, h_x, rfl⟩ := evalAllocLen_fromPlace_inv h_al
   have h_st1 := evalCopy_state h_e1
   -- compile-time
-  obtain ⟨sOutA, h_saval, h_saclean, h_saprm⟩ := readToReg_compiles h_c h_lbs h_e1
-  obtain ⟨h_runA, h_valA⟩ := readToReg_shape h_saval h_saclean
-  have h_prmA : (CheckedCompilerM.run (readToReg L p) csA).placeRegMap = csA.placeRegMap := by
-    rw [h_runA]; exact h_saprm
+  obtain ⟨h_valA, h_prmA, -⟩ := readToReg_factsR h_c h_lbs h_e1
   have h_pre : CheckedCompilerM.run
       (compileRExprPreChecked L dstL (RExpr.alloc (Γ := Γ) (τ := σ) (.fromPlace p))) csA
       = emit (bumpReg (CheckedCompilerM.run (readToReg L p) csA))
@@ -168,7 +165,7 @@ theorem alloc_dyn_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pr
   rw [h_pre] at h_code ⊢
   -- the read
   obtain ⟨n1, s1, vals1, h_run1, h_inv1, -, h_r1, -, h_rel1, -, -⟩ :=
-    readToReg_simB hWF h_c h_inv0 h_e1 (h_code.mono ((bumpReg_state_incr' _).trans (emit_state_incr _ _)))
+    readToReg_simR hWF h_c h_inv0 h_e1 (h_code.mono ((bumpReg_state_incr' _).trans (emit_state_incr _ _)))
   rw [h_x] at h_rel1
   have hv1 := word_of_storeSim h_rel1
   subst hv1

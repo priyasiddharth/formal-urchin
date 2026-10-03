@@ -110,7 +110,7 @@ theorem ByteAllocLockstep.free {mS mT : bytes.Mem} (h : ByteAllocLockstep mS mT)
 theorem dealloc_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     {s_mir s_mir' : mirliteB.State MSB Γ} {s_osea : oseairL.State MSB} {cs : CompilerState}
     {σ : LayoutTy} {dst : Place Γ (obseq.LayoutTy.PtrL σ)}
-    (compProg : oseairL.Prog) (hWF : PtrPlacesWF L) (h_chain : PtrChain dst)
+    (compProg : oseairL.Prog) (hWF : PtrPlacesWF L) (h_chain : ReadSrcB dst)
     (h_inv : InvAtB L ρt s_mir s_osea cs)
     (h_code : CodeIncludedB compProg (CheckedCompilerM.run (compileStmtChecked L (.dealloc dst)) cs))
     (h_step : mirliteB.stepStmt MSB L s_mir (.dealloc dst) = .ok s_mir') :
@@ -135,8 +135,7 @@ theorem dealloc_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
   subst h_step
   have h_st := evalCopy_state h_e
   -- compile-time
-  obtain ⟨sOut, h_sval, h_sclean, h_sprm⟩ := readToReg_compiles h_chain h_inv.lbs h_e
-  obtain ⟨h_runR, h_valR⟩ := readToReg_shape h_sval h_sclean
+  obtain ⟨h_valR, -, -⟩ := readToReg_factsR h_chain h_inv.lbs h_e
   have h_shape : CheckedCompilerM.run (compileStmtChecked L (.dealloc dst)) cs
       = emit (CheckedCompilerM.run (readToReg L dst) cs)
           [oseairL.Instr.Dealloc
@@ -147,7 +146,7 @@ theorem dealloc_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
   rw [h_shape] at h_code ⊢
   -- the read
   obtain ⟨n1, s1, vals, h_run1, h_inv1, -, h_r, -, h_rel, -, -⟩ :=
-    readToReg_simB hWF h_chain h_inv h_e (h_code.mono (emit_state_incr _ _))
+    readToReg_simR hWF h_chain h_inv h_e (h_code.mono (emit_state_incr _ _))
   rw [h_v] at h_rel
   obtain ⟨t', rfl, h_t⟩ := ptr_of_storeSim h_rel
   -- the free

@@ -1,4 +1,4 @@
-import obseq3.byteproof.readreg
+import obseq3.byteproof.readsrc
 
 /-!
 # Arithmetic: the `binOp` package
@@ -53,7 +53,7 @@ theorem word_of_storeSim {ρt : TagRenameMap} {x : Nat} {vals : List Val}
 
 theorem binOp_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) (op : BinOp)
-    {a b : Place Γ obseq.LayoutTy.NatL} (h_ca : PtrChain a) (h_cb : PtrChain b) :
+    {a b : Place Γ obseq.LayoutTy.NatL} (h_ca : ReadSrcB a) (h_cb : ReadSrcB b) :
     ValuePkgB compProg L dstL (RExpr.binOp op a b) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_unmap output h_ev
   have h_inv0 : InvAtB L ρt sM sA csA := ⟨h_pc, h_lbs, h_mem, h_alloc, h_psim, h_wf, h_tbd,
@@ -80,17 +80,12 @@ theorem binOp_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
   have h_st1 := evalCopy_state h_e1
   have h_st2 := evalCopy_state h_e2
   -- compile-time: both reads lower
-  obtain ⟨sOutA, h_saval, h_saclean, h_saprm⟩ := readToReg_compiles h_ca h_lbs h_e1
-  obtain ⟨h_runA, h_valA⟩ := readToReg_shape h_saval h_saclean
-  have h_prmA : (CheckedCompilerM.run (readToReg L a) csA).placeRegMap = csA.placeRegMap := by
-    rw [h_runA]; exact h_saprm
+  obtain ⟨h_valA, h_prmA, h_nrA⟩ := readToReg_factsR h_ca h_lbs h_e1
   have h_lbs1 : LocalBindingSimB L ρt out1.state.env sA (CheckedCompilerM.run (readToReg L a) csA) := by
     rw [h_st1]; exact LocalBindingSimB.prm_congr h_lbs h_prmA
-  obtain ⟨sOutB, h_sbval, h_sbclean, h_sbprm⟩ := readToReg_compiles h_cb h_lbs1 h_e2
-  obtain ⟨h_runB, h_valB⟩ := readToReg_shape h_sbval h_sbclean
+  obtain ⟨h_valB, h_prmB0, -⟩ := readToReg_factsR h_cb h_lbs1 h_e2
   have h_prmB : (CheckedCompilerM.run (readToReg L b) (CheckedCompilerM.run (readToReg L a) csA)).placeRegMap
-      = csA.placeRegMap := by
-    rw [h_runB]; exact h_sbprm.trans h_prmA
+      = csA.placeRegMap := h_prmB0.trans h_prmA
   -- the rvalue's shape
   have h_pre : CheckedCompilerM.run (compileRExprPreChecked L dstL (RExpr.binOp op a b)) csA
       = emit (bumpReg (CheckedCompilerM.run (readToReg L b) (CheckedCompilerM.run (readToReg L a) csA)))
@@ -124,9 +119,9 @@ theorem binOp_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
       (CheckedCompilerM.run (readToReg L b) (CheckedCompilerM.run (readToReg L a) csA)) :=
     h_code.mono ((bumpReg_state_incr' _).trans (emit_state_incr _ _))
   obtain ⟨n1, s1, vals1, h_run1, h_inv1, -, h_r1, -, h_rel1, h_rm1, -⟩ :=
-    readToReg_simB hWF h_ca h_inv0 h_e1 (h_codeB.mono h_incrB)
+    readToReg_simR hWF h_ca h_inv0 h_e1 (h_codeB.mono h_incrB)
   obtain ⟨n2, s2, vals2, h_run2, h_inv2, -, h_r2, -, h_rel2, -, h_fr2⟩ :=
-    readToReg_simB hWF h_cb h_inv1 h_e2 h_codeB
+    readToReg_simR hWF h_cb h_inv1 h_e2 h_codeB
   rw [h_x] at h_rel1
   rw [h_y] at h_rel2
   have hv1 := word_of_storeSim h_rel1
@@ -135,7 +130,7 @@ theorem binOp_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Prog}
   have h_r1' : s2.reg.lookup
       (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared a) csA).nextReg)
       = some [Val.Dat x] := by
-    rw [h_fr2 _ (by rw [h_runA]; show _ < _ + 1; omega)]
+    rw [h_fr2 _ (by show _ < _; rw [h_nrA]; omega)]
     exact h_r1
   -- the operation
   have h_instr : compProg s2.pc = some (oseairL.Instr.Assgn

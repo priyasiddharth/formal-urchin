@@ -10,6 +10,7 @@ import obseq3.byteproof.ref
 import obseq3.byteproof.move
 import obseq3.byteproof.leafops
 import obseq3.byteproof.readreg
+import obseq3.byteproof.readsrc
 import obseq3.byteproof.binop
 import obseq3.byteproof.slice
 import obseq3.byteproof.alloc
