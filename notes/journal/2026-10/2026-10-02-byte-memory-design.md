@@ -730,3 +730,37 @@ Proof repair was signature-only: ~10 binders (`{t : IntTy}` /
 Main audit unchanged (3 axioms, 0 sorries); byteproof 522 declarations,
 axioms unchanged. Repair cost was far below the 2026-10-01 C0 estimate
 because the cell SIZE did not change — only the type's name for it.
+
+### 2026-10-03: the cell model is retired; the paper is about bytes
+
+[DEC] (user) No cell model. Deleted: cell semantics, cell target, the
+stage-2 byte target, cell compiler, cell proof (19.6k lines). Method: a
+closure computation over the byte theorems, `conformance.realMain` and the
+two unit suites listed every declaration still reached; the only cell
+dependency of the byte proof was `InvAtB_initial` reusing
+`CompilerInv_initial` (re-proved locally). Survivors moved to
+`values.lean` (values, bindings, registers), `proof/basis.lean` (tag
+renaming, PermSim, MemValSim, ListRel, PtrChain, initialTagRename) and
+`proof/permsim_dealloc.lean`; `keystone.lean`/`permsim_transport.lean`
+unchanged. Then the byte model took the plain names (`mirlite`, `oseair`,
+`compile`, `proof/`, `compile_correct_*`). Tests ported: semantics tests
+on bytes (30; t28 was the cell-vs-byte duplicate), compiler tests on
+`compile` at the uniform layout (130; goldens re-pinned — same instruction
+sequences, sizes ×8, masks per byte; d33, a forged cell state, dropped).
+Harness: `--osea` is the one compiler; `--cells`, `"cell_model"` gone.
+
+Paper (`pldi27/`): every section restated from HEAD — per-byte SB; MIRLite
+with `Int θ` types, byte layouts, abstract bytes, leaf-wise rd/wr, move =
+Mut retag/read/die, copy of an uninit leaf is UB; OSEA-IR with
+layout-typed load/store/alloc and value-list registers; compiler offsets
+and lengths in bytes, masks per byte, reassociation inline; correctness
+with no address renaming, byte simulation, 9-clause invariant, layout
+conditions as a definition, one-step `stmt_sim` (added to coverage.lean),
+`compile_correct_all`, corollaries agrees/uniform; running example
+regenerated from the trace (x at [8,32), y at [32,40), same tags as
+before); appendix: full surface, `alloc` as an rvalue, no memcpy, error
+classes with liveness/uninit, "outside the theorem" = layout hypothesis,
+fat-pointer extent in provenance, determinized wildcard. Also fixed a
+pre-existing numbering bug: references to Theorem/Definition took the
+section number of the REFERENCE ("Theorem 3.7" for §2.5's theorem).
+Built with typst 0.15.1 (musl release; typst is not installed system-wide).

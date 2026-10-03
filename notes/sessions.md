@@ -5094,3 +5094,9 @@ pattern-preserving casts, `Ref` guard pointees from type args);
 `Agrees`/`--layouts` now width-checked, 147/147. Suites and both audits
 unchanged. Next: optionally tighten op typing to the `BinOp`'s width; the
 cleanup pass.
+Later: the cell model is retired (user decision) — closure-guided deletion,
+survivors in `values.lean` / `proof/basis.lean` / `proof/permsim_dealloc.lean`,
+the byte model takes the plain names; tests ported (30 + 130); paper
+rewritten for the byte model from the code at HEAD (typst 0.15.1, 26
+pages); `stmt_sim` added for the one-step theorem. Audit 3 axioms / 0
+sorries; 768 proof declarations checked. Next: the cleanup pass.
