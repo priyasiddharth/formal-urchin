@@ -5113,3 +5113,7 @@ Later: Miri `pass/` 35 → 37 of 52 — box_into_raw_allows_interior_mutable_ali
 Later: zero-sized retags adopted (source `ref`, target `Borrow`; proofs via
 `runN_Borrow'`); basic::zst passes — Miri `pass/` 38 of 52, corpus
 152/0/23 of 175, units 31 + 135.
+Later: Miri witnesses for raw field projections: offset 0 never UB (our
+copy lowering matches, 3 witnesses pass); nonzero = in-bounds arithmetic
+(3 recorded unsupported). Found a missed UB: `ptr.add` past the end
+(xfail-model). Corpus 156/0/1/26 of 183. Next: in-bounds `ptrOffset`.

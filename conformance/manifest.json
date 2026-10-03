@@ -2253,6 +2253,94 @@
       "reason_known": "Miri resolves an integer address only to an EXPOSED allocation, so the rebuilt pointer has no provenance (dangling); the model's int-to-ptr cast resolves the live allocation and the write fails at its borrow stack, where no exposed tag grants it (determinized wildcard, documented approximation) — same statement, same cause: nothing was exposed"
     },
     {
+      "id": "local/raw_field_freed_zero",
+      "artifact": "local/raw_field_freed_zero.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/miri_local.sh and live.py",
+      "notes": "&raw (*p).a at byte offset 0 through a raw pointer dangling (freed): not pointer arithmetic, so no UB; lowered as a copy of p (place_base_raw: no retag)."
+    },
+    {
+      "id": "local/raw_field_oob_zero",
+      "artifact": "local/raw_field_oob_zero.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/miri_local.sh and live.py",
+      "notes": "&raw (*p).a at byte offset 0 through a raw pointer in an allocation too small for the struct: not pointer arithmetic, so no UB; lowered as a copy of p (place_base_raw: no retag)."
+    },
+    {
+      "id": "local/raw_field_noprov_zero",
+      "artifact": "local/raw_field_noprov_zero.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/miri_local.sh and live.py",
+      "notes": "&raw (*p).a at byte offset 0 through a raw pointer without provenance: not pointer arithmetic, so no UB; lowered as a copy of p (place_base_raw: no retag)."
+    },
+    {
+      "id": "local/raw_field_freed_nonzero",
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "raw borrow of a field at a nonzero offset through a raw pointer: needs an in-bounds-checking pointer offset (Miri: in-bounds pointer arithmetic)",
+      "expected": {
+        "verdict": "ub",
+        "line": 8
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/miri_local.sh",
+      "notes": "&raw (*p).c at byte offset 8 through a raw pointer dangling (freed): Miri reports 'in-bounds pointer arithmetic failed'."
+    },
+    {
+      "id": "local/raw_field_oob_nonzero",
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "raw borrow of a field at a nonzero offset through a raw pointer: needs an in-bounds-checking pointer offset (Miri: in-bounds pointer arithmetic)",
+      "expected": {
+        "verdict": "ub",
+        "line": 10
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/miri_local.sh",
+      "notes": "&raw (*p).c at byte offset 8 through a raw pointer in a 4-byte allocation: Miri reports 'in-bounds pointer arithmetic failed'."
+    },
+    {
+      "id": "local/raw_field_noprov_nonzero",
+      "artifact": null,
+      "status": "unsupported",
+      "reason": "raw borrow of a field at a nonzero offset through a raw pointer: needs an in-bounds-checking pointer offset (Miri: in-bounds pointer arithmetic)",
+      "expected": {
+        "verdict": "ub",
+        "line": 7
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/miri_local.sh",
+      "notes": "&raw (*p).c at byte offset 8 through a raw pointer without provenance: Miri reports 'in-bounds pointer arithmetic failed'."
+    },
+    {
+      "id": "local/ptr_add_out_of_bounds",
+      "artifact": "local/ptr_add_out_of_bounds.ullbc.json",
+      "status": "xfail-model",
+      "reason": "missed UB: `add`/`offset` are in-bounds pointer arithmetic (Miri: 'in-bounds pointer arithmetic failed'), but the loader maps them to the model's ptrOffset, which — like wrapping_add — checks only that the offset is not negative",
+      "expected": {
+        "verdict": "ub",
+        "line": 9
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/miri_local.sh and live.py",
+      "notes": "p.add(2) on a 4-byte allocation of u32."
+    },
+    {
+      "id": "local/ptr_wrapping_add_out_of_bounds",
+      "artifact": "local/ptr_wrapping_add_out_of_bounds.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/miri_local.sh and live.py",
+      "notes": "p.wrapping_add(2) on a 4-byte allocation of u32: no access, no UB."
+    },
+    {
       "id": "local/narrow_fields_ok",
       "artifact": "local/narrow_fields_ok.ullbc.json",
       "status": "supported",

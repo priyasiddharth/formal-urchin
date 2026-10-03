@@ -1578,13 +1578,16 @@ quotient soundness, and no `sorryAx`.
 The executable compiler is additionally validated by testing: a compiler
 witness corpus of 135 programs, run on both machines at the uniform layout
 and pinned as golden listings where the shape of the code matters; a
-corpus of 175 entries, drawn from Miri's Stacked Borrows tests and
+corpus of 183 entries, drawn from Miri's Stacked Borrows tests and
 completed by local witnesses, loaded from rustc's MIR through Charon with
-rustc's own layouts, whose 152 supported programs reach Miri's verdict
+rustc's own layouts, whose 156 supported programs reach Miri's verdict
 and, where Miri reports undefined behavior, the same statement and, with
-four documented exceptions, the same reason; and a differential run that compiles each of those 152
+four documented exceptions, the same reason; and a differential run that compiles each of those 156
 programs and requires the same verdict from both machines. The layout
-check of @def:layoutwf passes on all of them. The running program of this
+check of @def:layoutwf passes on all of them. One further program is a
+recorded divergence: `p.add(k)` past the end of its allocation, which Miri
+rejects as out-of-bounds pointer arithmetic and the model, whose pointer
+offset checks only that the result is not negative, accepts. The running program of this
 paper is part of the witness corpus, both as a golden listing
 (@fig:compile-example) and as a differential test; the states of
 @tab:mir-example and @tab:osea-example are printed by the mechanized

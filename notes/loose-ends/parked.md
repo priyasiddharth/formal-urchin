@@ -434,7 +434,18 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   deref goes through a raw pointer is a tag-preserving copy of that pointer
   (`rawDerefBase`, `zeroOffsetSteps` in ullbc_ast.lean); raw_ref_to_part
   passes, no other verdict moved. A field at a NONZERO byte offset is still
-  reported unsupported (needs byte-offset pointer arithmetic in the loader).
+  reported unsupported. Miri (witnesses local/raw_field_*, 2026-10-03):
+  offset 0 is never UB (freed / OOB / no provenance all ok — matches the
+  copy lowering); a NONZERO offset is in-bounds pointer arithmetic, UB when
+  the base is freed, has no provenance, or the field starts past the end
+  (exactly at the end is ok). So the nonzero case needs an in-bounds-
+  checking offset. Same gap for `ptr.add`/`offset`: the loader maps them to
+  the model's `ptrOffset` like `wrapping_add`, so `p.add(2)` past the end
+  is a MISSED UB (local/ptr_add_out_of_bounds, xfail-model). One fix covers
+  both: an `inbounds` flag on `ptrOffset` (source + target check: base
+  live, provenance, 0 ≤ new offset ≤ size; skipped for delta 0), used by
+  `add`/`offset` and the nonzero raw-field lowering; proof = the ptrOffset
+  leaf gains the check.
 - o. PROBED 2026-10-03: `without_provenance(_mut)` is a loader shim (the
   integer's bytes read back as a pointer: no provenance, zero bytes).
   basic::zst then fails only on the zero-sized retag through an OOB /

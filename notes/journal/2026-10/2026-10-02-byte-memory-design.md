@@ -819,3 +819,17 @@ Tests d110 (zero-sized `&mut` 8 bytes past the end: ok on both) and d111
 (the sized one: UB on both); d110 fails under the old semantics (teeth
 checked — a first version at one-past-the-end had none). basic::zst
 passes; corpus 152/0/23 of 175; units 31 + 135; 780 proof declarations.
+
+### 2026-10-03: what Miri flags for `&raw (*p).f` (witnesses)
+
+Probed with the pinned Miri: a raw-pointer field projection at byte offset
+0 is never UB (freed base, too-small allocation, no provenance: all ok);
+at a nonzero offset it is in-bounds pointer arithmetic — UB for a freed
+base, no provenance, or a field starting past the end (exactly at the end
+is fine). Our zero-offset lowering (a copy) matches; the three zero-offset
+witnesses pass on the model. The nonzero ones are recorded unsupported.
+[OBS] The same check exposes a missed UB the model already had: `p.add(k)`
+past the end (Miri: UB) is lowered like `wrapping_add` (Miri: ok) to the
+non-checking `ptrOffset`. Pinned as local/ptr_add_out_of_bounds
+(xfail-model) beside local/ptr_wrapping_add_out_of_bounds (passes).
+Proposed fix (parked n): an in-bounds flag on `ptrOffset`.
