@@ -1,0 +1,1 @@
+error: Undefined Behavior: in-bounds pointer arithmetic failed: attempting to offset pointer by 8 bytes, but got 0x40[noalloc] which is a dangling pointer (it has no provenance)

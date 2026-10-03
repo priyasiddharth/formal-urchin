@@ -430,7 +430,15 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   `&mut Thing` and retags never recurse through a reference, so it does
   not support the rule; newtype_retagging's own comment says "Make sure
   that we protect references inside structs". Re-run the corpus. [OBS+source]
-- n. DONE 2026-10-03 (zero-offset case): `&raw` of a place whose last
+- n. DONE 2026-10-03, both cases. Nonzero offset (later the same day):
+  `ptrOffset` carries an `inbounds` flag, checked by both machines through
+  one shared function (`bytes.Mem.offsetPtr`: nonzero move ⇒ base live,
+  0 ≤ old, new offset ≤ size); `add`/`offset` set it, `wrapping_*` do not;
+  the nonzero raw-field path lowers to `p as *u8` moved in bounds by the
+  field's byte offset (`URvalue.rawField`, expanded in `emitAssign`).
+  ptr_add_out_of_bounds and the three raw_field_*_nonzero pass; new
+  positive witness raw_field_nonzero_ok. Original zero-offset entry:
+  `&raw` of a place whose last
   deref goes through a raw pointer is a tag-preserving copy of that pointer
   (`rawDerefBase`, `zeroOffsetSteps` in ullbc_ast.lean); raw_ref_to_part
   passes, no other verdict moved. A field at a NONZERO byte offset is still

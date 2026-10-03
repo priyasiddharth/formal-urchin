@@ -121,7 +121,8 @@ def elabRvalue (Γ : Ctx) (expected : LayoutTy) :
       | _, _ => .error "ptr-to-int transmute of a non-pointer place"
   | .use (.constNeg _ _) => .error "negative constant not encoded by lowering"
   | .fromExposed _ => .error "fromExposed is elaborated against the destination type"
-  | .ptrOffset _ _ => .error "ptrOffset is elaborated against the destination type"
+  | .rawField _ _ => .error "rawField is expanded at emission"
+  | .ptrOffset _ _ _ => .error "ptrOffset is elaborated against the destination type"
   | .sliceLen p => do
       -- slice metadata: the fat pointer's extent, in elements
       let ⟨τ, pl⟩ ← elabPlace Γ p
@@ -160,10 +161,10 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           match τd, pd with
           | .PtrL _, pd => return .assign pd (.fromExposed np.2)
           | _, _ => .error s!"int-to-ptr cast into a non-pointer place (line {line})"
-      | .ptrOffset p delta =>
+      | .ptrOffset p delta inb =>
           let ⟨τp, pp⟩ ← elabPlace Γ p
           match τp, pp, τd, pd with
-          | .PtrL _, pp, .PtrL _, pd => return .assign pd (.ptrOffset pp delta)
+          | .PtrL _, pp, .PtrL _, pd => return .assign pd (.ptrOffset pp delta inb)
           | _, _, _, _ => .error s!"pointer offset on a non-pointer place (line {line})"
       | .refSlice kind prot p =>
           let ⟨τp, pp⟩ ← elabPlace Γ p
@@ -245,7 +246,7 @@ def operandPlaces : UOperand → List UPlace
 
 def rvaluePlaces : URvalue → List UPlace
   | .use op => operandPlaces op
-  | .move p | .ref _ _ p | .exposeAddr p | .addr p | .fromExposed p | .ptrOffset p _
+  | .move p | .ref _ _ p | .exposeAddr p | .addr p | .fromExposed p | .ptrOffset p _ _ | .rawField p _
   | .refSlice _ _ p | .discriminant p | .sliceLen p => [p]
   | .subSlice p lo hi => p :: (operandPlaces lo ++ operandPlaces hi)
   | .aggregate _ ops => ops.flatMap operandPlaces

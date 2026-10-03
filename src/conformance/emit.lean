@@ -141,7 +141,8 @@ def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .exposeAddr p => .exposeAddr (rebasePlace off p)
   | .addr p => .addr (rebasePlace off p)
   | .fromExposed p => .fromExposed (rebasePlace off p)
-  | .ptrOffset p d => .ptrOffset (rebasePlace off p) d
+  | .ptrOffset p d ib => .ptrOffset (rebasePlace off p) d ib
+  | .rawField p steps => .rawField (rebasePlace off p) steps
   | .refSlice kind prot p => .refSlice kind prot (rebasePlace off p)
   | .sliceLen p => .sliceLen (rebasePlace off p)
   | .subSlice p lo hi =>
@@ -317,6 +318,20 @@ partial def toBLayout : UTy → obseq3.bytes.BLayout
 /-- A type's size in BYTES (`size_of`, `Layout::new`, `Layout::for_value`). -/
 def byteSize (t : UTy) : Nat := (toBLayout t).size
 
+/-- The byte offset of the field path `steps` in a value of type `t`, at
+    the offsets `toBLayout` gives (cells are transparent). -/
+partial def fieldStepsOffset (t : UTy) : List Nat → Option Nat
+  | [] => some 0
+  | i :: rest =>
+      match t, toBLayout t with
+      | .cell u, _ => fieldStepsOffset u (i :: rest)
+      | .tup tys, .tup _ offs _ _ | .structT tys _, .tup _ offs _ _ => do
+          let o ← offs[i]?
+          let f ← tys[i]?
+          let r ← fieldStepsOffset f rest
+          pure (o + r)
+      | _, _ => none
+
 def UIntTy.toIntTy (t : UIntTy) : obseq3.IntTy := ⟨t.bits, t.signed⟩
 
 /-- The obseq3 operation an ULLBC op denotes at integer type `t`, as MIR
@@ -366,7 +381,8 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
   | .exposeAddr p => do return .exposeAddr (← resolveIdxPlace st line p)
   | .addr p => do return .addr (← resolveIdxPlace st line p)
   | .fromExposed p => do return .fromExposed (← resolveIdxPlace st line p)
-  | .ptrOffset p d => do return .ptrOffset (← resolveIdxPlace st line p) d
+  | .ptrOffset p d ib => do return .ptrOffset (← resolveIdxPlace st line p) d ib
+  | .rawField p steps => do return .rawField (← resolveIdxPlace st line p) steps
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveIdxPlace st line p)
   | .discriminant p => do return .discriminant (← resolveIdxPlace st line p)
   | .sliceLen p => do return .sliceLen (← resolveIdxPlace st line p)
@@ -569,7 +585,7 @@ def sliceElemPlace (st : LowerSt) (line : Nat) (p : UPlace) :
           let tmp : UPlace := { root := .local t, projs := [], ty := sty }
           let st := { st with locals := st.locals ++ [sty] }
           let st := pushOut st (.assign tmp
-            (.ptrOffset { root := .local n, projs := [], ty := sty } (Int.ofNat k)) line)
+            (.ptrOffset { root := .local n, projs := [], ty := sty } (Int.ofNat k) false) line)
           return (st, { p with root := .local t, projs := .deref :: rest })
       | _ => return (st, p)
   | _, _ => return (st, p)
@@ -599,8 +615,22 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
       -- a negative constant is stored as its two's-complement bit pattern
       -- at its own width (was: clamped to 0)
       emitAssign st line dst (.use (.const ((⟨bits, true⟩ : obseq3.IntTy).ofInt (-(Int.ofNat n)))))
-  | .ptrOffset _ _ | .refSlice _ _ _ | .sliceLen _ =>
+  | .ptrOffset _ _ _ | .refSlice _ _ _ | .sliceLen _ =>
       return pushOut st (.assign dst rv line)
+  | .rawField p steps =>
+      -- `&raw (*p).f`: `p` as a `*u8`, moved in bounds by the field's byte
+      -- offset, retyped by the store into `dst`
+      match p.ty with
+      | .raw m inner =>
+          let some k := fieldStepsOffset inner steps
+            | .error s!"unsupported: raw field path {steps} (line {line})"
+          if k == 0 then emitAssign st line dst (.use (.copy p)) else
+          let bty := UTy.raw m (.int { bits := 8 })
+          let tmp : UPlace := { root := .local st.locals.length, projs := [], ty := bty }
+          let st := { st with locals := st.locals ++ [bty] }
+          let st ← emitAssign st line tmp (.use (.copy p))
+          emitAssign st line dst (.ptrOffset tmp (Int.ofNat k) true)
+      | _ => .error s!"unsupported: raw field through a non-raw pointer (line {line})"
   | .subSlice p lo hi => do
       -- mirlite's `subSlice` takes two word PLACES; a constant bound is
       -- materialised into a fresh local exactly as `binOp`'s are

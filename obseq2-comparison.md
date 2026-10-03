@@ -4,6 +4,27 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-03 (night) — Pointer Arithmetic That Must Stay Inside
+
+Rust has two kinds of pointer arithmetic. `p.add(k)` and `p.offset(k)`
+promise that the result stays inside the same block of memory (one step
+past the end is allowed); breaking the promise is undefined behavior even
+if the pointer is never used. `p.wrapping_add(k)` makes no such promise.
+The model treated both like the second kind, so it missed a bug that Miri
+reports. Pointer arithmetic now carries a flag saying which kind it is,
+and both the source and the compiled program check the promise when the
+flag is set, using one shared definition of the check. The correctness
+proof needed only a few lines: both programs see the same pointer and the
+same list of freed blocks, so the check gives the same answer on both.
+
+The same check also covers taking the address of a struct field through
+a raw pointer, which Rust treats as this in-bounds arithmetic. Four test
+programs, checked against Miri, moved from "not supported" or "known
+wrong" to passing, with a fifth added to show the allowed cases stay
+allowed.
+
+---
+
 ## 2026-10-03 (late night) — Reading a Pointer as a Plain Number
 
 Rust has two ways to turn a pointer into a number. `ptr as usize` (or

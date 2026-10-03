@@ -148,8 +148,8 @@ inductive RhsB {Γ : Ctx} : {τ : LayoutTy} → RExpr Γ τ → Prop
       BorrowSrcB src → RhsB (.ref kind prot mask src)
   | ptrCast {σ τ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)} :
       LeafSrcB src → RhsB (.ptrCast (τ := τ) src)
-  | ptrOffset {σ τ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)} (delta : Int) :
-      LeafSrcB src → RhsB (.ptrOffset (τ := τ) src delta)
+  | ptrOffset {σ τ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)} (delta : Int) (inb : Bool) :
+      LeafSrcB src → RhsB (.ptrOffset (τ := τ) src delta inb)
   | refSlice {σ τ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)} (kind : RefKind)
       (prot : Bool) : LeafSrcB src → RhsB (.refSlice (τ := τ) kind prot src)
   | exposeAddr {σ : LayoutTy} {t : IntTy} {src : Place Γ (LayoutTy.PtrL σ)} :
@@ -181,7 +181,7 @@ theorem RhsB.pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   | move h => exact h.move_pkg hWF dstL
   | ref kind prot mask h => exact h.ref_pkg hWF dstL kind prot mask
   | ptrCast h => exact ptrCast_pkgL hWF hLeaf dstL _ h
-  | ptrOffset delta h => exact ptrOffset_pkgL hWF hLeaf dstL _ h delta
+  | ptrOffset delta inb h => exact ptrOffset_pkgL hWF hLeaf dstL _ h delta inb
   | refSlice kind prot h => exact refSlice_pkgL hWF hLeaf dstL kind prot _ h
   | exposeAddr h => exact exposeAddr_pkgL hWF hLeaf dstL _ h
   | addr h => exact addr_pkgL hWF hLeaf dstL _ h

@@ -2273,6 +2273,16 @@
       "notes": "&raw (*p).a at byte offset 0 through a raw pointer in an allocation too small for the struct: not pointer arithmetic, so no UB; lowered as a copy of p (place_base_raw: no retag)."
     },
     {
+      "id": "local/raw_field_nonzero_ok",
+      "artifact": "local/raw_field_nonzero_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via live.py",
+      "notes": "&raw (*p).f through a raw pointer at a nonzero byte offset, in bounds (c at 8 of 12) and one past the end (zero-sized z at 4 of 4): in-bounds pointer arithmetic that succeeds; lowered as an in-bounds ptrOffset of p as *u8."
+    },
+    {
       "id": "local/raw_field_noprov_zero",
       "artifact": "local/raw_field_noprov_zero.ullbc.json",
       "status": "supported",
@@ -2284,9 +2294,8 @@
     },
     {
       "id": "local/raw_field_freed_nonzero",
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "raw borrow of a field at a nonzero offset through a raw pointer: needs an in-bounds-checking pointer offset (Miri: in-bounds pointer arithmetic)",
+      "artifact": "local/raw_field_freed_nonzero.ullbc.json",
+      "status": "supported",
       "expected": {
         "verdict": "ub",
         "line": 8
@@ -2296,9 +2305,8 @@
     },
     {
       "id": "local/raw_field_oob_nonzero",
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "raw borrow of a field at a nonzero offset through a raw pointer: needs an in-bounds-checking pointer offset (Miri: in-bounds pointer arithmetic)",
+      "artifact": "local/raw_field_oob_nonzero.ullbc.json",
+      "status": "supported",
       "expected": {
         "verdict": "ub",
         "line": 10
@@ -2308,9 +2316,8 @@
     },
     {
       "id": "local/raw_field_noprov_nonzero",
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "raw borrow of a field at a nonzero offset through a raw pointer: needs an in-bounds-checking pointer offset (Miri: in-bounds pointer arithmetic)",
+      "artifact": "local/raw_field_noprov_nonzero.ullbc.json",
+      "status": "supported",
       "expected": {
         "verdict": "ub",
         "line": 7
@@ -2321,8 +2328,7 @@
     {
       "id": "local/ptr_add_out_of_bounds",
       "artifact": "local/ptr_add_out_of_bounds.ullbc.json",
-      "status": "xfail-model",
-      "reason": "missed UB: `add`/`offset` are in-bounds pointer arithmetic (Miri: 'in-bounds pointer arithmetic failed'), but the loader maps them to the model's ptrOffset, which — like wrapping_add — checks only that the offset is not negative",
+      "status": "supported",
       "expected": {
         "verdict": "ub",
         "line": 9

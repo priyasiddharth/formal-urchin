@@ -1576,18 +1576,15 @@ three standard Lean axioms, propositional extensionality, choice, and
 quotient soundness, and no `sorryAx`.
 
 The executable compiler is additionally validated by testing: a compiler
-witness corpus of 135 programs, run on both machines at the uniform layout
+witness corpus of 138 programs, run on both machines at the uniform layout
 and pinned as golden listings where the shape of the code matters; a
-corpus of 183 entries, drawn from Miri's Stacked Borrows tests and
+corpus of 184 entries, drawn from Miri's Stacked Borrows tests and
 completed by local witnesses, loaded from rustc's MIR through Charon with
-rustc's own layouts, whose 156 supported programs reach Miri's verdict
+rustc's own layouts, whose 161 supported programs reach Miri's verdict
 and, where Miri reports undefined behavior, the same statement and, with
-four documented exceptions, the same reason; and a differential run that compiles each of those 156
+four documented exceptions, the same reason; and a differential run that compiles each of those 161
 programs and requires the same verdict from both machines. The layout
-check of @def:layoutwf passes on all of them. One further program is a
-recorded divergence: `p.add(k)` past the end of its allocation, which Miri
-rejects as out-of-bounds pointer arithmetic and the model, whose pointer
-offset checks only that the result is not negative, accepts. The running program of this
+check of @def:layoutwf passes on all of them. The running program of this
 paper is part of the witness corpus, both as a golden listing
 (@fig:compile-example) and as a differential test; the states of
 @tab:mir-example and @tab:osea-example are printed by the mechanized
@@ -1607,14 +1604,14 @@ same format, to the language the compiler and the theorem actually cover.
 == Syntax
 
 #grammarfig(
-  [The remaining syntax of MIRLite (left) and OSEA-IR (right), extending @fig:mir-grammar and @fig:oseair-grammar. $d$ in `ptrOffset` and $delta$ in `offset` are integers; a `borrow` of length $bot$ retags the pointer's extent; $"op"$ is an integer operation at an integer type.],
+  [The remaining syntax of MIRLite (left) and OSEA-IR (right), extending @fig:mir-grammar and @fig:oseair-grammar. $d$ in `ptrOffset` and $delta$ in `offset` are integers and $i$ a boolean, set for in-bounds arithmetic; a `borrow` of length $bot$ retags the pointer's extent; $"op"$ is an integer operation at an integer type.],
   panel([MIRLite], bnf(
-    prod($"Expr" in.rev e$, $dots$, $"uninit" | "alloc"("len")$, $"exposeAddr"(p) | "addr"(p)$, $"fromExposed"(p)$, $"ptrCast"(p) | "ptrOffset"(p,d)$, $"refSlice"(k,c,p)$, $"sliceLen"(p) | "subSlice"(p, p_l, p_h)$, $"binOp"("op", p_a, p_b)$),
+    prod($"Expr" in.rev e$, $dots$, $"uninit" | "alloc"("len")$, $"exposeAddr"(p) | "addr"(p)$, $"fromExposed"(p)$, $"ptrCast"(p) | "ptrOffset"(p,d,i)$, $"refSlice"(k,c,p)$, $"sliceLen"(p) | "subSlice"(p, p_l, p_h)$, $"binOp"("op", p_a, p_b)$),
     prod($"Stmt" in.rev s$, $dots$, $"assignIf"(p = w, thick d := e)$, $"dealloc"(p)$, $"pushProtectors" | "popProtectors"$),
     prod($"len"$, $"const"(n) | "from"(p)$),
   )),
   panel([OSEA-IR], bnf(
-    prod($"Rhs" in.rev h$, $dots$, $"allocN"_beta (n) | "allocDyn"_beta (r)$, $"expose"_kappa (r) | "fromExposed"_kappa (r)$, $"offset"_kappa (r,delta)$, $"borrow"(k,c,m,bot,r,delta)$, $"sliceLen"_n (r) | "subSlice"_n (r, r_l, r_h)$, $"binOp"("op", r_a, r_b)$),
+    prod($"Rhs" in.rev h$, $dots$, $"allocN"_beta (n) | "allocDyn"_beta (r)$, $"expose"_kappa (r) | "fromExposed"_kappa (r)$, $"offset"_kappa (r,delta,i)$, $"borrow"(k,c,m,bot,r,delta)$, $"sliceLen"_n (r) | "subSlice"_n (r, r_l, r_h)$, $"binOp"("op", r_a, r_b)$),
     prod($"Instr" in.rev I$, $dots$, $"dealloc"(r)$, $"skipIf"(r, w, n)$, $"pushProt" | "popProt"$),
   )),
 ) <fig:surface-grammar>
@@ -1701,8 +1698,8 @@ theorem is a statement about it rather than about Miri's angelic choice.
     [one-leaf read through $r$ at $kappa$, \ leaf $="word"(w)$, #h(3pt) $"allocOf"(T.mu,w)=(b',sz')$],
     [$T tack "fromExposed"_kappa (r) #dH$ \ $quad (["ptr"(b',w-b',sz'-(w-b'),sz',"wild")], T[Pi |-> Pi_1])$]),
   ir(rn[rval-offset],
-    [one-leaf read through $r$ at $kappa$, \ leaf $="ptr"(b',o',e',sz',t')$, #h(3pt) $o'+delta >= 0$],
-    [$T tack "offset"_kappa (r,delta) #dH$ \ $quad (["ptr"(b',o'+delta,e',sz',t')], T[Pi |-> Pi_1])$]),
+    [one-leaf read through $r$ at $kappa$, \ leaf $="ptr"(b',o',e',sz',t')$, #h(3pt) $o'+delta >= 0$, \ $i and delta != 0 => b' "live" and o' <= sz' and o'+delta <= sz'$],
+    [$T tack "offset"_kappa (r,delta,i) #dH$ \ $quad (["ptr"(b',o'+delta,e',sz',t')], T[Pi |-> Pi_1])$]),
   ir(rn[rval-borrow-rest],
     [$T.R(r)=["ptr"(b,o,e,sz,t)]$, #h(3pt) $b$ live, \ $"ref"(T.Pi,b+o+delta,e,t,k,c,m)=(Pi',u)$],
     [$T tack "borrow"(k,c,m,bot,r,delta) #dH$ \ $quad (["ptr"(b,o+delta,e,sz,u)], T[Pi |-> Pi'])$]),
@@ -1737,7 +1734,14 @@ one leaf at the scalar the source reads. For example, `offset` does not
 change the offset of that outer pointer: it loads a pointer-valued leaf,
 changes the loaded value, and returns the result in a register. This is why
 the compiler can use it to implement MIRLite pointer arithmetic without
-suppressing the source's read event. `allocDyn` takes its length from a
+suppressing the source's read event. Its flag $i$ is Miri's in-bounds
+arithmetic, set by the loader for `add`, `offset`, and a raw borrow of a
+field through a raw pointer, and clear for `wrapping_add` and
+`wrapping_offset`: a nonzero move must then stay within a live allocation,
+both ends included and one past the end allowed, so a pointer without
+provenance, whose allocation size is zero, cannot move. Both machines
+check the same condition on the same pointer fields and the same freed
+blocks, as one shared function. `allocDyn` takes its length from a
 register that an ordinary `load` filled, which matches the source's
 permission-visible length read. A deallocated block is overwritten with
 uninitialized bytes and its base is recorded as freed; the bump allocator
@@ -1755,7 +1759,7 @@ OSEA-IR errors fall into several semantic classes rather than one generic
   (20%, 40%, 40%),
   ([Register shape], [Missing register, or a register that does not hold the single pointer or word the instruction needs.], [Before any memory or permission change.]),
   ([Liveness], [An access through a pointer into a freed block.], [Before the bounds check and any permission event.]),
-  ([Spatial], [A complete access range exceeds its allocation, a pointer offset becomes negative, or a sub-slice exceeds its extent.], [Before the corresponding read/write permission event.]),
+  ([Spatial], [A complete access range exceeds its allocation, a pointer offset becomes negative or, for in-bounds arithmetic, leaves its live allocation, or a sub-slice exceeds its extent.], [Before the corresponding read/write permission event.]),
   ([Permission], [`read`, `ref`, `useMut`, `die`, `dealloc`, or a protector pop rejects the operation.], [At the permission interface; its error is propagated.]),
   ([Value], [A load decodes an uninitialized leaf; a cast or allocation observes the wrong value constructor; a store's word does not fit its leaf; an integer operation is undefined.], [After any required permission read, so that event order remains explicit.]),
 ) <tab:surface-errors>
@@ -1785,7 +1789,7 @@ before the destination is lowered.
   ([`addr(p)`], [Lower $p$; $r_v := "load"_("int"(|kappa|)) (r_s)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`fromExposed(p)`], [Lower $p$; $r_v := "fromExposed"_kappa (r_s)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`ptrCast(p)`], [Lower $p$; $r_v := "load"_(beta_kappa) (r_s)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
-  ([`ptrOffset(p,d)`], [Lower $p$; $r_v := "offset"_kappa (r_s, d dot |beta_e|)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
+  ([`ptrOffset(p,d,i)`], [Lower $p$; $r_v := "offset"_kappa (r_s, d dot |beta_e|, i)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`refSlice(k,c,p)`], [Lower $p$; $r_v := "load"_(beta_kappa) (r_s)$; $"cleanup"(D_s)$; then $r_v := "borrow"(k,c,[],bot,r_v,0)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`sliceLen(p)`], [Read $p$ into $r$; $r_v := "sliceLen"_(|beta_e|) (r)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`subSlice(p,`$p_l$`,`$p_h$`)`], [Read $p$, $p_l$, $p_h$ into $r, r_l, r_h$; $r_v := "subSlice"_(|beta_e|) (r,r_l,r_h)$.], [$"store"_(beta_d) (r_v, r_d)$]),

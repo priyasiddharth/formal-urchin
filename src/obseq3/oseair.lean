@@ -35,7 +35,8 @@ inductive Rhs
 -- source's `leafKind` of the place)
 | ExposeAddr (k : Scalar) (srcPtr : Register)
 | FromExposed (k : Scalar) (srcPtr : Register)
-| PtrOffset (k : Scalar) (srcPtr : Register) (deltaBytes : Int)
+-- `inbounds`: Miri's in-bounds arithmetic (`bytes.Mem.offsetPtr`)
+| PtrOffset (k : Scalar) (srcPtr : Register) (deltaBytes : Int) (inbounds : Bool)
 | BinOp (op : BinOp) (r1 r2 : Register)
 | SliceLen (elemSize : Nat) (srcPtr : Register)
 | SubSlice (elemSize : Nat) (srcPtr rLo rHi : Register)
@@ -139,14 +140,14 @@ def evalRhs (M : PermissionModel) (state : State M) (rhs : Rhs) : RhsResult M :=
          RhsResult.Ok [Val.Ptr rBase rOff (rSize - rOff) rSize wildcardTag]
            { state with perms := perms2 }
      | .ok _ => RhsResult.Err "int-to-ptr cast of a non-integer value"
-  | .PtrOffset k srcPtr deltaBytes =>
+  | .PtrOffset k srcPtr deltaBytes inbounds =>
      match readCellThrough M state srcPtr k with
      | .error msg => RhsResult.Err msg
      | .ok (Val.Ptr pBase pOff pExt pSize pTag, perms2) =>
-         let newOff : Int := (pOff : Int) + deltaBytes
-         if newOff < 0 then RhsResult.Err "pointer offset before the allocation base"
-         else RhsResult.Ok [Val.Ptr pBase newOff.toNat pExt pSize pTag]
-                { state with perms := perms2 }
+         match state.mem.offsetPtr inbounds pBase pOff pSize deltaBytes with
+         | .error msg => RhsResult.Err msg
+         | .ok newOff =>
+             RhsResult.Ok [Val.Ptr pBase newOff pExt pSize pTag] { state with perms := perms2 }
      | .ok _ => RhsResult.Err "pointer offset of a non-pointer value"
   | .SliceLen esz r =>
      match state.reg.lookup r with

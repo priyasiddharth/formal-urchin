@@ -26,21 +26,21 @@ notes at: notes/
 - Test suites — there are FOUR, and `--unit` runs only the first two:
 
       ./.lake/build/bin/sb_conformance --unit
-        # obseq3 tests           31/31   (mirlite SB semantics on bytes)
-        # obseq3 compiler tests  135/135 (compiler witness corpus)
+        # obseq3 tests           32/32   (mirlite SB semantics on bytes)
+        # obseq3 compiler tests  138/138 (compiler witness corpus)
 
       ./.lake/build/bin/sb_conformance \
         --manifest conformance/manifest.json --charon-dir conformance/charon
         # ULLBC corpus, Charon artifacts vs Miri verdicts
-        # 156 pass / 0 fail / 1 xfail / 26 unsupported (183 total)
+        # 161 pass / 0 fail / 0 xfail / 23 unsupported (184 total)
 
       ...same, plus --osea
         # differential: compile each program and require the SAME verdict
-        # from both machines. 157 matched / 0 mismatch / 0 skipped
+        # from both machines. 161 matched / 0 mismatch / 0 skipped
 
       ...same, with --layouts instead
         # the loader's byte layouts have their types' shape (the proof's
-        # layout hypothesis): 157 agree / 0 disagree
+        # layout hypothesis): 161 agree / 0 disagree
 
   The validation build above does NOT relink this binary: run
   `lake build sb_conformance` after touching a test file, or `--unit`

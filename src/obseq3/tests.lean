@@ -296,7 +296,7 @@ def t15_deref_oob_pointer : IO Unit := do
     .assign xE' (.constInit 1),
     .assign pE' (.ref .Mut false [] xE'),
     .assign qE' (.ref .Mut false [] pE'),
-    .assign qE' (.ptrOffset qE' 7),
+    .assign qE' (.ptrOffset qE' 7 false),
     .assign tE' (.copy (.deref (.deref qE')))
   ]
   expectErr (run ΓE' prog) "t15 deref oob pointer" "out-of-bounds"
@@ -582,6 +582,29 @@ def t32_addr_strips_provenance : IO Unit := do
     .assign qX (.fromExposed yX),
     .assign (.deref qX) (.constInit 9)]) "t32 exposed: the rebuilt pointer writes"
 
+/-- In-bounds pointer arithmetic (`add`/`offset`; Miri: "in-bounds pointer
+    arithmetic failed"): a nonzero move must stay within a live allocation,
+    one past the end allowed. `wrapping_*` moves anywhere at or above the
+    base; a zero move never fails. -/
+def t33_inbounds_offset : IO Unit := do
+  let xp : List (Stmt ΓX) := [
+    .assign xX (.constInit 7),
+    .assign pX (.ref (.Raw true) false [] xX)]
+  let _ ← expectOk (run ΓX (xp ++ [.assign qX (.ptrOffset pX 1 true)])) "t33 one past the end"
+  expectErr (run ΓX (xp ++ [.assign qX (.ptrOffset pX 2 true)])) "t33 past the end"
+    "in-bounds pointer arithmetic"
+  let _ ← expectOk (run ΓX (xp ++ [.assign qX (.ptrOffset pX 2 false)])) "t33 wrapping"
+  let np : List (Stmt ΓX) := [
+    .assign yX (.constInit 0),
+    .assign qX (.fromExposed yX)]
+  let _ ← expectOk (run ΓX (np ++ [.assign qX (.ptrOffset qX 0 true)])) "t33 no provenance, 0"
+  expectErr (run ΓX (np ++ [.assign qX (.ptrOffset qX 1 true)])) "t33 no provenance"
+    "in-bounds pointer arithmetic"
+  expectErr (run ΓX [
+    .assign pX (.alloc (.const 1)),
+    .dealloc pX,
+    .assign qX (.ptrOffset pX 1 true)]) "t33 freed" "in-bounds pointer arithmetic"
+
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
   t2_raw_const_is_read_only,
@@ -613,7 +636,8 @@ def allTests : List (IO Unit) := [
   t29_bytes_pointer_read_as_word,
   t30_typed_arithmetic,
   t31_narrow_int_to_ptr,
-  t32_addr_strips_provenance]
+  t32_addr_strips_provenance,
+  t33_inbounds_offset]
 
 def runAll : IO Unit := do
   allTests.forM id

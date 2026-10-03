@@ -179,7 +179,12 @@ inductive URvalue
 | exposeAddr (p : UPlace)
 | addr (p : UPlace)
 | fromExposed (p : UPlace)
-| ptrOffset (p : UPlace) (delta : Int)
+-- `inbounds`: `add`/`offset` (Miri's in-bounds arithmetic), not `wrapping_*`
+| ptrOffset (p : UPlace) (delta : Int) (inbounds : Bool)
+-- `&raw (*p).f…` with `p` raw (rustc's `place_base_raw`: no retag): `p`
+-- moved, in bounds, by the byte offset of the field path `steps` in `p`'s
+-- pointee — resolved at emission, where layouts are known
+| rawField (p : UPlace) (steps : List Nat)
 | refSlice (kind : URefKind) (prot : Bool) (p : UPlace)  -- retag of slice data, runtime length
 | sliceLen (p : UPlace)   -- a fat pointer's length in elements (`.len()`, `PtrMetadata`)
 | subSlice (p : UPlace) (lo hi : UOperand)  -- narrow a fat pointer to elements `lo..hi`
@@ -1046,7 +1051,9 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
               | _ =>
                   -- `&raw` through a raw pointer: no retag (rustc's
                   -- `place_base_raw`); at byte offset 0 the result is the raw
-                  -- pointer itself, retyped
+                  -- pointer itself, retyped, elsewhere it is moved in bounds
+                  -- (Miri's `project_field` on a raw place: in-bounds
+                  -- arithmetic)
                   match (if isRaw then rawDerefBase ctx pJ else none) with
                   | some (subJ, steps) =>
                       match parsePlace ctx subJ with
@@ -1054,7 +1061,8 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
                           match base.ty with
                           | .raw _ inner =>
                               if zeroOffsetSteps inner steps then .use (.copy base)
-                              else .unsupported "raw borrow of a field at a nonzero offset through a raw pointer"
+                              else if steps.all (!·.2) then .rawField base (steps.map (·.1))
+                              else .unsupported "raw borrow of an enum variant's field through a raw pointer"
                           | _ => .ref kind false pl
                       | .error e => .unsupported e
                   | none => .ref kind false pl
@@ -1328,7 +1336,7 @@ def UOperand.places : UOperand → List UPlace
 
 def URvalue.places : URvalue → List UPlace
   | .use op => op.places
-  | .move p | .ref _ _ p | .exposeAddr p | .addr p | .fromExposed p | .ptrOffset p _
+  | .move p | .ref _ _ p | .exposeAddr p | .addr p | .fromExposed p | .ptrOffset p _ _ | .rawField p _
   | .refSlice _ _ p | .sliceLen p | .discriminant p => [p]
   | .aggregate _ ops => ops.flatMap (·.places)
   | .subSlice p lo hi => p :: lo.places ++ hi.places

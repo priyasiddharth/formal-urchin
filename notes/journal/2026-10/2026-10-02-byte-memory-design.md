@@ -833,3 +833,25 @@ past the end (Miri: UB) is lowered like `wrapping_add` (Miri: ok) to the
 non-checking `ptrOffset`. Pinned as local/ptr_add_out_of_bounds
 (xfail-model) beside local/ptr_wrapping_add_out_of_bounds (passes).
 Proposed fix (parked n): an in-bounds flag on `ptrOffset`.
+
+### 2026-10-03: in-bounds pointer arithmetic
+
+[DEC] (user) The check is operational, in both machines; the loader only
+chooses the flag (`add`/`offset`/nonzero raw field: in bounds;
+`wrapping_*`: not). `RExpr.ptrOffset p d inbounds`, `Rhs.PtrOffset k r δ
+inbounds`; both evaluators call `bytes.Mem.offsetPtr` (negative ⇒ error
+as before; `inbounds ∧ δ ≠ 0` ⇒ base not freed, old offset ≤ size, new
+offset ≤ size — a provenance-less pointer has size 0, so it cannot move).
+Sharing the function makes the proof one rewrite: `offsetPtr_congr` (equal
+freed lists, from `ByteAllocLockstep`) plus the pointer fields being equal
+under `ValSim` (only the tag is renamed). `ptrOffset_leafop`/`_ro` changed
+by three lines each. Tests: t33 (one past the end ok, two past UB,
+wrapping ok, no provenance moves by 0 only, freed UB), d112–d114.
+[OBS] Loader, nonzero raw field: `URvalue.rawField p steps`, expanded at
+emission (where `toBLayout` gives offsets) into `tmp : *u8 := p;
+dst := ptrOffset tmp k true`. Miri witnesses: ptr_add_out_of_bounds
+(xfail → pass, reason as Miri), raw_field_{freed,oob,noprov}_nonzero
+(unsupported → pass, reasons as Miri), new raw_field_nonzero_ok (field
+inside, and a zero-sized field one past the end: ok). No other verdict
+moved. Corpus 161/0/0/23 of 184; units 32 + 138; 780 proof declarations,
+3 axioms, 0 sorries.

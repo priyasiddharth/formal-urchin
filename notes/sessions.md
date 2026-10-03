@@ -5117,3 +5117,8 @@ Later: Miri witnesses for raw field projections: offset 0 never UB (our
 copy lowering matches, 3 witnesses pass); nonzero = in-bounds arithmetic
 (3 recorded unsupported). Found a missed UB: `ptr.add` past the end
 (xfail-model). Corpus 156/0/1/26 of 183. Next: in-bounds `ptrOffset`.
+Later: in-bounds pointer arithmetic — `ptrOffset` flag checked by both
+machines via the shared `bytes.Mem.offsetPtr`; `add`/`offset` set it,
+`wrapping_*` do not; nonzero raw-field borrows lowered through it
+(parked n closed). ptr_add_out_of_bounds and three raw_field witnesses
+flip to pass; corpus 161/0/0/23 of 184, units 32 + 138; audit unchanged.

@@ -131,7 +131,7 @@ def g5_compiler_total : IO Unit := do
        .assign p2 (.refSlice (.Raw true) false p2),
        .assign x2 (.exposeAddr p2),
        .assign p2 (.fromExposed x2),
-       .assign p2 (.ptrOffset p2 0),
+       .assign p2 (.ptrOffset p2 0 false),
        .assign x2 (.binOp (.add .u64) x2 x2),
        .assign x2 .uninit,
        .dealloc p2,
@@ -528,7 +528,7 @@ def g12_ptr_offset_prescaled : IO Unit :=
   expectCode ΓF
     [.assign fld0F (.constInit 1),
      .assign rF (.ref (.Raw true) false [] tupF),
-     .assign qF (.ptrOffset rF 1),
+     .assign qF (.ptrOffset rF 1 false),
      .halt]
     [Instr.Assgn (Register.R 0) (Rhs.Alloc (pairB)),
      Instr.CStore natB [Val.Dat 1] (Register.R 0),
@@ -536,7 +536,7 @@ def g12_ptr_offset_prescaled : IO Unit :=
      Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false (List.replicate 16 false) (some 16) (Register.R 0) 0),
      Instr.RStore (BLayout.ptr (pairB)) (Register.R 2) (Register.R 1),
      Instr.Assgn (Register.R 3) (Rhs.Alloc ptrB),
-     Instr.Assgn (Register.R 4) (Rhs.PtrOffset .ptr (Register.R 1) 16),
+     Instr.Assgn (Register.R 4) (Rhs.PtrOffset .ptr (Register.R 1) 16 false),
      Instr.RStore ptrB (Register.R 4) (Register.R 3),
      Instr.Halt]
     "g12 ptrOffset prescaled"
@@ -561,7 +561,7 @@ def d20_cast_then_offset_into_pair : IO Unit :=
      .assign fld1F (.constInit 2),
      .assign rF (.ref (.Raw true) false [] tupF),
      .assign qF (.ptrCast rF),
-     .assign qF (.ptrOffset qF 1),
+     .assign qF (.ptrOffset qF 1 false),
      .assign (.deref qF) (.constInit 9),
      .assign tF (.copy fld1F)]
     .ok "d20 cast then offset into pair"
@@ -572,7 +572,7 @@ def d21_offset_before_base : IO Unit :=
   expectDiff ΓE
     [.assign xE (.constInit 1),
      .assign pE (.ref (.Raw true) false [] xE),
-     .assign qE (.ptrOffset pE (-1))]
+     .assign qE (.ptrOffset pE (-1) false)]
     (.ub 2) "d21 offset before base"
 
 /-- `refSlice` lowers SPLIT: a `Load` of the fat pointer out of the
@@ -651,7 +651,7 @@ def d25_deref_oob_alignment : IO Unit :=
     [.assign xG (.constInit 1),
      .assign pG (.ref .Mut false [] xG),
      .assign qG (.ref .Mut false [] pG),
-     .assign qG (.ptrOffset qG 7),
+     .assign qG (.ptrOffset qG 7 false),
      .assign tG (.copy (.deref (.deref qG)))]
     (.ub 4) "d25 deref oob alignment"
 
@@ -995,7 +995,7 @@ def px_write_through_projected_ptroffset : IO Unit := do
      .assign (.proj uPX g1) (.ptrCast vPX),
      -- projected SOURCE at nonzero offset: today this mints a temporary
      -- Borrow(Shared) on u.1's cell and dies it
-     .assign (.proj uPX g1) (.ptrOffset (.proj uPX g1) 1),
+     .assign (.proj uPX g1) (.ptrOffset (.proj uPX g1) 1 false),
      -- the write that must invalidate `r`
      .assign (.deref (.proj uPX g1)) (.constInit 9),
      .assign xPX (.copy (.deref rPX))]
@@ -2538,7 +2538,7 @@ def d107_sub_slice_narrows_the_retag : IO Unit :=
      .assign hiS (.constInit 1),
      .assign qS (.subSlice qS loS hiS),
      .assign qS (.refSlice .Mut false qS),
-     .assign qS (.ptrOffset qS 1),
+     .assign qS (.ptrOffset qS 1 false),
      .assign (.deref qS) (.constInit 7)]
     (.ub 9) "d107 subSlice narrows the retag"
 
@@ -2599,7 +2599,7 @@ def d110_zero_sized_retag_out_of_bounds : IO Unit :=
   expectDiff ΓZ0
     [.assign xZ0 (.constInit 1),
      .assign pZ0 (.ref (.Raw true) false [] xZ0),
-     .assign oZ0 (.ptrOffset pZ0 2),
+     .assign oZ0 (.ptrOffset pZ0 2 false),
      .assign uZ0 (.ptrCast oZ0),
      .assign rZ0 (.ref .Mut false [] (.deref uZ0))]
     .ok "d110 zero-sized retag out of bounds"
@@ -2608,9 +2608,35 @@ def d111_sized_retag_out_of_bounds : IO Unit :=
   expectDiff ΓZ0
     [.assign xZ0 (.constInit 1),
      .assign pZ0 (.ref (.Raw true) false [] xZ0),
-     .assign oZ0 (.ptrOffset pZ0 1),
+     .assign oZ0 (.ptrOffset pZ0 1 false),
      .assign wZ0 (.ref .Mut false [] (.deref oZ0))]
     (.ub 3) "d111 sized retag out of bounds"
+
+/-- In-bounds pointer arithmetic is checked on both machines: one past the
+    end is fine, two past is UB at the offset itself (no access needed),
+    as is any nonzero move of a freed pointer; `wrapping` is not checked. -/
+def d112_inbounds_one_past_end : IO Unit :=
+  expectDiff ΓZ0
+    [.assign xZ0 (.constInit 1),
+     .assign pZ0 (.ref (.Raw true) false [] xZ0),
+     .assign oZ0 (.ptrOffset pZ0 1 true)]
+    .ok "d112 in-bounds offset one past the end"
+
+def d113_inbounds_past_end : IO Unit :=
+  expectDiff ΓZ0
+    [.assign xZ0 (.constInit 1),
+     .assign pZ0 (.ref (.Raw true) false [] xZ0),
+     .assign oZ0 (.ptrOffset pZ0 2 true)]
+    (.ub 2) "d113 in-bounds offset past the end"
+
+def d114_inbounds_freed : IO Unit :=
+  expectDiff ΓA
+    [.assign pA (.alloc (.const 1)),
+     .dealloc pA,
+     .assign pA (.ptrOffset pA 0 true),
+     .assign pA (.ptrOffset pA 1 false),
+     .assign pA (.ptrOffset pA 1 true)]
+    (.ub 4) "d114 in-bounds offset of a freed pointer"
 
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
@@ -2747,7 +2773,10 @@ def allTests : List (IO Unit) := [
   d108_addr_rebuilt_pointer,
   d109_expose_rebuilt_pointer,
   d110_zero_sized_retag_out_of_bounds,
-  d111_sized_retag_out_of_bounds]
+  d111_sized_retag_out_of_bounds,
+  d112_inbounds_one_past_end,
+  d113_inbounds_past_end,
+  d114_inbounds_freed]
 
 def runAll : IO Unit := do
   allTests.forM id

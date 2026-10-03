@@ -423,15 +423,16 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
       | .ok (v, perms') =>
           if v == .undef then .err "read of uninitialized memory"
           else .ok { values := [v], state := { state with perms := perms' } }
-  | .ptrOffset src delta =>
+  | .ptrOffset src delta inbounds =>
       let stride := (pointeeLayout L src).size
       match readCell M L state src "pointer offset" with
       | .error e => .err e
       | .ok (.ptrVal base offset extent size tag, perms') =>
-          let newOff : Int := (offset : Int) + delta * (stride : Int)
-          if newOff < 0 then .err "pointer offset before the allocation base"
-          else .ok { values := [MemValue.ptrVal base newOff.toNat extent size tag],
-                     state := { state with perms := perms' } }
+          match state.mem.offsetPtr inbounds base offset size (delta * (stride : Int)) with
+          | .error e => .err e
+          | .ok newOff =>
+              .ok { values := [MemValue.ptrVal base newOff extent size tag],
+                    state := { state with perms := perms' } }
       | .ok _ => .err "pointer offset of a non-pointer value"
   | .refSlice kind prot src =>
       match readCell M L state src "slice retag" with

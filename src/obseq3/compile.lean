@@ -573,10 +573,10 @@ inductive RExprToEvidence {Γ : Ctx} (L : LayEnv Γ)
       (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
       RExprToEvidence L dstPtr (.ptrCast (τ := τ) src)
   | ptrOffset
-      {σ τ : LayoutTy} (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int)
+      {σ τ : LayoutTy} (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int) (inbounds : Bool)
       (srcRes : PtrResult)
       (srcEv : PlaceToRegEvidence L RefKind.Shared src srcRes) :
-      RExprToEvidence L dstPtr (.ptrOffset (τ := τ) src delta)
+      RExprToEvidence L dstPtr (.ptrOffset (τ := τ) src delta inbounds)
   | refSlice
       {σ τ : LayoutTy} (kind : RefKind) (prot : Bool)
       (src : Place Γ (LayoutTy.PtrL σ)) (srcRes : PtrResult)
@@ -733,12 +733,12 @@ def compileRExprPreChecked {Γ : Ctx} (L : LayEnv Γ) (dstL : BLayout) {τ : Lay
       readRhsPre L dstL (RExpr.ptrCast (τ := τ) src) src
         (Rhs.Load (leafLayout (leafKind (placeLayout L src)))) (fun _ => [])
         (fun srcRes evd _ => RExprToEvidence.ptrCast src srcRes evd)
-  | .ptrOffset src delta => do
+  | .ptrOffset src delta inbounds => do
       -- delta is in pointees of the SOURCE type; pre-scale to bytes
-      readRhsPre L dstL (RExpr.ptrOffset src delta) src
+      readRhsPre L dstL (RExpr.ptrOffset src delta inbounds) src
         (fun r => Rhs.PtrOffset (leafKind (placeLayout L src)) r
-          (delta * ((pointeeLayout L src).size : Int))) (fun _ => [])
-        (fun srcRes evd _ => RExprToEvidence.ptrOffset src delta srcRes evd)
+          (delta * ((pointeeLayout L src).size : Int)) inbounds) (fun _ => [])
+        (fun srcRes evd _ => RExprToEvidence.ptrOffset src delta inbounds srcRes evd)
   | .refSlice (τ := τ) kind prot src =>
       readRhsPre L dstL (RExpr.refSlice (τ := τ) kind prot src) src
         (Rhs.Load (leafLayout (leafKind (placeLayout L src))))

@@ -274,10 +274,10 @@ theorem fromExposed_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {
     · cases h
 
 theorem ptrOffset_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ τ : LayoutTy}
-    (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int) :
-    LeafOpB L dstL (RExpr.ptrOffset (τ := τ) src delta) src
+    (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int) (inb : Bool) :
+    LeafOpB L dstL (RExpr.ptrOffset (τ := τ) src delta inb) src
       (fun r => oseair.Rhs.PtrOffset (mirlite.leafKind (mirlite.placeLayout L src)) r
-        (delta * ((mirlite.pointeeLayout L src).size : Int))) where
+        (delta * ((mirlite.pointeeLayout L src).size : Int)) inb) where
   resolves sM output h := by
     simp only [mirlite.evalRExpr] at h
     split at h
@@ -294,7 +294,7 @@ theorem ptrOffset_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ
     · rename_i base offset e sz tag perms' h_rc
       split at h
       · cases h
-      rename_i h_neg
+      rename_i newOff h_off
       simp only [mirlite.EvalResult.ok.injEq] at h
       subst h
       obtain ⟨r', p', h_r', h_free, h_bnd, h_rd, h_v⟩ := readCell_inv h_rc
@@ -303,11 +303,10 @@ theorem ptrOffset_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ
         readCellThrough_sim hwf h_reg h_rt h_le h_psim h_mem h_lock h_free h_bnd h_rd
       rw [← h_v] at h_vs
       obtain ⟨t', h_w, h_t⟩ := valSim_ptr h_vs
-      refine ⟨[Val.Ptr base (((offset : Int) + delta * ((mirlite.pointeeLayout L src).size : Int)).toNat)
-          e sz t'], p2, perms', ?_, rfl, h_psim2, ?_, ?_⟩
+      refine ⟨[Val.Ptr base newOff e sz t'], p2, perms', ?_, rfl, h_psim2, ?_, ?_⟩
       · simp only [oseair.evalRhs]
         rw [h_rct, h_w]
-        simp only [oseair.ofMem, h_neg, if_false]
+        simp only [oseair.ofMem, bytes.Mem.offsetPtr_congr h_lock.2.2, h_off]
       · rw [sb_read_NextTag h_rd, h_nt2]; exact h_tbd
       · refine ⟨Or.inr ⟨by simp, ?_⟩, trivial⟩
         simp only [ValSim, oseair.Val.toMem, oseair.ofMem, MemValSim, idA]
@@ -390,10 +389,11 @@ theorem fromExposed_pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
 
 theorem ptrOffset_pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ τ : LayoutTy}
-    {src : Place Γ (LayoutTy.PtrL σ)} (h_chain : ChainB src) (delta : Int) :
-    ValuePkgB compProg L dstL (RExpr.ptrOffset (τ := τ) src delta) :=
-  leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.ptrOffset src delta srcRes evd)
-    (chainB_lowers hWF h_chain) (chainB_compilesB h_chain) (ptrOffset_leafop dstL src delta) rfl
+    {src : Place Γ (LayoutTy.PtrL σ)} (h_chain : ChainB src) (delta : Int) (inb : Bool) :
+    ValuePkgB compProg L dstL (RExpr.ptrOffset (τ := τ) src delta inb) :=
+  leaf_pkg_core (ev := fun srcRes evd _ => RExprToEvidence.ptrOffset src delta inb srcRes evd)
+    (chainB_lowers hWF h_chain) (chainB_compilesB h_chain) (ptrOffset_leafop dstL src delta inb)
+    rfl
 
 theorem ptrCast_pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     (hWF : PtrPlacesWF L) (dstL : BLayout) {σ τ : LayoutTy}

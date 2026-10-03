@@ -253,15 +253,17 @@ def cellReplace : Shim := fun st args dest line => do
   | _ => .error s!"unsupported: replace arguments (line {line})"
 
 /-- pointer arithmetic with a constant delta (scaled by the pointee
-    size at elaboration); provenance/tag is preserved -/
-def ptrOffset : Shim := fun st args dest line => do
+    size at elaboration); provenance/tag is preserved. `inbounds`:
+    `add`/`offset` must stay in the allocation (Miri's in-bounds
+    arithmetic); `wrapping_add`/`wrapping_offset` need not. -/
+def ptrOffset (inbounds : Bool) : Shim := fun st args dest line => do
   match args with
   | [.copy p, d] | [.move p, d] =>
       let delta ← match d with
         | .const n => pure (Int.ofNat n)
         | .constNeg n _ => pure (-(Int.ofNat n))
         | _ => throw s!"unsupported: runtime pointer offset (line {line})"
-      return pushOut st (.assign dest (.ptrOffset p delta) line)
+      return pushOut st (.assign dest (.ptrOffset p delta inbounds) line)
   | _ => .error s!"unsupported: pointer offset arguments (line {line})"
 
 /-- `&s[lo..hi]` / `&mut s[lo..hi]`: the std chain bottoms out in
@@ -646,14 +648,14 @@ def table : List (List String × Shim) :=
   , (["core", "cell", "<RefMut as DerefMut>", "deref_mut"], guardDeref)
   , (["core", "cell", "Cell", "replace"], cellReplace)
   , (["core", "cell", "RefCell", "replace"], cellReplace)
-  , (["core", "ptr", "mut_ptr", "*mut T", "add"], ptrOffset)
-  , (["core", "ptr", "const_ptr", "*const T", "add"], ptrOffset)
-  , (["core", "ptr", "mut_ptr", "*mut T", "offset"], ptrOffset)
-  , (["core", "ptr", "const_ptr", "*const T", "offset"], ptrOffset)
-  , (["core", "ptr", "mut_ptr", "*mut T", "wrapping_add"], ptrOffset)
-  , (["core", "ptr", "const_ptr", "*const T", "wrapping_add"], ptrOffset)
-  , (["core", "ptr", "mut_ptr", "*mut T", "wrapping_offset"], ptrOffset)
-  , (["core", "ptr", "const_ptr", "*const T", "wrapping_offset"], ptrOffset)
+  , (["core", "ptr", "mut_ptr", "*mut T", "add"], ptrOffset true)
+  , (["core", "ptr", "const_ptr", "*const T", "add"], ptrOffset true)
+  , (["core", "ptr", "mut_ptr", "*mut T", "offset"], ptrOffset true)
+  , (["core", "ptr", "const_ptr", "*const T", "offset"], ptrOffset true)
+  , (["core", "ptr", "mut_ptr", "*mut T", "wrapping_add"], ptrOffset false)
+  , (["core", "ptr", "const_ptr", "*const T", "wrapping_add"], ptrOffset false)
+  , (["core", "ptr", "mut_ptr", "*mut T", "wrapping_offset"], ptrOffset false)
+  , (["core", "ptr", "const_ptr", "*const T", "wrapping_offset"], ptrOffset false)
   , (["core", "ptr", "mut_ptr", "*mut T", "cast"], ptrCast)
   , (["core", "ptr", "const_ptr", "*const T", "cast"], ptrCast)
   , (["core", "ptr", "const_ptr", "*const T", "cast_mut"], ptrCast)

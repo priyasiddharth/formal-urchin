@@ -310,6 +310,25 @@ theorem Mem.allocate_fresh {m : Mem} (hwf : m.WF) (size align : Nat) :
 
 def Mem.isFreed (m : Mem) (base : Nat) : Bool := m.freed.contains base
 
+/-- Pointer arithmetic, shared by both machines: the pointer `(base,
+    offset)` into an allocation of `size` bytes, moved by `deltaBytes`.
+    A negative result is an error either way. `inbounds` (`add`/`offset`,
+    not `wrapping_*`) is Miri's in-bounds arithmetic: a nonzero move needs
+    a live allocation holding both ends, one past the end allowed. A
+    pointer without provenance has `size = 0`, so it cannot move. -/
+def Mem.offsetPtr (m : Mem) (inbounds : Bool) (base offset size : Nat) (deltaBytes : Int) :
+    Except String Nat :=
+  let newOff : Int := (offset : Int) + deltaBytes
+  if newOff < 0 then .error "pointer offset before the allocation base"
+  else if inbounds && deltaBytes != 0 &&
+      (m.isFreed base || decide (size < offset) || decide ((size : Int) < newOff)) then
+    .error "in-bounds pointer arithmetic failed: pointer is out-of-bounds"
+  else .ok newOff.toNat
+
+theorem Mem.offsetPtr_congr {m m' : Mem} (h : m'.freed = m.freed) :
+    m'.offsetPtr = m.offsetPtr := by
+  funext; simp only [Mem.offsetPtr, Mem.isFreed, h]
+
 /-- The live allocation containing address `a`, if any. -/
 def Mem.allocOf (m : Mem) (a : Nat) : Option (Nat × Nat) :=
   m.allocs.find? fun (b, s) => decide (b ≤ a) && decide (a < b + s)
