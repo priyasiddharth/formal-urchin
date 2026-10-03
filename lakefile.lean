@@ -48,11 +48,7 @@ lean_exe interp_tests where
   srcDir := "src"
   root := `InterpTests
 
-lean_lib Obseq3ByteProof where
-  srcDir := "src"
-  roots := #[`obseq3.byteproof.memsim, `obseq3.byteproof.spine, `obseq3.byteproof.assoc, `obseq3.byteproof.const_write, `obseq3.byteproof.copy, `obseq3.byteproof.places, `obseq3.byteproof.derefdst, `obseq3.byteproof.copy_chain, `obseq3.byteproof.freshroot, `obseq3.byteproof.projdst, `obseq3.byteproof.ref, `obseq3.byteproof.chainb, `obseq3.byteproof.move, `obseq3.byteproof.leafops, `obseq3.byteproof.readreg, `obseq3.byteproof.readsrc, `obseq3.byteproof.leaffield, `obseq3.byteproof.binop, `obseq3.byteproof.slice, `obseq3.byteproof.alloc, `obseq3.byteproof.refslice, `obseq3.byteproof.refslicefield, `obseq3.byteproof.exposefield, `obseq3.byteproof.stmts, `obseq3.byteproof.program, `obseq3.byteproof.fragment, `obseq3.byteproof.prmpres, `obseq3.byteproof.assignif, `obseq3.byteproof.correct, `obseq3.byteproof.coverage, `obseq3.byteproof.layoutagree]
-
 lean_lib Obseq3Proof where
   srcDir := "src"
-  roots := #[`obseq3.proof.common, `obseq3.proof.keystone, `obseq3.proof.permsim_transport, `obseq3.proof.spine, `obseq3.proof.const_write, `obseq3.proof.copy, `obseq3.proof.ref, `obseq3.proof.casts, `obseq3.proof.ptrarith,
-            `obseq3.proof.protectors, `obseq3.proof.alloc, `obseq3.proof.binop, `obseq3.proof.dealloc, `obseq3.proof.slice, `obseq3.proof.assign_if, `obseq3.proof.compiler]
+  roots := #[`obseq3.proof.basis, `obseq3.proof.keystone, `obseq3.proof.permsim_transport, `obseq3.proof.permsim_dealloc,
+            `obseq3.byteproof.memsim, `obseq3.byteproof.spine, `obseq3.byteproof.assoc, `obseq3.byteproof.const_write, `obseq3.byteproof.copy, `obseq3.byteproof.places, `obseq3.byteproof.derefdst, `obseq3.byteproof.copy_chain, `obseq3.byteproof.freshroot, `obseq3.byteproof.projdst, `obseq3.byteproof.ref, `obseq3.byteproof.chainb, `obseq3.byteproof.move, `obseq3.byteproof.leafops, `obseq3.byteproof.readreg, `obseq3.byteproof.readsrc, `obseq3.byteproof.leaffield, `obseq3.byteproof.binop, `obseq3.byteproof.slice, `obseq3.byteproof.alloc, `obseq3.byteproof.refslice, `obseq3.byteproof.refslicefield, `obseq3.byteproof.exposefield, `obseq3.byteproof.stmts, `obseq3.byteproof.program, `obseq3.byteproof.fragment, `obseq3.byteproof.prmpres, `obseq3.byteproof.assignif, `obseq3.byteproof.correct, `obseq3.byteproof.coverage, `obseq3.byteproof.layoutagree]

@@ -1,26 +1,20 @@
-import obseq3.mirlite_semantics
+import obseq3.values
 import obseq3.bytelayout
 
 /-!
-# mirlite on byte-addressed memory — stages 2 and 5
+# mirlite on byte-addressed memory
 
-The same language, permission model and evaluation order as
-`mirlite_semantics.lean`, with the memory replaced by `bytes.Mem`
-(MiniRust-style abstract bytes, provenance on every pointer byte). It runs
-ALONGSIDE the cell semantics, and has its own compiler-correctness proof
-(`byteproof/`, against the byte compiler `compileB`); the conformance
-harness judges verdicts on this model and `--cells` requires the cell
-model's to match.
+The source semantics: mirlite's statements and rvalues, the Stacked
+Borrows permission model on per-byte stacks, and memory as `bytes.Mem`
+(MiniRust-style abstract bytes, provenance on every pointer byte).
 
-Values are still `List MemValue`, one per LEAF (scalar or pointer) of the
+Values are `List MemValue`, one per LEAF (scalar or pointer) of the
 value's layout. Every size, offset and range comes from a per-local BYTE
-LAYOUT (`LayEnv`, stage 5, 2026-10-02): integers at their width, 8-byte
-pointers, aggregates with padding. The loader supplies the real layouts
-(`conformance.toBLayout`); `uniformEnv` is the stage-2 layout (every cell
-an 8-byte leaf), which the compiled-code target (`oseair_bytes.lean`)
-still uses. A place's layout is computed statically: a local's from the
-environment, a field's by its index path, a deref's from the pointer's
-pointee.
+LAYOUT (`LayEnv`): integers at their width, 8-byte pointers, aggregates
+with padding. The loader supplies the real layouts
+(`conformance.toBLayout`); `uniformEnv` gives every integer 8 bytes. A
+place's layout is computed statically: a local's from the environment, a
+field's by its index path, a deref's from the pointer's pointee.
 
 - a WRITE encodes each value at its leaf's width (a word little-endian
   without provenance — it must fit; a pointer with its provenance on all
@@ -41,28 +35,8 @@ namespace obseq3.mirliteB
 open obseq3 obseq3.bytes
 open obseq3.mirlite (Binding Env MemValue PlaceRes)
 
-/-- Bytes per cell: every cell (word or pointer) is an 8-byte leaf. -/
+/-- The uniform layout's integer width, and a pointer's: 8 bytes. -/
 def B : Nat := ptrSize
-
-/-- A layout's size in bytes. -/
-def bsize (τ : LayoutTy) : Nat := B * blockSize τ
-
-/-- The scalar type of each cell of `τ`, in order. -/
-def leafKinds (τ : LayoutTy) : List Scalar := (ofLayoutTy τ).leaves.map (·.2)
-
-theorem leafKinds_length (τ : LayoutTy) : (leafKinds τ).length = blockSize τ := by
-  simp [leafKinds, ofLayoutTy_leaves_length, blockSize]
-
-/-- A value's 8 bytes. -/
-def encodeV : MemValue → Except String (List AbstractByte)
-  | .undef => .ok (List.replicate B .uninit)
-  | .word w =>
-      if w < 256 ^ B then .ok (encodeInt B w)
-      else .error "word does not fit in 64 bits"
-  | .ptrVal b o e s t =>
-      if b + o < 256 ^ B then
-        .ok (encodePtr ⟨b + o, some { base := b, size := s, tag := t, extent := e }⟩)
-      else .error "address does not fit in 64 bits"
 
 /-- Read one leaf at its scalar type. -/
 def decodeV (k : Scalar) (bs : List AbstractByte) : MemValue :=
@@ -77,35 +51,17 @@ def decodeV (k : Scalar) (bs : List AbstractByte) : MemValue :=
       | some ⟨a, none⟩ => .ptrVal a 0 0 0 wildcardTag
       | none => .undef
 
+/-- Read an 8-byte leaf at `addr`. -/
 def readOne (m : bytes.Mem) (addr : Nat) (k : Scalar) : MemValue :=
   decodeV k (m.read addr B)
 
-def readVals (m : bytes.Mem) (addr : Nat) (ks : List Scalar) : List MemValue :=
-  ks.zipIdx.map fun (k, i) => readOne m (addr + B * i) k
-
-@[simp] theorem readVals_length (m : bytes.Mem) (addr : Nat) (ks : List Scalar) :
-    (readVals m addr ks).length = ks.length := by
-  simp [readVals]
-
-/-- Read the cells of a value of layout `τ`. -/
-def readAt (m : bytes.Mem) (addr : Nat) (τ : LayoutTy) : List MemValue :=
-  readVals m addr (leafKinds τ)
-
-theorem readAt_length (m : bytes.Mem) (addr : Nat) (τ : LayoutTy) :
-    (readAt m addr τ).length = blockSize τ := by
-  simp [readAt, leafKinds_length]
-
-def writeVals (m : bytes.Mem) (addr : Nat) (vs : List MemValue) :
-    Except String bytes.Mem := do
-  let bss ← vs.mapM encodeV
-  pure (m.write addr bss.flatten)
-
-/-- A per-cell UnsafeCell mask, per byte. -/
+/-- An 8-byte-leaf UnsafeCell mask, per byte (the uniform layout's). -/
 def expandMask (mask : List Bool) : List Bool := mask.flatMap fun b => List.replicate B b
 
 abbrev LayEnv (Γ : Ctx) := Fin Γ.length → BLayout
 
-/-- Stage 2's layout: every cell an 8-byte leaf. -/
+/-- The uniform layout: every integer and pointer an 8-byte leaf, tuples
+    in C layout. -/
 def uniformEnv (Γ : Ctx) : LayEnv Γ := fun i => ofLayoutTy (Γ.get i)
 
 /-- The layout reached by a path of field indices. -/

@@ -1,7 +1,6 @@
-import obseq3.proof.common
+import obseq3.proof.permsim_dealloc
 import obseq3.proof.permsim_transport
 import obseq3.mirlite_bytes
-import obseq3.oseair_bytes
 
 /-!
 # Byte-level memory simulation — the spike for the byte-addressed proof
@@ -151,7 +150,7 @@ def idA : AddrRenameMap := fun a => some a
 /-- A target value related to a source value (both held as `MemValue`s;
     the relation is the cell proof's `MemValSim` at identity addresses). -/
 def ValSim (ρt : TagRenameMap) (v w : MemValue) : Prop :=
-  MemValSim idA ρt v (oseairB.ofMem w)
+  MemValSim idA ρt v (oseair.ofMem w)
 
 theorem ProvSim.functional {ρt : TagRenameMap} :
     ∀ {p q q' : Option Prov}, ProvSim ρt p q → ProvSim ρt p q' → q = q'
@@ -267,7 +266,7 @@ theorem decodeV_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt) (k : Scalar)
       | none => simp [ValSim, MemValSim]
       | some raw =>
           rw [mapM_byte_sim h hs]
-          simp [ValSim, MemValSim, oseairB.ofMem]
+          simp [ValSim, MemValSim, oseair.ofMem]
   | ptr =>
       have hlen := ListRel.length_eq h
       unfold mirliteB.decodeV decodePtr
@@ -286,9 +285,9 @@ theorem decodeV_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt) (k : Scalar)
                 simp only [Option.bind_eq_bind, Option.bind_some, Option.pure_def]
                 cases hcs : commonProv ps <;> cases hct : commonProv ps' <;>
                   rw [hcs, hct] at hc <;> simp only [ProvSim] at hc
-                · simp [ValSim, MemValSim, oseairB.ofMem, hwf.2, idA]
+                · simp [ValSim, MemValSim, oseair.ofMem, hwf.2, idA]
                 · obtain ⟨hb, hsz, he, ht⟩ := hc
-                  simp [ValSim, MemValSim, oseairB.ofMem, idA, hb, hsz, he, ht]
+                  simp [ValSim, MemValSim, oseair.ofMem, idA, hb, hsz, he, ht]
       · simp [hl, ValSim, MemValSim]
 
 /-! ## Values: encoding -/
@@ -313,7 +312,7 @@ theorem encodeAt_sim {ρt : TagRenameMap} {k : Scalar} {v w : MemValue}
   · cases v with
     | undef => exact absurd rfl hne
     | word x =>
-        cases w <;> simp [ValSim, MemValSim, oseairB.ofMem] at hv
+        cases w <;> simp [ValSim, MemValSim, oseair.ofMem] at hv
         subst hv
         refine ⟨bs, he, ?_⟩
         simp only [mirliteB.encodeAt] at he
@@ -324,7 +323,7 @@ theorem encodeAt_sim {ρt : TagRenameMap} {k : Scalar} {v w : MemValue}
     | ptrVal b o e sz t =>
         cases w with
         | ptrVal b' o' e' sz' t' =>
-            simp only [ValSim, MemValSim, oseairB.ofMem, idA, Option.some.injEq] at hv
+            simp only [ValSim, MemValSim, oseair.ofMem, idA, Option.some.injEq] at hv
             obtain ⟨rfl, rfl, rfl, rfl, ht, -⟩ := hv
             simp only [mirliteB.encodeAt] at he ⊢
             split at he
@@ -333,7 +332,7 @@ theorem encodeAt_sim {ρt : TagRenameMap} {k : Scalar} {v w : MemValue}
               exact ⟨_, rfl, ListRel.take _ (tagBytes_sim (by
                 simp [ProvSim, ht]) _)⟩
             · cases he
-        | _ => simp [ValSim, MemValSim, oseairB.ofMem] at hv
+        | _ => simp [ValSim, MemValSim, oseair.ofMem] at hv
 
 /-! ## Whole values at a layout -/
 
@@ -484,6 +483,6 @@ theorem subcell_store_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt)
       PermSim ρt pS' pT' ∧ ByteMemSim ρt mS' mT' :=
   store_step_sim hwf hp hm ht
     (show ListRel (StoreSim ρt) [.word x] [.word x] from
-      ⟨Or.inr ⟨by simp, by simp [ValSim, MemValSim, oseairB.ofMem]⟩, trivial⟩) hu hw
+      ⟨Or.inr ⟨by simp, by simp [ValSim, MemValSim, oseair.ofMem]⟩, trivial⟩) hu hw
 
 end obseq3.byteproof

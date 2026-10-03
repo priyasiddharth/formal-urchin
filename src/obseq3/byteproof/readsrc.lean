@@ -70,7 +70,7 @@ theorem readToReg_projoff_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRen
       CheckedCompilerM.value (readToReg L (.proj b f)) cs
         = .ok (Register.R
             (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared (.proj b f)) cs).nextReg) ∧
-      ListRel (StoreSim ρt) out.values (vals.map oseairB.Val.toMem) ∧
+      ListRel (StoreSim ρt) out.values (vals.map oseair.Val.toMem) ∧
       cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared (.proj b f)) cs).nextReg ∧
       (∀ r, RegisterBelow cs.nextReg r → s'.reg.lookup r = sA.reg.lookup r) := by
   -- the source read of the field
@@ -179,7 +179,7 @@ theorem readToReg_projoff_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRen
     h_bentry h_freeT (by rw [hA]; exact h_bnd') (by rw [hA]; exact h_ref)
   -- §2 Load through the fresh tag
   let vals := (mirliteB.readL s1.mem (bRes.addr + pathOffset L b f)
-    (mirliteB.placeLayout L (.proj b f))).map oseairB.ofMem
+    (mirliteB.placeLayout L (.proj b f))).map oseair.ofMem
   let S1 : oseairL.State MSB :=
     { s1 with
         perms := q1,
@@ -322,7 +322,7 @@ theorem readToReg_simR0 {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
         = some vals ∧
       CheckedCompilerM.value (readToReg L p) cs
         = .ok (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg) ∧
-      ListRel (StoreSim ρt) out.values (vals.map oseairB.Val.toMem) ∧
+      ListRel (StoreSim ρt) out.values (vals.map oseair.Val.toMem) ∧
       cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg ∧
       (∀ r, RegisterBelow cs.nextReg r → s'.reg.lookup r = sA.reg.lookup r) := by
   cases h with
@@ -411,7 +411,7 @@ theorem readToReg_simR {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
         = some vals ∧
       CheckedCompilerM.value (readToReg L p) cs
         = .ok (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg) ∧
-      ListRel (StoreSim ρt) out.values (vals.map oseairB.Val.toMem) ∧
+      ListRel (StoreSim ρt) out.values (vals.map oseair.Val.toMem) ∧
       cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg ∧
       (∀ r, RegisterBelow cs.nextReg r → s'.reg.lookup r = sA.reg.lookup r) := by
   induction h with

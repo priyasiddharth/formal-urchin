@@ -126,7 +126,7 @@ theorem refSlice_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pr
       simp only [PermissionModel.stackedBorrows] at h_rd'
       simp only [oseairL.evalRhs, h_entry, hA, h_freeT, Bool.false_eq_true, if_false,
         leafLayout_size, h_bnd, PermissionModel.stackedBorrows, h_rd', readL_leafLayout,
-        List.map_cons, List.map_nil, h_w, oseairB.ofMem]
+        List.map_cons, List.map_nil, h_w, oseair.ofMem]
       rfl)
   -- §2 retag the extent through the temporary
   have h_tbd2 : TagRenameBounded ρt perms'.NextTag p2.NextTag := by
@@ -167,7 +167,7 @@ theorem refSlice_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pr
   · exact StoreStepB.rstore compProg _ _ dstL tmp _ (RegMap.lookup_insert_self _ _ _)
       (show _ < _ + 1 by omega)
   · refine ⟨Or.inr ⟨by simp, ?_⟩, trivial⟩
-    simp only [ValSim, oseairB.Val.toMem, oseairB.ofMem, MemValSim, idA, Nat.add_zero]
+    simp only [ValSim, oseair.Val.toMem, oseair.ofMem, MemValSim, idA, Nat.add_zero]
     exact ⟨trivial, trivial, trivial, trivial, TagRenameMap.extend_self _ _ _,
       fun _ _ => ⟨_, rfl⟩⟩
 

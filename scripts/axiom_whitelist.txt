@@ -1,13 +1,16 @@
-# Axiom/sorry whitelist for the audit rooted at obseq3.proof.compile_correct.
+# Axiom/sorry whitelist for the audit rooted at the byte-level correctness
+# theorems (obseq3.byteproof.compileB_correct_{agrees,uniform,all}).
 # scripts/audit_axioms.sh FAILS if the current state differs from this file
 # in EITHER direction (new axiom/sorry, or a stale entry after one closes).
-# Update this file in the same commit that changes the proof state, with a
-# matching entry in the SORRY AUDIT block (obseq3/proof/compiler.lean).
+# Update this file in the same commit that changes the proof state.
 #
 # 2026-08-31: `sorryAx` REMOVED and the [sorries] block EMPTIED — the last
 # residual (`obseq3.proof.ref_place_residual`, the ref place leaves) is
 # closed. compile_correct now rests on the three Lean axioms alone. Any
 # reappearance of sorryAx is a regression, not a drift.
+#
+# 2026-10-03: the cell model and its proof are retired; the roots are the
+# byte-level theorems, which rest on the same three axioms.
 
 [axioms]
 propext

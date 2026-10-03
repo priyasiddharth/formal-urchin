@@ -1,10 +1,10 @@
-import obseq3.mirlite_semantics
 import obseq3.bytemem
 import obseq3.bytelayout
 import obseq3.mirlite_bytes
 
 /-!
-Unit tests for the obseq3 SB model and mirlite semantics, following the
+Unit tests for the obseq3 SB model and mirlite semantics (on bytes, at
+the uniform layout unless a test gives its own), following the
 assert pattern of `src/interp/test_mirlight.lean`, extended with negative
 (`expectErr`) checks. Aggregated into the `interp_tests`/`sb_conformance`
 executables via `InterpTests.lean` / the conformance harness.
@@ -12,7 +12,8 @@ executables via `InterpTests.lean` / the conformance harness.
 
 namespace obseq3.Tests
 
-open obseq3 obseq3.mirlite
+open obseq3 obseq3.mirliteB
+open obseq3.mirlite (MemValue)
 
 def assert (cond : Bool) (msg : String) : IO Unit :=
   if cond then pure () else throw (IO.userError s!"Assertion failed: {msg}")
@@ -152,7 +153,7 @@ def ptrNat := LayoutTy.PtrL natL
 def pairL := LayoutTy.TupL [natL, natL]
 
 def run (Γ : Ctx) (prog : Prog Γ) : Result M Γ :=
-  runN M (prog.length + 1) (State.initial M Γ) prog
+  runN M (uniformEnv Γ) (prog.length + 1) (State.initial M Γ) prog
 
 
 /-- Weak (Box) vs strong protectors, as Miri's `Stack::dealloc`: a Box
@@ -207,12 +208,12 @@ def t7_deref_write_ok : IO Unit := do
     .assign (.deref pA) (.constInit 9)
   ]
   let s ← expectOk (run ΓA prog) "t7 repeated deref writes"
-  match resolvePlace? s xA with
+  match resolvePlace? M (uniformEnv ΓA) s xA with
   | some res =>
-      assert (s.mem.find? res.addr == some (.word 9)) "t7 final value is 9"
+      assert (readOne s.mem res.addr (.int 8) == .word 9) "t7 final value is 9"
   | none => throw (IO.userError "t7: x not allocated")
 
-/-- Field of a tuple at offset > 0: allocation is per-cell, so field-1
+/-- Field of a tuple at offset > 0: per-byte stacks, so field-1
     borrows work (v1/v2 failed here with "address not found"). -/
 def ΓB : Ctx := [pairL, ptrNat, natL]
 
@@ -231,8 +232,8 @@ def t8_field_borrow_at_offset : IO Unit := do
     .assign tB (.copy (.deref pB))
   ]
   let s ← expectOk (run ΓB prog) "t8 field-1 borrow"
-  match resolvePlace? s tB with
-  | some res => assert (s.mem.find? res.addr == some (.word 5)) "t8 read back 5"
+  match resolvePlace? M (uniformEnv ΓB) s tB with
+  | some res => assert (readOne s.mem res.addr (.int 8) == .word 5) "t8 read back 5"
   | none => throw (IO.userError "t8: t not allocated")
 
 def t9_field_borrow_invalidated_by_direct_write : IO Unit := do
@@ -323,13 +324,16 @@ def t16_junk_sized_pointer_retag : IO Unit := do
     .assign pJ (.ref .Mut false [] xJ)]) "t16 setup"
   -- forge the junk: shrink the STORED pointer's size to 0 (unreachable by
   -- any program; every mint site stores the allocation's size)
-  let some (.ptrVal b o e _ t) := s0.mem.find? 1
-    | throw (IO.userError "t16: p's cell should hold a pointer")
-  let junk : State M ΓJ := { s0 with mem := s0.mem.write 1 (.ptrVal b o e 0 t) }
+  let some bp := s0.env ⟨1, by decide⟩ | throw (IO.userError "t16: p unbound")
+  let .ptrVal b o e _ t := readOne s0.mem bp.addr .ptr
+    | throw (IO.userError "t16: p should hold a pointer")
+  let .ok bs := encodeAt .ptr (.ptrVal b o e 0 t)
+    | throw (IO.userError "t16: junk pointer does not encode")
+  let junk : State M ΓJ := { s0 with mem := s0.mem.write bp.addr bs }
   -- the reborrow through the junk-sized pointer must now be UB at the
   -- retag event (pre-fix it succeeded: sb_ref has the granting tag on
   -- cell 0 and never looked at the size)
-  expectErr (stepStmt M junk (.assign LJ (.ref .Mut false [] (.deref pJ))))
+  expectErr (stepStmt M (uniformEnv ΓJ) junk (.assign LJ (.ref .Mut false [] (.deref pJ))))
     "t16 junk-sized reborrow" "out-of-bounds range"
 
 
@@ -348,10 +352,13 @@ def t17_junk_sized_pointer_copy : IO Unit := do
     .assign xK (.constInit 1),
     .assign pK (.ref .Mut false [] xK),
     .assign yK (.constInit 0)]) "t17 setup"
-  let some (.ptrVal b o e _ t) := s0.mem.find? 1
-    | throw (IO.userError "t17: p's cell should hold a pointer")
-  let junk : State M ΓK := { s0 with mem := s0.mem.write 1 (.ptrVal b o e 0 t) }
-  expectErr (stepStmt M junk (.assign yK (.copy (.deref pK))))
+  let some bp := s0.env ⟨1, by decide⟩ | throw (IO.userError "t17: p unbound")
+  let .ptrVal b o e _ t := readOne s0.mem bp.addr .ptr
+    | throw (IO.userError "t17: p should hold a pointer")
+  let .ok bs := encodeAt .ptr (.ptrVal b o e 0 t)
+    | throw (IO.userError "t17: junk pointer does not encode")
+  let junk : State M ΓK := { s0 with mem := s0.mem.write bp.addr bs }
+  expectErr (stepStmt M (uniformEnv ΓK) junk (.assign yK (.copy (.deref pK))))
     "t17 junk-sized copy" "out-of-bounds range"
 
 
@@ -363,9 +370,10 @@ def t18_binop_words : IO Unit := do
     .assign yK (.constInit 5),
     .assign xK (.binOp (.sub .u64) xK yK),
     .assign yK (.binOp (.lt .u64) xK yK)]) "t18 binOp"
-  -- locals are placed in first-write order: x at 0, y at 1 (p is never written)
-  match s0.mem.find? 0, s0.mem.find? 1 with
-  | some (.word 18446744073709551614), some (.word 0) => pure ()
+  let some bx := s0.env ⟨0, by decide⟩ | throw (IO.userError "t18: x unbound")
+  let some byy := s0.env ⟨2, by decide⟩ | throw (IO.userError "t18: y unbound")
+  match readOne s0.mem bx.addr (.int 8), readOne s0.mem byy.addr (.int 8) with
+  | .word 18446744073709551614, .word 0 => pure ()
   | a, b => throw (IO.userError s!"t18: expected x = 2^64 - 2, y = 0, got {reprStr a} {reprStr b}")
 
 /-! ## Byte-addressed memory (`bytemem.lean`, standalone layer) -/
@@ -440,13 +448,13 @@ def t25_bytes_reprC_layout : IO Unit := do
   let L2 := reprC [.int 4, .int 1]
   assert (L2.size == 8) s!"t25 (i32, u8) size {L2.size}"
 
-/-- The cell layout `(word, ptr, (word, word))` becomes `usize` leaves at
-    0, 8, 16, 24: one leaf per cell. -/
-def t26_bytes_of_cell_layout : IO Unit := do
+/-- The uniform layout of `(usize, *usize, (usize, usize))`: four 8-byte
+    leaves at 0, 8, 16, 24. -/
+def t26_bytes_uniform_layout : IO Unit := do
   let τ : LayoutTy := .TupL [.usize, .PtrL .usize, .TupL [.usize, .usize]]
   let L := ofLayoutTy τ
   assert (L.leaves.map (·.1) == [0, 8, 16, 24]) s!"t26 offsets {L.leaves.map (·.1)}"
-  assert (L.leaves.length == layoutSize τ) "t26 one leaf per cell"
+  assert (L.leaves.length == 4) "t26 four leaves"
   assert (L.size == 32) s!"t26 size {L.size}"
 
 /-- A whole `(u8, *const i32, u16)` value stored and loaded back; the
@@ -465,37 +473,6 @@ end bytes
 
 /-! ## mirlite on bytes (`mirlite_bytes.lean`) -/
 
-def runB (Γ : Ctx) (prog : Prog Γ) : mirliteB.Result M Γ :=
-  mirliteB.runN M (mirliteB.uniformEnv Γ) (prog.length + 1) (mirliteB.State.initial M Γ) prog
-
-def expectOkB (r : mirliteB.Result M Γ) (label : String) : IO (mirliteB.State M Γ) :=
-  match r with
-  | .ok s => pure s
-  | .err e => throw (IO.userError s!"{label}: expected ok, got err: {e}")
-
-def expectErrB (r : mirliteB.Result M Γ) (label : String) (substr : String := "") : IO Unit :=
-  match r with
-  | .ok _ => throw (IO.userError s!"{label}: expected err, got ok")
-  | .err e =>
-      if substr.isEmpty || (e.splitOn substr).length > 1 then pure ()
-      else throw (IO.userError s!"{label}: error ⟨{e}⟩ does not mention ⟨{substr}⟩")
-
-/-- The cell tests t6 (write through a popped `&mut`) and t15 (deref of an
-    out-of-bounds pointer) are UB on bytes too, for the same reason. -/
-def t28_bytes_mirlite_same_ub : IO Unit := do
-  expectErrB (runB ΓA [
-    .assign xA (.constInit 7),
-    .assign pA (.ref .Mut false [] xA),
-    .assign (.deref pA) (.constInit 8),
-    .assign tA (.copy xA),
-    .assign (.deref pA) (.constInit 9)]) "t28 popped &mut" "does not exist"
-  expectErrB (runB ΓE' [
-    .assign xE' (.constInit 1),
-    .assign pE' (.ref .Mut false [] xE'),
-    .assign qE' (.ref .Mut false [] pE'),
-    .assign qE' (.ptrOffset qE' 7),
-    .assign tE' (.copy (.deref (.deref qE')))]) "t28 oob deref" "out-of-bounds"
-
 def ΓR : Ctx := [natL, ptrNat, LayoutTy.PtrL ptrNat, ptrNat, natL]
 def xR : Place ΓR natL := .local ⟨⟨0, by decide⟩, rfl⟩
 def pR : Place ΓR ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
@@ -505,8 +482,7 @@ def yR : Place ΓR natL := .local ⟨⟨4, by decide⟩, rfl⟩
 
 /-- Reading a pointer's bytes at integer type (`*(&raw const p as *const
     usize)`): on bytes the result is the ADDRESS, provenance stripped (Miri,
-    MiniRust); the cell model hands back the pointer itself. Byte addresses
-    are 8 per cell, so `x` (the first local) sits at a nonzero, 8-aligned
+    MiniRust). `x` (the first local) sits at a nonzero, 8-aligned
     address. -/
 def t29_bytes_pointer_read_as_word : IO Unit := do
   let prog : Prog ΓR := [
@@ -515,18 +491,13 @@ def t29_bytes_pointer_read_as_word : IO Unit := do
     .assign qR (.ref (.Raw false) false [] pR),
     .assign rR (.ptrCast qR),
     .assign yR (.copy (.deref rR))]
-  let sB ← expectOkB (runB ΓR prog) "t29 bytes"
+  let sB ← expectOk (run ΓR prog) "t29"
   let some bx := sB.env ⟨0, by decide⟩ | throw (IO.userError "t29: x unbound")
   let some byB := sB.env ⟨4, by decide⟩ | throw (IO.userError "t29: y unbound")
-  match mirliteB.readOne sB.mem byB.addr (.int 8) with
+  match readOne sB.mem byB.addr (.int 8) with
   | .word a =>
       assert (a == bx.addr && a % 8 == 0 && a != 0) s!"t29 bytes: y = {a}, x at {bx.addr}"
   | v => throw (IO.userError s!"t29 bytes: y should be a word, got {reprStr v}")
-  let sC ← expectOk (run ΓR prog) "t29 cells"
-  let some byC := sC.env ⟨4, by decide⟩ | throw (IO.userError "t29: y unbound (cells)")
-  match sC.mem.find? byC.addr with
-  | some (.ptrVal ..) => pure ()
-  | v => throw (IO.userError s!"t29 cells: y should hold the pointer cell, got {reprStr v}")
 
 def ΓN : Ctx := [natL, natL, ptrNat]
 def xN : Place ΓN natL := .local ⟨⟨0, by decide⟩, rfl⟩
@@ -604,9 +575,8 @@ def allTests : List (IO Unit) := [
   t23_bytes_int_copy_strips_provenance,
   t24_bytes_mixed_and_uninit,
   t25_bytes_reprC_layout,
-  t26_bytes_of_cell_layout,
+  t26_bytes_uniform_layout,
   t27_bytes_tuple_roundtrip,
-  t28_bytes_mirlite_same_ub,
   t29_bytes_pointer_read_as_word,
   t30_typed_arithmetic,
   t31_narrow_int_to_ptr]

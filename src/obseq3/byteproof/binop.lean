@@ -36,18 +36,18 @@ theorem evalCopy_state {Γ : Ctx} {L : mirliteB.LayEnv Γ} {sM : mirliteB.State 
     rfl
 
 theorem word_of_storeSim {ρt : TagRenameMap} {x : Nat} {vals : List Val}
-    (h : ListRel (StoreSim ρt) [MemValue.word x] (vals.map oseairB.Val.toMem)) :
+    (h : ListRel (StoreSim ρt) [MemValue.word x] (vals.map oseair.Val.toMem)) :
     vals = [Val.Dat x] := by
   match vals, h with
   | [w], ⟨hs, _⟩ =>
       rcases hs with ⟨h1, -⟩ | ⟨-, hv⟩
       · cases h1
       · cases w with
-        | Undef => simp [ValSim, MemValSim, oseairB.Val.toMem, oseairB.ofMem] at hv
+        | Undef => simp [ValSim, MemValSim, oseair.Val.toMem, oseair.ofMem] at hv
         | Dat x' =>
-            simp only [ValSim, MemValSim, oseairB.Val.toMem, oseairB.ofMem] at hv
+            simp only [ValSim, MemValSim, oseair.Val.toMem, oseair.ofMem] at hv
             rw [hv]
-        | Ptr _ _ _ _ _ => simp [ValSim, MemValSim, oseairB.Val.toMem, oseairB.ofMem] at hv
+        | Ptr _ _ _ _ _ => simp [ValSim, MemValSim, oseair.Val.toMem, oseair.ofMem] at hv
   | [], h => exact h.elim
   | _ :: _ :: _, ⟨_, h⟩ => exact h.elim
 

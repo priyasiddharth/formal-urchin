@@ -41,18 +41,18 @@ theorem RegisterBelow.ne_fresh {n : Nat} {r : Register} (h : RegisterBelow n r) 
 
 /-! ## Values -/
 
-theorem ofMem_toMem (w : Val) : oseairB.ofMem (oseairB.Val.toMem w) = w := by
+theorem ofMem_toMem (w : Val) : oseair.ofMem (oseair.Val.toMem w) = w := by
   cases w <;> rfl
 
-theorem toMem_ofMem (v : MemValue) : oseairB.Val.toMem (oseairB.ofMem v) = v := by
+theorem toMem_ofMem (v : MemValue) : oseair.Val.toMem (oseair.ofMem v) = v := by
   cases v <;> rfl
 
 /-- A defined source leaf read as `ValSim`-related to a target leaf: the
     target leaf is defined, and the pair is `StoreSim`-related. -/
 theorem storeSim_of_read {ρt : TagRenameMap} {v w : MemValue}
     (h : ValSim ρt v w) (hv : v ≠ .undef) :
-    oseairB.ofMem w ≠ Val.Undef ∧
-    StoreSim ρt v (oseairB.Val.toMem (oseairB.ofMem w)) := by
+    oseair.ofMem w ≠ Val.Undef ∧
+    StoreSim ρt v (oseair.Val.toMem (oseair.ofMem w)) := by
   refine ⟨?_, Or.inr ⟨hv, ?_⟩⟩
   · intro hw
     simp only [ValSim, hw] at h
@@ -62,8 +62,8 @@ theorem storeSim_of_read {ρt : TagRenameMap} {v w : MemValue}
 theorem readL_rel {ρt : TagRenameMap} :
     ∀ {vs ws : List MemValue}, ListRel (ValSim ρt) vs ws →
       (vs.any (fun v => v == .undef)) = false →
-      ((ws.map oseairB.ofMem).any (fun v => v == Val.Undef)) = false ∧
-      ListRel (StoreSim ρt) vs ((ws.map oseairB.ofMem).map oseairB.Val.toMem)
+      ((ws.map oseair.ofMem).any (fun v => v == Val.Undef)) = false ∧
+      ListRel (StoreSim ρt) vs ((ws.map oseair.ofMem).map oseair.Val.toMem)
   | [], [], _, _ => ⟨rfl, trivial⟩
   | v :: vs, w :: ws, ⟨h, hs⟩, hany => by
       simp only [List.any_cons, Bool.or_eq_false_iff] at hany
@@ -73,7 +73,7 @@ theorem readL_rel {ρt : TagRenameMap} :
       obtain ⟨hws, hrest⟩ := readL_rel hs (by simpa using hany.2)
       refine ⟨?_, hst, hrest⟩
       simp only [List.map_cons, List.any_cons, hws, Bool.or_false]
-      cases hc : oseairB.ofMem w with
+      cases hc : oseair.ofMem w with
       | Undef => exact absurd hc hw
       | Dat _ => rfl
       | Ptr _ _ _ _ _ => rfl
@@ -157,7 +157,7 @@ theorem copy_local_pkg {Γ : Ctx} {σ : LayoutTy} {compProg : oseairL.Prog}
     simp only [bytes.Mem.isFreed, h_alloc.2.2] at h_free ⊢
     simpa using h_free
   obtain ⟨h_defT, h_relS⟩ := readL_rel hrel (by simpa using h_def)
-  let vals := (mirliteB.readL sA.mem b.addr (L l.idx)).map oseairB.ofMem
+  let vals := (mirliteB.readL sA.mem b.addr (L l.idx)).map oseair.ofMem
   let sR : oseairL.State MSB :=
     { sA with perms := pT', reg := sA.reg.insert (Register.R csA.nextReg) vals,
               pc := sA.pc + 1 }

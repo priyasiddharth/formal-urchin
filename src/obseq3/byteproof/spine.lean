@@ -249,7 +249,7 @@ def ValuePkgB {Γ : Ctx} {τ : LayoutTy} (compProg : oseairL.Prog) (L : mirliteB
           StoreStepB compProg sR
             (CheckedCompilerM.run (compileRExprPreChecked L dstL rhs) csA).nextReg
             mkStore dstL vals ∧
-          ListRel (StoreSim ρt') output.values (vals.map oseairB.Val.toMem))
+          ListRel (StoreSim ρt') output.values (vals.map oseair.Val.toMem))
 
 /-! ## Destination: a bound local -/
 

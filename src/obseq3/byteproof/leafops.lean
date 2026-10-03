@@ -39,7 +39,7 @@ structure LeafOpB {Γ : Ctx} (L : mirliteB.LayEnv Γ) (dstL : BLayout) {σ τ : 
     ∃ vals p' perms₂, oseairL.evalRhs MSB s1 (mk reg) = .Ok vals { s1 with perms := p' } ∧
       output.state = { sM with perms := perms₂ } ∧
       PermSim ρt perms₂ p' ∧ TagRenameBounded ρt perms₂.NextTag p'.NextTag ∧
-      ListRel (StoreSim ρt) output.values (vals.map oseairB.Val.toMem)
+      ListRel (StoreSim ρt) output.values (vals.map oseair.Val.toMem)
 
 theorem runN_Assgn {compProg : oseairL.Prog} {s s' : oseairL.State MSB} {r : Register}
     {rhs : oseairL.Rhs} {vals : List Val}
@@ -152,7 +152,7 @@ theorem readCellThrough_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt)
     (h_bnd : ¬ (resolved.addr + k.size > resolved.allocBase + resolved.allocSize))
     (h_rd : sb_read permsR resolved.addr k.size resolved.tag = .ok perms') :
     ∃ p2, oseairL.readCellThrough MSB s1 reg k
-        = .ok (oseairB.ofMem (mirliteB.decodeV k (s1.mem.read resolved.addr k.size)), p2) ∧
+        = .ok (oseair.ofMem (mirliteB.decodeV k (s1.mem.read resolved.addr k.size)), p2) ∧
       PermSim ρt perms' p2 ∧ p2.NextTag = s1.perms.NextTag ∧
       ValSim ρt (mirliteB.decodeV k (mS.read resolved.addr k.size))
         (mirliteB.decodeV k (s1.mem.read resolved.addr k.size)) := by
@@ -172,19 +172,19 @@ theorem valSim_ptr {ρt : TagRenameMap} {b o e sz : Nat} {t : Tag} {w : MemValue
     (h : ValSim ρt (.ptrVal b o e sz t) w) :
     ∃ t', w = .ptrVal b o e sz t' ∧ ρt t = some t' := by
   cases w with
-  | undef => simp [ValSim, MemValSim, oseairB.ofMem] at h
-  | word _ => simp [ValSim, MemValSim, oseairB.ofMem] at h
+  | undef => simp [ValSim, MemValSim, oseair.ofMem] at h
+  | word _ => simp [ValSim, MemValSim, oseair.ofMem] at h
   | ptrVal b' o' e' s' t' =>
-      simp only [ValSim, MemValSim, oseairB.ofMem, idA, Option.some.injEq] at h
+      simp only [ValSim, MemValSim, oseair.ofMem, idA, Option.some.injEq] at h
       obtain ⟨rfl, rfl, rfl, rfl, ht, -⟩ := h
       exact ⟨t', rfl, ht⟩
 
 theorem valSim_word {ρt : TagRenameMap} {n : Nat} {w : MemValue}
     (h : ValSim ρt (.word n) w) : w = .word n := by
   cases w with
-  | undef => simp [ValSim, MemValSim, oseairB.ofMem] at h
-  | word n' => simp only [ValSim, MemValSim, oseairB.ofMem] at h; rw [h]
-  | ptrVal _ _ _ _ _ => simp [ValSim, MemValSim, oseairB.ofMem] at h
+  | undef => simp [ValSim, MemValSim, oseair.ofMem] at h
+  | word n' => simp only [ValSim, MemValSim, oseair.ofMem] at h; rw [h]
+  | ptrVal _ _ _ _ _ => simp [ValSim, MemValSim, oseair.ofMem] at h
 
 /-- Determinism of the source's access resolution, as the two
     hypotheses arrive. -/
@@ -266,10 +266,10 @@ theorem fromExposed_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) 
           ((sM.mem.allocOf n).getD (n, 0)).2 wildcardTag], p2, perms', ?_, rfl, h_psim2, ?_, ?_⟩
       · simp only [oseairL.evalRhs]
         rw [h_rct, h_w]
-        simp only [oseairB.ofMem, h_ao]
+        simp only [oseair.ofMem, h_ao]
       · rw [sb_read_NextTag h_rd, h_nt2]; exact h_tbd
       · refine ⟨Or.inr ⟨by simp, ?_⟩, trivial⟩
-        simp only [ValSim, oseairB.Val.toMem, oseairB.ofMem, MemValSim, idA]
+        simp only [ValSim, oseair.Val.toMem, oseair.ofMem, MemValSim, idA]
         exact ⟨trivial, trivial, trivial, trivial, hwf.2, fun _ _ => ⟨_, rfl⟩⟩
     · cases h
 
@@ -307,10 +307,10 @@ theorem ptrOffset_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {�
           e sz t'], p2, perms', ?_, rfl, h_psim2, ?_, ?_⟩
       · simp only [oseairL.evalRhs]
         rw [h_rct, h_w]
-        simp only [oseairB.ofMem, h_neg, if_false]
+        simp only [oseair.ofMem, h_neg, if_false]
       · rw [sb_read_NextTag h_rd, h_nt2]; exact h_tbd
       · refine ⟨Or.inr ⟨by simp, ?_⟩, trivial⟩
-        simp only [ValSim, oseairB.Val.toMem, oseairB.ofMem, MemValSim, idA]
+        simp only [ValSim, oseair.Val.toMem, oseair.ofMem, MemValSim, idA]
         exact ⟨trivial, trivial, trivial, trivial, h_t, fun _ _ => ⟨_, rfl⟩⟩
     · cases h
 
@@ -365,7 +365,7 @@ theorem ptrCast_leafop {Γ : Ctx} {L : mirliteB.LayEnv Γ} (dstL : BLayout) {σ 
       · simp only [oseairL.evalRhs, h_reg, hA, h_freeT, Bool.false_eq_true, if_false,
           leafLayout_size, h_bnd, PermissionModel.stackedBorrows, h_rd', readL_leafLayout,
           List.map_cons, List.map_nil]
-        have h_defT' : ([oseairB.ofMem (mirliteB.decodeV (mirliteB.leafKind (mirliteB.placeLayout L src))
+        have h_defT' : ([oseair.ofMem (mirliteB.decodeV (mirliteB.leafKind (mirliteB.placeLayout L src))
             (s1.mem.read resolved.addr (mirliteB.leafKind (mirliteB.placeLayout L src)).size))].any
             fun v => v == Val.Undef) = false := h_defT
         rw [h_defT']

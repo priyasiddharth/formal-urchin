@@ -1,5 +1,5 @@
 import Lean
-import obseq3.proof.compiler
+import obseq3.byteproof.layoutagree
 
 /-!
 # Axiom audit
@@ -17,17 +17,17 @@ the root, so axioms smuggled in through any lemma the proof consumes
 are caught; declarations not reachable from the root are by definition
 irrelevant to the correctness statement.
 
-When a residual is closed (or a new audited sorry is introduced), update
-`expectedSorryRoots` in the same commit — the audit is the machine-checked
-mirror of the SORRY AUDIT block in `obseq3/proof/compiler.lean`.
+The proof is sorry-free; a sorry reaching a root fails the audit. The
+roots are the byte-level correctness theorems (`obseq3/byteproof/`).
 -/
 
 open Lean
 
 /-- The roots whose closures are audited. -/
 def auditRoots : List Name :=
-  [``obseq3.proof.compile_correct,
-   ``obseq3.proof.compile_correct_from_initial]
+  [``obseq3.byteproof.compileB_correct_agrees,
+   ``obseq3.byteproof.compileB_correct_uniform,
+   ``obseq3.byteproof.compileB_correct_all]
 
 /-- The whitelist lives in a data file next to this script; the audit
     compares the CURRENT state against it in both directions. -/
@@ -118,7 +118,7 @@ open Elab Command in
   unless staleSorry.isEmpty do
     failures := failures ++ [s!"pinned sorries no longer present (closed?): {staleSorry}"]
   unless failures.isEmpty do
-    throwError "axiom audit FAILED — current state ≠ {whitelistPath}:\n  {String.intercalate "\n  " failures}\n(update the whitelist file only together with the SORRY AUDIT block)"
+    throwError "axiom audit FAILED — current state ≠ {whitelistPath}:\n  {String.intercalate "\n  " failures}\n(update the whitelist file only with a recorded reason)"
   IO.println s!"axiom audit OK — matches {whitelistPath}
   roots        : {auditRoots}
   axioms used  : {allAxioms.toList}

@@ -1,6 +1,6 @@
 import obseq3.byteproof.copy
 import obseq3.proof.keystone
-import obseq3.proof.spine
+import obseq3.proof.permsim_dealloc
 
 /-!
 # The byte place-lowering simulation
@@ -43,11 +43,11 @@ theorem decode_ptr_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt) {mS mT : byt
   have hv := decodeV_sim hwf .ptr (h_mem.read a n)
   rw [h] at hv
   cases hw : mirliteB.decodeV .ptr (mT.read a n) with
-  | undef => rw [hw] at hv; exact absurd hv (by simp [ValSim, MemValSim, oseairB.ofMem])
-  | word _ => rw [hw] at hv; exact absurd hv (by simp [ValSim, MemValSim, oseairB.ofMem])
+  | undef => rw [hw] at hv; exact absurd hv (by simp [ValSim, MemValSim, oseair.ofMem])
+  | word _ => rw [hw] at hv; exact absurd hv (by simp [ValSim, MemValSim, oseair.ofMem])
   | ptrVal b' o' e' s' t' =>
       rw [hw] at hv
-      simp only [ValSim, MemValSim, oseairB.ofMem, idA, Option.some.injEq] at hv
+      simp only [ValSim, MemValSim, oseair.ofMem, idA, Option.some.injEq] at hv
       obtain ⟨rfl, rfl, rfl, rfl, ht, -⟩ := hv
       exact ⟨t', rfl, ht⟩
 

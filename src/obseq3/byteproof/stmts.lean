@@ -1,6 +1,5 @@
 import obseq3.byteproof.refslice
-import obseq3.proof.protectors
-import obseq3.proof.dealloc
+import obseq3.proof.permsim_dealloc
 
 /-!
 # The non-assignment statements: protectors and `dealloc`

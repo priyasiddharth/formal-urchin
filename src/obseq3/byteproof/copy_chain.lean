@@ -174,7 +174,7 @@ theorem copy_chain_pkg {Γ : Ctx} {σ : LayoutTy} {compProg : oseairL.Prog}
   have h_freeT : s1.mem.isFreed resolved.allocBase = false := by
     simp only [bytes.Mem.isFreed, ← h_lock1.2.2] at h_free ⊢
     simpa using h_free
-  let vals := (mirliteB.readL s1.mem resolved.addr (mirliteB.placeLayout L src)).map oseairB.ofMem
+  let vals := (mirliteB.readL s1.mem resolved.addr (mirliteB.placeLayout L src)).map oseair.ofMem
   let sR : oseairL.State MSB :=
     { s1 with
         perms := pT',

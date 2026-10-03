@@ -1,20 +1,15 @@
 import conformance.elab
-import obseq3.compile
 import obseq3.compile_bytes
 import obseq3.mirlite_bytes
 import obseq3.layout_agree
-import obseq3.oseair_bytes
 
 /-!
 Conformance harness: reads a manifest of Miri-derived tests, loads each
 Charon ULLBC artifact through the loader/elaborator, runs it under the
-obseq3 mirlite semantics, and compares the verdict with the manifest's
-expectation. On branch `byteaddress` the JUDGED verdict is the BYTE
-model's (`mirlite_bytes.lean` on the loader's real layouts); the cell
-model, which the compiler proof is about, is checked against it with
-`--cells`, and against its compiled target with `--osea`; `--osea` also
-compiles with the BYTE compiler (`compile_bytes.lean`, real layouts) and
-checks its layout-typed target against the judged byte verdict.
+obseq3 mirlite semantics on bytes (`mirlite_bytes.lean`, at the loader's
+real layouts), and compares the verdict with the manifest's expectation.
+`--osea` also compiles each program (`compile_bytes.lean`, same layouts)
+and requires its target (`oseair_layout.lean`) to reach the same verdict.
 
 Outcomes:
 - `pass`        — verdict (and line, when specified) matches expectation
@@ -56,31 +51,10 @@ def Verdict.render : Verdict → String
   | .certRejected _ line => s!"certificate rejected at line {line} (Miri's recorded branch was not taken)"
   | .certExhausted _ line => s!"ran past Miri's UB point (line {line})"
 
-def runLoaded (l : Loaded) : Verdict :=
-  go (l.prog.length + 2) (State.initial M l.Γ)
-where
-  go : Nat → State M l.Γ → Verdict
-    | 0, _ => .fuelExhausted
-    | fuel + 1, st =>
-        match l.prog[st.pc]? with
-        | none => .ok
-        | some .halt => .ok
-        | some stmt =>
-            match stepStmt M st stmt with
-            | .ok st' => go fuel st'
-            | .err msg =>
-                let line := l.lines[st.pc]?.getD 0
-                if line ≥ 2 * certLineBase then .certExhausted st.pc (line - 2 * certLineBase)
-                else if line ≥ certLineBase then .certRejected st.pc (line - certLineBase)
-                else .ub st.pc line msg
+/-! ## The model's verdict
 
-/-! ## The byte model (judged) and `--cells`
-
-The byte model — mirlite on byte-addressed memory
-(`obseq3/mirlite_bytes.lean`) with the loader's real layouts — gives the
-verdict judged against Miri. `--cells` runs the cell model too and
-requires the same verdict (ok↔ok, or UB at the same source statement),
-except on entries the manifest records as diverging. -/
+mirlite on byte-addressed memory (`obseq3/mirlite_bytes.lean`) with the
+loader's real layouts gives the verdict judged against Miri. -/
 
 /-- The loader's byte layouts as an environment (a local without one — none
     should be missing — falls back to the uniform layout). -/
@@ -230,29 +204,6 @@ inductive ReasonStatus
 | unchecked (why : String)
 deriving Repr
 
-inductive CellsStatus
-| matched
--- the cell model differs from the byte model, as the manifest records
--- for this entry (`"cell_model": "diverges"`): a known cell-model limit
-| diverging
-| mismatch (why : String)
-deriving Repr
-
-/-- The compiled program on the byte target (`oseair_bytes.lean`). -/
-def runOseaProgBytes (tprog : obseq3.oseair.Prog) (fuel : Nat) : Verdict :=
-  go fuel (oseairB.State.initial M)
-where
-  go : Nat → oseairB.State M → Verdict
-    | 0, _ => .fuelExhausted
-    | n + 1, st =>
-        match tprog st.pc with
-        | none => .ok
-        | some .Halt => .ok
-        | some _ =>
-            match oseairB.step M st tprog with
-            | .Ok st' => go n st'
-            | .Err msg => .ub st.pc 0 msg
-
 /-- The statement a verdict blames, if any. -/
 def Verdict.stmt? : Verdict → Option Nat
   | .ub i _ _ | .certRejected i _ | .certExhausted i _ => some i
@@ -266,101 +217,23 @@ def Verdict.agrees : Verdict → Verdict → Bool
       | some i, some j => i == j
       | _, _ => false
 
-/-- `--cells`: the cell model against the (judged) byte model — they must
-    agree, except on an entry recorded as diverging — and the compiled
-    program on the byte target against the byte source. -/
-def cellsStatus (l : Loaded) (byte cell : Verdict) (diverges : Bool) : CellsStatus :=
-  let srcCheck : CellsStatus :=
-    if diverges then
-      if cell.agrees byte then
-        .mismatch s!"the cell model now agrees ({cell.render}): drop `cell_model: diverges`"
-      else .diverging
-    else if cell.agrees byte then .matched
-    else .mismatch s!"cells {cell.render}, bytes {byte.render}"
-  match srcCheck with
-  | .mismatch w => .mismatch w
-  | st =>
-  -- the byte TARGET against the byte source, as `--osea` does for cells;
-  -- a program the compiler does not cover is checked on the source only.
-  -- The compiler still emits cell units, so the target runs on the
-  -- UNIFORM layout (8 bytes per cell) and is compared with the byte
-  -- source on that same layout
-  let b := runLoadedBytes l (mirliteB.uniformEnv l.Γ)
-  match compile.compileProg l.prog with
-  | .error _ => st
-  | .ok tprog =>
-      let ranges := compile.stmtLabelRanges l.prog
-      let fuel := compile.emittedLabels l.prog + 2
-      match runOseaProgBytes tprog fuel, b with
-      | .ok, .ok => st
-      | .ub label _ msg, _ =>
-          match ranges.findIdx? (fun r => r.1 ≤ label && label < r.2), b.stmt? with
-          | some i, some j =>
-              if i == j then st
-              else .mismatch s!"byte target UB at stmt {i} ({msg}), byte source at stmt {j}"
-          | _, _ => .mismatch s!"byte target UB (label {label}: {msg}), byte source {b.render}"
-      | t, _ => .mismatch s!"byte target {t.render}, byte source {b.render}"
-
 /-! ## Differential mode (`--osea`)
 
-Compile the loaded program to OSEA-IR-v3 and require the SAME verdict as
-mirlite: ok↔ok, or UB attributed (via the compiler's per-statement label
-ranges) to the same source statement. The compiler covers only the
-proof-core subset (constInit/copy/ref/halt); everything else is reported
-as skipped with the compiler's reason. A verdict mismatch is a hard
-failure of the suite. -/
+Compile the loaded program to OSEA-IR (`compile_bytes.lean`, at the
+loader's layouts) and require the SAME verdict as mirlite: ok↔ok, or UB
+attributed (via the compiler's per-statement label ranges) to the same
+source statement. A verdict mismatch is a hard failure of the suite. -/
 
 inductive OseaRun
 | ok
 | ub (label : Nat) (msg : String)
 | fuelExhausted
 
-def runOseaProg (tprog : obseq3.oseair.Prog) (fuel : Nat) : OseaRun :=
-  go fuel (oseair.State.initial M)
-where
-  go : Nat → oseair.State M → OseaRun
-    | 0, _ => .fuelExhausted
-    | n + 1, st =>
-        match tprog st.pc with
-        | none => .ok
-        | some .Halt => .ok
-        | some _ =>
-            match oseair.step M st tprog with
-            | .Ok st' => go n st'
-            | .Err msg => .ub st.pc msg
-
 inductive OseaStatus
 | skipped (reason : String)
 | matched
 | mismatch (why : String)
 deriving Repr
-
-def oseaStatus (l : Loaded) (src : Verdict) : OseaStatus :=
-  match compile.compileProg l.prog with
-  | .error (.unsupported w) => .skipped w
-  | .error (.missingLocal i) => .skipped s!"local _{i} read before assignment"
-  | .ok tprog =>
-      let ranges := compile.stmtLabelRanges l.prog
-      let fuel := compile.emittedLabels l.prog + 2
-      -- a certificate check that failed is UB at its statement on both
-      -- machines (the `copy` of an uninitialised cell), attributed alike
-      let srcErr? : Option Nat := match src with
-        | .ub i _ _ => some i
-        | .certRejected i _ => some i
-        | .certExhausted i _ => some i
-        | _ => none
-      match runOseaProg tprog fuel, src, srcErr? with
-      | .ok, .ok, _ => .matched
-      | .ub label msg, _, some srcIdx =>
-          match ranges.findIdx? (fun r => r.1 ≤ label && label < r.2) with
-          | some i =>
-              if i == srcIdx then .matched
-              else .mismatch
-                s!"target UB at stmt {i} (label {label}: {msg}), source UB at stmt {srcIdx}"
-          | none => .mismatch s!"target UB at unattributable label {label}: {msg}"
-      | .ok, v, _ => .mismatch s!"target ok, source {v.render}"
-      | .ub label msg, v, _ => .mismatch s!"target UB (label {label}: {msg}), source {v.render}"
-      | .fuelExhausted, _, _ => .mismatch "target fuel exhausted"
 
 /-- The byte compiler's output on its target (`oseair_layout.lean`). -/
 def runOseaProgL (tprog : obseq3.oseairL.Prog) (fuel : Nat) : OseaRun :=
@@ -377,10 +250,10 @@ where
             | .Ok st' => go n st'
             | .Err msg => .ub st.pc msg
 
-/-- `--osea` for the byte compiler: compiled at the loader's real layouts
-    and run on the layout-typed target, against the byte source's
-    (judged) verdict `src` on the same layouts. -/
-def oseaStatusL (l : Loaded) (src : Verdict) : OseaStatus :=
+/-- `--osea`: compiled at the loader's real layouts and run on the
+    target, against the source's (judged) verdict `src` on the same
+    layouts. -/
+def oseaStatus (l : Loaded) (src : Verdict) : OseaStatus :=
   match compileB.compileProg l.layEnv l.prog with
   | .error (.unsupported w) => .skipped w
   | .error (.missingLocal i) => .skipped s!"local _{i} read before assignment"
@@ -394,12 +267,12 @@ def oseaStatusL (l : Loaded) (src : Verdict) : OseaStatus :=
           | some i =>
               if i == srcIdx then .matched
               else .mismatch
-                s!"layout target UB at stmt {i} (label {label}: {msg}), byte source UB at stmt {srcIdx}"
-          | none => .mismatch s!"layout target UB at unattributable label {label}: {msg}"
-      | .ok, v, _ => .mismatch s!"layout target ok, byte source {v.render}"
+                s!"target UB at stmt {i} (label {label}: {msg}), source UB at stmt {srcIdx}"
+          | none => .mismatch s!"target UB at unattributable label {label}: {msg}"
+      | .ok, v, _ => .mismatch s!"target ok, source {v.render}"
       | .ub label msg, v, _ =>
-          .mismatch s!"layout target UB (label {label}: {msg}), byte source {v.render}"
-      | .fuelExhausted, _, _ => .mismatch "layout target fuel exhausted"
+          .mismatch s!"target UB (label {label}: {msg}), source {v.render}"
+      | .fuelExhausted, _, _ => .mismatch "target fuel exhausted"
 
 /-! ## Manifest -/
 
@@ -416,9 +289,6 @@ structure TestEntry where
   expectUB : Bool
   expectLine : Option Nat
   certificate : Option String := none   -- `<name>.cert.json` beside the artifact
-  -- `"cell_model": "diverges"`: the CELL model is known to get this one
-  -- wrong (a byte-level program); `--cells` expects the two to differ
-  cellDiverges : Bool := false
   -- `"reason_known"`: why this entry's UB reason is known to differ from
   -- Miri's (the verdict and line still match)
   reasonKnown : Option String := none
@@ -449,9 +319,8 @@ def parseManifest (j : Json) : Except String Manifest := do
     let expectUB := (expected >>= (getK · "verdict") >>= asStr) == some "ub"
     let expectLine := expected >>= (getK · "line") >>= asNat
     let certificate := getK t "certificate" >>= asStr
-    let cellDiverges := (getK t "cell_model" >>= asStr) == some "diverges"
     let reasonKnown := getK t "reason_known" >>= asStr
-    pure { id, artifact, status, expectUB, expectLine, certificate, cellDiverges, reasonKnown : TestEntry }
+    pure { id, artifact, status, expectUB, expectLine, certificate, reasonKnown : TestEntry }
   return { tests }
 
 /-! ## Outcomes -/
@@ -497,9 +366,6 @@ structure TestResult where
   verdict : Verdict
   outcome : Outcome
   osea : Option OseaStatus := none
-  -- the byte compiler's target against the byte source (`--osea`)
-  oseaL : Option OseaStatus := none
-  cells : Option CellsStatus := none
   reason : Option ReasonStatus := none
   stats : CertStats := {}
 
@@ -536,7 +402,7 @@ def layoutCheck (charonDir : String) (e : TestEntry) :
             | .ok loaded => pure (some loaded.layoutDisagreements)
   catch _ => pure none
 
-def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) (cells : Bool := false) :
+def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) :
     IO TestResult := do
   let path := s!"{charonDir}/{e.artifact}"
   -- Miri's account of the UB, when live.py recorded one
@@ -546,23 +412,20 @@ def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) (cells : Bool :=
     | some p => do
         if ← System.FilePath.pathExists p then pure (some (← IO.FS.readFile p)) else pure none
     | none => pure none
-  let (verdict, oseaSt, oseaLSt, cellsSt, reasonSt, stats) ←
+  let (verdict, oseaSt, reasonSt, stats) ←
     try
       let content ← IO.FS.readFile path
       match Json.parse content with
-      | .error err => pure (Verdict.loadError s!"json parse: {err}", none, none, none, none, {})
+      | .error err => pure (Verdict.loadError s!"json parse: {err}", none, none, {})
       | .ok json =>
           match ← loadCert charonDir e with
-          | .error err => pure (Verdict.loadError err, none, none, none, none, {})
+          | .error err => pure (Verdict.loadError err, none, none, {})
           | .ok cert? =>
             match loadCrate json cert? with
-            | .error err => pure (Verdict.loadError err, none, none, none, none, {})
+            | .error err => pure (Verdict.loadError err, none, none, {})
             | .ok loaded =>
-                -- the JUDGED verdict: the byte model on the real layouts
+                -- the JUDGED verdict, on the real layouts
                 let (v, mem?) := runLoadedBytesFull loaded loaded.layEnv
-                -- the cell model, for `--osea` (its compiled target) and
-                -- `--cells` (against the byte model)
-                let vCell := runLoaded loaded
                 let reason : Option ReasonStatus := match v, miriReport? with
                   | .ub _ _ msg, some rep =>
                       let ours := classifyOurs msg mem?
@@ -573,14 +436,11 @@ def runEntry (charonDir : String) (osea : Bool) (e : TestEntry) (cells : Bool :=
                               | none => .differ ours miri)
                   | .ub _ _ _, none => some (.unchecked "no Miri report recorded")
                   | _, _ => none
-                pure (v, if osea then some (oseaStatus loaded vCell) else none,
-                  if osea then some (oseaStatusL loaded v) else none,
-                  if cells then some (cellsStatus loaded v vCell e.cellDiverges) else none,
+                pure (v, if osea then some (oseaStatus loaded v) else none,
                   reason, loaded.stats)
     catch ex =>
-      pure (Verdict.loadError s!"io: {ex}", none, none, none, none, {})
-  return { entry := e, verdict, outcome := judge e verdict, osea := oseaSt, oseaL := oseaLSt,
-           cells := cellsSt,
+      pure (Verdict.loadError s!"io: {ex}", none, none, {})
+  return { entry := e, verdict, outcome := judge e verdict, osea := oseaSt,
            reason := reasonSt, stats }
 
 def outcomeLabel : Outcome → String
@@ -602,16 +462,10 @@ def reportResult (r : TestResult) (record : Bool) : IO Unit := do
   if r.stats.used && (record || r.stats.pinned > 0) then
     IO.println s!"        [certified: {r.stats.checked} checked ({r.stats.runtime} at runtime), {r.stats.pinned} unchecked]"
   match r.osea with
-  | some .matched => IO.println s!"        [osea: matched]"
+  | some .matched => if record then IO.println s!"        [osea: matched]"
   | some (.mismatch why) => IO.println s!"        OSEA MISMATCH: {why}"
   | some (.skipped reason) =>
       if record then IO.println s!"        [osea: skipped — {reason}]"
-  | none => pure ()
-  match r.oseaL with
-  | some .matched => if record then IO.println s!"        [osea bytes: matched]"
-  | some (.mismatch why) => IO.println s!"        OSEA BYTES MISMATCH: {why}"
-  | some (.skipped reason) =>
-      if record then IO.println s!"        [osea bytes: skipped — {reason}]"
   | none => pure ()
   match r.reason with
   | some (.same rr) => if record then IO.println s!"        [reason: as Miri — {rr.render}]"
@@ -621,12 +475,6 @@ def reportResult (r : TestResult) (record : Bool) : IO Unit := do
       if record then IO.println s!"        [reason: known difference — ours {ours.render}, Miri {miri.render}: {why}]"
   | some (.unchecked why) => if record then IO.println s!"        [reason: unchecked — {why}]"
   | none => pure ()
-  match r.cells with
-  | some .matched => if record then IO.println s!"        [cells: matched]"
-  | some .diverging => IO.println s!"        [cells: diverge, as recorded — a cell-model limit]"
-  | some (.mismatch why) => IO.println s!"        CELLS MISMATCH: {why}"
-  | none => pure ()
-
 def summarize (rs : List TestResult) : IO UInt32 := do
   let count (f : Outcome → Bool) := rs.filter (f ·.outcome) |>.length
   let passes := count (· == .pass)
@@ -663,29 +511,12 @@ def summarize (rs : List TestResult) : IO UInt32 := do
       let skipped := cnt (fun s => match s with | .skipped _ => true | _ => false)
       IO.println s!"osea: matched {matched} | mismatch {mism} | skipped {skipped}"
       pure mism
-  let oseaLSts := rs.filterMap (·.oseaL)
-  let oseaLMismatches ←
-    if oseaLSts.isEmpty then pure 0
-    else do
-      let cnt (f : OseaStatus → Bool) := (oseaLSts.filter f).length
-      let matched := cnt (fun s => match s with | .matched => true | _ => false)
-      let mism := cnt (fun s => match s with | .mismatch _ => true | _ => false)
-      let skipped := cnt (fun s => match s with | .skipped _ => true | _ => false)
-      IO.println s!"osea bytes: matched {matched} | mismatch {mism} | skipped {skipped}"
-      pure mism
   let reasons := rs.filterMap (·.reason)
   if !reasons.isEmpty then
     let rc (f : ReasonStatus → Bool) := (reasons.filter f).length
     IO.println s!"reasons: as Miri {rc fun s => match s with | .same _ => true | _ => false} | known differences {rc fun s => match s with | .known _ _ _ => true | _ => false} | differ {rc fun s => match s with | .differ _ _ => true | _ => false} | unchecked {rc fun s => match s with | .unchecked _ => true | _ => false}"
-  let cellsSts := rs.filterMap (·.cells)
-  let cnt (f : CellsStatus → Bool) := (cellsSts.filter f).length
-  let cellsMismatches := cnt fun s => match s with | .mismatch _ => true | _ => false
-  if !cellsSts.isEmpty then
-    let matched := cnt fun s => match s with | .matched => true | _ => false
-    let diverging := cnt fun s => match s with | .diverging => true | _ => false
-    IO.println s!"cells: matched {matched} | diverging {diverging} (recorded) | mismatch {cellsMismatches}"
   -- an UNRECORDED reason difference fails the suite, as a wrong line does
   let reasonDiffs := (rs.filterMap (·.reason)).filter (fun s => match s with | .differ _ _ => true | _ => false) |>.length
-  return if fails > 0 || xpasses > 0 || oseaMismatches > 0 || oseaLMismatches > 0 || cellsMismatches > 0 || reasonDiffs > 0 then 1 else 0
+  return if fails > 0 || xpasses > 0 || oseaMismatches > 0 || reasonDiffs > 0 then 1 else 0
 
 end conformance

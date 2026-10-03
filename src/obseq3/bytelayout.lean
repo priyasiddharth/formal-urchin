@@ -34,7 +34,7 @@ inductive BLayout where
   | int (size : Nat)
   | ptr (pointee : BLayout)
   | tup (fields : List BLayout) (offsets : List Nat) (size align : Nat)
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 def BLayout.size : BLayout → Nat
   | .int n => n
@@ -186,40 +186,6 @@ theorem ofLayoutTyList_good : (ts : List LayoutTy) →
       rcases hf with rfl | hf
       · exact ofLayoutTy_good t
       · exact ofLayoutTyList_good ts f hf
-end
-
-theorem leavesFields_length (fs : List BLayout) (os : List Nat)
-    (h : os.length = fs.length) :
-    (BLayout.leavesFields fs os).length = (fs.map fun f => f.leaves.length).sum := by
-  induction fs generalizing os with
-  | nil => cases os <;> simp [BLayout.leavesFields]
-  | cons f fs ih =>
-    cases os with
-    | nil => simp at h
-    | cons o os =>
-      simp only [BLayout.leavesFields, List.length_append, List.length_map, List.map_cons,
-        List.sum_cons]
-      rw [ih os (by simpa using h)]
-
-mutual
-/-- The leaves of the byte layout are exactly the cells of the cell
-    layout: one per word or pointer. -/
-theorem ofLayoutTy_leaves_length : (τ : LayoutTy) →
-    (ofLayoutTy τ).leaves.length = layoutSize τ
-  | .IntL _ => by simp [ofLayoutTy, BLayout.leaves, layoutSize]
-  | .PtrL _ => by simp [ofLayoutTy, BLayout.leaves, layoutSize]
-  | .TupL ts => by
-      rw [ofLayoutTy, layoutSize, reprC]
-      simp only [BLayout.leaves]
-      rw [leavesFields_length _ _ (placeFields_length _ _)]
-      exact ofLayoutTyList_leaves_length ts
-
-theorem ofLayoutTyList_leaves_length : (ts : List LayoutTy) →
-    ((ofLayoutTyList ts).map fun f => f.leaves.length).sum = layoutSizeList ts
-  | [] => by simp [ofLayoutTyList, layoutSizeList]
-  | t :: ts => by
-      simp only [ofLayoutTyList, List.map_cons, List.sum_cons, layoutSizeList]
-      rw [ofLayoutTy_leaves_length t, ofLayoutTyList_leaves_length ts]
 end
 
 /-! ## Whole values, leaf by leaf -/

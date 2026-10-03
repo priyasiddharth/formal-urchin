@@ -1,6 +1,6 @@
 import obseq3.byteproof.readsrc
 import obseq3.byteproof.stmts
-import obseq3.proof.compiler
+import obseq3.proof.permsim_dealloc
 
 /-!
 # The byte-level program theorem
@@ -270,8 +270,31 @@ theorem stmt_in_prog {Γ : Ctx} {L : mirliteB.LayEnv Γ} :
 theorem InvAtB_initial {Γ : Ctx} (L : mirliteB.LayEnv Γ) :
     InvAtB L initialTagRename (mirliteB.State.initial MSB Γ) (oseairL.State.initial MSB)
       (initialState Γ) := by
-  obtain ⟨-, -, -, -, h_psim, -, h_wf, h_tbd, -, -, -⟩ :=
-    CompilerInv_initial (Γ := Γ) ([] : obseq3.Prog Γ)
+  have h_psim : PermSim initialTagRename (mirliteB.State.initial MSB Γ).perms
+      (oseairL.State.initial MSB).perms := by
+    -- empty stacks, no protector frames, nothing exposed, no weak tags
+    refine ⟨?_, trivial, trivial, Nat.le_refl _, trivial⟩
+    intro a
+    simp [SB.find?, mirliteB.State.initial, oseairL.State.initial, MSB,
+      PermissionModel.stackedBorrows, AccessPerms.init]
+  have h_wf : TagRenameWF initialTagRename := by
+    -- injective (one point) and fixes the wildcard
+    refine ⟨?_, by simp [initialTagRename]⟩
+    intro t1 t2 t' h1 h2
+    by_cases hc1 : t1 = wildcardTag <;> by_cases hc2 : t2 = wildcardTag <;>
+      simp [initialTagRename, hc1, hc2] at h1 h2 ⊢
+  have h_tbd : TagRenameBounded initialTagRename (mirliteB.State.initial MSB Γ).perms.NextTag
+      (oseairL.State.initial MSB).perms.NextTag := by
+    -- the only mapped tag is 0, and both start at 1
+    intro t t' h
+    by_cases hc : t = wildcardTag
+    · subst hc
+      simp [initialTagRename] at h
+      subst h
+      refine ⟨?_, ?_⟩ <;>
+        simp [wildcardTag, mirliteB.State.initial, oseairL.State.initial,
+          PermissionModel.stackedBorrows, AccessPerms.init]
+    · simp [initialTagRename, hc] at h
   exact {
     pc := rfl
     lbs := fun loc b h => by

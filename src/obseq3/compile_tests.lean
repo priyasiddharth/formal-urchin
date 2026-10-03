@@ -1,10 +1,9 @@
-import obseq3.oseair_bytes
-import obseq3.compile
 import obseq3.compile_bytes
 import obseq3.tests
 
 /-!
-Unit tests for the mirlite-v3 → OSEA-IR-v3 compiler:
+Unit tests for the byte compiler (`compile_bytes.lean`, mirlite → OSEA-IR on
+bytes), at the uniform layout:
 - golden fragments: compiled code maps compared against hand-written
   instruction lists (const-init with fresh/mapped locals, ref with
   protector+mask carried into `Borrow`, deref destinations, field
@@ -16,15 +15,28 @@ Unit tests for the mirlite-v3 → OSEA-IR-v3 compiler:
 
 namespace obseq3.CompileTests
 
-open obseq3 obseq3.mirlite obseq3.compile
-open obseq3.oseair (Register Instr Rhs Val)
+open obseq3 obseq3.compileB obseq3.bytes
+open obseq3.oseairL (Instr Rhs)
+open obseq3.oseair (Register Val)
 open obseq3.Tests (assert natL ptrNat pairL M)
 
-/-! ## Golden fragments -/
+/-! ## Golden fragments
+
+At the uniform layout every integer and pointer is 8 bytes, so borrow
+lengths, field offsets and `Die` lengths are multiples of 8 and a freeze
+mask has one bit per byte. A pointer leaf is loaded at `ptrLeafB`, whose
+pointee is irrelevant to the read. -/
+
+def natB : BLayout := .int 8
+def ptrB : BLayout := .ptr natB
+def ptrLeafB : BLayout := .ptr (.int 0)
+def pairB : BLayout := .tup [natB, natB] [0, 8] 16 8
+def tripleB : BLayout := .tup [natB, pairB] [0, 8] 24 8
 
 def codeList (Γ : Ctx) (prog : Prog Γ) : Except CompilerError (List (Option Instr)) := do
-  let tp ← compileProg prog
-  return (List.range (emittedLabels prog)).map tp
+  let L := mirliteB.uniformEnv Γ
+  let tp ← compileProg L prog
+  return (List.range (emittedLabels L prog)).map tp
 
 def expectCode (Γ : Ctx) (prog : Prog Γ) (expected : List Instr) (label : String) : IO Unit := do
   match codeList Γ prog with
@@ -35,8 +47,6 @@ def expectCode (Γ : Ctx) (prog : Prog Γ) (expected : List Instr) (label : Stri
       else throw (IO.userError
         s!"{label}: code mismatch\n  expected {reprStr exp}\n  actual   {reprStr actual}")
 
-def natTy := obseq.TyVal.NatTy
-def pTy := obseq.TyVal.PTy
 
 def Γ1 : Ctx := [natL]
 def x1 : Place Γ1 natL := .local ⟨⟨0, by decide⟩, rfl⟩
@@ -44,8 +54,8 @@ def x1 : Place Γ1 natL := .local ⟨⟨0, by decide⟩, rfl⟩
 /-- const into a fresh local: Alloc + CStore. -/
 def g1_const_fresh_local : IO Unit :=
   expectCode Γ1 [.assign x1 (.constInit 5), .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Dat 5] (Register.R 0),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 5] (Register.R 0),
      Instr.Halt]
     "g1 const to fresh local"
 
@@ -58,11 +68,11 @@ def p2 : Place Γ2 ptrNat := .local ⟨⟨1, by decide⟩, rfl⟩
     stored reference). -/
 def g2_protected_masked_ref : IO Unit :=
   expectCode Γ2 [.assign x2 (.constInit 7), .assign p2 (.ref .Mut true [true] x2), .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Dat 7] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut true [true] (some 1) (Register.R 0) 0),
-     Instr.RStore pTy (Register.R 2) (Register.R 1),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 7] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut true (List.replicate 8 true) (some 8) (Register.R 0) 0),
+     Instr.RStore ptrB (Register.R 2) (Register.R 1),
      Instr.Halt]
     "g2 protected masked ref"
 
@@ -75,17 +85,16 @@ def g3_deref_destination : IO Unit :=
      .assign p2 (.ref .Mut false [] x2),
      .assign (.deref p2) (.constInit 2),
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 0),
-     Instr.RStore pTy (Register.R 2) (Register.R 1),
-     Instr.Assgn (Register.R 3) (Rhs.Load pTy (Register.R 1)),
-     Instr.CStore natTy [Val.Dat 2] (Register.R 3),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false (List.replicate 8 false) (some 8) (Register.R 0) 0),
+     Instr.RStore ptrB (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Load ptrB (Register.R 1)),
+     Instr.CStore natB [Val.Dat 2] (Register.R 3),
      Instr.Halt]
     "g3 deref destination"
 
-def pairTy := obseq.TyVal.TupTy [natTy, natTy]
 
 def ΓB : Ctx := [pairL, ptrNat, natL]
 def tupB : Place ΓB pairL := .local ⟨⟨0, by decide⟩, rfl⟩
@@ -100,11 +109,11 @@ def tB : Place ΓB natL := .local ⟨⟨2, by decide⟩, rfl⟩
     assignment, mirroring mirlite's `preparePlaceAssign`. -/
 def g4_field_offsets_and_die : IO Unit :=
   expectCode ΓB [.assign fld0B (.constInit 1), .assign fld1B (.constInit 2), .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
-     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 1),
-     Instr.CStore natTy [Val.Dat 2] (Register.R 1),
-     Instr.Die (Register.R 1) 1,
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc (pairB)),
+     Instr.CStore natB [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] (some 8) (Register.R 0) 8),
+     Instr.CStore natB [Val.Dat 2] (Register.R 1),
+     Instr.Die (Register.R 1) 8,
      Instr.Halt]
     "g4 field offsets and die"
 
@@ -112,7 +121,7 @@ def g4_field_offsets_and_die : IO Unit :=
     statement/rvalue family compiles. (Replaces the retired
     unsupported-witness test — no unsupported construct remains.) -/
 def g5_compiler_total : IO Unit := do
-  match compileProg (Γ := Γ2)
+  match compileProg (Γ := Γ2) (mirliteB.uniformEnv Γ2)
       [.assign x2 (.constInit 1),
        .pushProtectors,
        .assign p2 (.ref .Mut true [] x2),
@@ -139,12 +148,12 @@ def g6_protector_frame : IO Unit :=
      .assign p2 (.ref .Mut true [] x2),
      .popProtectors,
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Dat 7] (Register.R 0),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 7] (Register.R 0),
      Instr.PushProt,
-     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut true [] (some 1) (Register.R 0) 0),
-     Instr.RStore pTy (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut true (List.replicate 8 false) (some 8) (Register.R 0) 0),
+     Instr.RStore ptrB (Register.R 2) (Register.R 1),
      Instr.PopProt,
      Instr.Halt]
     "g6 protector frame"
@@ -153,8 +162,8 @@ def g6_protector_frame : IO Unit :=
     same useMut event as mirlite's undef fill, no new instruction. -/
 def g7_uninit_undef_store : IO Unit :=
   expectCode Γ1 [.assign x1 .uninit, .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Undef] (Register.R 0),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Undef] (Register.R 0),
      Instr.Halt]
     "g7 uninit undef store"
 
@@ -162,19 +171,19 @@ def g7_uninit_undef_store : IO Unit :=
     Alloc, then `AllocN` into a register, then the pointer RStore. -/
 def g8_heap_alloc : IO Unit :=
   expectCode Γ2 [.assign p2 (.alloc (.const 1)), .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 1) (Rhs.AllocN natTy 1),
-     Instr.RStore pTy (Register.R 1) (Register.R 0),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 1) (Rhs.AllocN natB 1),
+     Instr.RStore ptrB (Register.R 1) (Register.R 0),
      Instr.Halt]
     "g8 heap alloc"
 
 /-- Deallocation: Load of the pointer cell (mirlite's read), then Dealloc. -/
 def g9_dealloc : IO Unit :=
   expectCode Γ2 [.assign p2 (.alloc (.const 1)), .dealloc p2, .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 1) (Rhs.AllocN natTy 1),
-     Instr.RStore pTy (Register.R 1) (Register.R 0),
-     Instr.Assgn (Register.R 2) (Rhs.Load pTy (Register.R 0)),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 1) (Rhs.AllocN natB 1),
+     Instr.RStore ptrB (Register.R 1) (Register.R 0),
+     Instr.Assgn (Register.R 2) (Rhs.Load ptrB (Register.R 0)),
      Instr.Dealloc (Register.R 2),
      Instr.Halt]
     "g9 dealloc"
@@ -189,13 +198,13 @@ def g11_assign_if_skip : IO Unit :=
     [.assign fld0B (.constInit 1),
      .assignIf fld0B 1 fld1B (.constInit 7),
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
-     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Load natTy (Register.R 0)),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc (pairB)),
+     Instr.CStore natB [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Load natB (Register.R 0)),
      Instr.SkipIf (Register.R 1) 1 3,
-     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 1),
-     Instr.CStore natTy [Val.Dat 7] (Register.R 2),
-     Instr.Die (Register.R 2) 1,
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false [] (some 8) (Register.R 0) 8),
+     Instr.CStore natB [Val.Dat 7] (Register.R 2),
+     Instr.Die (Register.R 2) 8,
      Instr.Halt]
     "g11 assignIf skip"
 
@@ -212,14 +221,14 @@ def g10_expose_addr : IO Unit :=
      .assign pA' (.ref (.Raw true) false [] xA'),
      .assign tA' (.exposeAddr pA'),
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] (some 1) (Register.R 0) 0),
-     Instr.RStore pTy (Register.R 2) (Register.R 1),
-     Instr.Assgn (Register.R 3) (Rhs.Alloc natTy),
-     Instr.Assgn (Register.R 4) (Rhs.ExposeAddr (Register.R 1)),
-     Instr.RStore natTy (Register.R 4) (Register.R 3),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false (List.replicate 8 false) (some 8) (Register.R 0) 0),
+     Instr.RStore ptrB (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc natB),
+     Instr.Assgn (Register.R 4) (Rhs.ExposeAddr .ptr (Register.R 1)),
+     Instr.RStore natB (Register.R 4) (Register.R 3),
      Instr.Halt]
     "g10 expose addr"
 
@@ -231,41 +240,6 @@ inductive DiffOut
 | ub (stmt : Nat)
 | stuck
 deriving BEq, Repr
-
-def srcRun (Γ : Ctx) (prog : Prog Γ) : DiffOut :=
-  go (prog.length + 2) (State.initial M Γ)
-where
-  go : Nat → State M Γ → DiffOut
-    | 0, _ => .stuck
-    | n + 1, st =>
-        match prog[st.pc]? with
-        | none => .ok
-        | some .halt => .ok
-        | some stmt =>
-            match stepStmt M st stmt with
-            | .ok st' => go n st'
-            | .err _ => .ub st.pc
-
-def tgtRun (Γ : Ctx) (prog : Prog Γ) : Except String DiffOut :=
-  match compileProg prog with
-  | .error e => .error s!"compile error: {reprStr e}"
-  | .ok tp =>
-      .ok (go tp (stmtLabelRanges prog) (emittedLabels prog + 2) (oseair.State.initial M))
-where
-  go (tp : oseair.Prog) (ranges : List (Nat × Nat)) :
-      Nat → oseair.State M → DiffOut
-    | 0, _ => .stuck
-    | n + 1, st =>
-        match tp st.pc with
-        | none => .ok
-        | some .Halt => .ok
-        | some _ =>
-            match oseair.step M st tp with
-            | .Ok st' => go tp ranges n st'
-            | .Err _ =>
-                match ranges.findIdx? (fun r => r.1 ≤ st.pc && st.pc < r.2) with
-                | some i => .ub i
-                | none => .ub 999999
 
 /-- The source run on byte-addressed memory (`mirlite_bytes.lean`). -/
 def srcRunB (Γ : Ctx) (prog : Prog Γ) : DiffOut :=
@@ -281,28 +255,6 @@ where
             match mirliteB.stepStmt M (mirliteB.uniformEnv Γ) st stmt with
             | .ok st' => go n st'
             | .err _ => .ub st.pc
-
-/-- The compiled program run on byte-addressed memory (`oseair_bytes.lean`). -/
-def tgtRunB (Γ : Ctx) (prog : Prog Γ) : Except String DiffOut :=
-  match compileProg prog with
-  | .error e => .error s!"compile error: {reprStr e}"
-  | .ok tp =>
-      .ok (go tp (stmtLabelRanges prog) (emittedLabels prog + 2) (oseairB.State.initial M))
-where
-  go (tp : oseair.Prog) (ranges : List (Nat × Nat)) :
-      Nat → oseairB.State M → DiffOut
-    | 0, _ => .stuck
-    | n + 1, st =>
-        match tp st.pc with
-        | none => .ok
-        | some .Halt => .ok
-        | some _ =>
-            match oseairB.step M st tp with
-            | .Ok st' => go tp ranges n st'
-            | .Err _ =>
-                match ranges.findIdx? (fun r => r.1 ≤ st.pc && st.pc < r.2) with
-                | some i => .ub i
-                | none => .ub 999999
 
 /-- The BYTE compiler's output (`compile_bytes.lean`) on its own target
     (`oseair_layout.lean`), both at layout table `L`. -/
@@ -328,31 +280,17 @@ where
                 | some i => .ub i
                 | none => .ub 999999
 
-/-- Every differential program runs on FIVE machines — the cell source
-    and target, both again on byte-addressed memory, and the byte
-    compiler's output on its layout-typed target — and all five must
-    reach the expected verdict. -/
+/-- Every differential program runs on the byte source and the byte
+    compiler's output on its target, both at the uniform layout, and both
+    must reach the expected verdict. -/
 def expectDiff (Γ : Ctx) (prog : Prog Γ) (expected : DiffOut) (label : String) : IO Unit := do
-  let src := srcRun Γ prog
+  let src := srcRunB Γ prog
   assert (src == expected) s!"{label}: source verdict {reprStr src}, expected {reprStr expected}"
-  match tgtRun Γ prog with
+  match tgtRunL Γ (mirliteB.uniformEnv Γ) prog with
   | .error e => throw (IO.userError s!"{label}: {e}")
   | .ok tgt =>
       assert (tgt == expected)
         s!"{label}: target verdict {reprStr tgt}, expected {reprStr expected} (source agrees)"
-  let srcB := srcRunB Γ prog
-  assert (srcB == expected)
-    s!"{label}: byte source verdict {reprStr srcB}, expected {reprStr expected}"
-  match tgtRunB Γ prog with
-  | .error e => throw (IO.userError s!"{label}: {e}")
-  | .ok tgtB =>
-      assert (tgtB == expected)
-        s!"{label}: byte target verdict {reprStr tgtB}, expected {reprStr expected}"
-  match tgtRunL Γ (mirliteB.uniformEnv Γ) prog with
-  | .error e => throw (IO.userError s!"{label}: {e}")
-  | .ok tgtL =>
-      assert (tgtL == expected)
-        s!"{label}: layout target verdict {reprStr tgtL}, expected {reprStr expected}"
 
 def ΓA : Ctx := [natL, ptrNat, natL]
 def xA : Place ΓA natL := .local ⟨⟨0, by decide⟩, rfl⟩
@@ -592,14 +530,14 @@ def g12_ptr_offset_prescaled : IO Unit :=
      .assign rF (.ref (.Raw true) false [] tupF),
      .assign qF (.ptrOffset rF 1),
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
-     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] (some 2) (Register.R 0) 0),
-     Instr.RStore pTy (Register.R 2) (Register.R 1),
-     Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 4) (Rhs.PtrOffset (Register.R 1) 2),
-     Instr.RStore pTy (Register.R 4) (Register.R 3),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc (pairB)),
+     Instr.CStore natB [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc (BLayout.ptr (pairB))),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false (List.replicate 16 false) (some 16) (Register.R 0) 0),
+     Instr.RStore (BLayout.ptr (pairB)) (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 4) (Rhs.PtrOffset .ptr (Register.R 1) 16),
+     Instr.RStore ptrB (Register.R 4) (Register.R 3),
      Instr.Halt]
     "g12 ptrOffset prescaled"
 
@@ -648,15 +586,15 @@ def g13_ref_slice : IO Unit :=
      .assign rF (.ref (.Raw true) false [] tupF),
      .assign qF (.refSlice .Mut false rF),
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
-     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] (some 2) (Register.R 0) 0),
-     Instr.RStore pTy (Register.R 2) (Register.R 1),
-     Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 4) (Rhs.Load pTy (Register.R 1)),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc (pairB)),
+     Instr.CStore natB [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc (BLayout.ptr (pairB))),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false (List.replicate 16 false) (some 16) (Register.R 0) 0),
+     Instr.RStore (BLayout.ptr (pairB)) (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 4) (Rhs.Load ptrLeafB (Register.R 1)),
      Instr.Assgn (Register.R 4) (Rhs.Borrow .Mut false [] none (Register.R 4) 0),
-     Instr.RStore pTy (Register.R 4) (Register.R 3),
+     Instr.RStore ptrB (Register.R 4) (Register.R 3),
      Instr.Halt]
     "g13 refSlice"
 
@@ -854,68 +792,6 @@ def d32_field_copy_zero_offset : IO Unit :=
      .assign yD32 (.copy (.proj tupD32 (.field ⟨0, by decide⟩ .nil)))]
     .ok "d32 field copy zero offset"
 
-/-- FIXED-BUG witness, REWRITTEN 2026-08-30 (the temp-assignment
-    lowering). This hand-forged state — `y : natL` re-bound INSIDE
-    `tup : pairL`'s block, cell 1's stack `[Ref 4, MutRef 3, Own 1]`,
-    `tup.tag := 4`, `y.tag := 3` — used to make `y := copy tup.1`
-    DIVERGE: the old lowering was `Borrow; Memcpy; Die`, and the
-    `Memcpy`'s dst write popped the fresh borrow tag that the following
-    `Die` needed, so the target erred where mirlite succeeded. The
-    overlapping-assignment guard papered over it by making BOTH refuse.
-
-    The copy now lowers to `Borrow; Load; Die; RStore` — the value is
-    read into a register and the temporary borrow retires BEFORE the
-    write — so the countermodel dissolves in the good direction: both
-    machines SUCCEED and end with the same cell-1 stack. Teeth: putting
-    the write back before the `Die` resurrects the one-sided error. -/
-def ΓD33 : Ctx := [pairL, natL]
-def tupD33 : Place ΓD33 pairL := .local ⟨⟨0, by decide⟩, rfl⟩
-def yLocD33 : Local ΓD33 natL := ⟨⟨1, by decide⟩, rfl⟩
-
-def d33_overlap_junk_copy_agrees : IO Unit := do
-  -- the shared permission state (rename = identity on both machines)
-  let perms : AccessPerms :=
-    { StackMap := [(0, [.Own 1]),
-                   (1, [.Ref 4, .MutRef 3, .Own 1]),
-                   (2, [.Own 2])],
-      NextTag := 5 }
-  -- SOURCE: y forged INSIDE tup's block, tags picked from cell 1's stack
-  let env : mirlite.Env ΓD33 :=
-    ((mirlite.Env.empty.set ⟨⟨0, by decide⟩, rfl⟩ { addr := 0, tag := 4 }).set
-      yLocD33 { addr := 1, tag := 3 })
-  let junkSrc : mirlite.State M ΓD33 :=
-    { pc := 0, env := env,
-      mem := { mMap := [(0, .word 7), (1, .word 8), (2, .word 9)],
-               addrStart := 3, allocs := [(0, 2), (2, 1)] },
-      perms := perms }
-  let stmt : Stmt ΓD33 :=
-    .assign (.local yLocD33) (.copy (.proj tupD33 (.field ⟨1, by decide⟩ .nil)))
-  let srcPerms ←
-    match mirlite.stepStmt M junkSrc stmt with
-    | .err e => throw (IO.userError s!"d33: source should now SUCCEED, got: {e}")
-    | .ok st => pure st.perms
-  -- TARGET: same stacks, registers holding the forged pointers; the
-  -- program is exactly what the compiler emits for the statement
-  let junkTgt : oseair.State M :=
-    { pc := 0,
-      reg := [(.R 0, (.PTy, [.Ptr 0 0 2 2 4])),    -- tup: base 0, extent 2, size 2, tag 4
-              (.R 1, (.PTy, [.Ptr 1 0 1 1 3]))],   -- y (forged): base 1, extent 1, size 1, tag 3
-      mem := { mMap := [(0, .Dat 7), (1, .Dat 8), (2, .Dat 9)],
-               addrStart := 3, allocs := [(0, 2), (2, 1)] },
-      perms := perms }
-  let instrs : List oseair.Instr :=
-    [.Assgn (.R 2) (borrowRhs .Shared 1 (.R 0) 1),   -- Borrow(Shared) of tup.1
-     .Assgn (.R 3) (.Load .NatTy (.R 2)),            -- the READ, into a register
-     .Die (.R 2) 1,                                  -- the temporary retires
-     .RStore .NatTy (.R 3) (.R 1)]                   -- then the write
-  let prog : oseair.Prog := fun n => instrs.get? n
-  let tgtPerms ←
-    match oseair.runN M 4 junkTgt prog with
-    | .Err e => throw (IO.userError s!"d33: target should now SUCCEED, got: {e}")
-    | .Ok st => pure st.perms
-  assert (srcPerms.StackMap.lookup 1 == tgtPerms.StackMap.lookup 1)
-    s!"d33: cell-1 stacks disagree: {reprStr (srcPerms.StackMap.lookup 1)} vs {reprStr (tgtPerms.StackMap.lookup 1)}"
-
 /-- FIXED-BUG witness (was the KNOWN-COMPILER-BUG pin, flipped
     2026-08-28 when the lowering-order fix landed): the assign-place
     lowering used to mint its dst temporary `Borrow(Mut)` BEFORE the
@@ -996,13 +872,13 @@ def g12_assign_if_roots_before_guard : IO Unit :=
      .assignIf dGR 1 xGR (.constInit 5),
      .assign xGR (.constInit 7),
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Dat 0] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc natTy),
-     Instr.Assgn (Register.R 2) (Rhs.Load natTy (Register.R 0)),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 0] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc natB),
+     Instr.Assgn (Register.R 2) (Rhs.Load natB (Register.R 0)),
      Instr.SkipIf (Register.R 2) 1 1,
-     Instr.CStore natTy [Val.Dat 5] (Register.R 1),
-     Instr.CStore natTy [Val.Dat 7] (Register.R 1),
+     Instr.CStore natB [Val.Dat 5] (Register.R 1),
+     Instr.CStore natB [Val.Dat 7] (Register.R 1),
      Instr.Halt]
     "g12 assignIf roots its destination before the guard"
 
@@ -1015,13 +891,13 @@ def g13_move_local : IO Unit :=
     [.assign dGR (.constInit 5),
      .assign xGR (.move dGR),
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Dat 5] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc natTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 0),
-     Instr.Assgn (Register.R 3) (Rhs.Load natTy (Register.R 2)),
-     Instr.Die (Register.R 2) 1,
-     Instr.RStore natTy (Register.R 3) (Register.R 1),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 5] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc natB),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false [] (some 8) (Register.R 0) 0),
+     Instr.Assgn (Register.R 3) (Rhs.Load natB (Register.R 2)),
+     Instr.Die (Register.R 2) 8,
+     Instr.RStore natB (Register.R 3) (Register.R 1),
      Instr.Halt]
     "g13 move of a local"
 
@@ -2384,7 +2260,6 @@ tables (§2.2 source, §2.3 target, §2.4 compilation, §2.5 simulation).
 The golden pins the listing the paper prints; the differential pins the
 `ok` verdict. State dump: `notes/2026-09-18-paper-running-example.lean`.
 Change the paper in the same commit that changes either. -/
-def tripleTy := obseq.TyVal.TupTy [natTy, obseq.TyVal.TupTy [natTy, natTy]]
 
 def ΓP : Ctx :=
   [LayoutTy.TupL [natL, LayoutTy.TupL [natL, natL]], ptrNat]
@@ -2410,16 +2285,16 @@ def paperProg : Prog ΓP :=
     died either. -/
 def g14_paper_running_example : IO Unit :=
   expectCode ΓP paperProg
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc tripleTy),
-     Instr.CStore natTy [Val.Dat 5] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 1),
-     Instr.CStore natTy [Val.Dat 42] (Register.R 1),
-     Instr.Die (Register.R 1) 1,
-     Instr.Assgn (Register.R 2) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 3) (Rhs.Borrow .Mut false [] (some 1) (Register.R 0) 1),
-     Instr.RStore pTy (Register.R 3) (Register.R 2),
-     Instr.Assgn (Register.R 4) (Rhs.Load pTy (Register.R 2)),
-     Instr.CStore natTy [Val.Dat 7] (Register.R 4),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc (tripleB)),
+     Instr.CStore natB [Val.Dat 5] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Borrow .Mut false [] (some 8) (Register.R 0) 8),
+     Instr.CStore natB [Val.Dat 42] (Register.R 1),
+     Instr.Die (Register.R 1) 8,
+     Instr.Assgn (Register.R 2) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 3) (Rhs.Borrow .Mut false (List.replicate 8 false) (some 8) (Register.R 0) 8),
+     Instr.RStore ptrB (Register.R 3) (Register.R 2),
+     Instr.Assgn (Register.R 4) (Rhs.Load ptrB (Register.R 2)),
+     Instr.CStore natB [Val.Dat 7] (Register.R 4),
      Instr.Halt]
     "g14 the paper's running example"
 
@@ -2435,14 +2310,14 @@ def g15_binop : IO Unit :=
      .assign tA (.constInit 4),
      .assign xA (.binOp (.add .u64) xA tA),
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Dat 3] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Dat 4] (Register.R 1),
-     Instr.Assgn (Register.R 2) (Rhs.Load natTy (Register.R 0)),
-     Instr.Assgn (Register.R 3) (Rhs.Load natTy (Register.R 1)),
-     Instr.Assgn (Register.R 4) (Rhs.BinOp (.add .u64) (Register.R 2) (Register.R 3)),
-     Instr.RStore natTy (Register.R 4) (Register.R 0),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 3] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 4] (Register.R 1),
+     Instr.Assgn (Register.R 2) (Rhs.Load natB (Register.R 0)),
+     Instr.Assgn (Register.R 3) (Rhs.Load natB (Register.R 1)),
+     Instr.Assgn (Register.R 4) (Rhs.BinOp (BinOp.add .u64) (Register.R 2) (Register.R 3)),
+     Instr.RStore natB (Register.R 4) (Register.R 0),
      Instr.Halt]
     "g15 binOp"
 
@@ -2521,18 +2396,18 @@ def g16_slice_len : IO Unit :=
      .assign qF (.ptrCast rF),
      .assign tF (.sliceLen qF),
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
-     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] (some 2) (Register.R 0) 0),
-     Instr.RStore pTy (Register.R 2) (Register.R 1),
-     Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 4) (Rhs.Load pTy (Register.R 1)),
-     Instr.RStore pTy (Register.R 4) (Register.R 3),
-     Instr.Assgn (Register.R 5) (Rhs.Alloc natTy),
-     Instr.Assgn (Register.R 6) (Rhs.Load pTy (Register.R 3)),
-     Instr.Assgn (Register.R 7) (Rhs.SliceLen natTy (Register.R 6)),
-     Instr.RStore natTy (Register.R 7) (Register.R 5),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc (pairB)),
+     Instr.CStore natB [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc (BLayout.ptr (pairB))),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false (List.replicate 16 false) (some 16) (Register.R 0) 0),
+     Instr.RStore (BLayout.ptr (pairB)) (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 4) (Rhs.Load ptrLeafB (Register.R 1)),
+     Instr.RStore ptrB (Register.R 4) (Register.R 3),
+     Instr.Assgn (Register.R 5) (Rhs.Alloc natB),
+     Instr.Assgn (Register.R 6) (Rhs.Load ptrB (Register.R 3)),
+     Instr.Assgn (Register.R 7) (Rhs.SliceLen 8 (Register.R 6)),
+     Instr.RStore natB (Register.R 7) (Register.R 5),
      Instr.Halt]
     "g16 sliceLen"
 
@@ -2588,21 +2463,21 @@ def g17_sub_slice : IO Unit :=
      .assign tF (.constInit 1),
      .assign qF (.subSlice qF tF tF),
      .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc pairTy),
-     Instr.CStore natTy [Val.Dat 1] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false [] (some 2) (Register.R 0) 0),
-     Instr.RStore pTy (Register.R 2) (Register.R 1),
-     Instr.Assgn (Register.R 3) (Rhs.Alloc pTy),
-     Instr.Assgn (Register.R 4) (Rhs.Load pTy (Register.R 1)),
-     Instr.RStore pTy (Register.R 4) (Register.R 3),
-     Instr.Assgn (Register.R 5) (Rhs.Alloc natTy),
-     Instr.CStore natTy [Val.Dat 1] (Register.R 5),
-     Instr.Assgn (Register.R 6) (Rhs.Load pTy (Register.R 3)),
-     Instr.Assgn (Register.R 7) (Rhs.Load natTy (Register.R 5)),
-     Instr.Assgn (Register.R 8) (Rhs.Load natTy (Register.R 5)),
-     Instr.Assgn (Register.R 9) (Rhs.SubSlice natTy (Register.R 6) (Register.R 7) (Register.R 8)),
-     Instr.RStore pTy (Register.R 9) (Register.R 3),
+    [Instr.Assgn (Register.R 0) (Rhs.Alloc (pairB)),
+     Instr.CStore natB [Val.Dat 1] (Register.R 0),
+     Instr.Assgn (Register.R 1) (Rhs.Alloc (BLayout.ptr (pairB))),
+     Instr.Assgn (Register.R 2) (Rhs.Borrow (.Raw true) false (List.replicate 16 false) (some 16) (Register.R 0) 0),
+     Instr.RStore (BLayout.ptr (pairB)) (Register.R 2) (Register.R 1),
+     Instr.Assgn (Register.R 3) (Rhs.Alloc ptrB),
+     Instr.Assgn (Register.R 4) (Rhs.Load ptrLeafB (Register.R 1)),
+     Instr.RStore ptrB (Register.R 4) (Register.R 3),
+     Instr.Assgn (Register.R 5) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 1] (Register.R 5),
+     Instr.Assgn (Register.R 6) (Rhs.Load ptrB (Register.R 3)),
+     Instr.Assgn (Register.R 7) (Rhs.Load natB (Register.R 5)),
+     Instr.Assgn (Register.R 8) (Rhs.Load natB (Register.R 5)),
+     Instr.Assgn (Register.R 9) (Rhs.SubSlice 8 (Register.R 6) (Register.R 7) (Register.R 8)),
+     Instr.RStore ptrB (Register.R 9) (Register.R 3),
      Instr.Halt]
     "g17 subSlice"
 
@@ -2714,7 +2589,6 @@ def allTests : List (IO Unit) := [
   d30_reborrow_through_pointer,
   d31_zst_reborrow,
   d32_field_copy_zero_offset,
-  d33_overlap_junk_copy_agrees,
   px_write_through_projected_ptroffset,
   rs_mut_slice_retag_pops_projection_borrow,
   rs_guarded_fresh_root_then_write,

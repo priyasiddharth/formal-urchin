@@ -1,12 +1,6 @@
-import obseq.types
 import obseq3.sb
 
 namespace obseq3
-
-abbrev TyVal := obseq.TyVal
-
-abbrev typeSize : TyVal → Nat := obseq.typeSize
-abbrev typeSizeList : List TyVal → Nat := obseq.typeSizeList
 
 /-- An integer type: width in bits and signedness. A word of this type
     holds the type's BIT PATTERN, below `2 ^ bits` (two's complement when
@@ -44,8 +38,7 @@ end IntTy
     (width and signedness — the static half of MiniRust's
     `Type::Int(IntType)`); `PtrL τ` a pointer to a `τ`; `TupL` a tuple.
     Byte offsets and padding are not here: the byte model takes them from a
-    per-local byte layout (`mirliteB.LayEnv`); the cell model gives every
-    integer and pointer one cell whatever its width. -/
+    per-local byte layout (`mirliteB.LayEnv`). -/
 inductive LayoutTy where
   | IntL (t : IntTy)
   | PtrL (inner : LayoutTy)
@@ -59,48 +52,6 @@ instance : ToString LayoutTy where
     loader's model words. -/
 abbrev LayoutTy.usize : LayoutTy := .IntL IntTy.u64
 
-mutual
-  /-- Size in CELLS (the cell model): an integer or pointer is one cell. -/
-  def layoutSize : LayoutTy → Nat
-    | .IntL _ => 1
-    | .PtrL _ => 1
-    | .TupL tys => layoutSizeList tys
-
-  def layoutSizeList : List LayoutTy → Nat
-    | [] => 0
-    | ty :: tys => layoutSize ty + layoutSizeList tys
-end
-
-mutual
-  /-- The cell model's value type of a layout (integer width erased). -/
-  def layoutToTyVal : LayoutTy → TyVal
-    | .IntL _ => .NatTy
-    | .PtrL _ => .PTy
-    | .TupL tys => .TupTy (layoutToTyValList tys)
-
-  def layoutToTyValList : List LayoutTy → List TyVal
-    | [] => []
-    | ty :: tys => layoutToTyVal ty :: layoutToTyValList tys
-end
-
-mutual
-  @[simp] theorem typeSize_layoutToTyVal : ∀ ty, typeSize (layoutToTyVal ty) = layoutSize ty
-    | .IntL _ => rfl
-    | .PtrL _ => rfl
-    | .TupL tys => by
-        simp only [layoutToTyVal, layoutSize]
-        exact typeSizeList_layoutToTyValList tys
-
-  @[simp] theorem typeSizeList_layoutToTyValList :
-      ∀ tys, typeSizeList (layoutToTyValList tys) = layoutSizeList tys
-    | [] => rfl
-    | ty :: tys => by
-        simp only [layoutToTyValList, layoutSizeList]
-        show obseq.typeSize _ + obseq.typeSizeList _ = _
-        rw [show obseq.typeSize (layoutToTyVal ty) = layoutSize ty from typeSize_layoutToTyVal ty,
-          show obseq.typeSizeList (layoutToTyValList tys) = layoutSizeList tys from
-            typeSizeList_layoutToTyValList tys]
-end
 
 /-- Integer binary operations, as MIR has them (rustc
     `interpret/operator.rs`, `binary_int_op`), each at an integer type:
@@ -169,9 +120,6 @@ def binOpUB : BinOp → Word → Word → Option String
   | .shlUB t, _, y | .shrUB t, _, y =>
       if y % t.modulus < t.bits then none else some "shift amount out of range"
   | _, _, _ => none
-
-def blockSize (layout : LayoutTy) : Nat :=
-  layoutSize layout
 
 /- Decidable equality for `LayoutTy`.
    Needed by the conformance elaborator to produce `Local`/`Place`

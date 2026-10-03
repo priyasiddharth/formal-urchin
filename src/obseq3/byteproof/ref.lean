@@ -282,7 +282,7 @@ theorem ref_pkg_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
     exact StoreStepB.rstore compProg _ _ dstL _ _ (by rw [h_breg]; exact RegMap.lookup_insert_self _ _ _)
       (by rw [h_breg]; show _ < _ + 1; omega)
   · refine ⟨Or.inr ⟨by simp, ?_⟩, trivial⟩
-    simp only [ValSim, oseairB.Val.toMem, oseairB.ofMem, MemValSim, idA, h_ab, h_as]
+    simp only [ValSim, oseair.Val.toMem, oseair.ofMem, MemValSim, idA, h_ab, h_as]
     exact ⟨trivial, by rw [h_addr, Nat.sub_add_comm hA.le], trivial, trivial,
       TagRenameMap.extend_self _ _ _, fun _ _ => ⟨_, rfl⟩⟩
 

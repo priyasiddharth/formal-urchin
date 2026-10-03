@@ -1,4 +1,4 @@
-import obseq3.proof.common
+import obseq3.proof.basis
 import obseq3.proof.keystone
 
 /-!

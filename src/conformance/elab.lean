@@ -1,5 +1,5 @@
 import conformance.lowering
-import obseq3.mirlite_semantics
+import obseq3.values
 
 /-!
 Elaborate a lowered untyped program (`LProg`) into obseq3's intrinsically

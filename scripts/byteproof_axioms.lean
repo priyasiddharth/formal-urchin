@@ -1,3 +1,4 @@
+import Lean
 import obseq3.byteproof.memsim
 import obseq3.byteproof.const_write
 import obseq3.byteproof.copy

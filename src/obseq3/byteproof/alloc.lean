@@ -98,7 +98,7 @@ theorem alloc_const_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.
   · exact StoreStepB.rstore compProg _ _ dstL _ _ (RegMap.lookup_insert_self _ _ _)
       (show csA.nextReg < csA.nextReg + 1 by omega)
   · refine ⟨Or.inr ⟨by simp, ?_⟩, trivial⟩
-    simp only [ValSim, oseairB.Val.toMem, oseairB.ofMem, MemValSim, idA]
+    simp only [ValSim, oseair.Val.toMem, oseair.ofMem, MemValSim, idA]
     exact ⟨trivial, trivial, trivial, trivial, TagRenameMap.extend_self _ _ _,
       fun _ _ => ⟨_, rfl⟩⟩
 
@@ -204,7 +204,7 @@ theorem alloc_dyn_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pr
   · exact StoreStepB.rstore compProg _ _ dstL _ _ (RegMap.lookup_insert_self _ _ _)
       (show _ < _ + 1 by omega)
   · refine ⟨Or.inr ⟨by simp, ?_⟩, trivial⟩
-    simp only [ValSim, oseairB.Val.toMem, oseairB.ofMem, MemValSim, idA]
+    simp only [ValSim, oseair.Val.toMem, oseair.ofMem, MemValSim, idA]
     rw [h_st1]
     exact ⟨rfl, trivial, trivial, trivial, TagRenameMap.extend_self _ _ _,
       fun _ _ => ⟨_, rfl⟩⟩

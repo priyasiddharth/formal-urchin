@@ -233,7 +233,7 @@ theorem refSlice_projoff {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL
           < (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) csA).nextReg + 1 + 1
       omega
   · refine ⟨Or.inr ⟨by simp, ?_⟩, trivial⟩
-    simp only [ValSim, oseairB.Val.toMem, oseairB.ofMem, MemValSim, idA, Nat.add_zero]
+    simp only [ValSim, oseair.Val.toMem, oseair.ofMem, MemValSim, idA, Nat.add_zero]
     exact ⟨trivial, trivial, trivial, trivial, TagRenameMap.extend_self _ _ _,
       fun _ _ => ⟨_, rfl⟩⟩
 

@@ -1,6 +1,4 @@
-import obseq3.oseair
 import obseq3.mirlite_bytes
-import obseq3.oseair_bytes
 
 /-!
 # OSEA-IR with byte layouts — the target of the byte-level compiler
@@ -26,7 +24,7 @@ open obseq3 obseq3.bytes
 open obseq3.oseair (Register Val)
 open obseq3.mirlite (MemValue)
 open obseq3.mirliteB (decodeV encodeAt readL writeL freedMsg)
-open obseq3.oseairB (ofMem)
+open obseq3.oseair (ofMem)
 
 inductive Rhs
 | Load (lay : BLayout) (reg : Register)
@@ -45,7 +43,7 @@ inductive Rhs
 | BinOp (op : BinOp) (r1 r2 : Register)
 | SliceLen (elemSize : Nat) (srcPtr : Register)
 | SubSlice (elemSize : Nat) (srcPtr rLo rHi : Register)
-deriving Inhabited
+deriving Inhabited, Repr, BEq
 
 inductive Instr
 | Assgn (reg : Register) (rhs : Rhs)
@@ -57,7 +55,7 @@ inductive Instr
 | PushProt
 | PopProt
 | Halt
-deriving Inhabited
+deriving Inhabited, Repr, BEq
 
 abbrev Prog := Nat → Option Instr
 
@@ -207,7 +205,7 @@ def writeThroughPtr (M : PermissionModel) (state : State M) (ptr : Register)
      else
        match M.useMut state.perms addr lay.size tag with
        | .ok perms2 =>
-          match writeL state.mem addr lay (vals.map oseairB.Val.toMem) with
+          match writeL state.mem addr lay (vals.map oseair.Val.toMem) with
           | .ok mem2 => Result.Ok { state with perms := perms2, mem := mem2, pc := state.pc + 1 }
           | .error e => Result.Err e
        | .error msg => Result.Err msg

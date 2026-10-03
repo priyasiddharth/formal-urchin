@@ -164,7 +164,7 @@ theorem move_pkg_core {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pr
   -- §2 Load through the fresh tag
   let bTmp := Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg
   let lTmp := Register.R ((CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg + 1)
-  let vals := (mirliteB.readL s1.mem (aRes.addr + o) (mirliteB.placeLayout L src)).map oseairB.ofMem
+  let vals := (mirliteB.readL s1.mem (aRes.addr + o) (mirliteB.placeLayout L src)).map oseair.ofMem
   let S1 : oseairL.State MSB :=
     { s1 with
         perms := q1,

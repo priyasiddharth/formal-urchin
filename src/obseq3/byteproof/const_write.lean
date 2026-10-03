@@ -27,7 +27,7 @@ theorem pureCStore_pkg {Γ : Ctx} {τ : LayoutTy} {compProg : oseairL.Prog}
         (∀ r, pre.store r = [oseairL.Instr.CStore dstL ws r]) ∧ pre.postCleanup = [])
     (h_eval : ∀ (sM : mirliteB.State MSB Γ) output,
       mirliteB.evalRExpr MSB L sM dstL rhs = .ok output → output = ⟨vs, sM⟩)
-    (h_rel : ∀ ρt, ListRel (StoreSim ρt) vs (ws.map oseairB.Val.toMem)) :
+    (h_rel : ∀ ρt, ListRel (StoreSim ρt) vs (ws.map oseair.Val.toMem)) :
     ValuePkgB compProg L dstL rhs := by
   intro ρt sM sA csA h_wf h_tbd h_lbs _ h_mem h_alloc h_psim h_pc _h_unmap output h_ev
   obtain ⟨h_run, pre, h_val, h_store, h_post⟩ := h_pre csA
@@ -61,7 +61,7 @@ theorem uninit_pkg {Γ : Ctx} {τ : LayoutTy} {compProg : oseairL.Prog} {L : mir
     (fun _ => by
       rw [List.map_replicate]
       exact ListRel.replicate (R := StoreSim _) (a := MemValue.undef)
-        (b := oseairB.Val.toMem Val.Undef) (Or.inl ⟨rfl, rfl⟩) _)
+        (b := oseair.Val.toMem Val.Undef) (Or.inl ⟨rfl, rfl⟩) _)
 
 /-- `x := const v`, `x` a bound local. -/
 theorem constWrite_local_sim {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}

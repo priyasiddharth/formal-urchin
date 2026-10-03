@@ -16,17 +16,17 @@ open obseq3.oseair (Val Register)
 open obseq3.compileB
 
 theorem ptr_of_storeSim {ρt : TagRenameMap} {b o e sz : Nat} {t : Tag} {vals : List Val}
-    (h : ListRel (StoreSim ρt) [MemValue.ptrVal b o e sz t] (vals.map oseairB.Val.toMem)) :
+    (h : ListRel (StoreSim ρt) [MemValue.ptrVal b o e sz t] (vals.map oseair.Val.toMem)) :
     ∃ t', vals = [Val.Ptr b o e sz t'] ∧ ρt t = some t' := by
   match vals, h with
   | [w], ⟨hs, _⟩ =>
       rcases hs with ⟨h1, -⟩ | ⟨-, hv⟩
       · cases h1
       · cases w with
-        | Undef => simp [ValSim, MemValSim, oseairB.Val.toMem, oseairB.ofMem] at hv
-        | Dat _ => simp [ValSim, MemValSim, oseairB.Val.toMem, oseairB.ofMem] at hv
+        | Undef => simp [ValSim, MemValSim, oseair.Val.toMem, oseair.ofMem] at hv
+        | Dat _ => simp [ValSim, MemValSim, oseair.Val.toMem, oseair.ofMem] at hv
         | Ptr b' o' e' s' t' =>
-            simp only [ValSim, MemValSim, oseairB.Val.toMem, oseairB.ofMem, idA,
+            simp only [ValSim, MemValSim, oseair.Val.toMem, oseair.ofMem, idA,
               Option.some.injEq] at hv
             obtain ⟨rfl, rfl, rfl, rfl, ht, -⟩ := hv
             exact ⟨t', rfl, ht⟩
@@ -255,7 +255,7 @@ theorem subSlice_pkg {Γ : Ctx} {L : mirliteB.LayEnv Γ} {compProg : oseairL.Pro
   · exact StoreStepB.rstore compProg _ _ dstL _ _ (RegMap.lookup_insert_self _ _ _)
       (show _ < _ + 1 by omega)
   · refine ⟨Or.inr ⟨by simp, ?_⟩, trivial⟩
-    simp only [ValSim, oseairB.Val.toMem, oseairB.ofMem, MemValSim, idA]
+    simp only [ValSim, oseair.Val.toMem, oseair.ofMem, MemValSim, idA]
     exact ⟨trivial, trivial, trivial, trivial, h_t, fun _ _ => ⟨_, rfl⟩⟩
 
 end obseq3.byteproof

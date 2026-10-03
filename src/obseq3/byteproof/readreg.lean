@@ -87,7 +87,7 @@ theorem readToReg_simG {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
         = some vals ∧
       CheckedCompilerM.value (readToReg L p) cs
         = .ok (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg) ∧
-      ListRel (StoreSim ρt) out.values (vals.map oseairB.Val.toMem) ∧
+      ListRel (StoreSim ρt) out.values (vals.map oseair.Val.toMem) ∧
       cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg ∧
       (∀ r, RegisterBelow cs.nextReg r → s'.reg.lookup r = sA.reg.lookup r) := by
   obtain ⟨sOut, h_sval, h_sclean, h_sprm⟩ := readToReg_compilesG h_comp h_inv.lbs h_ev
@@ -142,7 +142,7 @@ theorem readToReg_simG {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
     apply h_code
     · simp [emit]
     · simp [emit]
-  let vals := (mirliteB.readL s1.mem resolved.addr (mirliteB.placeLayout L p)).map oseairB.ofMem
+  let vals := (mirliteB.readL s1.mem resolved.addr (mirliteB.placeLayout L p)).map oseair.ofMem
   have h_ev1 : oseairL.evalRhs MSB s1 (oseairL.Rhs.Load (mirliteB.placeLayout L p) sOut'.result.reg)
       = .Ok vals { s1 with perms := pT' } := by
     simp only [PermissionModel.stackedBorrows] at hu'
@@ -200,7 +200,7 @@ theorem readToReg_simB {Γ : Ctx} {L : mirliteB.LayEnv Γ} {ρt : TagRenameMap}
         = some vals ∧
       CheckedCompilerM.value (readToReg L p) cs
         = .ok (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg) ∧
-      ListRel (StoreSim ρt) out.values (vals.map oseairB.Val.toMem) ∧
+      ListRel (StoreSim ρt) out.values (vals.map oseair.Val.toMem) ∧
       cs.nextReg ≤ (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared p) cs).nextReg ∧
       (∀ r, RegisterBelow cs.nextReg r → s'.reg.lookup r = sA.reg.lookup r) :=
   readToReg_simG (ptrChain_lowers hWF h_chain) (ptrChain_compilesB h_chain) h_inv h_ev h_code
