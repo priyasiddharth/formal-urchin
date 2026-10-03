@@ -19,11 +19,11 @@ Usage:
 - the verdict is mirlite's on byte-addressed memory, at the loader's real
   layouts.
 - --osea: differential mode — additionally compile each loaded program to
-  OSEA-IR (`compile_bytes.lean`, same layouts) and require the same verdict
+  OSEA-IR (`compile.lean`, same layouts) and require the same verdict
   as mirlite (mismatch = failure).
 - --layouts: instead of running, check each loaded program's byte layouts
   against its locals' types (`bytes.Agrees`; the byte proof's layout
-  conditions, `byteproof.compileB_correct_agrees`) and list disagreements.
+  conditions, `proof.compile_correct_agrees`) and list disagreements.
 -/
 
 namespace conformance

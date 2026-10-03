@@ -24,14 +24,12 @@ semantics) gives it:
 Pointers are 8 bytes (x86_64, the target the conformance corpus is built
 for). Addresses are bump-allocated, aligned, and never 0.
 
-STATUS (branch `byteaddress`, 2026-10-02): standalone. Nothing in mirlite
-or oseair uses it yet; migrating `Mem`/`MemValue` (mirlite) and `Mem`/`Val`
-(oseair) onto it is the next stage (see
-notes/journal/2026-10/2026-10-02-byte-memory-design.md).
+Both machines' memory (`mirlite.lean`, `oseair.lean`); design notes in
+notes/journal/2026-10/2026-10-02-byte-memory-design.md.
 
-Deviations from the cell model this layer will replace:
-- the cell model's pointer carries `extent` (cells it claims) in the
-  value; here the extent of a thin pointer is its pointee's size (from the
+Deviations from Miri:
+- a pointer carries `extent` (the bytes it claims) in its provenance;
+  in Miri the extent of a thin pointer is its pointee's size (from the
   type) and a slice's length is fat-pointer METADATA, a second word —
   that change belongs to the layout stage, not to this layer;
 - there are no unbounded words: an integer of `n` bytes is a bit pattern
@@ -47,13 +45,13 @@ open obseq3
 /-- What a pointer may access: the allocation `[base, base + size)` and the
     SB tag the borrow tracker checks the access against. (Miri: an
     `AllocId` plus a `BorTag`; the model names the allocation by its range,
-    as the cell model does.) -/
+    which is all the model needs.) -/
 structure Prov where
   base : Nat
   size : Nat
   tag : Tag
   /-- TEMPORARY (stage 2): the bytes the pointer claims from its address —
-      the cell model's `extent`, which a slice uses as its length. Miri
+      the pointer's `extent`, which a slice uses as its length. Miri
       keeps a slice's length as fat-pointer METADATA (a second word), not
       in provenance; this field goes when fat pointers become two words. -/
   extent : Nat := 0

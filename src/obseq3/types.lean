@@ -38,7 +38,7 @@ end IntTy
     (width and signedness — the static half of MiniRust's
     `Type::Int(IntType)`); `PtrL τ` a pointer to a `τ`; `TupL` a tuple.
     Byte offsets and padding are not here: the byte model takes them from a
-    per-local byte layout (`mirliteB.LayEnv`). -/
+    per-local byte layout (`mirlite.LayEnv`). -/
 inductive LayoutTy where
   | IntL (t : IntTy)
   | PtrL (inner : LayoutTy)

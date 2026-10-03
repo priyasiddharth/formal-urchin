@@ -41,8 +41,7 @@ def dealloc : Shim := fun st args _dest line => do
   | _ => .error s!"unsupported: dealloc argument is not a place (line {line})"
 
 /-- Layout::for_value(&T): the size word in BYTES, statically from the
-    pointee (2026-10-02; was the cell count). The cell machine allocates
-    one cell per byte from it — more than it needs, never fewer. -/
+    pointee. -/
 def layoutForValue : Shim := fun st args dest line => do
   match args with
   | [.copy p] | [.move p] =>

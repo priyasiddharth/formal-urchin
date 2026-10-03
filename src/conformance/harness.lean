@@ -1,15 +1,15 @@
 import conformance.elab
-import obseq3.compile_bytes
-import obseq3.mirlite_bytes
+import obseq3.compile
+import obseq3.mirlite
 import obseq3.layout_agree
 
 /-!
 Conformance harness: reads a manifest of Miri-derived tests, loads each
 Charon ULLBC artifact through the loader/elaborator, runs it under the
-obseq3 mirlite semantics on bytes (`mirlite_bytes.lean`, at the loader's
+obseq3 mirlite semantics on bytes (`mirlite.lean`, at the loader's
 real layouts), and compares the verdict with the manifest's expectation.
-`--osea` also compiles each program (`compile_bytes.lean`, same layouts)
-and requires its target (`oseair_layout.lean`) to reach the same verdict.
+`--osea` also compiles each program (`compile.lean`, same layouts)
+and requires its target (`oseair.lean`) to reach the same verdict.
 
 Outcomes:
 - `pass`        — verdict (and line, when specified) matches expectation
@@ -53,35 +53,35 @@ def Verdict.render : Verdict → String
 
 /-! ## The model's verdict
 
-mirlite on byte-addressed memory (`obseq3/mirlite_bytes.lean`) with the
+mirlite on byte-addressed memory (`obseq3/mirlite.lean`) with the
 loader's real layouts gives the verdict judged against Miri. -/
 
 /-- The loader's byte layouts as an environment (a local without one — none
     should be missing — falls back to the uniform layout). -/
-def Loaded.layEnv (l : Loaded) : mirliteB.LayEnv l.Γ :=
+def Loaded.layEnv (l : Loaded) : mirlite.LayEnv l.Γ :=
   fun i => l.blay.getD i.val (bytes.ofLayoutTy (l.Γ.get i))
 
 /-- Locals whose byte layout does not have their type's shape
     (`bytes.Agrees`). Empty means the byte proof's two layout conditions
     hold for every place of the program
-    (`byteproof.compileB_correct_agrees`). -/
+    (`proof.compile_correct_agrees`). -/
 def Loaded.layoutDisagreements (l : Loaded) : List (Nat × obseq3.LayoutTy × bytes.BLayout) :=
   (List.finRange l.Γ.length).filterMap fun i =>
     if bytes.Agrees (l.Γ.get i) (l.layEnv i) then none else some (i.val, l.Γ.get i, l.layEnv i)
 
 /-- The byte model's verdict, and on UB the memory it failed in (the
     reason check turns a failing address into an allocation offset). -/
-def runLoadedBytesFull (l : Loaded) (L : mirliteB.LayEnv l.Γ) : Verdict × Option bytes.Mem :=
-  go (l.prog.length + 2) (mirliteB.State.initial M l.Γ)
+def runLoadedBytesFull (l : Loaded) (L : mirlite.LayEnv l.Γ) : Verdict × Option bytes.Mem :=
+  go (l.prog.length + 2) (mirlite.State.initial M l.Γ)
 where
-  go : Nat → mirliteB.State M l.Γ → Verdict × Option bytes.Mem
+  go : Nat → mirlite.State M l.Γ → Verdict × Option bytes.Mem
     | 0, _ => (.fuelExhausted, none)
     | fuel + 1, st =>
         match l.prog[st.pc]? with
         | none => (.ok, none)
         | some .halt => (.ok, none)
         | some stmt =>
-            match mirliteB.stepStmt M L st stmt with
+            match mirlite.stepStmt M L st stmt with
             | .ok st' => go fuel st'
             | .err msg =>
                 let line := l.lines[st.pc]?.getD 0
@@ -89,7 +89,7 @@ where
                 else if line ≥ certLineBase then (.certRejected st.pc (line - certLineBase), none)
                 else (.ub st.pc line msg, some st.mem)
 
-def runLoadedBytes (l : Loaded) (L : mirliteB.LayEnv l.Γ) : Verdict :=
+def runLoadedBytes (l : Loaded) (L : mirlite.LayEnv l.Γ) : Verdict :=
   (runLoadedBytesFull l L).1
 
 /-! ## The reason check
@@ -219,7 +219,7 @@ def Verdict.agrees : Verdict → Verdict → Bool
 
 /-! ## Differential mode (`--osea`)
 
-Compile the loaded program to OSEA-IR (`compile_bytes.lean`, at the
+Compile the loaded program to OSEA-IR (`compile.lean`, at the
 loader's layouts) and require the SAME verdict as mirlite: ok↔ok, or UB
 attributed (via the compiler's per-statement label ranges) to the same
 source statement. A verdict mismatch is a hard failure of the suite. -/
@@ -235,18 +235,18 @@ inductive OseaStatus
 | mismatch (why : String)
 deriving Repr
 
-/-- The byte compiler's output on its target (`oseair_layout.lean`). -/
-def runOseaProgL (tprog : obseq3.oseairL.Prog) (fuel : Nat) : OseaRun :=
-  go fuel (oseairL.State.initial M)
+/-- The compiled program on its target (`oseair.lean`). -/
+def runOseaProgL (tprog : obseq3.oseair.Prog) (fuel : Nat) : OseaRun :=
+  go fuel (oseair.State.initial M)
 where
-  go : Nat → oseairL.State M → OseaRun
+  go : Nat → oseair.State M → OseaRun
     | 0, _ => .fuelExhausted
     | n + 1, st =>
         match tprog st.pc with
         | none => .ok
         | some .Halt => .ok
         | some _ =>
-            match oseairL.step M st tprog with
+            match oseair.step M st tprog with
             | .Ok st' => go n st'
             | .Err msg => .ub st.pc msg
 
@@ -254,12 +254,12 @@ where
     target, against the source's (judged) verdict `src` on the same
     layouts. -/
 def oseaStatus (l : Loaded) (src : Verdict) : OseaStatus :=
-  match compileB.compileProg l.layEnv l.prog with
+  match compile.compileProg l.layEnv l.prog with
   | .error (.unsupported w) => .skipped w
   | .error (.missingLocal i) => .skipped s!"local _{i} read before assignment"
   | .ok tprog =>
-      let ranges := compileB.stmtLabelRanges l.layEnv l.prog
-      let fuel := compileB.emittedLabels l.layEnv l.prog + 2
+      let ranges := compile.stmtLabelRanges l.layEnv l.prog
+      let fuel := compile.emittedLabels l.layEnv l.prog + 2
       match runOseaProgL tprog fuel, src, src.stmt? with
       | .ok, .ok, _ => .matched
       | .ub label msg, _, some srcIdx =>

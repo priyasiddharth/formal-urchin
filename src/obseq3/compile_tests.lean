@@ -1,8 +1,8 @@
-import obseq3.compile_bytes
+import obseq3.compile
 import obseq3.tests
 
 /-!
-Unit tests for the byte compiler (`compile_bytes.lean`, mirlite → OSEA-IR on
+Unit tests for the compiler (`compile.lean`, mirlite → OSEA-IR on
 bytes), at the uniform layout:
 - golden fragments: compiled code maps compared against hand-written
   instruction lists (const-init with fresh/mapped locals, ref with
@@ -15,8 +15,8 @@ bytes), at the uniform layout:
 
 namespace obseq3.CompileTests
 
-open obseq3 obseq3.compileB obseq3.bytes
-open obseq3.oseairL (Instr Rhs)
+open obseq3 obseq3.compile obseq3.bytes
+open obseq3.oseair (Instr Rhs)
 open obseq3.oseair (Register Val)
 open obseq3.Tests (assert natL ptrNat pairL M)
 
@@ -34,7 +34,7 @@ def pairB : BLayout := .tup [natB, natB] [0, 8] 16 8
 def tripleB : BLayout := .tup [natB, pairB] [0, 8] 24 8
 
 def codeList (Γ : Ctx) (prog : Prog Γ) : Except CompilerError (List (Option Instr)) := do
-  let L := mirliteB.uniformEnv Γ
+  let L := mirlite.uniformEnv Γ
   let tp ← compileProg L prog
   return (List.range (emittedLabels L prog)).map tp
 
@@ -121,7 +121,7 @@ def g4_field_offsets_and_die : IO Unit :=
     statement/rvalue family compiles. (Replaces the retired
     unsupported-witness test — no unsupported construct remains.) -/
 def g5_compiler_total : IO Unit := do
-  match compileProg (Γ := Γ2) (mirliteB.uniformEnv Γ2)
+  match compileProg (Γ := Γ2) (mirlite.uniformEnv Γ2)
       [.assign x2 (.constInit 1),
        .pushProtectors,
        .assign p2 (.ref .Mut true [] x2),
@@ -241,52 +241,52 @@ inductive DiffOut
 | stuck
 deriving BEq, Repr
 
-/-- The source run on byte-addressed memory (`mirlite_bytes.lean`). -/
+/-- The source run on byte-addressed memory (`mirlite.lean`). -/
 def srcRunB (Γ : Ctx) (prog : Prog Γ) : DiffOut :=
-  go (prog.length + 2) (mirliteB.State.initial M Γ)
+  go (prog.length + 2) (mirlite.State.initial M Γ)
 where
-  go : Nat → mirliteB.State M Γ → DiffOut
+  go : Nat → mirlite.State M Γ → DiffOut
     | 0, _ => .stuck
     | n + 1, st =>
         match prog[st.pc]? with
         | none => .ok
         | some .halt => .ok
         | some stmt =>
-            match mirliteB.stepStmt M (mirliteB.uniformEnv Γ) st stmt with
+            match mirlite.stepStmt M (mirlite.uniformEnv Γ) st stmt with
             | .ok st' => go n st'
             | .err _ => .ub st.pc
 
-/-- The BYTE compiler's output (`compile_bytes.lean`) on its own target
-    (`oseair_layout.lean`), both at layout table `L`. -/
-def tgtRunL (Γ : Ctx) (L : mirliteB.LayEnv Γ) (prog : Prog Γ) : Except String DiffOut :=
-  match compileB.compileProg L prog with
+/-- The compiler's output (`compile.lean`) on its own target
+    (`oseair.lean`), both at layout table `L`. -/
+def tgtRunL (Γ : Ctx) (L : mirlite.LayEnv Γ) (prog : Prog Γ) : Except String DiffOut :=
+  match compile.compileProg L prog with
   | .error e => .error s!"compile error: {reprStr e}"
   | .ok tp =>
-      .ok (go tp (compileB.stmtLabelRanges L prog) (compileB.emittedLabels L prog + 2)
-        (oseairL.State.initial M))
+      .ok (go tp (compile.stmtLabelRanges L prog) (compile.emittedLabels L prog + 2)
+        (oseair.State.initial M))
 where
-  go (tp : oseairL.Prog) (ranges : List (Nat × Nat)) :
-      Nat → oseairL.State M → DiffOut
+  go (tp : oseair.Prog) (ranges : List (Nat × Nat)) :
+      Nat → oseair.State M → DiffOut
     | 0, _ => .stuck
     | n + 1, st =>
         match tp st.pc with
         | none => .ok
         | some .Halt => .ok
         | some _ =>
-            match oseairL.step M st tp with
+            match oseair.step M st tp with
             | .Ok st' => go tp ranges n st'
             | .Err _ =>
                 match ranges.findIdx? (fun r => r.1 ≤ st.pc && st.pc < r.2) with
                 | some i => .ub i
                 | none => .ub 999999
 
-/-- Every differential program runs on the byte source and the byte
-    compiler's output on its target, both at the uniform layout, and both
+/-- Every differential program runs on the source and the
+    compiled program on its target, both at the uniform layout, and both
     must reach the expected verdict. -/
 def expectDiff (Γ : Ctx) (prog : Prog Γ) (expected : DiffOut) (label : String) : IO Unit := do
   let src := srcRunB Γ prog
   assert (src == expected) s!"{label}: source verdict {reprStr src}, expected {reprStr expected}"
-  match tgtRunL Γ (mirliteB.uniformEnv Γ) prog with
+  match tgtRunL Γ (mirlite.uniformEnv Γ) prog with
   | .error e => throw (IO.userError s!"{label}: {e}")
   | .ok tgt =>
       assert (tgt == expected)

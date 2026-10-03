@@ -1,5 +1,5 @@
 # Axiom/sorry whitelist for the audit rooted at the byte-level correctness
-# theorems (obseq3.byteproof.compileB_correct_{agrees,uniform,all}).
+# theorems (obseq3.proof.compile_correct_{agrees,uniform,all}).
 # scripts/audit_axioms.sh FAILS if the current state differs from this file
 # in EITHER direction (new axiom/sorry, or a stale entry after one closes).
 # Update this file in the same commit that changes the proof state.

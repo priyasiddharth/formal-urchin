@@ -14,14 +14,8 @@ itself.
 
 A value is handled through its LEAVES — the `(offset, scalar)` pairs of
 its integers and pointers — which is the flat shape the semantics already
-works with (`List MemValue` in the cell model). `ofLayoutTy` maps today's
-cell layouts into this world (a model word is a `usize`), and its leaf
-count is exactly today's cell count (`ofLayoutTy_leaves_length`), so the
-semantics can switch memories without changing how many values anything
-produces.
-
-STATUS (branch `byteaddress`): standalone, like `bytemem.lean`.
-`LayoutTy` is shared with v1 and obseq2 and is not widened.
+works with (`List MemValue`). `ofLayoutTy` is the uniform layout of a
+layout type (every integer a `usize`-sized leaf, tuples in C layout).
 -/
 
 namespace obseq3.bytes
@@ -153,7 +147,7 @@ theorem reprC_good (fs : List BLayout) (hfs : ∀ f ∈ fs, Good f.leaves f.size
 
 mutual
 /-- The uniform byte layout of a layout type: every integer 8 bytes
-    whatever its width (one cell of the cell model), a pointer a thin
+    whatever its width (the uniform layout), a pointer a thin
     pointer, a tuple the C layout of its fields. The loader's layouts give
     integers their real width instead (`Agrees` checks it). -/
 def ofLayoutTy : LayoutTy → BLayout

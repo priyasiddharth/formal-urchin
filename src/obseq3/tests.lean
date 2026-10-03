@@ -1,6 +1,6 @@
 import obseq3.bytemem
 import obseq3.bytelayout
-import obseq3.mirlite_bytes
+import obseq3.mirlite
 
 /-!
 Unit tests for the obseq3 SB model and mirlite semantics (on bytes, at
@@ -12,7 +12,7 @@ executables via `InterpTests.lean` / the conformance harness.
 
 namespace obseq3.Tests
 
-open obseq3 obseq3.mirliteB
+open obseq3 obseq3.mirlite
 open obseq3.mirlite (MemValue)
 
 def assert (cond : Bool) (msg : String) : IO Unit :=
@@ -471,7 +471,7 @@ def t27_bytes_tuple_roundtrip : IO Unit := do
 
 end bytes
 
-/-! ## mirlite on bytes (`mirlite_bytes.lean`) -/
+/-! ## mirlite on bytes (`mirlite.lean`) -/
 
 def ΓR : Ctx := [natL, ptrNat, LayoutTy.PtrL ptrNat, ptrNat, natL]
 def xR : Place ΓR natL := .local ⟨⟨0, by decide⟩, rfl⟩
@@ -508,7 +508,7 @@ def pN : Place ΓN ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
     (2026-10-02 fix: it read 8 bytes whatever the width, running past a
     `u8` into the next local and the uninitialised bytes after it). -/
 def t31_narrow_int_to_ptr : IO Unit := do
-  let L : mirliteB.LayEnv ΓN := fun i =>
+  let L : mirlite.LayEnv ΓN := fun i =>
     match i.val with
     | 2 => .ptr (.int 1)
     | _ => .int 1
@@ -516,7 +516,7 @@ def t31_narrow_int_to_ptr : IO Unit := do
     .assign xN (.constInit 5),
     .assign yN (.constInit 7),
     .assign pN (.fromExposed xN)]
-  match mirliteB.runN M L (prog.length + 1) (mirliteB.State.initial M ΓN) prog with
+  match mirlite.runN M L (prog.length + 1) (mirlite.State.initial M ΓN) prog with
   | .ok _ => pure ()
   | .err e => throw (IO.userError s!"t31 narrow int-to-ptr: expected ok, got {e}")
 

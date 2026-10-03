@@ -7,7 +7,7 @@ import obseq3.bytelayout
 an integer of the type's width for `IntL t`, a pointer to an agreeing pointee for
 `PtrL`, a tuple of agreeing fields (offsets, size and alignment free) for
 `TupL`. Decidable per local, it implies the byte proof's two layout
-conditions for EVERY place (`byteproof/layoutagree.lean`), so the
+conditions for EVERY place (`proof/layoutagree.lean`), so the
 conformance harness can check the loader's layouts program by program.
 -/
 

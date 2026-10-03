@@ -1,5 +1,5 @@
 import Lean
-import obseq3.byteproof.layoutagree
+import obseq3.proof.layoutagree
 
 /-!
 # Axiom audit
@@ -18,16 +18,16 @@ are caught; declarations not reachable from the root are by definition
 irrelevant to the correctness statement.
 
 The proof is sorry-free; a sorry reaching a root fails the audit. The
-roots are the byte-level correctness theorems (`obseq3/byteproof/`).
+roots are the byte-level correctness theorems (`obseq3/proof/`).
 -/
 
 open Lean
 
 /-- The roots whose closures are audited. -/
 def auditRoots : List Name :=
-  [``obseq3.byteproof.compileB_correct_agrees,
-   ``obseq3.byteproof.compileB_correct_uniform,
-   ``obseq3.byteproof.compileB_correct_all]
+  [``obseq3.proof.compile_correct_agrees,
+   ``obseq3.proof.compile_correct_uniform,
+   ``obseq3.proof.compile_correct_all]
 
 /-- The whitelist lives in a data file next to this script; the audit
     compares the CURRENT state against it in both directions. -/
