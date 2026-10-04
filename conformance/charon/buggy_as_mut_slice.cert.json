@@ -1,0 +1,41 @@
+{
+ "version": 1,
+ "source": "corpus/tests/fail/both_borrows/buggy_as_mut_slice.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ub",
+ "user_fns": [
+  "as_mut_slice",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "move _13",
+     "success": 5,
+     "descr": "rustc_const_eval::interpret::step assert(move _13, \"index out of bounds: the length is {} but the index is {}\", move _12, copy _10) -> [success: bb5, unwind: bb8]",
+     "next": 5,
+     "outcome": "success"
+    }
+   ]
+  },
+  {
+   "fn": "as_mut_slice",
+   "miri_path": "safe::as_mut_slice::<i32>",
+   "events": []
+  },
+  {
+   "fn": "as_mut_slice",
+   "miri_path": "safe::as_mut_slice::<i32>",
+   "events": []
+  }
+ ]
+}

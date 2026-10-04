@@ -51,6 +51,10 @@ structure LowerSt where
   fnPtrs : List (Nat × Nat) := []   -- rebased local ↦ fun defId (reified fn ptrs)
   constVals : List (ConstKey × Nat) := []  -- known constant words (index resolution, T1 folding)
   refOf : List (ConstKey × UPlace) := []   -- a pointer-holding place ↦ the place it was taken from
+  -- places holding a pointer into a HEAP block (a fresh allocation's, or
+  -- copied from one): a write through one lands in no local, so it
+  -- changes no tracked constant (`trackAssign`)
+  heapPtrs : List ConstKey := []
   -- certificate-guided lowering (none = the straight-line-only seam)
   cert : Option CertCursor := none
   certBad : Nat := 0     -- scratch usize local the checks poison
@@ -91,10 +95,11 @@ def killConst (st : LowerSt) (k : ConstKey) : LowerSt :=
 def killKey (st : LowerSt) (k : ConstKey) : LowerSt :=
   let rel : ConstKey → Bool := fun k' => k'.1 == k.1 && (k.2.isPrefixOf k'.2 || k'.2.isPrefixOf k.2)
   { st with constVals := st.constVals.filter (fun (k', _) => !rel k'),
-            refOf := st.refOf.filter (fun (k', _) => !rel k') }
+            refOf := st.refOf.filter (fun (k', _) => !rel k'),
+            heapPtrs := st.heapPtrs.filter (fun k' => !rel k') }
 
 def killAllConsts (st : LowerSt) : LowerSt :=
-  { st with constVals := [], refOf := [] }
+  { st with constVals := [], refOf := [], heapPtrs := [] }
 
 /-- The root-local key a place denotes, following tracked references
     through its derefs (`*r` where `r := &p` denotes `p`). `none` when a
@@ -220,43 +225,14 @@ def URvalue.movedPlaces : URvalue → List UPlace
 def markMovedOps (st : LowerSt) (ops : List UOperand) : LowerSt :=
   ops.foldl (fun st o => match o with | .move p => markMoved st p | _ => st) st
 
-/-- A Box somewhere in the value itself (not behind a pointer). -/
+/-- A Box or a Vec somewhere in the value itself (not behind a pointer):
+    heap memory its drop glue frees. -/
 partial def containsBox : UTy → Bool
-  | .boxT _ => true
+  | .boxT _ | .vecT _ => true
   | .tup tys | .structT tys _ => tys.any containsBox
   | .enum vs => vs.any (·.any containsBox)
   | .cell t => containsBox t
   | _ => false
-
-/-- Drop the value at `p`, as far as Boxes go: a Box drops its contents and
-    then frees its allocation through its own pointer (std's
-    `<Box as Drop>::drop`: `if layout.size() != 0 { deallocate }`); a tuple
-    or struct drops its fields in order; everything else has no drop glue
-    the model needs. With a certificate, each Box drop must be the one
-    Miri made next in this frame (`consumeDrop`). -/
-partial def emitDropGlue (st : LowerSt) (line : Nat) (p : UPlace) : Except String LowerSt := do
-  if st.halted || isMoved st p || !containsBox p.ty then return st
-  match p.ty with
-  | .boxT inner =>
-      let st ← emitDropGlue st line { pointee p with ty := inner }
-      match st.cert with
-      | some c =>
-          -- past the end of a UB/panic certificate (nothing left of it at
-          -- all): Miri never got here, and mirlite must fail first
-          if c.cert.outcome != .ok && c.allConsumed then
-            return emitPoison st line
-          let c ← c.consumeDrop s!"the frame at line {line}"
-          let st := { st with cert := some c }
-          let st := if uSize inner == 0 then st else pushOut st (.dealloc p line)
-          return markMoved st p
-      | none =>
-          let st := if uSize inner == 0 then st else pushOut st (.dealloc p line)
-          return markMoved st p
-  | .tup tys | .structT tys _ =>
-      tys.zipIdx.foldlM (fun st (t, i) => emitDropGlue st line { fld p i with ty := t }) st
-  | .cell t => emitDropGlue st line { p with ty := t }
-  | .enum _ => .error s!"unsupported: drop of an enum holding a Box (line {line})"
-  | _ => return st
 
 /-- Resolve array-index projections to static field indices using the
     tracked constant values of index locals. -/
@@ -303,6 +279,7 @@ partial def toBLayout : UTy → obseq3.bytes.BLayout
   | .nat => .int 8
   | .int t => .int (max 1 (t.bits / 8))
   | .ref _ i | .raw _ i | .boxT i => .ptr (toBLayout i)
+  | .vecT e => toBLayout (vecHeader e)
   | .slice _ _ e => .ptr (toBLayout e)
   | .sliceData e => toBLayout e
   | .cell t => toBLayout t
@@ -317,6 +294,59 @@ partial def toBLayout : UTy → obseq3.bytes.BLayout
 
 /-- A type's size in BYTES (`size_of`, `Layout::new`, `Layout::for_value`). -/
 def byteSize (t : UTy) : Nat := (toBLayout t).size
+
+/-- Drop the value at `p`, as far as Boxes and Vecs go: a Box drops its contents and
+    then frees its allocation through its own pointer (std's
+    `<Box as Drop>::drop`: `if layout.size() != 0 { deallocate }`); a tuple
+    or struct drops its fields in order; everything else has no drop glue
+    the model needs. With a certificate, each Box drop must be the one
+    Miri made next in this frame (`consumeDrop`). -/
+partial def emitDropGlue (st : LowerSt) (line : Nat) (p : UPlace) : Except String LowerSt := do
+  if st.halted || isMoved st p || !containsBox p.ty then return st
+  match p.ty with
+  | .boxT inner =>
+      let st ← emitDropGlue st line { pointee p with ty := inner }
+      match st.cert with
+      | some c =>
+          -- past the end of a UB/panic certificate (nothing left of it at
+          -- all): Miri never got here, and mirlite must fail first
+          if c.cert.outcome != .ok && c.allConsumed then
+            return emitPoison st line
+          let c ← c.consumeDrop s!"the frame at line {line}"
+          let st := { st with cert := some c }
+          let st := if uSize inner == 0 then st else pushOut st (.dealloc p line)
+          return markMoved st p
+      | none =>
+          let st := if uSize inner == 0 then st else pushOut st (.dealloc p line)
+          return markMoved st p
+  | .tup tys | .structT tys _ =>
+      tys.zipIdx.foldlM (fun st (t, i) => emitDropGlue st line { fld p i with ty := t }) st
+  | .cell t => emitDropGlue st line { p with ty := t }
+  | .vecT elem =>
+      -- std's drop glue: a protected `&mut` retag of the header (the glue's
+      -- and `Drop::drop`'s fn-entry retags), `<Vec as Drop>::drop` dropping
+      -- the elements (`drop_in_place` of `[T]`: no glue, no retag, for an
+      -- element without one), then `RawVec`'s drop freeing the buffer
+      -- through the stored pointer when it holds bytes. The capacity must
+      -- be known statically.
+      if containsBox elem then
+        throw s!"unsupported: drop of a Vec whose elements have drop glue (line {line})"
+      -- past the end of a UB/panic certificate: Miri never got here
+      if let some c := st.cert then
+        if c.cert.outcome != .ok && c.allConsumed then
+          return emitPoison st line
+      let some cap := constOfPlace st { fld p 1 with ty := .nat }
+        | throw s!"unsupported: drop of a Vec with a runtime capacity (line {line})"
+      let t := st.locals.length
+      let st := { st with locals := st.locals ++ [.ref true (.vecT elem)] }
+      let tmp : UPlace := { root := .local t, projs := [], ty := .ref true (.vecT elem) }
+      let st := pushOut st (.pushProt line)
+      let st := pushOut st (.assign tmp (.ref .mut true p) line)
+      let st := if cap.toNat * byteSize elem == 0 then st
+        else pushOut st (.dealloc { fld (pointee tmp) 0 with ty := .raw true elem } line)
+      return markMoved (pushOut st (.popProt line)) p
+  | .enum _ => .error s!"unsupported: drop of an enum holding a Box (line {line})"
+  | _ => return st
 
 /-- The byte offset of the field path `steps` in a value of type `t`, at
     the offsets `toBLayout` gives (cells are transparent). -/
@@ -415,6 +445,33 @@ def pointeeTy? : UTy → Option UTy
   | .ref _ i | .raw _ i | .boxT i => some i
   | _ => none
 
+/-- Does the place `p` lie in a heap block: is its last dereference
+    through a pointer the tracker knows points into the heap (or at a
+    place that itself lies in one), with only field projections after it? -/
+def inHeap (st : LowerSt) : Nat → UPlace → Bool
+  | 0, _ => false
+  | fuel + 1, p =>
+      match p.projs.reverse.dropWhile (· matches .field _) with
+      | .deref :: before =>
+          match resolveKey st 8 { p with projs := before.reverse } with
+          | some k =>
+              st.heapPtrs.contains k ||
+                (match st.refOf.lookup k with
+                 | some t => inHeap st fuel t
+                 | none => false)
+          | none => false
+      | _ => false
+
+def writesHeap (st : LowerSt) (dst : UPlace) : Bool := inHeap st 8 dst
+
+/-- `dst := alloc(sz)` (a Box's pointee when `sz` is none): the new
+    pointer points into the heap. -/
+def emitAlloc (st : LowerSt) (line : Nat) (dst : UPlace) (sz : Option UOperand) : LowerSt :=
+  let st := match fieldPath? dst <|> resolveKey st 8 dst with
+    | some k => let st := killKey st k; { st with heapPtrs := k :: st.heapPtrs }
+    | none => st
+  pushOut st (.alloc dst sz line)
+
 /-- A copy of a pointer that changes its POINTEE type (a type-punning cast,
     `&mut s.b as *mut u32 as *mut u8`) does not carry "points at that
     place" (2026-10-02): through the new type an access covers different
@@ -438,7 +495,7 @@ def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
   let key? : Option ConstKey :=
     if dst.projs.contains .deref then resolveKey st 8 dst else fieldPath? dst
   match key? with
-  | none => killAllConsts st
+  | none => if writesHeap st dst then st else killAllConsts st
   | some (d, path) =>
       let st := killKey st (d, path)
       let copyUnder (sk : ConstKey) : LowerSt :=
@@ -448,11 +505,17 @@ def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
           if k.1 == sk.1 && sk.2.isPrefixOf k.2 then some ((d, path ++ k.2.drop sk.2.length), v) else none
         let rs := st.refOf.filterMap fun (k, tgt) =>
           if k.1 == sk.1 && sk.2.isPrefixOf k.2 then some ((d, path ++ k.2.drop sk.2.length), tgt) else none
-        { st with constVals := cs ++ st.constVals, refOf := rs ++ st.refOf }
+        let hs := st.heapPtrs.filterMap fun k =>
+          if k.1 == sk.1 && sk.2.isPrefixOf k.2 then some (d, path ++ k.2.drop sk.2.length) else none
+        { st with constVals := cs ++ st.constVals, refOf := rs ++ st.refOf, heapPtrs := hs ++ st.heapPtrs }
       match rv with
       | .use (.const n) => { st with constVals := ((d, path), n) :: st.constVals }
       | .use (.copy sp) | .use (.move sp) | .move sp =>
-          if punsPointee sp.ty dst.ty then st
+          if punsPointee sp.ty dst.ty then
+            -- a cast pointer still points where it pointed
+            if (resolveKey st 8 sp).any st.heapPtrs.contains then
+              { st with heapPtrs := (d, path) :: st.heapPtrs }
+            else st
           else
           match resolveKey st 8 sp with
           | some sk => copyUnder sk
@@ -473,6 +536,10 @@ def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
             | _ => st) st
       | .aggregate (some v) _ => { st with constVals := ((d, path ++ [0]), v) :: st.constVals }
       | .ref _ _ p => { st with refOf := ((d, path), p) :: st.refOf }
+      | .ptrOffset sp _ _ =>
+          if (resolveKey st 8 sp).any st.heapPtrs.contains then
+            { st with heapPtrs := (d, path) :: st.heapPtrs }
+          else st
       | _ => st
 
 /-- Retag/copy `src` into `dst` at a retag point (inline seam or a

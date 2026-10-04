@@ -1,0 +1,30 @@
+{
+ "version": 1,
+ "source": "local/vec_slice_survives_push.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "move _15",
+     "success": 6,
+     "descr": "rustc_const_eval::interpret::step assert(move _15, \"index out of bounds: the length is {} but the index is {}\", move _14, copy _13) -> [success: bb6, unwind: bb8]",
+     "next": 6,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

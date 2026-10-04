@@ -5122,3 +5122,9 @@ machines via the shared `bytes.Mem.offsetPtr`; `add`/`offset` set it,
 `wrapping_*` do not; nonzero raw-field borrows lowered through it
 (parked n closed). ptr_add_out_of_bounds and three raw_field witnesses
 flip to pass; corpus 161/0/0/23 of 184, units 32 + 138; audit unchanged.
+2026-10-04: Vec as loader shims (user decision over std's real code: Charon
+leaves Vec opaque; its std differs from Miri's, so std-frame certificates
+cannot line up). `vecT` header, shims from Miri's std sources, transparent
+MaybeUninit/ManuallyDrop/MaybeDangling, heap-pointer tracking. 2phase,
+buggy_as_mut_slice, unsafe_cell_2phase pass + 3 Vec witnesses; corpus
+167/0/0/21 of 188. Next: String (str literals) for drop_after_sharing.

@@ -32,6 +32,7 @@ partial def toLayout : UTy → Except String LayoutTy
   | .structT tys _ => do return .TupL (← tys.mapM toLayout)
   | .cell inner => toLayout inner   -- interior-mutable wrapper is layout-transparent
   | .boxT inner => do return .PtrL (← toLayout inner)
+  | .vecT elem => toLayout (vecHeader elem)
   | .slice _ _ elem => do return .PtrL (← toLayout elem)  -- one-cell fat value
   | .sliceData _ => .error "unsupported: unsized slice value position"
   | .enum variants => do

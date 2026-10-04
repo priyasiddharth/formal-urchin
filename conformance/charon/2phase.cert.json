@@ -1,0 +1,107 @@
+{
+ "version": 1,
+ "source": "corpus/tests/pass/both_borrows/2phase.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main",
+  "tpb",
+  "two_phase1",
+  "two_phase2",
+  "two_phase3",
+  "two_phase_overlapping1",
+  "two_phase_overlapping2",
+  "two_phase_raw"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "two_phase1",
+   "miri_path": "two_phase1",
+   "events": []
+  },
+  {
+   "fn": "tpb",
+   "miri_path": "<i32 as S>::tpb",
+   "events": []
+  },
+  {
+   "fn": "two_phase2",
+   "miri_path": "two_phase2",
+   "events": []
+  },
+  {
+   "fn": "two_phase3",
+   "miri_path": "two_phase3",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _10",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _10) -> [0: bb4, otherwise: bb3]",
+     "next": 4,
+     "arm": "0"
+    }
+   ]
+  },
+  {
+   "fn": "two_phase3",
+   "miri_path": "two_phase3",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _10",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _10) -> [0: bb4, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "two_phase_raw",
+   "miri_path": "two_phase_raw",
+   "events": []
+  },
+  {
+   "fn": "two_phase_overlapping1",
+   "miri_path": "two_phase_overlapping1",
+   "events": []
+  },
+  {
+   "fn": "two_phase_overlapping2",
+   "miri_path": "two_phase_overlapping2",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_8.1: bool)",
+     "success": 1,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_8.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _6, move _7) -> [success: bb1, unwind continue]",
+     "next": 1,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

@@ -252,8 +252,9 @@ feature-level view.
    static field index, and range indexing (`&a[0..0]`) needs the std
    `Index<Range>` chain plus a `subSlice` rvalue (offset + extent from
    two runtime words) — own entry below.
-4. **Std containers**: Vec/String/vec! (buggy_as_mut_slice,
-   box-custom-alloc-aliasing), Rc (illegal_read5), NonNull
+4. **Std containers**: Vec/vec! DONE 2026-10-04 (loader shims, item w;
+   buggy_as_mut_slice passes); String, box-custom-alloc-aliasing
+   (allocator-generic), Rc (illegal_read5), NonNull
    (mut_exclusive_violation2).
 5. **Threads + the data-race detector** (retag_data_race_* ×3) — a
    different checker's interaction with retags; out of scope for SB.
@@ -502,7 +503,10 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
 - s. `UnsafePinned` cell-like type + `&mut` to a non-`UnsafeUnpin` type
   gets the SRW retag (from a type mask, not `Unpin`) → unsafe_pinned;
   also coroutine's model need. Verify Miri's exact rule first. [HYP]
-- t. `MaybeUninit<T>` = layout of T (`uninit`/`as_ptr`/`write`/
+- t. (2026-10-04: `MaybeUninit`/`ManuallyDrop`/`MaybeDangling` are now
+  parsed transparent with their field projections dropped — what
+  `vec![..]` needs; the method shims below are still missing.)
+  `MaybeUninit<T>` = layout of T (`uninit`/`as_ptr`/`write`/
   `assume_init_ref`) → local/unassigned_local_addr,
   interior_mutability::into_interior_mutability; + unions (decl,
   aggregate, `&raw mut self.inline`, never retagged) → smallvec
@@ -512,7 +516,12 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
 - v. dyn trait objects: unsize-to-dyn sets the extent, dyn reborrow
   retags `extent` cells, static dyn dispatch + `type_id` shim →
   wide_raw_ptr_in_tuple. [HYP]
-- w. Vec/String container model (3-word header, push with protected
+- w. PARTLY DONE 2026-10-04 (Vec; journal 2026-10-04-vec-shim.md): the
+  `vecT` header + shims (new/len/push/as_ptr/deref(_mut)/vec!/drop) pass
+  2phase, buggy_as_mut_slice, interior_mutability::unsafe_cell_2phase;
+  static lengths only. Left: String (`String::from(&str)` → str literals
+  as static data) for drop_after_sharing; disjoint_mutable_subborrows is
+  blocked by `format!`. Original: Vec/String container model (3-word header, push with protected
   fn-entry retag + realloc, len, as_ptr, `vec!` via `new_uninit`/
   `into_vec`, str literals, drop → dealloc) → 2phase ×5 fns,
   interior_mutability::unsafe_cell_2phase, buggy_as_mut_slice,

@@ -26,13 +26,13 @@ abbrev Shim := LowerSt → List UOperand → UPlace → Nat → Except String Lo
 def boxNew : Shim := fun st args dest line => do
   match args with
   | [valOp] => do
-      let st := pushOut st (.alloc dest none line)
+      let st := emitAlloc st line dest none
       emitAssign st line (pointee dest) (.use valOp)
   | _ => .error s!"unsupported: Box::new arity (line {line})"
 
 def alloc : Shim := fun st args dest line => do
   match args with
-  | [layoutOp] => return pushOut st (.alloc dest (some layoutOp) line)
+  | [layoutOp] => return emitAlloc st line dest (some layoutOp)
   | _ => .error s!"unsupported: alloc arity (line {line})"
 
 def dealloc : Shim := fun st args _dest line => do
@@ -91,8 +91,8 @@ def unsafeCellGet : Shim := fun st args dest line => do
         | .ref _ i => i
         | .raw _ i => i
         | _ => .unsupported "cell get on non-pointer"
-      return pushOut st (.assign dest
-        (.ref .shared false { pointee p with ty := inner }) line)
+      let rv : URvalue := .ref .shared false { pointee p with ty := inner }
+      return pushOut (trackAssign st dest rv) (.assign dest rv line)
   | _ => .error s!"unsupported: cell get argument is not a place (line {line})"
 
 /-- ptr::read(p): a plain read of *p (with the reference-load retag
@@ -606,6 +606,236 @@ def sizeOf (tyArgs : List UTy) : Shim := fun st _args dest line => do
   | [t] => emitAssign st line dest (.use (.const (byteSize t)))
   | _ => .error s!"unsupported: size_of instantiation {reprStr tyArgs} (line {line})"
 
+/-! ## Vec
+
+`Vec<T>` is the loader type `vecT T`: std's header `(ptr, cap, len)`
+(`vecHeader`). Each shim performs what the std body at the pinned Miri's
+toolchain does to memory and the borrow stacks; nested std calls retag
+only from the outer call's fresh tag and are not observable, so only the
+outermost fn-entry retag is emitted. Growth is decided here from the
+length and capacity, which must be known statically. The buffer is a heap
+allocation of its own, so a write into it cannot change a tracked
+constant: it is emitted untracked (`bufWrite`), where a write through an
+untracked pointer would otherwise forget every constant. -/
+
+def vecPtrF (h : UPlace) (e : UTy) : UPlace := { fld h 0 with ty := .raw true e }
+def vecCapF (h : UPlace) : UPlace := { fld h 1 with ty := .nat }
+def vecLenF (h : UPlace) : UPlace := { fld h 2 with ty := .nat }
+
+/-- `dst := rv` for a `dst` in a Vec's buffer: untracked (see above). -/
+def bufWrite (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue) : Except String LowerSt :=
+  match rv with
+  | .use (.copy _) | .use (.move _) | .use (.const _) => return pushOut st (.assign dst rv line)
+  | _ => throw s!"unsupported: Vec element value {reprStr rv} (line {line})"
+
+/-- A fresh local of type `t`. -/
+def freshLocal (st : LowerSt) (t : UTy) : LowerSt × UPlace :=
+  ({ st with locals := st.locals ++ [t] }, { root := .local st.locals.length, projs := [], ty := t })
+
+/-- The fn-entry retag of a `&Vec<T>` / `&mut Vec<T>` receiver: protected
+    (the caller brackets the shim with `pushProt`/`popProt`). The header
+    place through the fresh reference, and `T`. -/
+def vecEntry (st : LowerSt) (line : Nat) (recv : UOperand) (what : String) :
+    Except String (LowerSt × UPlace × UTy) := do
+  let some r := operandPlace? recv
+    | throw s!"unsupported: {what} receiver is not a place (line {line})"
+  let (m, e) ← match r.ty with
+    | .ref m (.vecT e) => pure (m, e)
+    | t => throw s!"unsupported: {what} receiver {reprStr t} (line {line})"
+  let (st, tmp) := freshLocal st (.ref m (.vecT e))
+  let st ← emitAssign st line tmp
+    (.ref (if m then .mut else .shared) true { pointee r with ty := .vecT e })
+  return (st, { pointee tmp with ty := .vecT e }, e)
+
+/-- `Vec::new()`: `RawVec::new` stores a dangling pointer without
+    provenance at `T`'s alignment and capacity 0; nothing is allocated. -/
+def vecNew : Shim := fun st args dest line => do
+  let e ← match dest.ty, args with
+    | .vecT e, [] => pure e
+    | t, _ => throw s!"unsupported: Vec::new into {reprStr t} (line {line})"
+  let st ← withoutProvenance st [.const (toBLayout e).align] (vecPtrF dest e) line
+  let st ← emitAssign st line (vecCapF dest) (.use (.const 0))
+  emitAssign st line (vecLenF dest) (.use (.const 0))
+
+/-- `Vec::len(&self)`: reads `self.len`. -/
+def vecLen : Shim := fun st args dest line => do
+  match args with
+  | [recv] =>
+      let st := pushOut st (.pushProt line)
+      let (st, h, _) ← vecEntry st line recv "Vec::len"
+      let st ← emitAssign st line dest (.use (.copy (vecLenF h)))
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: Vec::len arity (line {line})"
+
+/-- `Vec::as_ptr(&self)` / `as_mut_ptr(&mut self)`: `self.buf.ptr()`, the
+    stored pointer as is — std avoids `deref` precisely so that no
+    intermediate reference is made. -/
+def vecAsPtr : Shim := fun st args dest line => do
+  match args with
+  | [recv] =>
+      let st := pushOut st (.pushProt line)
+      let (st, h, e) ← vecEntry st line recv "Vec::as_ptr"
+      let st ← emitAssign st line dest (.use (.copy (vecPtrF h e)))
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: Vec::as_ptr arity (line {line})"
+
+/-- `RawVecInner::grow_amortized` for one more element: the new capacity
+    is `max(cap * 2, need, min_non_zero_cap)`; `finish_grow` allocates
+    (capacity 0) or reallocates, which Miri does as allocate, copy the
+    old bytes (a read through the stored pointer, a write through the new
+    one), deallocate through the stored pointer. -/
+def vecGrow (st : LowerSt) (line : Nat) (h : UPlace) (e : UTy) (cap need : Nat) :
+    Except String LowerSt := do
+  let sz := byteSize e
+  let minCap := if sz == 1 then 8 else if sz ≤ 1024 then 4 else 1
+  let newCap := max (max (cap * 2) need) minCap
+  let (st, np) := freshLocal st (.raw true e)
+  let st := emitAlloc st line np (some (.const (newCap * sz)))
+  let st ←
+    if cap == 0 then pure st else do
+      let arr := UTy.tup (List.replicate cap e)
+      let (st, oldA) := freshLocal st (.raw true arr)
+      let (st, newA) := freshLocal st (.raw true arr)
+      let st ← emitAssign st line oldA (.use (.copy (vecPtrF h e)))
+      let st ← emitAssign st line newA (.use (.copy np))
+      let st ← bufWrite st line { pointee newA with ty := arr }
+        (.use (.copy { pointee oldA with ty := arr }))
+      pure (pushOut st (.dealloc (vecPtrF h e) line))
+  let st ← emitAssign st line (vecPtrF h e) (.use (.copy np))
+  emitAssign st line (vecCapF h) (.use (.const newCap))
+
+/-- `Vec::push(&mut self, value)` (`push_mut`): grow when `len == cap`;
+    `end = self.as_mut_ptr().add(len)` (in-bounds arithmetic);
+    `ptr::write(end, value)`; `self.len = len + 1`; `&mut *end`. -/
+def vecPush : Shim := fun st args _dest line => do
+  match args with
+  | [recv, valOp] =>
+      let st := pushOut st (.pushProt line)
+      let (st, h, e) ← vecEntry st line recv "Vec::push"
+      if containsRefTy e || byteSize e == 0 then
+        throw s!"unsupported: Vec::push of {reprStr e} (line {line})"
+      let some len := constOfPlace st (vecLenF h)
+        | throw s!"unsupported: Vec::push with a runtime length (line {line})"
+      let some cap := constOfPlace st (vecCapF h)
+        | throw s!"unsupported: Vec::push with a runtime capacity (line {line})"
+      let st ← if len == cap then vecGrow st line h e cap.toNat (len.toNat + 1) else pure st
+      let (st, endP) := freshLocal st (.raw true e)
+      let st ← emitAssign st line endP (.ptrOffset (vecPtrF h e) len true)
+      let st ← bufWrite st line { pointee endP with ty := e } (.use valOp)
+      let st ← emitAssign st line (vecLenF h) (.use (.const (len.toNat + 1)))
+      let (st, r) := freshLocal st (.ref true e)
+      let st ← emitAssign st line r (.ref .mut false { pointee endP with ty := e })
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: Vec::push arity (line {line})"
+
+/-- A slice pointer over `len` elements at `data` (a raw pointer, its tag
+    kept): the pointer, narrowed to `0 .. len` (`subSlice`), then `kind`'s
+    retag of the slice (`&*` / `&mut *`). -/
+def sliceFromParts (st : LowerSt) (line : Nat) (data : UPlace) (e : UTy) (len : UOperand)
+    (kind : URefKind) (dest : UPlace) : Except String LowerSt := do
+  let (st, sp) := freshLocal st (.slice true true e)
+  let st ← emitAssign st line sp (.use (.copy data))
+  let st ← emitAssign st line sp (.subSlice sp (.const 0) len)
+  return pushOut st (.assign dest (.refSlice kind false sp) line)
+
+/-- `<Vec as Deref>::deref(&self)` (`as_slice`):
+    `&*aggregate_raw_ptr(self.as_ptr(), self.len)`; `DerefMut::deref_mut`
+    (`as_mut_slice`) the same through `&mut self` with `&mut *`. -/
+def vecDeref (mutbl : Bool) : Shim := fun st args dest line => do
+  match args with
+  | [recv] =>
+      let st := pushOut st (.pushProt line)
+      let (st, h, e) ← vecEntry st line recv "Vec::deref"
+      let st ← sliceFromParts st line (vecPtrF h e) e (.copy (vecLenF h))
+        (if mutbl then .mut else .shared) dest
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: Vec::deref arity (line {line})"
+
+/-- `slice::from_raw_parts(_mut)(data, len)`: `&(mut) *slice_from_raw_parts(data, len)`
+    (the precondition checks access no memory). -/
+def sliceFromRawParts (mutbl : Bool) : Shim := fun st args dest line => do
+  match args with
+  | [dataOp, lenOp] =>
+      let some data := operandPlace? dataOp
+        | throw s!"unsupported: from_raw_parts data is not a place (line {line})"
+      let e ← match data.ty with
+        | .raw _ e => pure e
+        | t => throw s!"unsupported: from_raw_parts of {reprStr t} (line {line})"
+      sliceFromParts st line data e lenOp (if mutbl then .mut else .shared) dest
+  | _ => .error s!"unsupported: from_raw_parts arity (line {line})"
+
+/-- `<[T]>::get(&self, i) -> Option<&T>`, at a static index: the receiver's
+    fn-entry retag, then `Some(&(*self)[i])`. Only the in-bounds case is
+    modelled: an index past the end (std: `None`) fails the narrowing. -/
+def sliceGet : Shim := fun st args dest line => do
+  match args with
+  | [sOp, idxOp] =>
+      let some s := operandPlace? sOp
+        | throw s!"unsupported: slice get receiver is not a place (line {line})"
+      let e ← match s.ty with
+        | .slice false false e => pure e
+        | t => throw s!"unsupported: slice get on {reprStr t} (line {line})"
+      let some i := constOf st idxOp
+        | throw s!"unsupported: slice get at a runtime index (line {line})"
+      let st := pushOut st (.pushProt line)
+      let (st, tmp) := freshLocal st s.ty
+      let st := pushOut st (.assign tmp (.refSlice .shared true s) line)
+      let (st, sp) := freshLocal st (.slice true false e)
+      let st ← emitAssign st line sp (.use (.copy tmp))
+      let st ← emitAssign st line sp (.subSlice sp (.const i.toNat) (.const (i.toNat + 1)))
+      let (st, r1) := freshLocal st (.slice false false e)
+      let st := pushOut st (.assign r1 (.refSlice .shared false sp) line)
+      let (st, r) := freshLocal st (.ref false e)
+      let st ← emitAssign st line r (.use (.copy r1))
+      let st ← emitAssign st line dest (.aggregate (some 1) [.copy r])
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: slice get arity (line {line})"
+
+/-- `Box::new_uninit()`: one uninitialized pointee. -/
+def boxNewUninit : Shim := fun st args dest line => do
+  match args with
+  | [] => return emitAlloc st line dest none
+  | _ => .error s!"unsupported: Box::new_uninit arity (line {line})"
+
+/-- `vec![a, …]`'s `box_assume_init_into_vec_unsafe(b)`:
+    `(b.assume_init() as Box<[T]>).into_vec()`, which ends in
+    `Box::into_raw_with_allocator` (`&raw mut **b`) and
+    `Vec::from_raw_parts_in(ptr, N, N)`: `boxIntoRaw`'s retags, the
+    capacity and length `N`. -/
+def boxIntoVec : Shim := fun st args dest line => do
+  match args, dest.ty with
+  | [b], .vecT e =>
+      let some bp := operandPlace? b
+        | throw s!"unsupported: into_vec argument is not a place (line {line})"
+      let n ← match bp.ty with
+        | .boxT (.tup tys) => pure tys.length
+        | t => throw s!"unsupported: into_vec of {reprStr t} (line {line})"
+      let (st, raw) := freshLocal st (.raw true (.tup (List.replicate n e)))
+      let st ← boxIntoRaw st args raw line
+      let st ← emitAssign st line (vecPtrF dest e) (.use (.copy raw))
+      let st ← emitAssign st line (vecCapF dest) (.use (.const n))
+      emitAssign st line (vecLenF dest) (.use (.const n))
+  | _, t => .error s!"unsupported: into_vec into {reprStr t} (line {line})"
+
+/-- `<iN as AddAssign>::add_assign(&mut self, other)`: the fn-entry retag,
+    then `*self = *self + other`. Overflow (a panic under Miri's debug
+    build) stops the model as UB. -/
+def addAssign : Shim := fun st args _dest line => do
+  match args with
+  | [selfOp, other] =>
+      let some sp := operandPlace? selfOp
+        | throw s!"unsupported: add_assign receiver is not a place (line {line})"
+      let t ← match sp.ty with
+        | .ref true (.int t) => pure t
+        | ty => throw s!"unsupported: add_assign on {reprStr ty} (line {line})"
+      let st := pushOut st (.pushProt line)
+      let (st, tmp) := freshLocal st sp.ty
+      let st ← emitAssign st line tmp (.ref .mut true { pointee sp with ty := .int t })
+      let st ← emitAssign st line { pointee tmp with ty := .int t }
+        (.binOp "Add.UB" t (.copy { pointee tmp with ty := .int t }) other)
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: add_assign arity (line {line})"
+
 /-- Shims that need the call's monomorphised type arguments (`UFun.tyArgs`),
     for bodyless generics whose meaning is the type itself. -/
 def tyArgTable : List (List String × (List UTy → Shim)) :=
@@ -699,6 +929,19 @@ def table : List (List String × Shim) :=
   , (["core", "cell", "Cell", "get_mut"], cellGetMut)
   , (["core", "cell", "UnsafeCell", "get_mut"], cellGetMut)
   , (["core", "cell", "RefCell", "get_mut"], cellGetMut)
+  , (["alloc", "vec", "Vec", "new"], vecNew)
+  , (["alloc", "vec", "Vec", "len"], vecLen)
+  , (["alloc", "vec", "Vec", "push"], vecPush)
+  , (["alloc", "vec", "Vec", "as_ptr"], vecAsPtr)
+  , (["alloc", "vec", "Vec", "as_mut_ptr"], vecAsPtr)
+  , (["alloc", "vec", "<Vec as Deref>", "deref"], vecDeref false)
+  , (["alloc", "vec", "<Vec as DerefMut>", "deref_mut"], vecDeref true)
+  , (["core", "slice", "raw", "from_raw_parts"], sliceFromRawParts false)
+  , (["core", "slice", "raw", "from_raw_parts_mut"], sliceFromRawParts true)
+  , (["core", "slice", "[T]", "get"], sliceGet)
+  , (["alloc", "boxed", "Box", "new_uninit"], boxNewUninit)
+  , (["alloc", "boxed", "box_assume_init_into_vec_unsafe"], boxIntoVec)
+  , (["core", "ops", "arith", "<i32 as AddAssign>", "add_assign"], addAssign)
   ]
 
 end conformance.stdlite

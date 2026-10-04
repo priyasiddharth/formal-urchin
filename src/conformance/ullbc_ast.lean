@@ -63,8 +63,16 @@ inductive UTy
 | boxT (inner : UTy)     -- Box<T>: unique-retagged at seams (miri's box retag)
 | slice (isRaw mutbl : Bool) (elem : UTy)  -- pointer-to-slice: one-cell fat value
 | sliceData (elem : UTy)                   -- the unsized [T] itself (place types only)
+-- `Vec<T>` (std's own type is opaque to Charon): the header std keeps,
+-- `(ptr, cap, len)` (`vecHeader`), with `stdlite`'s shims for its methods.
+-- The buffer pointer is raw (`Unique`/`NonNull`): never retagged
+| vecT (elem : UTy)
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
+
+/-- A `Vec<T>`'s header as the model lays it out: the buffer pointer, the
+    capacity and the length, in elements. -/
+def vecHeader (elem : UTy) : UTy := .structT [.raw true elem, .nat, .nat] none
 
 /-- Does a reference (or Box, or reference-to-slice) occur ANYWHERE in the
     type, cells included? A conservative guard, unlike the seam-retag
@@ -80,6 +88,7 @@ partial def containsRefTy : UTy → Bool
 partial def uSize : UTy → Nat
   | .nat | .int _ | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => 1
   | .sliceData _ => 0
+  | .vecT _ => 3
   | .cell inner => uSize inner
   | .tup tys | .structT tys _ => (tys.map uSize).foldl (· + ·) 0
   | .enum variants =>
@@ -99,6 +108,7 @@ partial def containsCell : UTy → Bool
 partial def freezeMask : UTy → List Bool
   | .nat | .int _ | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => [false]
   | .sliceData _ => []
+  | .vecT _ => [false, false, false]
   | .cell inner => List.replicate (uSize inner) true
   | .tup tys | .structT tys _ => tys.flatMap freezeMask
   -- A multi-variant enum that is not `Freeze` is treated like a union by
@@ -791,16 +801,23 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     match ctx.boxPointee.lookup did with
                     | some pointee => .raw true (parseTy ctx (fuel - 1) pointee)
                     | none => .unsupported "NonNull with uninferred pointee"
-                  else if last == "ManuallyDrop" then
-                    -- transparent over `T` (through `MaybeDangling`, whose
-                    -- inner references Miri does NOT retag): only a `T`
-                    -- without references is the same thing as `T`
-                    match ctx.boxPointee.lookup did with
+                  else if last == "ManuallyDrop" || last == "MaybeDangling" || last == "MaybeUninit" then
+                    -- transparent over `T` (`ManuallyDrop` through
+                    -- `MaybeDangling`, whose inner references Miri does NOT
+                    -- retag; `MaybeUninit` a union, whose contents it does
+                    -- not retag either): only a `T` without references is
+                    -- the same thing as `T`. The field projections into
+                    -- them are dropped (`transparentField`)
+                    match (ctx.boxPointee.lookup did <|> info.tyArgs.head?) with
                     | some inner =>
                         let t := parseTy ctx (fuel - 1) inner
-                        if containsRefTy t then .unsupported "ManuallyDrop around a reference (MaybeDangling)"
+                        if containsRefTy t then .unsupported s!"{last} around a reference"
                         else t
-                    | none => .unsupported "ManuallyDrop with uninferred inner type"
+                    | none => .unsupported s!"{last} with uninferred inner type"
+                  else if info.path == ["alloc", "vec", "Vec"] then
+                    match info.tyArgs with
+                    | elem :: _ => .vecT (parseTy ctx (fuel - 1) elem)
+                    | [] => .unsupported "Vec with uninferred element type"
                   else if last == "Layout" then
                     .nat  -- Layout carries only its size (constructor is shimmed)
                   else if last == "UnsafeCell" || last == "Cell" || last == "RefCell" then
@@ -860,6 +877,21 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
 
 /-! ## Place / operand / rvalue parsing -/
 
+/-- A field projection into a layout-transparent wrapper (`parseTy`): the
+    `value` of a `MaybeUninit` (field 1; field 0 is the `()` arm), the one
+    field of a `ManuallyDrop` or a `MaybeDangling`. It is dropped. -/
+def transparentField (ctx : ParseCtx) (kind : Json) (i : Nat) : Bool :=
+  match (getK kind "Adt").map asArr with
+  | some [dJ, Json.null] =>
+      match asNat dJ >>= (fun d => ctx.decls.lookup d) with
+      | some info =>
+          match info.path.getLast? with
+          | some "MaybeUninit" => i == 1
+          | some "ManuallyDrop" | some "MaybeDangling" => i == 0
+          | _ => false
+      | none => false
+  | _ => false
+
 partial def parsePlace (ctx : ParseCtx) (j : Json) : Except String UPlace := do
   let ty := match getK j "ty" with
     | some tyJ => parseTy ctx 16 tyJ
@@ -880,6 +912,10 @@ partial def parsePlace (ctx : ParseCtx) (j : Json) : Except String UPlace := do
         match asArr args with
         | [sub, proj] => do
             let base ← parsePlace ctx sub
+            if let some ("Field", fargs) := sumKey proj then
+              if let [kind, iJ] := asArr fargs then
+                if let some i := asNat iJ then
+                  if transparentField ctx kind i then return { base with ty }
             let p ←
               match sumKey proj with
               | some ("Deref", _) => pure UProj.deref

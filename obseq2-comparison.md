@@ -4,6 +4,34 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-04 — Vectors
+
+Many of Miri's aliasing tests use `Vec`, mostly as a convenient value to
+borrow twice. The tool that reads Rust programs for us (Charon) gives no
+code for `Vec`, so those tests were "not supported". We considered using
+the standard library's real `Vec` code. We decided against it: that code
+pulls in many unrelated features, and Charon and Miri use slightly
+different versions of the standard library, so their records of one run
+cannot be matched up reliably.
+
+Instead the loader now has its own small model of `Vec`, written from the
+standard library's source. A vector is three words: where its elements
+are, how many fit, and how many there are. Each operation (`push`, `len`,
+taking a pointer, borrowing the elements as a slice, dropping) makes the
+same borrow-tracking moves the real code makes. Growing the vector copies
+the elements to a new block and frees the old one, exactly as Miri does.
+
+Three upstream tests now pass. Three new test programs, each checked
+against Miri, pin down the behaviour:
+- a pointer kept across a push that moves the vector becomes invalid;
+- a push that does not move it leaves earlier views valid;
+- a mutable borrow of all the elements invalidates an earlier view.
+
+No proof changed: this is entirely about reading Rust programs into the
+model.
+
+---
+
 ## 2026-10-03 (night) — Pointer Arithmetic That Must Stay Inside
 
 Rust has two kinds of pointer arithmetic. `p.add(k)` and `p.offset(k)`

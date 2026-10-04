@@ -916,11 +916,14 @@
       "source": "corpus/tests/fail/both_borrows/buggy_as_mut_slice.rs",
       "prep": null,
       "artifact": "buggy_as_mut_slice.ullbc.json",
-      "status": "unsupported",
-      "reason": "slices/Vec",
+      "status": "supported",
+      "reason": null,
       "expected": {
-        "verdict": "ub"
-      }
+        "verdict": "ub",
+        "line": 15
+      },
+      "miri_error": "write access .* tag does not exist in the borrow stack",
+      "certificate": "buggy_as_mut_slice.cert.json"
     },
     {
       "id": "fail/both_borrows/buggy_split_at_mut",
@@ -1521,13 +1524,14 @@
       "id": "pass/both_borrows/2phase",
       "source": "corpus/tests/pass/both_borrows/2phase.rs",
       "prep": null,
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "Vec (two_phase2/3, two_phase_raw, two_phase_overlapping1); two_phase1 and two_phase_overlapping2 are split out",
+      "artifact": "2phase.ullbc.json",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ok"
       },
-      "rewrites": []
+      "rewrites": [],
+      "certificate": "2phase.cert.json"
     },
     {
       "id": "pass/both_borrows/2phase::two_phase1",
@@ -1827,6 +1831,21 @@
         "scenario extracted"
       ],
       "certificate": "interior_mutability__two_phase.cert.json"
+    },
+    {
+      "id": "pass/both_borrows/interior_mutability::unsafe_cell_2phase",
+      "source": "corpus/tests/pass/both_borrows/interior_mutability.rs",
+      "prep": "prep/interior_mutability__unsafe_cell_2phase.rs",
+      "artifact": "interior_mutability__unsafe_cell_2phase.ullbc.json",
+      "status": "supported",
+      "reason": null,
+      "expected": {
+        "verdict": "ok"
+      },
+      "rewrites": [
+        "scenario extracted"
+      ],
+      "certificate": "interior_mutability__unsafe_cell_2phase.cert.json"
     },
     {
       "id": "pass/both_borrows/interior_mutability::rust_issue_68303",
@@ -2324,6 +2343,41 @@
       },
       "provenance": "local; real-Miri verified (pinned submodule), 2026-10-03 via scripts/miri_local.sh",
       "notes": "&raw (*p).c at byte offset 8 through a raw pointer without provenance: Miri reports 'in-bounds pointer arithmetic failed'."
+    },
+    {
+      "id": "local/vec_realloc_use_after_free",
+      "artifact": "local/vec_realloc_use_after_free.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 12
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-04 via scripts/miri_local.sh and live.py",
+      "notes": "push past the capacity reallocates; Miri's realloc frees the old buffer, so a pointer from as_ptr taken before it dangles.",
+      "certificate": "local/vec_realloc_use_after_free.cert.json"
+    },
+    {
+      "id": "local/vec_slice_survives_push",
+      "artifact": "local/vec_slice_survives_push.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-04 via scripts/miri_local.sh and live.py",
+      "notes": "push within the capacity writes only the new element through the buffer pointer (no retag of the buffer): a raw shared slice of the old elements stays valid.",
+      "certificate": "local/vec_slice_survives_push.cert.json"
+    },
+    {
+      "id": "local/vec_deref_mut_invalidates_slice",
+      "artifact": "local/vec_deref_mut_invalidates_slice.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 11
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-04 via scripts/miri_local.sh and live.py",
+      "notes": "&mut *v (DerefMut, as_mut_slice) is a Unique retag of the elements, popping a shared slice taken earlier.",
+      "certificate": "local/vec_deref_mut_invalidates_slice.cert.json"
     },
     {
       "id": "local/ptr_add_out_of_bounds",
