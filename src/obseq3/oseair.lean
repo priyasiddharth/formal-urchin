@@ -27,26 +27,26 @@ inductive Rhs
 | Alloc (lay : BLayout)
 | AllocN (lay : BLayout) (n : Nat)
 | AllocDyn (lay : BLayout) (lenReg : Register)
--- `len = some n`: retag `n` bytes at `base + offset`; `none`: the pointer's
--- own extent (mirlite's `.refSlice`). `mask`: one bit per BYTE.
-| Borrow (kind : RefKind) (prot : Bool) (mask : List Bool) (len : Option Nat)
-    (base : Register) (offset : Nat)
+-- `lenB = some n`: retag `n` bytes at `base + offsetB`; `none`: the
+-- pointer's own extent (mirlite's `.refSlice`). `mask`: one bit per BYTE.
+| Borrow (kind : RefKind) (prot : Bool) (mask : List Bool) (lenB : Option Nat)
+    (base : Register) (offsetB : Nat)
 -- `k`: the scalar the leaf read through `srcPtr` is decoded at (the byte
 -- source's `leafKind` of the place)
 | ExposeAddr (k : Scalar) (srcPtr : Register)
 | FromExposed (k : Scalar) (srcPtr : Register)
 -- `inbounds`: Miri's in-bounds arithmetic (`bytes.Mem.offsetPtr`)
-| PtrOffset (k : Scalar) (srcPtr : Register) (deltaBytes : Int) (inbounds : Bool)
+| PtrOffset (k : Scalar) (srcPtr : Register) (deltaB : Int) (inbounds : Bool)
 | BinOp (op : BinOp) (r1 r2 : Register)
-| SliceLen (elemSize : Nat) (srcPtr : Register)
-| SubSlice (elemSize : Nat) (srcPtr rLo rHi : Register)
+| SliceLen (elemSizeB : Nat) (srcPtr : Register)
+| SubSlice (elemSizeB : Nat) (srcPtr rLo rHi : Register)
 deriving Inhabited, Repr, BEq
 
 inductive Instr
 | Assgn (reg : Register) (rhs : Rhs)
 | RStore (lay : BLayout) (src : Register) (ptr : Register)
 | CStore (lay : BLayout) (val : List Val) (ptr : Register)
-| Die (reg : Register) (len : Nat)
+| Die (reg : Register) (lenB : Nat)
 | Dealloc (ptr : Register)
 | SkipIf (discr : Register) (val : Word) (skip : Nat)
 | PushProt
@@ -80,11 +80,11 @@ inductive RhsResult (M : PermissionModel)
 | Ok (vals : List Val) (state : State M)
 | Err (msg : String)
 
-def allocPtr (M : PermissionModel) (state : State M) (size align : Nat) : RhsResult M :=
-  let (base, mem2) := state.mem.allocate size (max 1 align)
-  match M.own state.perms base size with
+def allocPtr (M : PermissionModel) (state : State M) (sizeB alignB : Nat) : RhsResult M :=
+  let (base, mem2) := state.mem.allocate sizeB (max 1 alignB)
+  match M.own state.perms base sizeB with
   | .ok (perms2, tag) =>
-      RhsResult.Ok [Val.Ptr base 0 size size tag] { state with mem := mem2, perms := perms2 }
+      RhsResult.Ok [Val.Ptr base 0 sizeB sizeB tag] { state with mem := mem2, perms := perms2 }
   | .error msg => RhsResult.Err msg
 
 /-- One leaf read through the pointer in `reg`: liveness, bounds, SB read,
@@ -140,11 +140,11 @@ def evalRhs (M : PermissionModel) (state : State M) (rhs : Rhs) : RhsResult M :=
          RhsResult.Ok [Val.Ptr rBase rOff (rSize - rOff) rSize wildcardTag]
            { state with perms := perms2 }
      | .ok _ => RhsResult.Err "int-to-ptr cast of a non-integer value"
-  | .PtrOffset k srcPtr deltaBytes inbounds =>
+  | .PtrOffset k srcPtr deltaB inbounds =>
      match readCellThrough M state srcPtr k with
      | .error msg => RhsResult.Err msg
      | .ok (Val.Ptr pBase pOff pExt pSize pTag, perms2) =>
-         match state.mem.offsetPtr inbounds pBase pOff pSize deltaBytes with
+         match state.mem.offsetPtr inbounds pBase pOff pSize deltaB with
          | .error msg => RhsResult.Err msg
          | .ok newOff =>
              RhsResult.Ok [Val.Ptr pBase newOff pExt pSize pTag] { state with perms := perms2 }
@@ -166,11 +166,11 @@ def evalRhs (M : PermissionModel) (state : State M) (rhs : Rhs) : RhsResult M :=
          | some e => RhsResult.Err e
          | none => RhsResult.Ok [Val.Dat (evalBinOp op x y)] state
      | _, _ => RhsResult.Err "BinOp expects two concrete words"
-  | .Borrow kind prot mask len baseReg offset =>
+  | .Borrow kind prot mask lenB baseReg offsetB =>
      match state.reg.lookup baseReg with
      | some [Val.Ptr base baseOff extent size tag] =>
-       let addr := base + baseOff + offset
-       match len with
+       let addr := base + baseOff + offsetB
+       match lenB with
        | some n =>
          -- a zero-byte retag needs no live, in-bounds memory (as the source)
          if n != 0 && state.mem.isFreed base then RhsResult.Err freedMsg
@@ -178,14 +178,14 @@ def evalRhs (M : PermissionModel) (state : State M) (rhs : Rhs) : RhsResult M :=
          else
            match M.ref state.perms addr n tag kind prot mask with
            | .ok (perms2, newTag) =>
-             RhsResult.Ok [Val.Ptr base (baseOff + offset) n size newTag]
+             RhsResult.Ok [Val.Ptr base (baseOff + offsetB) n size newTag]
                { state with perms := perms2 }
            | .error msg => RhsResult.Err msg
        | none =>
          if state.mem.isFreed base then RhsResult.Err freedMsg else
          match M.ref state.perms addr extent tag kind prot mask with
          | .ok (perms2, newTag) =>
-           RhsResult.Ok [Val.Ptr base (baseOff + offset) extent size newTag]
+           RhsResult.Ok [Val.Ptr base (baseOff + offsetB) extent size newTag]
              { state with perms := perms2 }
          | .error msg => RhsResult.Err msg
      | _ => RhsResult.Err "Borrow expects Ptr"
@@ -223,10 +223,10 @@ def step (M : PermissionModel) (state : State M) (prog : Prog) : Result M :=
       | some vals => writeThroughPtr M state ptr lay vals "RStore Invalid Regs"
       | none => Result.Err "RStore Invalid Regs"
     | .CStore lay vals ptr => writeThroughPtr M state ptr lay vals "CStore Invalid Ptr"
-    | .Die reg len =>
+    | .Die reg lenB =>
        match state.reg.lookup reg with
        | some [Val.Ptr base offset _ _ tag] =>
-          match M.die state.perms (base + offset) len tag with
+          match M.die state.perms (base + offset) lenB tag with
           | .ok perms2 => Result.Ok { state with perms := perms2, pc := state.pc + 1 }
           | .error msg => Result.Err msg
        | _ => Result.Err "Die expects Ptr"

@@ -341,6 +341,10 @@ theorem StmtSimB.toC {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     (h : StmtSimB L compProg stmt) : StmtSimBc L compProg stmt :=
   fun ρt s_mir s_mir' s_osea cs h_inv _ h_code h_step => h ρt s_mir s_mir' s_osea cs h_inv h_code h_step
 
+/--
+  h_comp : the statement's compilation succeeds
+  h_sim : the statement's simulation holds for every non-halt statement in the program
+-/
 theorem compileB_run_sim {Γ : Ctx} {L : mirlite.LayEnv Γ} {prog : Prog Γ} {cs0 : CompilerState}
     {u : Unit} (h_comp : CheckedCompilerM.value (compileStmtsChecked L prog) cs0 = .ok u)
     (h_sim : ∀ stmt, stmt ∈ prog → stmt ≠ .halt →

@@ -66,7 +66,7 @@ def BorrowAnchorRes {Γ : Ctx} (L : mirlite.LayEnv Γ) {σ τ : LayoutTy} (src :
     mirlite.resolvePlaceAcc MSB L s src = .ok r →
     ∃ ra : PlaceRes × MSB.State, mirlite.resolvePlaceAcc MSB L s a = .ok ra ∧
       r.1.addr = ra.1.addr + o ∧ r.1.tag = ra.1.tag ∧ r.1.allocBase = ra.1.allocBase ∧
-      r.1.allocSize = ra.1.allocSize ∧ r.2 = ra.2
+      r.1.allocSizeB = ra.1.allocSizeB ∧ r.2 = ra.2
 
 /-! ## The three anchors -/
 
@@ -251,7 +251,7 @@ theorem ref_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     simp only [bytes.Mem.isFreed, ← h_lock1.2.2] at h_free ⊢
     simpa using h_free
   have h_bnd' : placeSize L src ≠ 0 → aRes.allocBase + (aRes.addr - aRes.allocBase) + o
-      + placeSize L src ≤ aRes.allocBase + aRes.allocSize := fun hn => by
+      + placeSize L src ≤ aRes.allocBase + aRes.allocSizeB := fun hn => by
     have hn' : ((mirlite.placeLayout L src).size != 0) = true := by simpa using hn
     rw [hn', Bool.true_and] at h_bnd
     simp only [decide_eq_true_eq] at h_bnd
@@ -267,7 +267,7 @@ theorem ref_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   have h_run1 := runN_Borrow' (s := s1) h_instr h_aentry h_freeT h_bnd'
     (by rw [hB]; exact h_ref')
   refine ⟨ρt.extend permsR.NextTag s1.perms.NextTag, n1 + 1, _, sM.mem, perms',
-    [Val.Ptr aRes.allocBase (aRes.addr - aRes.allocBase + o) (placeSize L src) aRes.allocSize
+    [Val.Ptr aRes.allocBase (aRes.addr - aRes.allocBase + o) (placeSize L src) aRes.allocSizeB
       s1.perms.NextTag], h_incr, h_wf', rfl, runN_trans hA.run h_run1, ?_, ?_, h_psim', h_tbd',
     ?_, ?_, ?_, ?_, ?_⟩
   · show csA.nextReg ≤ _ + 1

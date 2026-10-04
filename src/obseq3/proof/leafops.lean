@@ -34,7 +34,7 @@ structure LeafOpB {Γ : Ctx} (L : mirlite.LayEnv Γ) (dstL : BLayout) {σ τ : L
     TagRenameWF ρt → TagRenameBounded ρt permsR.NextTag s1.perms.NextTag →
     PermSim ρt permsR s1.perms → ByteMemSim ρt sM.mem s1.mem → ByteAllocLockstep sM.mem s1.mem →
     s1.reg.lookup reg = some [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase) ext
-      resolved.allocSize tres] →
+      resolved.allocSizeB tres] →
     ρt resolved.tag = some tres → resolved.allocBase ≤ resolved.addr →
     ∃ vals p' perms₂, oseair.evalRhs MSB s1 (mk reg) = .Ok vals { s1 with perms := p' } ∧
       output.state = { sM with perms := perms₂ } ∧
@@ -116,7 +116,7 @@ theorem readCell_inv {Γ : Ctx} {L : mirlite.LayEnv Γ} {sM : mirlite.State MSB 
     ∃ resolved permsR, mirlite.resolvePlaceAcc MSB L sM src = .ok (resolved, permsR) ∧
       ¬ sM.mem.isFreed resolved.allocBase = true ∧
       ¬ (resolved.addr + (mirlite.leafKind (mirlite.placeLayout L src)).size
-          > resolved.allocBase + resolved.allocSize) ∧
+          > resolved.allocBase + resolved.allocSizeB) ∧
       sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size
         resolved.tag = .ok perms' ∧
       v = mirlite.decodeV (mirlite.leafKind (mirlite.placeLayout L src))
@@ -144,12 +144,12 @@ theorem readCellThrough_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt)
     {s1 : oseair.State MSB} {reg : Register} {resolved : PlaceRes} {ext : Nat} {tres : Tag}
     {mS : bytes.Mem} {permsR perms' : AccessPerms} {k : Scalar}
     (h_reg : s1.reg.lookup reg = some [Val.Ptr resolved.allocBase
-      (resolved.addr - resolved.allocBase) ext resolved.allocSize tres])
+      (resolved.addr - resolved.allocBase) ext resolved.allocSizeB tres])
     (h_rt : ρt resolved.tag = some tres) (h_le : resolved.allocBase ≤ resolved.addr)
     (h_psim : PermSim ρt permsR s1.perms) (h_mem : ByteMemSim ρt mS s1.mem)
     (h_lock : ByteAllocLockstep mS s1.mem)
     (h_free : ¬ mS.isFreed resolved.allocBase = true)
-    (h_bnd : ¬ (resolved.addr + k.size > resolved.allocBase + resolved.allocSize))
+    (h_bnd : ¬ (resolved.addr + k.size > resolved.allocBase + resolved.allocSizeB))
     (h_rd : sb_read permsR resolved.addr k.size resolved.tag = .ok perms') :
     ∃ p2, oseair.readCellThrough MSB s1 reg k
         = .ok (oseair.ofMem (mirlite.decodeV k (s1.mem.read resolved.addr k.size)), p2) ∧

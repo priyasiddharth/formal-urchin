@@ -80,7 +80,7 @@ structure ReadOnlyOpB {Γ : Ctx} (L : mirlite.LayEnv Γ) (dstL : BLayout) {σ τ
     ∃ resolved permsR perms', mirlite.resolvePlaceAcc MSB L sM src = .ok (resolved, permsR) ∧
       ¬ sM.mem.isFreed resolved.allocBase = true ∧
       ¬ (resolved.addr + (mirlite.leafKind (mirlite.placeLayout L src)).size
-          > resolved.allocBase + resolved.allocSize) ∧
+          > resolved.allocBase + resolved.allocSizeB) ∧
       sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size
         resolved.tag = .ok perms' ∧
       output.state = { sM with perms := perms' }
@@ -90,7 +90,7 @@ structure ReadOnlyOpB {Γ : Ctx} (L : mirlite.LayEnv Γ) (dstL : BLayout) {σ τ
     mirlite.resolvePlaceAcc MSB L sM src = .ok (resolved, permsR) →
     TagRenameWF ρt → ByteMemSim ρt sM.mem s1.mem → ByteAllocLockstep sM.mem s1.mem →
     s1.reg.lookup reg = some [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase) ext
-      resolved.allocSize T] →
+      resolved.allocSizeB T] →
     resolved.allocBase ≤ resolved.addr →
     sb_read s1.perms resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size T = .ok pmid →
     ∃ vals, oseair.evalRhs MSB s1 (mk reg) = .Ok vals { s1 with perms := pmid } ∧
@@ -101,10 +101,10 @@ theorem readCellThrough_ro {ρt : TagRenameMap} (hwf : TagRenameWF ρt)
     {s1 : oseair.State MSB} {reg : Register} {resolved : PlaceRes} {ext : Nat} {T : Tag}
     {mS : bytes.Mem} {k : Scalar} {pmid : AccessPerms}
     (h_reg : s1.reg.lookup reg = some [Val.Ptr resolved.allocBase
-      (resolved.addr - resolved.allocBase) ext resolved.allocSize T])
+      (resolved.addr - resolved.allocBase) ext resolved.allocSizeB T])
     (h_le : resolved.allocBase ≤ resolved.addr) (h_mem : ByteMemSim ρt mS s1.mem)
     (h_lock : ByteAllocLockstep mS s1.mem) (h_free : ¬ mS.isFreed resolved.allocBase = true)
-    (h_bnd : ¬ (resolved.addr + k.size > resolved.allocBase + resolved.allocSize))
+    (h_bnd : ¬ (resolved.addr + k.size > resolved.allocBase + resolved.allocSizeB))
     (h_rd : sb_read s1.perms resolved.addr k.size T = .ok pmid) :
     oseair.readCellThrough MSB s1 reg k
         = .ok (oseair.ofMem (mirlite.decodeV k (s1.mem.read resolved.addr k.size)), pmid) ∧
@@ -324,13 +324,13 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
     (h_res : mirlite.resolvePlaceAcc MSB L sM (.proj b f) = .ok (resolved, permsR))
     (h_free : ¬ sM.mem.isFreed resolved.allocBase = true)
     (h_bnd : ¬ (resolved.addr + (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size
-        > resolved.allocBase + resolved.allocSize))
+        > resolved.allocBase + resolved.allocSizeB))
     (h_rd : sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size
         resolved.tag = .ok perms')
     (h_op : ∀ (S1 : oseair.State MSB) (reg : Register) (ext : Nat) (T : Tag) (pmid : AccessPerms),
       ByteMemSim ρt sM.mem S1.mem → ByteAllocLockstep sM.mem S1.mem →
       S1.reg.lookup reg = some [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase) ext
-        resolved.allocSize T] →
+        resolved.allocSizeB T] →
       resolved.allocBase ≤ resolved.addr →
       sb_read S1.perms resolved.addr (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size T
         = .ok pmid →
@@ -392,7 +392,7 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
     simp only [bytes.Mem.isFreed, ← h_lock1.2.2] at h_free ⊢
     simpa using h_free
   have h_bnd' : bRes.addr + pathOffset L b f + placeSize L (.proj b f)
-      ≤ bRes.allocBase + bRes.allocSize := by
+      ≤ bRes.allocBase + bRes.allocSizeB := by
     rw [← h_ab, ← h_as, ← h_len]
     have := Nat.le_of_not_gt h_bnd
     rw [h_addr] at this
@@ -435,12 +435,12 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
         perms := q1,
         reg := s1.reg.insert tmp
           [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffset L b f)
-            (placeSize L (.proj b f)) bRes.allocSize s1.perms.NextTag],
+            (placeSize L (.proj b f)) bRes.allocSizeB s1.perms.NextTag],
         pc := s1.pc + 1 }
   have h_le : resolved.allocBase ≤ resolved.addr := by
     rw [h_ab, h_addr]; exact Nat.le_trans hB.le (Nat.le_add_right _ _)
   have h_regS1 : S1.reg.lookup tmp = some [Val.Ptr resolved.allocBase
-      (resolved.addr - resolved.allocBase) (placeSize L (.proj b f)) resolved.allocSize
+      (resolved.addr - resolved.allocBase) (placeSize L (.proj b f)) resolved.allocSizeB
       s1.perms.NextTag] := by
     rw [h_ab, h_as, h_addr]
     show (s1.reg.insert tmp _).lookup tmp = _

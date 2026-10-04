@@ -16,12 +16,12 @@ namespace conformance
 /-- A lowered program: one global local space, straight-line statements.
     `pushProt`/`popProt` bracket an inlined call's protector frame;
     `assignIf` is a variant-guarded assignment (enum seam retags);
-    `alloc`/`dealloc` come from the heap shims (`sz = none` means one
+    `alloc`/`dealloc` come from the heap shims (`sizeB = none` means one
     pointee: `Box::new`). -/
 inductive LStmt
 | assign (dst : UPlace) (rv : URvalue) (line : Nat)
 | assignIf (discr : UPlace) (val : Nat) (dst : UPlace) (rv : URvalue) (line : Nat)
-| alloc (dst : UPlace) (sz : Option UOperand) (line : Nat)
+| alloc (dst : UPlace) (sizeB : Option UOperand) (line : Nat)
 | dealloc (ptr : UPlace) (line : Nat)
 | pushProt (line : Nat)
 | popProt (line : Nat)
@@ -285,7 +285,7 @@ partial def toBLayout : UTy → obseq3.bytes.BLayout
   | .cell t => toBLayout t
   | .structT tys (some l) =>
       -- rustc's own layout (Charon): `repr(Rust)` fields reordered/packed
-      .tup (tys.map toBLayout) l.offsets l.size (max 1 l.align)
+      .tup (tys.map toBLayout) l.offsetsB l.sizeB (max 1 l.alignB)
   | .tup tys | .structT tys none => obseq3.bytes.reprC (tys.map toBLayout)
   | .enum vs =>
       let longest := vs.foldl (fun a f => if f.length > a.length then f else a) []

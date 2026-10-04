@@ -322,7 +322,7 @@ structure LoweredB {Γ : Ctx} (L : mirlite.LayEnv Γ) (ρt : TagRenameMap)
   srcNT : permsD.NextTag = sM.perms.NextTag
   tgtNT : sA.perms.NextTag ≤ s'.perms.NextTag
   entry : ∃ ext, s'.reg.lookup placeOut.result.reg = some
-    [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase) ext resolved.allocSize tres]
+    [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase) ext resolved.allocSizeB tres]
   rt : ρt resolved.tag = some tres
   le : resolved.allocBase ≤ resolved.addr
   below : RegisterBelow (CheckedCompilerM.run (placeToRegChecked L kind p) cs).nextReg
@@ -345,19 +345,19 @@ theorem deref_level {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenameMap}
     (h_mem : ByteMemSim ρt sM.mem sA.mem) (h_lock : ByteAllocLockstep sM.mem sA.mem)
     (h_inc : CodeIncludedB compProg (CheckedCompilerM.run (placeToRegChecked L kind (.deref q)) cs))
     (h_free : ¬ sM.mem.isFreed qRes.allocBase = true)
-    (h_qb : ¬ (qRes.addr < qRes.allocBase ∨ qRes.addr + ptrSize > qRes.allocBase + qRes.allocSize))
+    (h_qb : ¬ (qRes.addr < qRes.allocBase ∨ qRes.addr + ptrSize > qRes.allocBase + qRes.allocSizeB))
     (h_qread : MSB.read permsQ qRes.addr ptrSize qRes.tag = .ok permsQ')
     {vb vo ve vsz : Nat} {vt : Tag}
     (h_dec : mirlite.readOne sM.mem qRes.addr .ptr = .ptrVal vb vo ve vsz vt) :
     ∃ out n s' t', LoweredB L ρt compProg kind (.deref q) cs sM sA
-      { addr := vb + vo, tag := vt, allocBase := vb, allocSize := vsz } permsQ' out n s' t' := by
+      { addr := vb + vo, tag := vt, allocBase := vb, allocSizeB := vsz } permsQ' out n s' t' := by
   obtain ⟨h_runD, out, h_valD, h_outres⟩ := deref_lowering (kind := kind) hQ.val
   rw [hQ.clean] at h_runD
   simp only [cleanupInstrs, List.reverse_nil, List.map_nil, emit_nil] at h_runD
   obtain ⟨ext, h_qentry⟩ := hQ.entry
   have hA : qRes.allocBase + (qRes.addr - qRes.allocBase) = qRes.addr :=
     Nat.add_sub_cancel' hQ.le
-  have h_qb' : qRes.addr + ptrSize ≤ qRes.allocBase + qRes.allocSize :=
+  have h_qb' : qRes.addr + ptrSize ≤ qRes.allocBase + qRes.allocSizeB :=
     Nat.le_of_not_gt fun h => h_qb (Or.inr h)
   have h_code : compProg s_mid.pc = some (oseair.Instr.Assgn
       (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared q) cs).nextReg)
@@ -557,7 +557,7 @@ theorem ptrChain_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
         have hn : placeSize L (.proj b f) = ptrSize := hWF (.proj b f)
         have hA : bRes.allocBase + (bRes.addr - bRes.allocBase) = bRes.addr :=
           Nat.add_sub_cancel' hB.le
-        have h_qb' : bRes.addr + pathOffset L b f + ptrSize ≤ bRes.allocBase + bRes.allocSize :=
+        have h_qb' : bRes.addr + pathOffset L b f + ptrSize ≤ bRes.allocBase + bRes.allocSizeB :=
           Nat.le_of_not_gt fun h => h_qb (Or.inr h)
         -- the source read, transported; the target's Shared retag succeeds
         obtain ⟨p2, h_read', h_psim2⟩ :=
@@ -627,7 +627,7 @@ theorem ptrChain_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
               reg := s_mid.reg.insert
                 (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextReg)
                 [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffset L b f)
-                  (placeSize L (.proj b f)) bRes.allocSize s_mid.perms.NextTag],
+                  (placeSize L (.proj b f)) bRes.allocSizeB s_mid.perms.NextTag],
               pc := s_mid.pc + 1 }
         have h2 := runN_Load_ptr (s := S1) (q := mirlite.placeLayout L (.deref (.proj b f)))
           (h_at 1 _ (by omega) hc2) (RegMap.lookup_insert_self _ _ _)

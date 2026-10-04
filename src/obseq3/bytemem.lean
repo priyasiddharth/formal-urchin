@@ -42,19 +42,19 @@ open obseq3
 
 /-! ## Bytes, provenance, pointers -/
 
-/-- What a pointer may access: the allocation `[base, base + size)` and the
+/-- What a pointer may access: the allocation `[base, base + sizeB)` and the
     SB tag the borrow tracker checks the access against. (Miri: an
     `AllocId` plus a `BorTag`; the model names the allocation by its range,
     which is all the model needs.) -/
 structure Prov where
   base : Nat
-  size : Nat
+  sizeB : Nat
   tag : Tag
   /-- TEMPORARY (stage 2): the bytes the pointer claims from its address —
       the pointer's `extent`, which a slice uses as its length. Miri
       keeps a slice's length as fat-pointer METADATA (a second word), not
       in provenance; this field goes when fat pointers become two words. -/
-  extent : Nat := 0
+  extentB : Nat := 0
 deriving Repr, BEq, DecidableEq, Inhabited
 
 /-- One byte of memory (MiniRust `AbstractByte`). -/
@@ -125,8 +125,8 @@ theorem tagBytes_provs (p : Option Prov) (l : List (Fin 256)) :
 
 /-! ## Scalars: integers and pointers -/
 
-/-- An `n`-byte integer's bytes: no provenance. -/
-def encodeInt (n v : Nat) : List AbstractByte := tagBytes none (encodeLE n v)
+/-- An `nB`-byte integer's bytes: no provenance. -/
+def encodeInt (nB v : Nat) : List AbstractByte := tagBytes none (encodeLE nB v)
 
 /-- An integer read: every byte initialized; provenance is STRIPPED
     (MiniRust; Miri in its default mode). Reading part of a pointer as an
@@ -182,7 +182,7 @@ theorem decodePtr_encodeInt {v : Nat} (h : v < 256 ^ ptrSize) :
 
 /-- Scalar types the memory reads and writes. -/
 inductive Scalar where
-  | int (size : Nat)
+  | int (sizeB : Nat)
   | ptr
 deriving Repr, BEq, DecidableEq, Inhabited
 
@@ -231,8 +231,8 @@ structure Mem where
       borrow-stack check. -/
   freed : List Nat := []
 
-def Mem.read (m : Mem) (a n : Nat) : List AbstractByte :=
-  (List.range n).map fun i => m.bytes (a + i)
+def Mem.read (m : Mem) (a nB : Nat) : List AbstractByte :=
+  (List.range nB).map fun i => m.bytes (a + i)
 
 def Mem.write (m : Mem) (a : Nat) (bs : List AbstractByte) : Mem :=
   { m with bytes := fun x =>
@@ -257,8 +257,9 @@ theorem Mem.read_write_disjoint (m : Mem) (a a' n : Nat) (bs : List AbstractByte
   simp at hi
   grind
 
-/-- Round `a` up to a multiple of `k` (`k = 0` leaves it). -/
-def alignUp (a k : Nat) : Nat := if k = 0 then a else (a + k - 1) / k * k
+/-- Round `a` up to a multiple of `alignB` (`alignB = 0` leaves it). -/
+def alignUp (a alignB : Nat) : Nat :=
+  if alignB = 0 then a else (a + alignB - 1) / alignB * alignB
 
 theorem le_alignUp (a k : Nat) : a ≤ alignUp a k := by
   unfold alignUp
@@ -274,12 +275,12 @@ theorem alignUp_dvd {a k : Nat} (hk : 0 < k) : k ∣ alignUp a k := by
   rw [if_neg (Nat.pos_iff_ne_zero.mp hk)]
   exact Nat.dvd_mul_left k _
 
-/-- Allocate `size` bytes aligned to `align`: a fresh range above every
+/-- Allocate `sizeB` bytes aligned to `alignB`: a fresh range above every
     live one, never at address 0. Zero-sized allocations still advance the
     bump pointer, so distinct allocations have distinct base addresses. -/
-def Mem.allocate (m : Mem) (size align : Nat) : Nat × Mem :=
-  let base := alignUp m.next align
-  (base, { m with allocs := (base, size) :: m.allocs, next := base + max size 1 })
+def Mem.allocate (m : Mem) (sizeB alignB : Nat) : Nat × Mem :=
+  let base := alignUp m.next alignB
+  (base, { m with allocs := (base, sizeB) :: m.allocs, next := base + max sizeB 1 })
 
 /-- Every live allocation ends at or below the bump pointer, which is
     positive. -/
@@ -311,17 +312,17 @@ theorem Mem.allocate_fresh {m : Mem} (hwf : m.WF) (size align : Nat) :
 def Mem.isFreed (m : Mem) (base : Nat) : Bool := m.freed.contains base
 
 /-- Pointer arithmetic, shared by both machines: the pointer `(base,
-    offset)` into an allocation of `size` bytes, moved by `deltaBytes`.
+    offsetB)` into an allocation of `sizeB` bytes, moved by `deltaB`.
     A negative result is an error either way. `inbounds` (`add`/`offset`,
     not `wrapping_*`) is Miri's in-bounds arithmetic: a nonzero move needs
     a live allocation holding both ends, one past the end allowed. A
-    pointer without provenance has `size = 0`, so it cannot move. -/
-def Mem.offsetPtr (m : Mem) (inbounds : Bool) (base offset size : Nat) (deltaBytes : Int) :
+    pointer without provenance has `sizeB = 0`, so it cannot move. -/
+def Mem.offsetPtr (m : Mem) (inbounds : Bool) (base offsetB sizeB : Nat) (deltaB : Int) :
     Except String Nat :=
-  let newOff : Int := (offset : Int) + deltaBytes
+  let newOff : Int := (offsetB : Int) + deltaB
   if newOff < 0 then .error "pointer offset before the allocation base"
-  else if inbounds && deltaBytes != 0 &&
-      (m.isFreed base || decide (size < offset) || decide ((size : Int) < newOff)) then
+  else if inbounds && deltaB != 0 &&
+      (m.isFreed base || decide (sizeB < offsetB) || decide ((sizeB : Int) < newOff)) then
     .error "in-bounds pointer arithmetic failed: pointer is out-of-bounds"
   else .ok newOff.toNat
 
@@ -357,9 +358,9 @@ theorem Mem.load_store_disjoint {m m' : Mem} {a a' : Nat} {t t' : Scalar} {v : S
   simp only [Mem.load]
   rw [Mem.read_write_disjoint _ _ _ _ _ (by omega)]
 
-/-- Copy `n` raw bytes (a `MaybeUninit<u8>`-typed bytewise copy, or
+/-- Copy `nB` raw bytes (a `MaybeUninit<u8>`-typed bytewise copy, or
     `ptr::copy_nonoverlapping`): provenance travels with the bytes. -/
-def Mem.copyBytes (m : Mem) (dst src n : Nat) : Mem :=
-  m.write dst (m.read src n)
+def Mem.copyBytes (m : Mem) (dst src nB : Nat) : Mem :=
+  m.write dst (m.read src nB)
 
 end obseq3.bytes

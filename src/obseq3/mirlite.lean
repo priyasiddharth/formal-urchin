@@ -25,7 +25,7 @@ field's by its index path, a deref's from the pointer's pointee.
   uninit byte makes the leaf `undef`;
 - a pointer value's fields (`base`, `offset`, `extent`, `size`) are in
   bytes; its `extent` travels in the stored provenance until fat pointers
-  are two words (see `bytes.Prov.extent`);
+  are two words (see `bytes.Prov.extentB`);
 - a pointer without provenance (decoded from integer bytes) becomes a
   degenerate pointer over a zero-sized allocation at its address.
 -/
@@ -47,7 +47,7 @@ def decodeV (k : Scalar) (bs : List AbstractByte) : MemValue :=
       | none => .undef
   | .ptr =>
       match decodePtr bs with
-      | some ⟨a, some p⟩ => .ptrVal p.base (a - p.base) p.extent p.size p.tag
+      | some ⟨a, some p⟩ => .ptrVal p.base (a - p.base) p.extentB p.sizeB p.tag
       | some ⟨a, none⟩ => .ptrVal a 0 0 0 wildcardTag
       | none => .undef
 
@@ -97,7 +97,7 @@ def encodeAt (k : Scalar) : MemValue → Except String (List AbstractByte)
       else .error s!"value {w} does not fit in {k.size} bytes"
   | .ptrVal b o e s t =>
       if b + o < 256 ^ ptrSize then
-        .ok ((encodePtr ⟨b + o, some { base := b, size := s, tag := t, extent := e }⟩).take k.size)
+        .ok ((encodePtr ⟨b + o, some { base := b, sizeB := s, tag := t, extentB := e }⟩).take k.size)
       else .error "address does not fit in 64 bits"
 
 /-- Read every leaf of layout `lay` at `addr`. -/
@@ -170,7 +170,7 @@ def resolvePlace? (state : State M Γ) {τ : LayoutTy} : Place Γ τ → Option 
       match state.env.lookup loc with
       | some binding =>
           some { addr := binding.addr, tag := binding.tag,
-                 allocBase := binding.addr, allocSize := (L loc.idx).size }
+                 allocBase := binding.addr, allocSizeB := (L loc.idx).size }
       | none => none
   | .proj base path =>
       match resolvePlace? state base with
@@ -183,7 +183,7 @@ def resolvePlace? (state : State M Γ) {τ : LayoutTy} : Place Γ τ → Option 
       | some ptrRes =>
           match readOne state.mem ptrRes.addr .ptr with
           | .ptrVal base offset _ size tag =>
-              some { addr := base + offset, tag := tag, allocBase := base, allocSize := size }
+              some { addr := base + offset, tag := tag, allocBase := base, allocSizeB := size }
           | _ => none
 
 def resolvePlaceAcc (state : State M Γ) {τ : LayoutTy} :
@@ -192,7 +192,7 @@ def resolvePlaceAcc (state : State M Γ) {τ : LayoutTy} :
       match state.env.lookup loc with
       | some binding =>
           .ok ({ addr := binding.addr, tag := binding.tag,
-                 allocBase := binding.addr, allocSize := (L loc.idx).size }, state.perms)
+                 allocBase := binding.addr, allocSizeB := (L loc.idx).size }, state.perms)
       | none => .error "place root local not allocated"
   | .proj base path =>
       match resolvePlaceAcc state base with
@@ -208,7 +208,7 @@ def resolvePlaceAcc (state : State M Γ) {τ : LayoutTy} :
           -- read (and the compiled `Load`): a pointer read straddling the
           -- allocation's end is out of bounds
           else if ptrRes.addr < ptrRes.allocBase ∨
-             ptrRes.addr + ptrSize > ptrRes.allocBase + ptrRes.allocSize then
+             ptrRes.addr + ptrSize > ptrRes.allocBase + ptrRes.allocSizeB then
             .error "deref of an out-of-bounds pointer"
           else
           match M.read perms' ptrRes.addr ptrSize ptrRes.tag with
@@ -217,13 +217,13 @@ def resolvePlaceAcc (state : State M Γ) {τ : LayoutTy} :
               match readOne state.mem ptrRes.addr .ptr with
               | .ptrVal base offset _ size tag =>
                   .ok ({ addr := base + offset, tag := tag,
-                         allocBase := base, allocSize := size }, perms'')
+                         allocBase := base, allocSizeB := size }, perms'')
               | _ => .error "deref of a non-pointer value"
 
 def writeResolvedPlace (state : State M Γ) (dst : PlaceRes) (lay : BLayout)
     (values : List MemValue) : Result M Γ :=
   if state.mem.isFreed dst.allocBase then .err freedMsg
-  else if dst.addr + lay.size > dst.allocBase + dst.allocSize then
+  else if dst.addr + lay.size > dst.allocBase + dst.allocSizeB then
     .err "write out of bounds"
   else
     match M.useMut state.perms dst.addr lay.size dst.tag with
@@ -266,7 +266,7 @@ def evalCopy (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) : EvalResu
   | .error e => .err e
   | .ok (resolved, permsR) =>
       if state.mem.isFreed resolved.allocBase then .err freedMsg
-      else if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
+      else if resolved.addr + lay.size > resolved.allocBase + resolved.allocSizeB then
         .err "copy of an out-of-bounds range"
       else
       match M.read permsR resolved.addr lay.size resolved.tag with
@@ -295,7 +295,7 @@ def readCell (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) (what : St
   | .error e => .error e
   | .ok (resolved, permsR) =>
       if state.mem.isFreed resolved.allocBase then .error freedMsg
-      else if resolved.addr + k.size > resolved.allocBase + resolved.allocSize then
+      else if resolved.addr + k.size > resolved.allocBase + resolved.allocSizeB then
         .error s!"{what} of an out-of-bounds place"
       else
       match M.read permsR resolved.addr k.size resolved.tag with
@@ -311,7 +311,7 @@ def readCellAs (state : State M Γ) {τ : LayoutTy} (src : Place Γ τ) (k : Sca
   | .error e => .error e
   | .ok (resolved, permsR) =>
       if state.mem.isFreed resolved.allocBase then .error freedMsg
-      else if resolved.addr + k.size > resolved.allocBase + resolved.allocSize then
+      else if resolved.addr + k.size > resolved.allocBase + resolved.allocSizeB then
         .error s!"{what} of an out-of-bounds place"
       else
       match M.read permsR resolved.addr k.size resolved.tag with
@@ -337,7 +337,7 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
       | .error e => .err e
       | .ok (resolved, permsR) =>
           if state.mem.isFreed resolved.allocBase then .err freedMsg
-          else if resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
+          else if resolved.addr + lay.size > resolved.allocBase + resolved.allocSizeB then
             .err "move of an out-of-bounds range"
           else
           match M.ref permsR resolved.addr lay.size resolved.tag .Mut false [] with
@@ -478,14 +478,14 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
           -- in-bounds memory (Miri: zero-sized accesses are always allowed)
           if lay.size != 0 && state.mem.isFreed resolved.allocBase then .err freedMsg
           else if lay.size != 0 &&
-              resolved.addr + lay.size > resolved.allocBase + resolved.allocSize then
+              resolved.addr + lay.size > resolved.allocBase + resolved.allocSizeB then
             .err "retag of an out-of-bounds range"
           else
           match M.ref permsR resolved.addr lay.size resolved.tag kind prot (maskBytes lay mask) with
           | .ok (perms', freshTag) =>
               .ok { values := [MemValue.ptrVal resolved.allocBase
                                  (resolved.addr - resolved.allocBase)
-                                 lay.size resolved.allocSize freshTag],
+                                 lay.size resolved.allocSizeB freshTag],
                     state := { state with perms := perms' } }
           | .error e => .err s!"retag failed: {e}"
 

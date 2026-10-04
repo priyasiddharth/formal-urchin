@@ -385,7 +385,7 @@ open obseq3.bytes
 private def bytesSetup : IO (bytes.Mem × Nat × Pointer) := do
   let (target, m) := (({} : bytes.Mem)).allocate 4 4          -- an i32
   let (slot, m) := m.allocate ptrSize ptrSize           -- a *const i32 slot
-  let p : Pointer := ⟨target, some { base := target, size := 4, tag := 7 }⟩
+  let p : Pointer := ⟨target, some { base := target, sizeB := 4, tag := 7 }⟩
   let some m := m.store slot .ptr (.ptr p)
     | throw (IO.userError "bytes setup: pointer store failed")
   pure (m, slot, p)
@@ -430,7 +430,7 @@ def t23_bytes_int_copy_strips_provenance : IO Unit := do
 def t24_bytes_mixed_and_uninit : IO Unit := do
   let (m, slot, _) ← bytesSetup
   let (slot2, m) := m.allocate ptrSize ptrSize
-  let some m := m.store slot2 .ptr (.ptr ⟨slot, some { base := slot, size := 8, tag := 9 }⟩)
+  let some m := m.store slot2 .ptr (.ptr ⟨slot, some { base := slot, sizeB := 8, tag := 9 }⟩)
     | throw (IO.userError "t24 store failed")
   let m := m.copyBytes slot slot2 1                      -- one byte from the other pointer
   match m.load slot .ptr with
@@ -462,7 +462,7 @@ def t26_bytes_uniform_layout : IO Unit := do
 def t27_bytes_tuple_roundtrip : IO Unit := do
   let L := reprC [.int 1, .ptr (.int 4), .int 2]
   let (base, m) := (({} : bytes.Mem)).allocate L.size L.align
-  let p : Pointer := ⟨base, some { base := base, size := L.size, tag := 3 }⟩
+  let p : Pointer := ⟨base, some { base := base, sizeB := L.size, tag := 3 }⟩
   let vs := [SVal.int 200, SVal.ptr p, SVal.int 65000]
   let some m := m.storeL base L vs
     | throw (IO.userError "t27 store failed")

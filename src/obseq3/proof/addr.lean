@@ -23,7 +23,7 @@ theorem readCellAs_inv {Γ : Ctx} {L : mirlite.LayEnv Γ} {sM : mirlite.State MS
     (h : mirlite.readCellAs MSB L sM src k what = .ok (v, perms')) :
     ∃ resolved permsR, mirlite.resolvePlaceAcc MSB L sM src = .ok (resolved, permsR) ∧
       ¬ sM.mem.isFreed resolved.allocBase = true ∧
-      ¬ (resolved.addr + k.size > resolved.allocBase + resolved.allocSize) ∧
+      ¬ (resolved.addr + k.size > resolved.allocBase + resolved.allocSizeB) ∧
       sb_read permsR resolved.addr k.size resolved.tag = .ok perms' ∧
       v = mirlite.decodeV k (sM.mem.read resolved.addr k.size) := by
   simp only [mirlite.readCellAs] at h

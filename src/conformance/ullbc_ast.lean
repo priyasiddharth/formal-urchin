@@ -38,9 +38,9 @@ deriving Repr, BEq, Inhabited
     offsets in DECLARATION order, size and alignment. `repr(Rust)` fields
     may be reordered and packed; this is what the byte model uses. -/
 structure StructLay where
-  offsets : List Nat
-  size : Nat
-  align : Nat
+  offsetsB : List Nat
+  sizeB : Nat
+  alignB : Nat
 deriving Repr, BEq, Inhabited
 
 /-- Untyped types. `ref`/`raw` both erase to a pointer layout, but the
@@ -472,7 +472,7 @@ def parseDecls (j : Json) : List (Nat × DeclInfo) :=
           let vl ← ((getK v "variant_layouts").map asArr).getD [] |>.head?
           let offs ← ((getK vl "field_offsets").map asArr).bind (·.mapM asNat)
           match kind with
-          | .struct fs => if offs.length == fs.length then some { offsets := offs, size, align } else none
+          | .struct fs => if offs.length == fs.length then some { offsetsB := offs, sizeB := size, alignB := align } else none
           | _ => none
         pure (did, { path, kind, tyArgs, layout })
 
@@ -1066,7 +1066,7 @@ def zeroOffsetSteps : UTy → List (Nat × Bool) → Bool
   | _, [] => true
   | .structT tys lay, (i, false) :: rest =>
       let at0 := match lay with
-        | some l => l.offsets.getD i 1 == 0
+        | some l => l.offsetsB.getD i 1 == 0
         | none => i == 0
       at0 && zeroOffsetSteps (tys.getD i (.unsupported "field")) rest
   | .tup tys, (i, false) :: rest => i == 0 && zeroOffsetSteps (tys.getD i (.unsupported "field")) rest

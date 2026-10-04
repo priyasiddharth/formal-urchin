@@ -5133,3 +5133,9 @@ as a heap block of the bytes); drop_after_sharing passes; 2 witnesses
 (String drop frees the buffer; literal bytes checked by the certificate).
 Fixed: Vec drops are not certificate events, so no poison unless the drop
 cannot be lowered. Corpus 170/0/0/20 of 190.
+Later: unit suffixes on byte quantities (user convention: `B` = bytes,
+no suffix for element counts or addresses): Scalar.int/BLayout sizeB,
+offsetsB, alignB; Prov sizeB/extentB; ptrVal/Ptr offsetB/extentB/sizeB;
+PlaceRes.allocSizeB; sb_* lenB; Rhs.Borrow lenB/offsetB, PtrOffset deltaB,
+SliceLen/SubSlice elemSizeB, Die lenB; StructLay; LStmt.alloc sizeB.
+Definitions only; theorem binders unchanged. No result moved.

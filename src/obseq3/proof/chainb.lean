@@ -337,7 +337,7 @@ theorem chainB_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRename
         have hn : placeSize L (.proj b f) = ptrSize := hWF (.proj b f)
         have hA : bRes.allocBase + (bRes.addr - bRes.allocBase) = bRes.addr :=
           Nat.add_sub_cancel' hB.le
-        have h_qb' : bRes.addr + pathOffset L b f + ptrSize ≤ bRes.allocBase + bRes.allocSize :=
+        have h_qb' : bRes.addr + pathOffset L b f + ptrSize ≤ bRes.allocBase + bRes.allocSizeB :=
           Nat.le_of_not_gt fun h => h_qb (Or.inr h)
         -- the source read, transported; the target's Shared retag succeeds
         obtain ⟨p2, h_read', h_psim2⟩ :=
@@ -407,7 +407,7 @@ theorem chainB_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRename
               reg := s_mid.reg.insert
                 (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextReg)
                 [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffset L b f)
-                  (placeSize L (.proj b f)) bRes.allocSize s_mid.perms.NextTag],
+                  (placeSize L (.proj b f)) bRes.allocSizeB s_mid.perms.NextTag],
               pc := s_mid.pc + 1 }
         have h2 := runN_Load_ptr (s := S1) (q := mirlite.placeLayout L (.deref (.proj b f)))
           (h_at 1 _ (by omega) hc2) (RegMap.lookup_insert_self _ _ _)

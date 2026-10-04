@@ -36,7 +36,7 @@ open obseq3.oseair (Val)
 def ProvSim (ρt : TagRenameMap) : Option Prov → Option Prov → Prop
   | none, none => True
   | some p, some p' =>
-      p'.base = p.base ∧ p'.size = p.size ∧ p'.extent = p.extent ∧ ρt p.tag = some p'.tag
+      p'.base = p.base ∧ p'.sizeB = p.sizeB ∧ p'.extentB = p.extentB ∧ ρt p.tag = some p'.tag
   | _, _ => False
 
 /-- One byte: an uninitialised source byte refines any target byte; an

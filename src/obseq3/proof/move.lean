@@ -121,7 +121,7 @@ theorem move_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
     rw [h_ab] at h_free
     simp only [bytes.Mem.isFreed, ← h_lock1.2.2] at h_free ⊢
     simpa using h_free
-  have h_bnd' : aRes.addr + o + placeSize L src ≤ aRes.allocBase + aRes.allocSize := by
+  have h_bnd' : aRes.addr + o + placeSize L src ≤ aRes.allocBase + aRes.allocSizeB := by
     rw [← h_addr, ← h_ab, ← h_as]; exact Nat.le_of_not_gt h_bnd
   -- the three events, transported
   have h_tbd1 : TagRenameBounded ρt permsR.NextTag s1.perms.NextTag := by
@@ -170,14 +170,14 @@ theorem move_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
         perms := q1,
         reg := s1.reg.insert bTmp
           [Val.Ptr aRes.allocBase (aRes.addr - aRes.allocBase + o) (placeSize L src)
-            aRes.allocSize s1.perms.NextTag],
+            aRes.allocSizeB s1.perms.NextTag],
         pc := s1.pc + 1 }
   have hA' : aRes.allocBase + (aRes.addr - aRes.allocBase + o) = aRes.addr + o := by
     rw [← Nat.add_assoc, hB]
   have h2 : oseair.runN MSB 1 S1 compProg = .Ok
       { S1 with perms := q2, reg := S1.reg.insert lTmp vals, pc := S1.pc + 1 } := by
     have h_nb : ¬ (aRes.allocBase + (aRes.addr - aRes.allocBase + o)
-        + (mirlite.placeLayout L src).size > aRes.allocBase + aRes.allocSize) := by
+        + (mirlite.placeLayout L src).size > aRes.allocBase + aRes.allocSizeB) := by
       rw [hA']; exact Nat.not_lt.mpr h_bnd'
     have h_instr := h_at 1 _ (by omega) (by rw [hA.pc]; exact (hct _ _ _).2.1)
     simp only [oseair.runN, oseair.step]

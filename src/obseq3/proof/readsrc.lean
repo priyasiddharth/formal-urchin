@@ -130,7 +130,7 @@ theorem readToReg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
     simp only [bytes.Mem.isFreed, ← h_lock1.2.2] at h_free ⊢
     simpa using h_free
   have h_bnd' : bRes.addr + pathOffset L b f + placeSize L (.proj b f)
-      ≤ bRes.allocBase + bRes.allocSize := by
+      ≤ bRes.allocBase + bRes.allocSizeB := by
     rw [← h_ab, ← h_as]
     have := Nat.le_of_not_gt h_bnd
     rw [h_addr] at this
@@ -185,14 +185,14 @@ theorem readToReg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
         perms := q1,
         reg := s1.reg.insert tmp
           [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffset L b f)
-            (placeSize L (.proj b f)) bRes.allocSize s1.perms.NextTag],
+            (placeSize L (.proj b f)) bRes.allocSizeB s1.perms.NextTag],
         pc := s1.pc + 1 }
   have hA' : bRes.allocBase + (bRes.addr - bRes.allocBase + pathOffset L b f)
       = bRes.addr + pathOffset L b f := by rw [← Nat.add_assoc, hA]
   have h2 : oseair.runN MSB 1 S1 compProg = .Ok
       { S1 with perms := q2, reg := S1.reg.insert ld vals, pc := S1.pc + 1 } := by
     have h_nb : ¬ (bRes.allocBase + (bRes.addr - bRes.allocBase + pathOffset L b f)
-        + (mirlite.placeLayout L (.proj b f)).size > bRes.allocBase + bRes.allocSize) := by
+        + (mirlite.placeLayout L (.proj b f)).size > bRes.allocBase + bRes.allocSizeB) := by
       rw [hA', hn]; exact Nat.not_lt.mpr h_bnd'
     have h_instr := h_at 1 _ (by omega) (by rw [hB.pc]; exact (hct _ _ _).2.1)
     simp only [oseair.runN, oseair.step]
@@ -214,7 +214,7 @@ theorem readToReg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
     (by rw [hA']; exact h_die1)
   have h_frame : ∀ r, RegisterBelow cs.nextReg r →
       ((s1.reg.insert tmp [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffset L b f)
-        (placeSize L (.proj b f)) bRes.allocSize s1.perms.NextTag]).insert ld vals).lookup r
+        (placeSize L (.proj b f)) bRes.allocSizeB s1.perms.NextTag]).insert ld vals).lookup r
         = sA.reg.lookup r := fun r hr => by
     have hr' := RegisterBelow.mono hB.regmono hr
     have hne1 : r ≠ tmp := RegisterBelow.ne_fresh hr'

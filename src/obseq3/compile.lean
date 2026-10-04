@@ -354,8 +354,8 @@ def ensurePlaceRoot {Γ : Ctx} (L : LayEnv Γ) : {τ : LayoutTy} → Place Γ τ
   | _, .proj base _ => ensurePlaceRoot L base
   | _, .deref ptrPlace => ensurePlaceRoot L ptrPlace
 
-def borrowRhs (kind : RefKind) (len : Nat) (base : Register) (offset : Nat) : Rhs :=
-  Rhs.Borrow kind false [] (some len) base offset
+def borrowRhs (kind : RefKind) (lenB : Nat) (base : Register) (offsetB : Nat) : Rhs :=
+  Rhs.Borrow kind false [] (some lenB) base offsetB
 
 /-- The pointer a deref place loads: one pointer leaf. -/
 abbrev derefLoad {Γ : Ctx} (L : LayEnv Γ) {σ : LayoutTy}

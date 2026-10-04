@@ -38,11 +38,11 @@ end Env
 inductive MemValue where
 | undef
 | word  (value : Word)
--- `base`/`size` are the ALLOCATION the pointer has provenance over;
--- `offset` is where it points inside it; `extent` is how many bytes the
+-- `base`/`sizeB` are the ALLOCATION the pointer has provenance over;
+-- `offsetB` is where it points inside it; `extentB` is how many bytes the
 -- pointer claims from there — the pointee's size for a thin pointer,
--- `len · elemSize` for a slice.
-| ptrVal (base : Word) (offset : Word) (extent : Word) (size : Word) (tag : Tag)
+-- `len · elemSizeB` for a slice.
+| ptrVal (base : Word) (offsetB : Word) (extentB : Word) (sizeB : Word) (tag : Tag)
 deriving Repr, BEq, Inhabited
 
 /-- A resolved place: its address, the tag it is accessed with, and the
@@ -51,7 +51,7 @@ structure PlaceRes where
   addr      : Word
   tag       : Tag
   allocBase : Word
-  allocSize : Word
+  allocSizeB : Word
 
 end obseq3.mirlite
 
@@ -67,7 +67,7 @@ deriving Repr, Inhabited, DecidableEq, BEq
 inductive Val
 | Undef
 | Dat (value : Word)
-| Ptr (base : Word) (offset : Word) (extent : Word) (size : Word) (tag : Tag)
+| Ptr (base : Word) (offsetB : Word) (extentB : Word) (sizeB : Word) (tag : Tag)
 deriving Repr, BEq, Inhabited
 
 open obseq3.mirlite (MemValue)

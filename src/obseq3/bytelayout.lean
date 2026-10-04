@@ -25,7 +25,7 @@ namespace obseq3.bytes
     pointer (its pointee gives the extent and the scaling of pointer
     arithmetic); `tup fs os size align` fields `fs` at offsets `os`. -/
 inductive BLayout where
-  | int (size : Nat)
+  | int (size : Nat) -- size in bytes
   | ptr (pointee : BLayout)
   | tup (fields : List BLayout) (offsets : List Nat) (size align : Nat)
 deriving Repr, Inhabited, BEq
@@ -84,14 +84,18 @@ def reprC (fs : List BLayout) : BLayout :=
 def LeafSep (p q : Nat × Scalar) : Prop := p.1 + p.2.size ≤ q.1
 
 /-- A leaf list whose leaves do not overlap, come in address order, and fit
-    in `sz` bytes. -/
+    in `sz` bytes.
+    This is true of scalars, pointers, and well formed tuples.
+-/
 def Good (ls : List (Nat × Scalar)) (sz : Nat) : Prop :=
   ls.Pairwise LeafSep ∧ ∀ p ∈ ls, p.1 + p.2.size ≤ sz
 
+/-- `Good` is preserved under increasing the size. -/
 theorem Good.mono {ls : List (Nat × Scalar)} {sz sz' : Nat}
     (h : Good ls sz) (hle : sz ≤ sz') : Good ls sz' :=
   ⟨h.1, fun p hp => Nat.le_trans (h.2 p hp) hle⟩
 
+/-- `Good` is preserved under shifting all leaves by an offset. -/
 theorem Good.shift {ls : List (Nat × Scalar)} {sz : Nat} (h : Good ls sz) (o : Nat) :
     Good (ls.map fun p => (o + p.1, p.2)) (o + sz) := by
   refine ⟨?_, ?_⟩

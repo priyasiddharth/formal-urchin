@@ -7,7 +7,7 @@ v3 of the SB permission model, forked from `obseq.sb` (v1) for the Miri
 conformance suite (see plans/sb_conformance_obseq3.md). Differences from v1:
 
 - **Per-cell stacks**: every operation takes a length and acts on each cell
-  of `[addr, addr+len)`. `sb_own` initializes a stack at every cell of the
+  of `[addr, addr+lenB)`. `sb_own` initializes a stack at every cell of the
   allocation (v1 only ever created a stack at the allocation base, so any
   access at offset > 0 failed).
 - **Writable raw pointers**: stack items for raw pointers carry mutability.
@@ -354,7 +354,7 @@ def insertAboveCell (ap : AccessPerms) (addr : Word) (tag : Tag) (item : Item) :
     | .error e => .error e
     | .ok v => .ok { ap with StackMap := ap.StackMap.set addr v }
 
-/-- Fold an `Except`-producing per-cell operation over `[addr, addr+len)`,
+/-- Fold an `Except`-producing per-cell operation over `[addr, addr+lenB)`,
     decorating errors with the failing offset. -/
 def foldCells (op : AccessPerms → Word → Except String AccessPerms)
     (ap : AccessPerms) (addr : Word) : Nat → Except String AccessPerms
@@ -368,32 +368,32 @@ def foldCells (op : AccessPerms → Word → Except String AccessPerms)
     needed by masked retags). Top-level rather than a nested `let rec` so
     the compiler-correctness proofs can reason about it. -/
 def foldCellsIdx (op : AccessPerms → Word → Nat → Except String AccessPerms)
-    (ap : AccessPerms) (addr : Word) (i len : Nat) : Except String AccessPerms :=
-  if i < len then
+    (ap : AccessPerms) (addr : Word) (i lenB : Nat) : Except String AccessPerms :=
+  if i < lenB then
     match op ap (addr + i) i with
     | .error e => .error s!"{e} (cell offset {i})"
-    | .ok ap' => foldCellsIdx op ap' addr (i + 1) len
+    | .ok ap' => foldCellsIdx op ap' addr (i + 1) lenB
   else .ok ap
-  termination_by len - i
+  termination_by lenB - i
 
 /-! ## Range operations (the `PermissionModel` surface) -/
 
-/-- Allocate: one fresh tag rooted at every cell of `[addr, addr+len)`. -/
-def sb_own (ap : AccessPerms) (addr : Word) (len : Nat) :
+/-- Allocate: one fresh tag rooted at every cell of `[addr, addr+lenB)`. -/
+def sb_own (ap : AccessPerms) (addr : Word) (lenB : Nat) :
     Except String (AccessPerms × Tag) := do
   let (tag, ap) := freshTag ap
-  let ap ← foldCells (fun ap a => ownCell ap a tag) ap addr len
+  let ap ← foldCells (fun ap a => ownCell ap a tag) ap addr lenB
   return (ap, tag)
 
 /-- Read access over a range through `tag`. -/
-def sb_read (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
+def sb_read (ap : AccessPerms) (addr : Word) (lenB : Nat) (tag : Tag) :
     Except String AccessPerms :=
-  foldCells (fun ap a => readCell ap a tag) ap addr len
+  foldCells (fun ap a => readCell ap a tag) ap addr lenB
 
 /-- Write access over a range through `tag`. -/
-def sb_write (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
+def sb_write (ap : AccessPerms) (addr : Word) (lenB : Nat) (tag : Tag) :
     Except String AccessPerms :=
-  foldCells (fun ap a => writeCell ap a tag) ap addr len
+  foldCells (fun ap a => writeCell ap a tag) ap addr lenB
 
 /-- The per-cell action of a retag (factored out of `sb_ref` so the
     compiler-correctness proofs can apply the `foldCellsIdx` lemmas without
@@ -430,11 +430,11 @@ def refCellOp (tag : Tag) (kind : RefKind) (newTag : Tag) (mask : List Bool) :
     With `prot := true` (function-entry retags at inline seams), the fresh
     tag is registered in the innermost protector frame; for `BoxMut` it
     is also recorded as WEAKLY protected (`weakProt`). -/
-def sb_ref (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) (kind : RefKind)
+def sb_ref (ap : AccessPerms) (addr : Word) (lenB : Nat) (tag : Tag) (kind : RefKind)
     (prot : Bool := false) (mask : List Bool := []) :
     Except String (AccessPerms × Tag) := do
   let (newTag, ap) := freshTag ap
-  let ap ← foldCellsIdx (refCellOp tag kind newTag mask) ap addr 0 len
+  let ap ← foldCellsIdx (refCellOp tag kind newTag mask) ap addr 0 lenB
   if prot then
     match ap.protFrames with
     | [] => .error "sb-ref: protected retag outside any protector frame"
@@ -463,7 +463,7 @@ def sb_pop_frame (ap : AccessPerms) : Except String AccessPerms :=
     not; of the items that remain (the tag's own and those below), only
     a STRONGLY protected one is UB — a weakly protected one (a Box passed
     to the running function) may be deallocated. -/
-def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
+def sb_dealloc (ap : AccessPerms) (addr : Word) (lenB : Nat) (tag : Tag) :
     Except String AccessPerms :=
   foldCells
     (fun ap a =>
@@ -485,7 +485,7 @@ def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
                 .error s!"deallocating while item for tag {p.tag} is strongly protected"
             | none, none =>
                 .ok { ap with StackMap := ap.StackMap.filter (fun (x, _) => x != a) })
-    ap addr len
+    ap addr lenB
 
 /-- The stack-level content of a `die` at one cell (factored for the
     compiler-correctness proofs): pop the item with `tag` if it is on top
@@ -506,7 +506,7 @@ def sb_dealloc (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
     2026-09-14 and 2026-09-16 that was answered here, by removing the tag
     wherever it sat — which cost a recursive `dieCellContent` and four
     keystone lemmas sliding the die past the mint. The lowering now
-    splits instead (a second `Rhs.Borrow` with `len = none`, compile.lean),
+    splits instead (a second `Rhs.Borrow` with `lenB = none`, compile.lean),
     the `Die` runs before
     the mint, and this is a head match again. Every bracket in the
     compiler now closes with its temporary on top:
@@ -535,7 +535,7 @@ def dieCellContent (pf : List (List Tag)) (tag : Tag) : BorrowStack → Except S
 
 /-- Kill a reference over a range: pop the item with `tag` if it is on top
     of each cell's stack (and is not the root `Own`). -/
-def sb_die (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
+def sb_die (ap : AccessPerms) (addr : Word) (lenB : Nat) (tag : Tag) :
     Except String AccessPerms :=
   foldCells
     (fun ap a =>
@@ -545,6 +545,6 @@ def sb_die (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
           match dieCellContent ap.protFrames tag stack with
           | .error e => .error e
           | .ok below => .ok { ap with StackMap := ap.StackMap.set a below })
-    ap addr len
+    ap addr lenB
 
 end obseq3

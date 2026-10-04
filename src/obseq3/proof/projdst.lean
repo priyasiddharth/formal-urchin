@@ -192,7 +192,7 @@ theorem storereg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenam
   have hA : bRes.allocBase + (bRes.addr - bRes.allocBase) = bRes.addr :=
     Nat.add_sub_cancel' hB.le
   have h_bnd' : bRes.addr + pathOffset L b f + placeSize L (.proj b f)
-      ≤ bRes.allocBase + bRes.allocSize := Nat.le_of_not_gt h_bnd
+      ≤ bRes.allocBase + bRes.allocSizeB := Nat.le_of_not_gt h_bnd
   have h_mem2 : ByteMemSim ρt' memO s2.mem := by rw [hB.mem]; exact h_memR
   have h_lock2 : ByteAllocLockstep memO s2.mem := by rw [hB.mem]; exact h_allocR
   -- the write transported; the target's Mut retag succeeds
@@ -242,7 +242,7 @@ theorem storereg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenam
           (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut b)
             (CheckedCompilerM.run (compileRExprPreChecked L (mirlite.placeLayout L (.proj b f)) rhs) cs)).nextReg)
           [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffset L b f)
-            (placeSize L (.proj b f)) bRes.allocSize s2.perms.NextTag],
+            (placeSize L (.proj b f)) bRes.allocSizeB s2.perms.NextTag],
         pc := s2.pc + 1 }
   have h_wtp : oseair.writeThroughPtr MSB S1
       (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut b)
@@ -252,7 +252,7 @@ theorem storereg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenam
     have hA' : bRes.allocBase + (bRes.addr - bRes.allocBase + pathOffset L b f)
         = bRes.addr + pathOffset L b f := by rw [← Nat.add_assoc, hA]
     have h_nb : ¬ (bRes.allocBase + (bRes.addr - bRes.allocBase + pathOffset L b f)
-        + (mirlite.placeLayout L (.proj b f)).size > bRes.allocBase + bRes.allocSize) := by
+        + (mirlite.placeLayout L (.proj b f)).size > bRes.allocBase + bRes.allocSizeB) := by
       rw [hA']; exact h_bnd
     simp only [oseair.writeThroughPtr, S1, RegMap.lookup_insert_self, h_freeT,
       Bool.false_eq_true, if_false, h_nb, PermissionModel.stackedBorrows]
