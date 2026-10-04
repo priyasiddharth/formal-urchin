@@ -281,7 +281,9 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
         let st' ←
           match shimCall crate funIdx with
           | some shim => shim st args dest blk.termLine
-          | none => inlineCall crate depth st funIdx args dest blk.termLine
+          | none =>
+              let (stS, argsS) := materialiseStrArgs st blk.termLine args
+              inlineCall crate depth stS funIdx argsS dest blk.termLine
         -- moved arguments now belong to the callee (which drops them);
         -- the destination is written
         let st' := markInit (markMovedOps st' args) dest
@@ -298,7 +300,9 @@ partial def walkBlock (crate : UCrate) (depth : Nat) (st : LowerSt)
                 let st' ←
                   match shimCall crate funIdx with
                   | some shim => shim st args dest blk.termLine
-                  | none => inlineCall crate depth st funIdx args dest blk.termLine
+                  | none =>
+                      let (stS, argsS) := materialiseStrArgs st blk.termLine args
+                      inlineCall crate depth stS funIdx argsS dest blk.termLine
                 let st' := markInit (markMovedOps st' args) dest
                 walkBlock crate depth st' f offset target (bb :: visited)
             | none => .error s!"unsupported: indirect call with unknown target (line {blk.termLine})"

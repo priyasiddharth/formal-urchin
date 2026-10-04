@@ -1,0 +1,36 @@
+{
+ "version": 1,
+ "source": "local/str_literal_bytes.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _8",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _8) -> [0: bb4, otherwise: bb3]",
+     "next": 4,
+     "arm": "0"
+    }
+   ]
+  }
+ ]
+}

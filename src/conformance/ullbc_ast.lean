@@ -161,6 +161,9 @@ inductive UOperand
 | const (v : Nat)
 | constNeg (n : Nat) (bits : Nat := 64)  -- negative scalar constant, magnitude n, of a `bits`-wide type
 | constUnit
+-- a string literal (`&'static str`): its UTF-8 bytes. Materialised by the
+-- lowering into a block of its own (`materialiseStr`)
+| str (bytes : List Nat)
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
 
@@ -818,6 +821,9 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     match info.tyArgs with
                     | elem :: _ => .vecT (parseTy ctx (fuel - 1) elem)
                     | [] => .unsupported "Vec with uninferred element type"
+                  else if info.path == ["alloc", "string", "String"] then
+                    -- `String { vec: Vec<u8> }`: the same header
+                    .vecT (.int { bits := 8 })
                   else if last == "Layout" then
                     .nat  -- Layout carries only its size (constructor is shimmed)
                   else if last == "UnsafeCell" || last == "Cell" || last == "RefCell" then
@@ -853,6 +859,8 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
           | none =>
               match getK idJ "Builtin" >>= asStr with
               | some "Box" => .unsupported "builtin Box without decl"
+              -- `str`: unsized UTF-8 bytes, so `&str` is a slice of `u8`
+              | some "Str" => .sliceData (.int { bits := 8 })
               | some b => .unsupported s!"builtin adt {b}"
               | none => .unsupported s!"adt id {idJ.compress}"
       | none => .unsupported "adt without id"
@@ -984,6 +992,7 @@ def parseConst (j : Json) : UOperand :=
                 else .const v.toNat
             | none => .unsupported s!"scalar constant {sc.compress}"
         | some ("Bool", b) => .const (if b == Json.bool true then 1 else 0)
+        | some ("Str", Json.str s) => .str (s.toUTF8.toList.map (·.toNat))
         | _ => .unsupported s!"literal constant {lit.compress}"
     | some ("Adt", payload) =>
         match asArr payload with

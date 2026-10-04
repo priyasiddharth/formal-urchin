@@ -32,15 +32,15 @@ notes at: notes/
       ./.lake/build/bin/sb_conformance \
         --manifest conformance/manifest.json --charon-dir conformance/charon
         # ULLBC corpus, Charon artifacts vs Miri verdicts
-        # 167 pass / 0 fail / 0 xfail / 21 unsupported (188 total)
+        # 170 pass / 0 fail / 0 xfail / 20 unsupported (190 total)
 
       ...same, plus --osea
         # differential: compile each program and require the SAME verdict
-        # from both machines. 167 matched / 0 mismatch / 0 skipped
+        # from both machines. 170 matched / 0 mismatch / 0 skipped
 
       ...same, with --layouts instead
         # the loader's byte layouts have their types' shape (the proof's
-        # layout hypothesis): 167 agree / 0 disagree
+        # layout hypothesis): 170 agree / 0 disagree
 
   The validation build above does NOT relink this binary: run
   `lake build sb_conformance` after touching a test file, or `--unit`

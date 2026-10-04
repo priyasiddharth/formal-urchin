@@ -5128,3 +5128,8 @@ cannot line up). `vecT` header, shims from Miri's std sources, transparent
 MaybeUninit/ManuallyDrop/MaybeDangling, heap-pointer tracking. 2phase,
 buggy_as_mut_slice, unsafe_cell_2phase pass + 3 Vec witnesses; corpus
 167/0/0/21 of 188. Next: String (str literals) for drop_after_sharing.
+Later: String (= vecT u8) and string literals (UOperand.str, materialised
+as a heap block of the bytes); drop_after_sharing passes; 2 witnesses
+(String drop frees the buffer; literal bytes checked by the certificate).
+Fixed: Vec drops are not certificate events, so no poison unless the drop
+cannot be lowered. Corpus 170/0/0/20 of 190.

@@ -331,12 +331,18 @@ partial def emitDropGlue (st : LowerSt) (line : Nat) (p : UPlace) : Except Strin
       -- be known statically.
       if containsBox elem then
         throw s!"unsupported: drop of a Vec whose elements have drop glue (line {line})"
-      -- past the end of a UB/panic certificate: Miri never got here
-      if let some c := st.cert then
-        if c.cert.outcome != .ok && c.allConsumed then
-          return emitPoison st line
       let some cap := constOfPlace st { fld p 1 with ty := .nat }
-        | throw s!"unsupported: drop of a Vec with a runtime capacity (line {line})"
+        | -- unlowerable; but past the end of a UB/panic certificate
+          -- (nothing left of it) Miri may never have got here, so the
+          -- model must fail first (`emitPoison` reports it otherwise).
+          -- Not a test for EVERY Vec drop: unlike a Box's, a Vec's drop
+          -- is no certificate event, so the certificate does not say
+          -- whether Miri reached it
+          match st.cert with
+          | some c =>
+              if c.cert.outcome != .ok && c.allConsumed then return emitPoison st line
+              else throw s!"unsupported: drop of a Vec with a runtime capacity (line {line})"
+          | none => throw s!"unsupported: drop of a Vec with a runtime capacity (line {line})"
       let t := st.locals.length
       let st := { st with locals := st.locals ++ [.ref true (.vecT elem)] }
       let tmp : UPlace := { root := .local t, projs := [], ty := .ref true (.vecT elem) }
@@ -542,6 +548,32 @@ def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
           else st
       | _ => st
 
+/-- A string literal's value: Miri keeps it in a global allocation of its
+    own and the `&str` constant points at it with that allocation's tag,
+    no retag. Here: a heap block of the bytes, written once, and a fresh
+    local holding the slice pointer over it (its extent is the length).
+    Writes to the block, UB in Miri (read-only memory), are not rejected. -/
+def materialiseStr (st : LowerSt) (line : Nat) (bs : List Nat) : LowerSt × UPlace :=
+  let u8 := UTy.int { bits := 8 }
+  let arr := UTy.tup (List.replicate bs.length u8)
+  let b := st.locals.length
+  let st := { st with locals := st.locals ++ [.raw true arr, .slice false false u8] }
+  let buf : UPlace := { root := .local b, projs := [], ty := .raw true arr }
+  let r : UPlace := { root := .local (b + 1), projs := [], ty := .slice false false u8 }
+  let st := emitAlloc st line buf (some (.const bs.length))
+  let st := bs.zipIdx.foldl (fun st (v, i) =>
+    pushOut st (.assign { fld { buf with projs := [.deref], ty := arr } i with ty := u8 }
+      (.use (.const v)) line)) st
+  let rv : URvalue := .use (.copy buf)
+  (pushOut (trackAssign st r rv) (.assign r rv line), r)
+
+/-- Call arguments that are string literals, materialised. -/
+def materialiseStrArgs (st : LowerSt) (line : Nat) (args : List UOperand) : LowerSt × List UOperand :=
+  args.foldl (fun (st, acc) op =>
+    match op with
+    | .str bs => let (st, r) := materialiseStr st line bs; (st, acc ++ [.copy r])
+    | op => (st, acc ++ [op])) (st, [])
+
 /-- Retag/copy `src` into `dst` at a retag point (inline seam or a
     reference-typed load through a deref): every reference — including
     refs inside tuples and enum payloads — is retagged; enum payload
@@ -616,6 +648,7 @@ def materialiseWord (st : LowerSt) (line : Nat) (op : UOperand) :
       .ok (pushOut { st with locals := st.locals ++ [UTy.nat] }
         (.assign p (.use (.const ((⟨bits, true⟩ : obseq3.IntTy).ofInt (-(Int.ofNat n))))) line), p)
   | .constUnit => .error s!"unsupported: unit arithmetic operand (line {line})"
+  | .str _ => .error s!"unsupported: string arithmetic operand (line {line})"
   | .unsupported d => .error s!"unsupported: {d} (line {line})"
 
 /-- Static fn-pointer tracking follows a whole-local copy or move: `dst`
@@ -676,6 +709,9 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
   let st := trackAssign st dst rv
   match rv with
   | .unsupported d => .error s!"unsupported: {d} (line {line})"
+  | .use (.str bs) =>
+      let (st, r) := materialiseStr st line bs
+      emitAssign st line dst (.use (.copy r))
   | .use .constUnit =>
       return st  -- unit value: no memory access
   | .use (.constNeg n bits) =>

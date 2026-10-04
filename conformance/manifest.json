@@ -1340,14 +1340,17 @@
     {
       "id": "pass/both_borrows/basic_aliasing_model::drop_after_sharing",
       "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
-      "prep": null,
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "String (heap/std)",
+      "prep": "prep/basic_aliasing_model__drop_after_sharing.rs",
+      "artifact": "basic_aliasing_model__drop_after_sharing.ullbc.json",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ok"
       },
-      "rewrites": []
+      "rewrites": [
+        "scenario extracted"
+      ],
+      "certificate": "basic_aliasing_model__drop_after_sharing.cert.json"
     },
     {
       "id": "pass/both_borrows/basic_aliasing_model::shr_and_raw",
@@ -2378,6 +2381,29 @@
       "provenance": "local; real-Miri verified (pinned submodule), 2026-10-04 via scripts/miri_local.sh and live.py",
       "notes": "&mut *v (DerefMut, as_mut_slice) is a Unique retag of the elements, popping a shared slice taken earlier.",
       "certificate": "local/vec_deref_mut_invalidates_slice.cert.json"
+    },
+    {
+      "id": "local/string_drop_use_after_free",
+      "artifact": "local/string_drop_use_after_free.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 8
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-04 via scripts/miri_local.sh and live.py",
+      "notes": "dropping a String frees its buffer (RawVec's drop), so a pointer from as_ptr taken before dangles.",
+      "certificate": "local/string_drop_use_after_free.cert.json"
+    },
+    {
+      "id": "local/str_literal_bytes",
+      "artifact": "local/str_literal_bytes.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-04 via scripts/miri_local.sh and live.py",
+      "notes": "a string literal's bytes are readable through str::as_ptr; the branch on the byte read makes the certificate check its value.",
+      "certificate": "local/str_literal_bytes.cert.json"
     },
     {
       "id": "local/ptr_add_out_of_bounds",

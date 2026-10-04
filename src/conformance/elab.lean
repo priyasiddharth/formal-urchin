@@ -96,6 +96,7 @@ def elabRvalue (Γ : Ctx) (expected : LayoutTy) :
     URvalue → Except String ((τ : LayoutTy) × RExpr Γ τ)
   | .use (.const v) => .ok ⟨.IntL (intTyOf expected), .constInit v⟩
   | .use .constUnit => .error "unit constant not dropped by lowering"
+  | .use (.str _) => .error "string literal not materialised by lowering"
   | .use (.copy p) | .use (.move p) => do
       -- an assignment `Move` operand is a COPY, as Miri evaluates it (rustc
       -- FIXME: "do some more logic on `move` to invalidate the old

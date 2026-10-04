@@ -817,6 +817,35 @@ def boxIntoVec : Shim := fun st args dest line => do
       emitAssign st line (vecLenF dest) (.use (.const n))
   | _, t => .error s!"unsupported: into_vec into {reprStr t} (line {line})"
 
+/-- `String::from(&str)` (`str::to_owned` → `<[u8]>::to_vec`): the
+    fn-entry retag of the `&str`, `Vec::with_capacity(len)` (exactly `len`
+    bytes; nothing for an empty string), `copy_nonoverlapping` of the bytes
+    (a read through the argument, a write into the new buffer), `set_len`.
+    A `String` is its `Vec<u8>`. The argument must be a literal: its
+    length is the capacity. -/
+def stringFromStr : Shim := fun st args dest line => do
+  match args, dest.ty with
+  | [.str bs], .vecT e =>
+      let n := bs.length
+      let (st, s) := materialiseStr st line bs
+      let st := pushOut st (.pushProt line)
+      let (st, tmp) := freshLocal st s.ty
+      let st := pushOut st (.assign tmp (.refSlice .shared true s) line)
+      let st ←
+        if n == 0 then vecNew st [] dest line else do
+          let arr := UTy.tup (List.replicate n e)
+          let (st, buf) := freshLocal st (.raw true arr)
+          let st := emitAlloc st line buf (some (.const n))
+          let (st, src) := freshLocal st (.raw false arr)
+          let st ← emitAssign st line src (.use (.copy tmp))
+          let st ← bufWrite st line { pointee buf with ty := arr }
+            (.use (.copy { pointee src with ty := arr }))
+          let st ← emitAssign st line (vecPtrF dest e) (.use (.copy buf))
+          let st ← emitAssign st line (vecCapF dest) (.use (.const n))
+          emitAssign st line (vecLenF dest) (.use (.const n))
+      return pushOut st (.popProt line)
+  | _, t => .error s!"unsupported: String::from of a non-literal into {reprStr t} (line {line})"
+
 /-- `<iN as AddAssign>::add_assign(&mut self, other)`: the fn-entry retag,
     then `*self = *self + other`. Overflow (a panic under Miri's debug
     build) stops the model as UB. -/
@@ -931,6 +960,10 @@ def table : List (List String × Shim) :=
   , (["core", "cell", "RefCell", "get_mut"], cellGetMut)
   , (["alloc", "vec", "Vec", "new"], vecNew)
   , (["alloc", "vec", "Vec", "len"], vecLen)
+  , (["alloc", "string", "String", "len"], vecLen)
+  , (["alloc", "string", "<String as Deref>", "deref"], vecDeref false)
+  , (["core", "str", "str", "as_ptr"], (sliceAsPtr false))
+  , (["alloc", "string", "<String as From>", "from"], stringFromStr)
   , (["alloc", "vec", "Vec", "push"], vecPush)
   , (["alloc", "vec", "Vec", "as_ptr"], vecAsPtr)
   , (["alloc", "vec", "Vec", "as_mut_ptr"], vecAsPtr)

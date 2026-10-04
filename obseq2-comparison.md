@@ -27,6 +27,13 @@ against Miri, pin down the behaviour:
 - a push that does not move it leaves earlier views valid;
 - a mutable borrow of all the elements invalidates an earlier view.
 
+Later the same day: `String`, which is a vector of bytes, and string
+literals such as `"hello!"`, which the model now keeps in a block of
+memory of their own. One more upstream test passes. Two new Miri-checked
+programs confirm that dropping a `String` frees its memory and that a
+literal's bytes read back correctly. One of them caught a mistake in the
+vector model's handling of drops, now fixed.
+
 No proof changed: this is entirely about reading Rust programs into the
 model.
 

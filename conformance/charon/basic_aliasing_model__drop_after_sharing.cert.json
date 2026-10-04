@@ -1,0 +1,21 @@
+{
+ "version": 1,
+ "source": "prep/basic_aliasing_model__drop_after_sharing.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  }
+ ]
+}

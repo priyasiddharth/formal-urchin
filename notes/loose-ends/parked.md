@@ -252,8 +252,8 @@ feature-level view.
    static field index, and range indexing (`&a[0..0]`) needs the std
    `Index<Range>` chain plus a `subSlice` rvalue (offset + extent from
    two runtime words) — own entry below.
-4. **Std containers**: Vec/vec! DONE 2026-10-04 (loader shims, item w;
-   buggy_as_mut_slice passes); String, box-custom-alloc-aliasing
+4. **Std containers**: Vec/vec!/String DONE 2026-10-04 (loader shims,
+   item w; buggy_as_mut_slice passes); box-custom-alloc-aliasing
    (allocator-generic), Rc (illegal_read5), NonNull
    (mut_exclusive_violation2).
 5. **Threads + the data-race detector** (retag_data_race_* ×3) — a
@@ -519,9 +519,9 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
 - w. PARTLY DONE 2026-10-04 (Vec; journal 2026-10-04-vec-shim.md): the
   `vecT` header + shims (new/len/push/as_ptr/deref(_mut)/vec!/drop) pass
   2phase, buggy_as_mut_slice, interior_mutability::unsafe_cell_2phase;
-  static lengths only. Left: String (`String::from(&str)` → str literals
-  as static data) for drop_after_sharing; disjoint_mutable_subborrows is
-  blocked by `format!`. Original: Vec/String container model (3-word header, push with protected
+  static lengths only. String + str literals DONE the same day
+  (drop_after_sharing passes). Left: disjoint_mutable_subborrows, blocked
+  by `format!`/`assert_eq!` (and `push_str`). Original: Vec/String container model (3-word header, push with protected
   fn-entry retag + realloc, len, as_ptr, `vec!` via `new_uninit`/
   `into_vec`, str literals, drop → dealloc) → 2phase ×5 fns,
   interior_mutability::unsafe_cell_2phase, buggy_as_mut_slice,
