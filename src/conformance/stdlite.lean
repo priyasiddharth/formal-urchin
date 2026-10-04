@@ -11,8 +11,9 @@ each modelled path to its handler. A path absent from `table` is not
 modelled, and the call is rejected as a call to a bodyless function.
 
 Heap: `Box::new(v)` allocates one pointee and stores `v` through it;
-`std::alloc::alloc(layout)` allocates `layout` cells (a Layout is modelled
-as its size word, see `layoutFromSizeAlignUnchecked`); `dealloc(ptr, _)`
+`std::alloc::alloc(layout)` allocates `layout` bytes (a Layout is modelled
+as its size in bytes, see `layoutFromSizeAlignUnchecked`; the result is a
+`*mut u8`, whose pointee is one byte); `dealloc(ptr, _)`
 frees (size from the allocation).
 -/
 
@@ -690,7 +691,7 @@ def vecGrow (st : LowerSt) (line : Nat) (h : UPlace) (e : UTy) (cap need : Nat) 
   let minCap := if sz == 1 then 8 else if sz ≤ 1024 then 4 else 1
   let newCap := max (max (cap * 2) need) minCap
   let (st, np) := freshLocal st (.raw true e)
-  let st := emitAlloc st line np (some (.const (newCap * sz)))
+  let st := emitAlloc st line np (some (.const newCap))
   let st ←
     if cap == 0 then pure st else do
       let arr := UTy.tup (List.replicate cap e)
@@ -835,7 +836,7 @@ def stringFromStr : Shim := fun st args dest line => do
         if n == 0 then vecNew st [] dest line else do
           let arr := UTy.tup (List.replicate n e)
           let (st, buf) := freshLocal st (.raw true arr)
-          let st := emitAlloc st line buf (some (.const n))
+          let st := emitAlloc st line buf none
           let (st, src) := freshLocal st (.raw false arr)
           let st ← emitAssign st line src (.use (.copy tmp))
           let st ← bufWrite st line { pointee buf with ty := arr }

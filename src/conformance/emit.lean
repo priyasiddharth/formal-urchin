@@ -16,12 +16,13 @@ namespace conformance
 /-- A lowered program: one global local space, straight-line statements.
     `pushProt`/`popProt` bracket an inlined call's protector frame;
     `assignIf` is a variant-guarded assignment (enum seam retags);
-    `alloc`/`dealloc` come from the heap shims (`sizeB = none` means one
-    pointee: `Box::new`). -/
+    `alloc`/`dealloc` come from the heap shims; `alloc`'s `n` counts
+    POINTEES of `dst` (bytes for a `*mut u8`), `none` meaning one
+    (`Box::new`). -/
 inductive LStmt
 | assign (dst : UPlace) (rv : URvalue) (line : Nat)
 | assignIf (discr : UPlace) (val : Nat) (dst : UPlace) (rv : URvalue) (line : Nat)
-| alloc (dst : UPlace) (sizeB : Option UOperand) (line : Nat)
+| alloc (dst : UPlace) (n : Option UOperand) (line : Nat)
 | dealloc (ptr : UPlace) (line : Nat)
 | pushProt (line : Nat)
 | popProt (line : Nat)
@@ -470,13 +471,13 @@ def inHeap (st : LowerSt) : Nat → UPlace → Bool
 
 def writesHeap (st : LowerSt) (dst : UPlace) : Bool := inHeap st 8 dst
 
-/-- `dst := alloc(sz)` (a Box's pointee when `sz` is none): the new
-    pointer points into the heap. -/
-def emitAlloc (st : LowerSt) (line : Nat) (dst : UPlace) (sz : Option UOperand) : LowerSt :=
+/-- `dst := alloc(n)`, `n` pointees of `dst` (one, a Box's, when `n` is
+    none): the new pointer points into the heap. -/
+def emitAlloc (st : LowerSt) (line : Nat) (dst : UPlace) (n : Option UOperand) : LowerSt :=
   let st := match fieldPath? dst <|> resolveKey st 8 dst with
     | some k => let st := killKey st k; { st with heapPtrs := k :: st.heapPtrs }
     | none => st
-  pushOut st (.alloc dst sz line)
+  pushOut st (.alloc dst n line)
 
 /-- A copy of a pointer that changes its POINTEE type (a type-punning cast,
     `&mut s.b as *mut u32 as *mut u8`) does not carry "points at that
@@ -560,7 +561,7 @@ def materialiseStr (st : LowerSt) (line : Nat) (bs : List Nat) : LowerSt × UPla
   let st := { st with locals := st.locals ++ [.raw true arr, .slice false false u8] }
   let buf : UPlace := { root := .local b, projs := [], ty := .raw true arr }
   let r : UPlace := { root := .local (b + 1), projs := [], ty := .slice false false u8 }
-  let st := emitAlloc st line buf (some (.const bs.length))
+  let st := emitAlloc st line buf none
   let st := bs.zipIdx.foldl (fun st (v, i) =>
     pushOut st (.assign { fld { buf with projs := [.deref], ty := arr } i with ty := u8 }
       (.use (.const v)) line)) st

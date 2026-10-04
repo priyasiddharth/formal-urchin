@@ -522,8 +522,8 @@ def rF : Place ΓF ptrPair := .local ⟨⟨1, by decide⟩, rfl⟩
 def qF : Place ΓF ptrNat := .local ⟨⟨2, by decide⟩, rfl⟩
 def tF : Place ΓF natL := .local ⟨⟨3, by decide⟩, rfl⟩
 
-/-- `ptrOffset` deltas are pre-scaled by the source pointee's blockSize:
-    `.ptrOffset r 1` on a `*mut (u64,u64)` emits `PtrOffset _ 2`. -/
+/-- `ptrOffset` deltas are pre-scaled by the source pointee's size in
+    bytes: `.ptrOffset r 1` on a `*mut (u64,u64)` emits `PtrOffset _ 16`. -/
 def g12_ptr_offset_prescaled : IO Unit :=
   expectCode ΓF
     [.assign fld0F (.constInit 1),

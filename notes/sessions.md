@@ -5139,3 +5139,7 @@ offsetsB, alignB; Prov sizeB/extentB; ptrVal/Ptr offsetB/extentB/sizeB;
 PlaceRes.allocSizeB; sb_* lenB; Rhs.Borrow lenB/offsetB, PtrOffset deltaB,
 SliceLen/SubSlice elemSizeB, Die lenB; StructLay; LStmt.alloc sizeB.
 Definitions only; theorem binders unchanged. No result moved.
+Later: allocation-size bug in the Vec/String shims (alloc counts pointees,
+not bytes: Vec buffers 4× and literals n² too big), caught while fixing
+stale cell-layout comments; 2 witnesses failed before the fix and pass
+after. LStmt.alloc operand is `n`. Corpus 172/0/0/20 of 192.

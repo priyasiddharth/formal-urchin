@@ -15,7 +15,8 @@ then resolve during parsing.
 ADT handling (everything is monomorphized):
 - tuples → `UTy.tup`;
 - struct decls → `UTy.tup` of their field types;
-- enum decls → `UTy.enum` (lowered to a discriminant word + payload cells);
+- enum decls → `UTy.enum` (lowered to an 8-byte discriminant + the payload
+  fields);
 - `Box` decls are opaque — the pointee type is inferred from use sites
   (deref projections / `Box::new` calls) in a prescan, and the type maps
   to a mutable raw pointer (Miri's "implicit raw" reading of Box);
@@ -45,8 +46,8 @@ deriving Repr, BEq, Inhabited
 
 /-- Untyped types. `ref`/`raw` both erase to a pointer layout, but the
     distinction drives inline-seam retag synthesis (refs are retagged at
-    function boundaries, raws are not). `enum` lowers to a discriminant
-    word followed by payload cells. -/
+    function boundaries, raws are not). `enum` lowers to an 8-byte
+    discriminant followed by the payload fields. -/
 inductive UTy
 | nat                  -- a model word (`usize`-wide): sizes, fn placeholders, …
 | int (t : UIntTy)     -- a Rust integer, `bool` or `char`, at its width (2026-10-02)
@@ -84,7 +85,11 @@ partial def containsRefTy : UTy → Bool
   | .cell t => containsRefTy t
   | _ => false  -- a raw pointer is not retagged, whatever it points to
 
-/-- Cell count of a type (mirrors `blockSize ∘ toLayout`). -/
+/-- Leaf count of a type: one per scalar (integer or pointer) of its byte
+    layout, i.e. `(toBLayout t).leaves.length` (`emit.lean`) — the length
+    of its `freezeMask`. For an enum: the tag plus the most leaves of any
+    variant (`toBLayout` lays out the variant with the most FIELDS; the
+    two agree unless that variant has fewer leaves than another). -/
 partial def uSize : UTy → Nat
   | .nat | .int _ | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => 1
   | .sliceData _ => 0
@@ -103,8 +108,10 @@ partial def containsCell : UTy → Bool
   | .enum variants => variants.any (·.any containsCell)
   | _ => false
 
-/-- UnsafeCell freeze mask: true for cells inside an interior-mutable
-    region. Shared/raw-const retags give masked cells SharedReadWrite. -/
+/-- UnsafeCell freeze mask, one bit per LEAF (`uSize`): true for the
+    leaves inside an interior-mutable region. The source's `ref` spreads
+    each bit over its leaf's bytes (`mirlite.maskBytes`); shared/raw-const
+    retags give the masked bytes SharedReadWrite. -/
 partial def freezeMask : UTy → List Bool
   | .nat | .int _ | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => [false]
   | .sliceData _ => []
@@ -115,7 +122,7 @@ partial def freezeMask : UTy → List Bool
   -- Miri's `visit_freeze_sensitive` (vendor/miri/src/helpers.rs): the whole
   -- value, discriminant included, is UnsafeCell, WITHOUT reading which
   -- variant is active (that read would itself be subject to SB). So: all
-  -- cells interior-mutable if any variant holds a cell, else all frozen.
+  -- leaves interior-mutable if any variant holds a cell, else all frozen.
   | .enum e => List.replicate (uSize (.enum e)) (containsCell (.enum e))
   | .unsupported _ => []
 

@@ -2406,6 +2406,30 @@
       "certificate": "local/str_literal_bytes.cert.json"
     },
     {
+      "id": "local/vec_capacity_bounds",
+      "artifact": "local/vec_capacity_bounds.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 9
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-04 via scripts/miri_local.sh and live.py",
+      "notes": "the first push of a u32 allocates exactly 4 elements (16 bytes); in-bounds arithmetic to element 5 leaves the allocation.",
+      "certificate": "local/vec_capacity_bounds.cert.json"
+    },
+    {
+      "id": "local/str_literal_bounds",
+      "artifact": "local/str_literal_bounds.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 7
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-04 via scripts/miri_local.sh and live.py",
+      "notes": "a string literal's allocation is exactly its 2 bytes; in-bounds arithmetic by 3 leaves it.",
+      "certificate": "local/str_literal_bounds.cert.json"
+    },
+    {
       "id": "local/ptr_add_out_of_bounds",
       "artifact": "local/ptr_add_out_of_bounds.ullbc.json",
       "status": "supported",

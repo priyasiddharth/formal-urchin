@@ -44,7 +44,8 @@ def Place.depth : Place Γ τ → Nat
 
 /-- Allocation length for the `alloc` rvalue: a static count or a runtime
     word read from a place (e.g. a `Layout` size). The allocation covers
-    `n * blockSize τ` cells for a `PtrL τ` result. -/
+    `n * |β|` bytes, `β` the result pointer's pointee layout
+    (`mirlite.allocPointee`): `n` bytes for a `*mut u8`. -/
 inductive AllocLen (Γ : Ctx) : Type where
 | const : Nat → AllocLen Γ
 | fromPlace {t : IntTy} : Place Γ (LayoutTy.IntL t) → AllocLen Γ
