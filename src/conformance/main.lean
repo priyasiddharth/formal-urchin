@@ -75,7 +75,8 @@ def dumpTest (charonDir : String) (m : Manifest) (id : String) : IO UInt32 := do
                   IO.println s!"statements ({lp.stmts.length}):"
                   for s in lp.stmts do
                     let tag (line : Nat) : String :=
-                      if line ≥ 2 * certLineBase then s!"[poison {line - 2 * certLineBase}]"
+                      if line ≥ 3 * certLineBase then s!"[assume {line - 3 * certLineBase}]"
+                      else if line ≥ 2 * certLineBase then s!"[poison {line - 2 * certLineBase}]"
                       else if line ≥ certLineBase then s!"[cert {line - certLineBase}]"
                       else s!"[line {line}]"
                     match s with

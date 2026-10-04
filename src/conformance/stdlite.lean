@@ -739,6 +739,17 @@ def sliceFromParts (st : LowerSt) (line : Nat) (data : UPlace) (e : UTy) (len : 
   let st ← emitAssign st line sp (.subSlice sp (.const 0) len)
   return pushOut st (.assign dest (.refSlice kind false sp) line)
 
+/-- The `n` bytes a `&[u8]`/`&str` at `s` points to, read through it in
+    one access into a fresh local array. -/
+def readBytes (st : LowerSt) (line : Nat) (s : UPlace) (n : Nat) :
+    Except String (LowerSt × UPlace) := do
+  let arr := UTy.tup (List.replicate n (.int { bits := 8 }))
+  let (st, ap) := freshLocal st (.raw false arr)
+  let st ← emitAssign st line ap (.use (.copy s))
+  let (st, b) := freshLocal st arr
+  let st ← emitAssign st line b (.use (.copy { pointee ap with ty := arr }))
+  return (st, b)
+
 /-- `<Vec as Deref>::deref(&self)` (`as_slice`):
     `&*aggregate_raw_ptr(self.as_ptr(), self.len)`; `DerefMut::deref_mut`
     (`as_mut_slice`) the same through `&mut self` with `&mut *`. -/
@@ -818,17 +829,22 @@ def boxIntoVec : Shim := fun st args dest line => do
       emitAssign st line (vecLenF dest) (.use (.const n))
   | _, t => .error s!"unsupported: into_vec into {reprStr t} (line {line})"
 
-/-- `String::from(&str)` (`str::to_owned` → `<[u8]>::to_vec`): the
-    fn-entry retag of the `&str`, `Vec::with_capacity(len)` (exactly `len`
-    bytes; nothing for an empty string), `copy_nonoverlapping` of the bytes
-    (a read through the argument, a write into the new buffer), `set_len`.
-    A `String` is its `Vec<u8>`. The argument must be a literal: its
-    length is the capacity. -/
+/-- `String::from(&str)` (`str::to_owned` → `<[u8]>::to_vec`; also
+    `<&str as Into<String>>::into`, which is `String::from`): the fn-entry
+    retag of the `&str`, `Vec::with_capacity(len)` (exactly `len` bytes;
+    nothing for an empty string), `copy_nonoverlapping` of the bytes (a
+    read through the argument, a write into the new buffer), `set_len`. A
+    `String` is its `Vec<u8>`. The `&str`'s length must be known
+    statically (a literal's is: `lenField`): it is the capacity. -/
 def stringFromStr : Shim := fun st args dest line => do
   match args, dest.ty with
-  | [.str bs], .vecT e =>
-      let n := bs.length
-      let (st, s) := materialiseStr st line bs
+  | [op], .vecT e => do
+      let (st, s) ← match op with
+        | .str bs => pure (materialiseStr st line bs)
+        | .copy p | .move p => pure (st, p)
+        | _ => throw s!"unsupported: String::from argument (line {line})"
+      let some n := sliceLenOf st s
+        | throw s!"unsupported: String::from of a &str of unknown length (line {line})"
       let st := pushOut st (.pushProt line)
       let (st, tmp) := freshLocal st s.ty
       let st := pushOut st (.assign tmp (.refSlice .shared true s) line)
@@ -845,7 +861,363 @@ def stringFromStr : Shim := fun st args dest line => do
           let st ← emitAssign st line (vecCapF dest) (.use (.const n))
           emitAssign st line (vecLenF dest) (.use (.const n))
       return pushOut st (.popProt line)
-  | _, t => .error s!"unsupported: String::from of a non-literal into {reprStr t} (line {line})"
+  | _, t => .error s!"unsupported: String::from into {reprStr t} (line {line})"
+
+/-- `String::push_str(&mut self, string: &str)` (`vec.extend_from_slice` →
+    `append_elements`): the two fn-entry retags; `reserve(n)`, which grows
+    as `push` does (`grow_amortized(len, n)`) when `cap - len < n`;
+    `copy_nonoverlapping` of the `n` bytes to `as_mut_ptr().add(len)` (a
+    read through the argument, a write into the buffer); `len += n`. -/
+def stringPushStr : Shim := fun st args _dest line => do
+  match args with
+  | [recv, sOp] =>
+      let some sp := operandPlace? sOp
+        | throw s!"unsupported: push_str argument is not a place (line {line})"
+      let st := pushOut st (.pushProt line)
+      let (st, h, e) ← vecEntry st line recv "String::push_str"
+      let (st, s) := freshLocal st sp.ty
+      let st := pushOut (trackAssign st s (.refSlice .shared true sp)) (.assign s (.refSlice .shared true sp) line)
+      let some n := sliceLenOf st s
+        | throw s!"unsupported: push_str of a &str of unknown length (line {line})"
+      let some len := constOfPlace st (vecLenF h)
+        | throw s!"unsupported: push_str with a runtime length (line {line})"
+      let some cap := constOfPlace st (vecCapF h)
+        | throw s!"unsupported: push_str with a runtime capacity (line {line})"
+      let st ← if cap.toNat - len.toNat < n then vecGrow st line h e cap.toNat (len.toNat + n) else pure st
+      let st ←
+        if n == 0 then pure st else do
+          let arr := UTy.tup (List.replicate n e)
+          let (st, endP) := freshLocal st (.raw true e)
+          let st ← emitAssign st line endP (.ptrOffset (vecPtrF h e) len true)
+          let (st, src) := freshLocal st (.raw false arr)
+          let st ← emitAssign st line src (.use (.copy s))
+          let (st, dst) := freshLocal st (.raw true arr)
+          let st ← emitAssign st line dst (.use (.copy endP))
+          bufWrite st line { pointee dst with ty := arr } (.use (.copy { pointee src with ty := arr }))
+      let st ← emitAssign st line (vecLenF h) (.use (.const (len.toNat + n)))
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: push_str arity (line {line})"
+
+/-- `<String as PartialEq<&str>>::eq(&self, other: &&str)`:
+    `PartialEq::eq(&self[..], &other[..])` — the two fn-entry retags, the
+    two slice reborrows, then `<[u8]>::eq`: unequal lengths are `false`
+    with nothing read; equal ones compare every byte (both read). Both
+    lengths must be known statically; the bytes are compared when the
+    program runs. -/
+def stringEqStr : Shim := fun st args dest line => do
+  match args with
+  | [lOp, rOp] =>
+      let some lp := operandPlace? lOp
+        | throw s!"unsupported: String == &str receiver is not a place (line {line})"
+      let some rp := operandPlace? rOp
+        | throw s!"unsupported: String == &str argument is not a place (line {line})"
+      let u8 := UTy.int { bits := 8 }
+      let strTy := UTy.slice false false u8
+      let st := pushOut st (.pushProt line)
+      let (st, l) := freshLocal st lp.ty
+      let st ← emitAssign st line l (.ref .shared true { pointee lp with ty := .vecT u8 })
+      let (st, r) := freshLocal st rp.ty
+      let st ← emitAssign st line r (.ref .shared true { pointee rp with ty := strTy })
+      let h := { pointee l with ty := .vecT u8 }
+      let some lenL := constOfPlace st (vecLenF h)
+        | throw s!"unsupported: String == &str with a runtime length (line {line})"
+      let some lenR := sliceLenOf st { pointee r with ty := strTy }
+        | throw s!"unsupported: String == &str of unknown length (line {line})"
+      let (st, ls) := freshLocal st strTy
+      let st ← sliceFromParts st line (vecPtrF h u8) u8 (.const lenL.toNat) .shared ls
+      let (st, rs) := freshLocal st strTy
+      let st := pushOut st (.assign rs (.refSlice .shared false { pointee r with ty := strTy }) line)
+      let st ←
+        if lenL.toNat != lenR then emitAssign st line dest (.use (.const 0)) else do
+          let n := lenL.toNat
+          let (st, lb) ← readBytes st line ls n
+          let (st, rb) ← readBytes st line rs n
+          let (st, acc) := freshLocal st u8
+          let st ← emitAssign st line acc (.use (.const 1))
+          let st ← (List.range n).foldlM (fun st i => do
+            let (st, eqi) := freshLocal st u8
+            let st ← emitAssign st line eqi (.binOp "Eq" { bits := 8 } (.copy { fld lb i with ty := u8 })
+              (.copy { fld rb i with ty := u8 }))
+            emitAssign st line acc (.binOp "BitAnd" { bits := 8 } (.copy acc) (.copy eqi))) st
+          emitAssign st line dest (.use (.copy acc))
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: String == &str arity (line {line})"
+
+/-! ## `format!`
+
+`format!(…)` is `alloc::fmt::format(Arguments::new(&TEMPLATE, &[Argument;
+M]))`, each `Argument` made by `Argument::new_debug`/`new_display` from a
+`&T`. The model keeps what the formatting reads and writes:
+- an `Argument` is the value's pointer and a word naming `(T, Debug?)`
+  (`LowerSt.fmtArgTys`);
+- an `Arguments` is a word naming the template, parsed when loading with
+  each placeholder's argument resolved (`LowerSt.fmtSpecs`), and the
+  pointer to the arguments;
+- `format` performs the retags and reads Debug/Display perform on each
+  argument and writes the output bytes into a fresh `String`.
+
+Covered: placeholders without options (`{}`, `{:?}`) of integers,
+`String`, `&str`, `Vec<integer>`, and references to them. The output's
+SHAPE is chosen when loading and checked when the program runs
+(`emitAssume`): a Debug-formatted string has no byte that needs escaping
+(only printable ASCII other than `"` and `\`), and an integer whose value
+the lowering does not know has one digit. A failed check is reported as a
+failed assumption, never as a verdict. The output's allocation is exactly
+its length (Miri: `estimated_capacity`, then growth — a private buffer,
+so only its size differs). -/
+
+/-- `x`'s index in `xs`, appending it when absent. -/
+def regIdx {α} [BEq α] (xs : List α) (x : α) : List α × Nat :=
+  match xs.findIdx? (· == x) with
+  | some i => (xs, i)
+  | none => (xs ++ [x], xs.length)
+
+/-- `Argument::new_debug`/`new_display(x: &T)`: the fn-entry retag of `x`,
+    then `NonNull::from_ref(x)` (a raw retag) and the formatter's word. -/
+def fmtArgNew (debug : Bool) : Shim := fun st args dest line => do
+  match args with
+  | [xOp] =>
+      let some x := operandPlace? xOp
+        | throw s!"unsupported: format argument is not a place (line {line})"
+      let ty ← match x.ty with
+        | .ref false t => pure t
+        | t => throw s!"unsupported: format argument of type {reprStr t} (line {line})"
+      let st := pushOut st (.pushProt line)
+      let (st, r) := freshLocal st x.ty
+      let st ← emitAssign st line r (.ref .shared true { pointee x with ty })
+      let (st, raw) := freshLocal st (.raw false ty)
+      let st ← emitAssign st line raw (.ref .rawConst false { pointee r with ty })
+      let st ← emitAssign st line { fld dest 0 with ty := .raw false (.tup []) } (.use (.copy raw))
+      -- where it points, for `fmtFormat` (the field is private: only these
+      -- shims write an `Argument`)
+      let (tys, i) := regIdx st.fmtArgTys (ty, debug, resolveKey st 32 { pointee x with ty })
+      let st := { st with fmtArgTys := tys }
+      let st ← emitAssign st line { fld dest 1 with ty := .nat } (.use (.const i))
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: format argument arity (line {line})"
+
+/-- A `format_args!` template (`core::fmt::Arguments`' encoding): literal
+    pieces (a length byte below 0x80, or 0x80 and a 16-bit length) and
+    placeholders (a byte 0b11xxxxxx; only a default placeholder, `0xC0`,
+    is supported: it formats the next argument), up to the end byte 0.
+    Placeholders are numbered in order. -/
+partial def parseTemplate (line : Nat) (bs : List Nat) (next : Nat := 0) :
+    Except String (List (Sum (List Nat) Nat)) :=
+  match bs with
+  | [] => .error s!"unsupported: unterminated format template (line {line})"
+  | 0 :: _ => .ok []
+  | b :: rest =>
+      if b < 0x80 then do
+        let tl ← parseTemplate line (rest.drop b) next
+        return .inl (rest.take b) :: tl
+      else if b == 0x80 then
+        match rest with
+        | lo :: hi :: rest' => do
+            let n := lo + 256 * hi
+            let tl ← parseTemplate line (rest'.drop n) next
+            return .inl (rest'.take n) :: tl
+        | _ => .error s!"unsupported: malformed format template (line {line})"
+      else if b == 0xC0 then do
+        let tl ← parseTemplate line rest (next + 1)
+        return .inr next :: tl
+      else .error s!"unsupported: format placeholder with options (byte {b}) (line {line})"
+
+/-- `Arguments::new(template: &[u8; N], args: &[Argument; M])`: the two
+    fn-entry retags; the template (constant bytes) parsed now, each
+    placeholder's argument type read from its formatter word. -/
+def fmtArgumentsNew : Shim := fun st args dest line => do
+  match args with
+  | [tOp, aOp] =>
+      let some tp := operandPlace? tOp
+        | throw s!"unsupported: format template is not a place (line {line})"
+      let some ap := operandPlace? aOp
+        | throw s!"unsupported: format arguments are not a place (line {line})"
+      let (tTy, n) ← match tp.ty with
+        | .ref _ (.tup bs) => pure (UTy.tup bs, bs.length)
+        | t => throw s!"unsupported: format template of type {reprStr t} (line {line})"
+      let (aTy, m) ← match ap.ty with
+        | .ref _ (.tup as) => pure (UTy.tup as, as.length)
+        | t => throw s!"unsupported: format arguments of type {reprStr t} (line {line})"
+      let st := pushOut st (.pushProt line)
+      let (st, t) := freshLocal st tp.ty
+      let st ← emitAssign st line t (.ref .shared true { pointee tp with ty := tTy })
+      let (st, a) := freshLocal st ap.ty
+      let st ← emitAssign st line a (.ref .shared true { pointee ap with ty := aTy })
+      let bytes ← (List.range n).mapM fun i =>
+        match constOfPlace st { fld (pointee t) i with ty := .int { bits := 8 } } with
+        | some b => pure b.toNat
+        | none => throw s!"unsupported: format template not known statically (line {line})"
+      let parts ← parseTemplate line bytes
+      let spec ← parts.mapM fun part =>
+        match part with
+        | .inl piece => pure (FmtPart.lit piece)
+        | .inr k => do
+            if k ≥ m then throw s!"unsupported: format placeholder {k} without an argument (line {line})"
+            match constOfPlace st { fld (fld (pointee a) k) 1 with ty := .nat } with
+            | some i =>
+                match st.fmtArgTys[i.toNat]? with
+                | some (ty, debug, target) => pure (FmtPart.hole k ty debug target)
+                | none => throw s!"unsupported: format argument {k} not made by new_debug/new_display (line {line})"
+            | none => throw s!"unsupported: format argument {k}'s formatter not known statically (line {line})"
+      let (specs, si) := regIdx st.fmtSpecs spec
+      let st := { st with fmtSpecs := specs }
+      let st ← emitAssign st line { fld dest 0 with ty := .nat } (.use (.const si))
+      let st ← emitAssign st line { fld dest 1 with ty := .raw false (.tup []) } (.use (.copy a))
+      return pushOut st (.popProt line)
+  | _ => .error s!"unsupported: Arguments::new arity (line {line})"
+
+/-- The decimal digits of the integer at `v` (an `int t` place), as output
+    bytes: the value's own when the lowering knows it, otherwise one digit
+    with the assumption `v < 10` (unsigned at `t`'s width: a negative
+    signed value fails it too). -/
+def fmtDigits (st : LowerSt) (line : Nat) (v : UPlace) (t : UIntTy) :
+    Except String (LowerSt × List URvalue) := do
+  match constOfPlace st v with
+  | some k =>
+      let i := t.toIntTy.toInt k.toNat
+      let ds := (toString i.natAbs).toList.map fun c => URvalue.use (.const c.toNat)
+      return (st, (if i < 0 then [URvalue.use (.const '-'.toNat)] else []) ++ ds)
+  | none =>
+      let (st, ok) := freshLocal st (.int { bits := 8 })
+      let st ← emitAssign st line ok (.binOp "Lt" { t with signed := false } (.copy v) (.const 10))
+      let st := emitAssume st line ok
+      return (st, [.binOp "Add.Wrap" { bits := 8 } (.copy v) (.const '0'.toNat)])
+
+/-- The `n` bytes of the string at `s` (a `&str`), as output bytes: quoted
+    for Debug, with the assumption that none needs escaping. -/
+def fmtStrBytes (st : LowerSt) (line : Nat) (s : UPlace) (n : Nat) (debug : Bool) :
+    Except String (LowerSt × List URvalue) := do
+  let (st, b) ← readBytes st line s n
+  let u8 : UIntTy := { bits := 8 }
+  let byteAt (i : Nat) : UPlace := { fld b i with ty := .int u8 }
+  let st ←
+    if !debug || n == 0 then pure st else do
+      let (st, ok) := freshLocal st (.int u8)
+      let st ← emitAssign st line ok (.use (.const 1))
+      let st ← (List.range n).foldlM (fun st i => do
+        let tests : List (String × Nat) := [("Ge", 0x20), ("Le", 0x7e), ("Ne", 0x22), ("Ne", 0x5c)]
+        tests.foldlM (fun st (op, c) => do
+          let (st, ti) := freshLocal st (.int u8)
+          let st ← emitAssign st line ti (.binOp op u8 (.copy (byteAt i)) (.const c))
+          emitAssign st line ok (.binOp "BitAnd" u8 (.copy ok) (.copy ti))) st) st
+      pure (emitAssume st line ok)
+  let body := (List.range n).map fun i => URvalue.use (.copy (byteAt i))
+  let q := URvalue.use (.const '"'.toNat)
+  return (st, if debug then q :: body ++ [q] else body)
+
+/-- What formatting the value behind `r : &T` reads, retags and outputs
+    (`<T as Debug>::fmt` / `Display::fmt`). -/
+partial def fmtValue (st : LowerSt) (line : Nat) (ty : UTy) (r : UPlace) (debug : Bool) :
+    Except String (LowerSt × List URvalue) := do
+  let u8 := UTy.int { bits := 8 }
+  match ty with
+  | .ref _ x =>
+      -- `<&X as Debug>::fmt(&self, f)` is `Debug::fmt(&**self, f)`
+      let (st, r2) := freshLocal st (.ref false x)
+      let st ← emitAssign st line r2 (.ref .shared false { pointee { pointee r with ty } with ty := x })
+      fmtValue st line x r2 debug
+  | .slice false _ (.int ⟨8, false⟩) =>
+      -- `&str`: `Debug::fmt(&**self, f)`, a reborrow of the bytes
+      let some n := sliceLenOf st { pointee r with ty }
+        | throw s!"unsupported: format of a &str of unknown length (line {line})"
+      let (st, s) := freshLocal st (.slice false false u8)
+      let rv : URvalue := .refSlice .shared false { pointee r with ty }
+      let st := pushOut (trackAssign st s rv) (.assign s rv line)
+      fmtStrBytes st line s n debug
+  | .vecT (.int ⟨8, false⟩) =>
+      -- `String`: `Debug::fmt(self.as_str(), f)`
+      let h := { pointee r with ty }
+      let some n := constOfPlace st (vecLenF h)
+        | throw s!"unsupported: format of a String with a runtime length (line {line})"
+      let (st, s) := freshLocal st (.slice false false u8)
+      let st ← sliceFromParts st line (vecPtrF h u8) u8 (.const n.toNat) .shared s
+      fmtStrBytes st line s n.toNat debug
+  | .vecT e@(.int t) | .vecT e@.nat =>
+      if !debug then throw s!"unsupported: Display of a Vec (line {line})"
+      -- `<Vec as Debug>`: `Debug::fmt(&**self, f)`, then `debug_list` over
+      -- `iter()`: a `&T` per element
+      let h := { pointee r with ty }
+      let some n := constOfPlace st (vecLenF h)
+        | throw s!"unsupported: format of a Vec with a runtime length (line {line})"
+      let (st, s) := freshLocal st (.slice false false e)
+      let st ← sliceFromParts st line (vecPtrF h e) e (.const n.toNat) .shared s
+      let (st, outs) ← (List.range n.toNat).foldlM (fun (st, acc) i => do
+        let (st, sp) := freshLocal st (.slice true false e)
+        let st ← emitAssign st line sp (.use (.copy s))
+        let st ← emitAssign st line sp (.subSlice sp (.const i) (.const (i + 1)))
+        let (st, er) := freshLocal st (.slice false false e)
+        let st := pushOut st (.assign er (.refSlice .shared false sp) line)
+        let (st, eref) := freshLocal st (.ref false e)
+        let st ← emitAssign st line eref (.use (.copy er))
+        let (st, ds) ← fmtValue st line e eref true
+        let sep := if i == 0 then [] else [URvalue.use (.const ','.toNat), .use (.const ' '.toNat)]
+        pure (st, acc ++ sep ++ ds)) (st, [])
+      return (st, [URvalue.use (.const '['.toNat)] ++ outs ++ [.use (.const ']'.toNat)])
+  | .int t =>
+      let (st, v) := freshLocal st ty
+      let st ← emitAssign st line v (.use (.copy { pointee r with ty }))
+      fmtDigits st line v t
+  | .nat =>
+      let (st, v) := freshLocal st ty
+      let st ← emitAssign st line v (.use (.copy { pointee r with ty }))
+      fmtDigits st line v {}
+  | t => throw s!"unsupported: format of {reprStr t} (line {line})"
+
+/-- `alloc::fmt::format(args)`: each placeholder's formatter call (its
+    fn-entry retag of `&T`, then `fmtValue`), and the output `String`. -/
+def fmtFormat : Shim := fun st args dest line => do
+  match args, dest.ty with
+  | [aOp], .vecT e => do
+      let some ap := operandPlace? aOp
+        | throw s!"unsupported: format arguments are not a place (line {line})"
+      let some si := constOfPlace st { fld ap 0 with ty := .nat }
+        | throw s!"unsupported: format arguments not made by Arguments::new (line {line})"
+      let some spec := st.fmtSpecs[si.toNat]?
+        | throw s!"unsupported: unknown format template (line {line})"
+      let m := spec.foldl (fun m p => match p with | .hole k _ _ _ => max m (k + 1) | _ => m) 0
+      let argTy := UTy.structT [.raw false (.tup []), .nat] none
+      let (st, arr) := freshLocal st (.raw false (.tup (List.replicate m argTy)))
+      let st ← emitAssign st line arr (.use (.copy { fld ap 1 with ty := .raw false (.tup []) }))
+      let (st, outs) ← spec.foldlM (fun (st, acc) part => do
+        match part with
+        | .lit bs => pure (st, acc ++ bs.map fun b => URvalue.use (.const b))
+        | .hole k ty debug target =>
+            let vpIdx := st.locals.length
+            let (st, vp) := freshLocal st (.raw false ty)
+            let st ← emitAssign st line vp
+              (.use (.copy { fld { fld { pointee arr with ty := .tup (List.replicate m argTy) } k with ty := argTy } 0
+                with ty := .raw false (.tup []) }))
+            -- the pointer `new_debug` stored points where its argument did
+            let st := match target with
+              | some (l, path) =>
+                  { st with refOf := ((vpIdx, []),
+                      { root := .local l, projs := path.map UProj.field, ty }) :: st.refOf }
+              | none => st
+            let st := pushOut st (.pushProt line)
+            let (st, r) := freshLocal st (.ref false ty)
+            let st ← emitAssign st line r (.ref .shared true { pointee vp with ty })
+            let (st, bs) ← fmtValue st line ty r debug
+            pure (pushOut st (.popProt line), acc ++ bs)) (st, [])
+      let n := outs.length
+      if n == 0 then return (← vecNew st [] dest line)
+      let arrTy := UTy.tup (List.replicate n e)
+      let (st, buf) := freshLocal st (.raw true arrTy)
+      let st := emitAlloc st line buf none
+      let st ← outs.zipIdx.foldlM (fun st (rv, i) =>
+        let d : UPlace := { fld { pointee buf with ty := arrTy } i with ty := e }
+        match rv with
+        | .binOp .. => emitAssign st line d rv
+        | _ => bufWrite st line d rv) st
+      let st ← emitAssign st line (vecPtrF dest e) (.use (.copy buf))
+      let st ← emitAssign st line (vecCapF dest) (.use (.const n))
+      emitAssign st line (vecLenF dest) (.use (.const n))
+  | _, t => .error s!"unsupported: format into {reprStr t} (line {line})"
+
+/-- `core::hint::must_use(x)`: `x`. -/
+def mustUse : Shim := fun st args dest line => do
+  match args with
+  | [x] => emitAssign st line dest (.use x)
+  | _ => .error s!"unsupported: must_use arity (line {line})"
 
 /-- `<iN as AddAssign>::add_assign(&mut self, other)`: the fn-entry retag,
     then `*self = *self + other`. Overflow (a panic under Miri's debug
@@ -965,6 +1337,14 @@ def table : List (List String × Shim) :=
   , (["alloc", "string", "<String as Deref>", "deref"], vecDeref false)
   , (["core", "str", "str", "as_ptr"], (sliceAsPtr false))
   , (["alloc", "string", "<String as From>", "from"], stringFromStr)
+  , (["core", "convert", "<&T as Into>", "into"], stringFromStr)
+  , (["alloc", "string", "String", "push_str"], stringPushStr)
+  , (["alloc", "string", "<String as PartialEq>", "eq"], stringEqStr)
+  , (["core", "fmt", "rt", "Argument", "new_debug"], fmtArgNew true)
+  , (["core", "fmt", "rt", "Argument", "new_display"], fmtArgNew false)
+  , (["core", "fmt", "Arguments", "new"], fmtArgumentsNew)
+  , (["alloc", "fmt", "format"], fmtFormat)
+  , (["core", "hint", "must_use"], mustUse)
   , (["alloc", "vec", "Vec", "push"], vecPush)
   , (["alloc", "vec", "Vec", "as_ptr"], vecAsPtr)
   , (["alloc", "vec", "Vec", "as_mut_ptr"], vecAsPtr)

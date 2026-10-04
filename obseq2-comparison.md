@@ -27,6 +27,16 @@ against Miri, pin down the behaviour:
 - a push that does not move it leaves earlier views valid;
 - a mutable borrow of all the elements invalidates an earlier view.
 
+Later still: `push_str`, `format!` and comparing a `String` with a
+literal. The model produces `format!`'s output itself. It does exactly
+the reads Rust's formatting performs on the values, which is what the
+aliasing rules care about, and writes the text. It makes two simple
+assumptions about that text: strings need no escape characters, and
+numbers it cannot see have one digit. It checks them when the program
+runs and reports clearly if one is wrong. The last vector test from
+Miri's suite now passes, and its own `assert_eq!` confirms the model
+produced exactly the text Miri did.
+
 Later the same day: `String`, which is a vector of bytes, and string
 literals such as `"hello!"`, which the model now keeps in a block of
 memory of their own. One more upstream test passes. Two new Miri-checked

@@ -41,6 +41,9 @@ inductive Verdict
 | certRejected (stmtIdx : Nat) (line : Nat)
 -- mirlite ran past the point where Miri's execution ended in UB/panic
 | certExhausted (stmtIdx : Nat) (line : Nat)
+-- a shim's lowering assumption (`emitAssume`) failed when the program ran:
+-- the model cannot say what the program does — never a program verdict
+| assumeFailed (stmtIdx : Nat) (line : Nat)
 deriving Repr, BEq
 
 def Verdict.render : Verdict → String
@@ -50,6 +53,7 @@ def Verdict.render : Verdict → String
   | .fuelExhausted => "fuel exhausted"
   | .certRejected _ line => s!"certificate rejected at line {line} (Miri's recorded branch was not taken)"
   | .certExhausted _ line => s!"ran past Miri's UB point (line {line})"
+  | .assumeFailed _ line => s!"a lowering assumption failed at line {line}"
 
 /-! ## The model's verdict
 
@@ -85,7 +89,8 @@ where
             | .ok st' => go fuel st'
             | .err msg =>
                 let line := l.lines[st.pc]?.getD 0
-                if line ≥ 2 * certLineBase then (.certExhausted st.pc (line - 2 * certLineBase), none)
+                if line ≥ 3 * certLineBase then (.assumeFailed st.pc (line - 3 * certLineBase), none)
+                else if line ≥ 2 * certLineBase then (.certExhausted st.pc (line - 2 * certLineBase), none)
                 else if line ≥ certLineBase then (.certRejected st.pc (line - certLineBase), none)
                 else (.ub st.pc line msg, some st.mem)
 
@@ -206,7 +211,7 @@ deriving Repr
 
 /-- The statement a verdict blames, if any. -/
 def Verdict.stmt? : Verdict → Option Nat
-  | .ub i _ _ | .certRejected i _ | .certExhausted i _ => some i
+  | .ub i _ _ | .certRejected i _ | .certExhausted i _ | .assumeFailed i _ => some i
   | _ => none
 
 /-- Do two verdicts agree (ok↔ok, or UB at the same statement)? -/
@@ -350,6 +355,7 @@ def judge (e : TestEntry) (v : Verdict) : Outcome :=
       | .fuelExhausted => .fail "fuel exhausted"
       | .certRejected _ line => .fail s!"certificate rejected at line {line}: mirlite did not take Miri's recorded branch"
       | .certExhausted _ line => .fail s!"missed UB: ran past Miri's UB point (line {line})"
+      | .assumeFailed _ line => .fail s!"a lowering assumption failed at line {line} (the shim's output shape was wrong)"
       | v =>
           if verdictMatches e v then .pass
           else if e.expectUB then .fail s!"missed UB: expected ub, got {v.render}"

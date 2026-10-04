@@ -1,0 +1,49 @@
+{
+ "version": 1,
+ "source": "prep/basic_aliasing_model__disjoint_mutable_subborrows.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "borrow_field_a",
+  "borrow_field_b",
+  "drop_glue",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _44",
+     "cases": [
+      [
+       0,
+       15
+      ]
+     ],
+     "otherwise": 14,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _44) -> [0: bb15, otherwise: bb14]",
+     "next": 14,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "borrow_field_a",
+   "miri_path": "main::borrow_field_a::<'_>",
+   "events": []
+  },
+  {
+   "fn": "borrow_field_b",
+   "miri_path": "main::borrow_field_b::<'_>",
+   "events": []
+  }
+ ]
+}

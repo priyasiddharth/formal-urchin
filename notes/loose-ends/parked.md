@@ -520,8 +520,8 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   `vecT` header + shims (new/len/push/as_ptr/deref(_mut)/vec!/drop) pass
   2phase, buggy_as_mut_slice, interior_mutability::unsafe_cell_2phase;
   static lengths only. String + str literals DONE the same day
-  (drop_after_sharing passes). Left: disjoint_mutable_subborrows, blocked
-  by `format!`/`assert_eq!` (and `push_str`). Original: Vec/String container model (3-word header, push with protected
+  (drop_after_sharing passes). push_str, format! (narrow, checked) and
+  String == &str DONE too: disjoint_mutable_subborrows passes. Original: Vec/String container model (3-word header, push with protected
   fn-entry retag + realloc, len, as_ptr, `vec!` via `new_uninit`/
   `into_vec`, str literals, drop → dealloc) → 2phase ×5 fns,
   interior_mutability::unsafe_cell_2phase, buggy_as_mut_slice,

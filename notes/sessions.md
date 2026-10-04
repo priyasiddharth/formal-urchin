@@ -5154,3 +5154,7 @@ addresses unchanged. The bytelayout.lean renames of afbddf8 had been lost
 to a concurrent edit (its commit carried the user's docstrings, not the
 renames); re-applied. Enum leaf count: `longestVariant` shared by `uSize`
 and `toBLayout`. No result moved.
+Later: push_str, format! (narrow checked model: Argument/Arguments as
+registry words, Debug/Display of ints, String, &str, Vec<int>; shapes
+checked at run time, new assumeFailed verdict) and String == &str;
+disjoint_mutable_subborrows passes; 3 witnesses. Corpus 176/0/0/19 of 195.

@@ -322,7 +322,7 @@ partial def inlineCall (crate : UCrate) (depth : Nat) (st : LowerSt)
   | none => .error s!"unsupported: call to unknown function id {funIdx} (line {line})"
   | some f =>
     if !f.hasBody then
-      .error s!"unsupported: call to bodyless function {f.name} (line {line})"
+      .error s!"unsupported: call to bodyless function {String.intercalate "::" f.path} (line {line})"
     else if args.length != f.argCount then
       .error s!"unsupported: arg count mismatch calling {f.name}"
     else do

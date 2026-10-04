@@ -13,6 +13,15 @@ on these; the design notes for the whole lowering are in `lowering.lean`.
 namespace conformance
 
 
+/-- One part of a parsed `format_args!` template: a literal piece (its
+    bytes), or a placeholder with default options formatting argument
+    `arg`, of type `ty`, with Debug (`debug`) or Display; `target` is the
+    tracker's root key of the place the argument points at, when known. -/
+inductive FmtPart
+| lit (bytes : List Nat)
+| hole (arg : Nat) (ty : UTy) (debug : Bool) (target : Option (Nat × List Nat))
+deriving Repr, BEq, Inhabited
+
 /-- A lowered program: one global local space, straight-line statements.
     `pushProt`/`popProt` bracket an inlined call's protector frame;
     `assignIf` is a variant-guarded assignment (enum seam retags);
@@ -56,6 +65,12 @@ structure LowerSt where
   -- copied from one): a write through one lands in no local, so it
   -- changes no tracked constant (`trackAssign`)
   heapPtrs : List ConstKey := []
+  -- `format!` (stdlite): the static meaning of the words the model stores
+  -- in an `fmt::rt::Argument` (an index into `fmtArgTys`: the argument's
+  -- type and Debug or Display) and in an `fmt::Arguments` (an index into
+  -- `fmtSpecs`: the parsed template, each placeholder resolved)
+  fmtArgTys : List (UTy × Bool × Option ConstKey) := []
+  fmtSpecs : List (List FmtPart) := []
   -- certificate-guided lowering (none = the straight-line-only seam)
   cert : Option CertCursor := none
   certBad : Nat := 0     -- scratch usize local the checks poison
@@ -174,10 +189,31 @@ def pushOut (st : LowerSt) (s : LStmt) : LowerSt :=
   { st with out := s :: st.out }
 
 /-- Lines ≥ this mark certificate checks; ≥ 2× mark the poison at the end
-    of a UB/panic prefix. -/
+    of a UB/panic prefix; ≥ 3× a lowering ASSUMPTION (`emitAssume`). -/
 def certLineBase : Nat := 1000000
 
+/-- The tracker's pseudo-field holding a slice's length (in elements) when
+    the lowering knows it: a string literal's (`materialiseStr`), carried
+    by copies and reborrows. A key `(l, path ++ [lenField])`: being below
+    the slice's own key, it is killed with it. -/
+def lenField : Nat := 1000000
+
 def natLocal (i : Nat) : UPlace := { root := .local i, projs := [], ty := .nat }
+
+/-- A lowering assumption, checked when the program runs: the word at `ok`
+    must be 1 (a shim chose its output's shape from it — `format!`'s digit
+    counts, its unescaped strings). Fails as `bad := uninit; assignIf ok 1
+    (bad := 0); tmp := copy bad`, on lines the harness reports as a failed
+    assumption, never as a program verdict. -/
+def emitAssume (st : LowerSt) (line : Nat) (ok : UPlace) : LowerSt :=
+  let t := st.locals.length
+  let st := { st with locals := st.locals ++ [.nat, .nat] }
+  let bad := natLocal t
+  let tmp := natLocal (t + 1)
+  let l := 3 * certLineBase + line
+  let st := pushOut st (.assign bad .uninit l)
+  let st := pushOut st (.assignIf ok 1 bad (.use (.const 0)) l)
+  pushOut st (.assign tmp (.use (.copy bad)) l)
 
 /-- The end of a UB/panic certificate prefix: mirlite must have failed
     before reaching this; reaching it is the distinct verdict
@@ -257,7 +293,7 @@ def resolveIdxOperand (st : LowerSt) (line : Nat) : UOperand → Except String U
 /-- Statically-known integer value of an operand (consts, or const-tracked
     plain locals). -/
 def constOfPlace (st : LowerSt) (p : UPlace) : Option Int :=
-  match resolveKey st 8 p with
+  match resolveKey st 32 p with
   | some k => (constLookup st k).map Int.ofNat
   | none => none
 
@@ -458,7 +494,7 @@ def inHeap (st : LowerSt) : Nat → UPlace → Bool
   | fuel + 1, p =>
       match p.projs.reverse.dropWhile (· matches .field _) with
       | .deref :: before =>
-          match resolveKey st 8 { p with projs := before.reverse } with
+          match resolveKey st 32 { p with projs := before.reverse } with
           | some k =>
               st.heapPtrs.contains k ||
                 (match st.refOf.lookup k with
@@ -472,7 +508,7 @@ def writesHeap (st : LowerSt) (dst : UPlace) : Bool := inHeap st 8 dst
 /-- `dst := alloc(n)`, `n` pointees of `dst` (one, a Box's, when `n` is
     none): the new pointer points into the heap. -/
 def emitAlloc (st : LowerSt) (line : Nat) (dst : UPlace) (n : Option UOperand) : LowerSt :=
-  let st := match fieldPath? dst <|> resolveKey st 8 dst with
+  let st := match fieldPath? dst <|> resolveKey st 32 dst with
     | some k => let st := killKey st k; { st with heapPtrs := k :: st.heapPtrs }
     | none => st
   pushOut st (.alloc dst n line)
@@ -498,7 +534,7 @@ def punsPointee (src dst : UTy) : Bool :=
 def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
   -- where the write lands, as a root-local key
   let key? : Option ConstKey :=
-    if dst.projs.contains .deref then resolveKey st 8 dst else fieldPath? dst
+    if dst.projs.contains .deref then resolveKey st 32 dst else fieldPath? dst
   match key? with
   | none => if writesHeap st dst then st else killAllConsts st
   | some (d, path) =>
@@ -518,11 +554,11 @@ def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
       | .use (.copy sp) | .use (.move sp) | .move sp =>
           if punsPointee sp.ty dst.ty then
             -- a cast pointer still points where it pointed
-            if (resolveKey st 8 sp).any st.heapPtrs.contains then
+            if (resolveKey st 32 sp).any st.heapPtrs.contains then
               { st with heapPtrs := (d, path) :: st.heapPtrs }
             else st
           else
-          match resolveKey st 8 sp with
+          match resolveKey st 32 sp with
           | some sk => copyUnder sk
           | none => st
       | .aggregate none ops =>
@@ -530,7 +566,7 @@ def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
             match op with
             | .const v => { st with constVals := ((d, path ++ [i]), v) :: st.constVals }
             | .copy sp | .move sp =>
-                match resolveKey st 8 sp with
+                match resolveKey st 32 sp with
                 | some sk =>
                     let cs := st.constVals.filterMap fun (k, v) =>
                       if k.1 == sk.1 && sk.2.isPrefixOf k.2 then some ((d, path ++ [i] ++ k.2.drop sk.2.length), v) else none
@@ -541,8 +577,13 @@ def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
             | _ => st) st
       | .aggregate (some v) _ => { st with constVals := ((d, path ++ [0]), v) :: st.constVals }
       | .ref _ _ p => { st with refOf := ((d, path), p) :: st.refOf }
+      | .refSlice _ _ sp =>
+          -- a reborrow keeps the slice's length
+          match resolveKey st 32 sp >>= fun k => constLookup st (k.1, k.2 ++ [lenField]) with
+          | some n => { st with constVals := ((d, path ++ [lenField]), n) :: st.constVals }
+          | none => st
       | .ptrOffset sp _ _ =>
-          if (resolveKey st 8 sp).any st.heapPtrs.contains then
+          if (resolveKey st 32 sp).any st.heapPtrs.contains then
             { st with heapPtrs := (d, path) :: st.heapPtrs }
           else st
       | _ => st
@@ -564,7 +605,12 @@ def materialiseStr (st : LowerSt) (line : Nat) (bs : List Nat) : LowerSt × UPla
     pushOut st (.assign { fld { buf with projs := [.deref], ty := arr } i with ty := u8 }
       (.use (.const v)) line)) st
   let rv : URvalue := .use (.copy buf)
-  (pushOut (trackAssign st r rv) (.assign r rv line), r)
+  let st := pushOut (trackAssign st r rv) (.assign r rv line)
+  ({ st with constVals := ((b + 1, [lenField]), bs.length) :: st.constVals }, r)
+
+/-- The length of the slice at `p`, when the tracker knows it. -/
+def sliceLenOf (st : LowerSt) (p : UPlace) : Option Nat :=
+  resolveKey st 32 p >>= fun k => constLookup st (k.1, k.2 ++ [lenField])
 
 /-- Call arguments that are string literals, materialised. -/
 def materialiseStrArgs (st : LowerSt) (line : Nat) (args : List UOperand) : LowerSt × List UOperand :=

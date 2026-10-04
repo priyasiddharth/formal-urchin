@@ -831,6 +831,14 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     match info.tyArgs with
                     | elem :: _ => .vecT (parseTy ctx (fuel - 1) elem)
                     | [] => .unsupported "Vec with uninferred element type"
+                  else if info.path == ["core", "fmt", "rt", "Argument"] then
+                    -- `format_args!`'s argument (`stdlite`): the value's
+                    -- pointer, erased, and a word naming its formatter
+                    .structT [.raw false (.tup []), .nat] none
+                  else if info.path == ["core", "fmt", "Arguments"] then
+                    -- a word naming the parsed template (`stdlite`), and the
+                    -- pointer to the arguments, erased
+                    .structT [.nat, .raw false (.tup [])] none
                   else if info.path == ["alloc", "string", "String"] then
                     -- `String { vec: Vec<u8> }`: the same header
                     .vecT (.int { bits := 8 })
