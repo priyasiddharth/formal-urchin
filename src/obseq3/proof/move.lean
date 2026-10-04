@@ -28,8 +28,8 @@ theorem code_borrow_load_die (ra : CompilerState) (i1 i2 i3 : oseair.Instr) :
   all_goals (repeat (first | rw [if_neg (by omega)] | rw [if_pos (by omega)])) <;> rfl
 
 theorem move_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
-    {σ τ : LayoutTy} {src : Place Γ τ} {a : Place Γ σ} {o : Nat}
-    (h_shape : BorrowAnchorShape L src a o) (h_res : BorrowAnchorRes L src a o)
+    {σ τ : LayoutTy} {src : Place Γ τ} {a : Place Γ σ} {oB : Nat}
+    (h_shape : BorrowAnchorShape L src a oB) (h_res : BorrowAnchorRes L src a oB)
     (h_low : LowersB L compProg a) (h_comp : CompilesB L a) (dstL : BLayout) :
     ValuePkgB compProg L dstL (RExpr.move src) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc _h_unmap output h_ev
@@ -75,14 +75,14 @@ theorem move_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
       = emit (bumpReg (emit (bumpReg (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA))
           [oseair.Instr.Assgn
             (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg)
-            (oseair.Rhs.Borrow RefKind.Mut false [] (some (placeSize L src)) aOut.result.reg o)]))
+            (oseair.Rhs.Borrow RefKind.Mut false [] (some (placeSizeB L src)) aOut.result.reg oB)]))
           ([oseair.Instr.Assgn
             (Register.R ((CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg + 1))
             (oseair.Rhs.Load (mirlite.placeLayout L src)
               (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg))] ++
           [oseair.Instr.Die
             (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg)
-            (placeSize L src)]) := by
+            (placeSizeB L src)]) := by
     simp only [compileRExprPreChecked, CheckedCompilerM.run_bind,
       h_bval, CheckedCompilerM.run_lift, CheckedCompilerM.value_lift, CheckedCompilerM.run_pure]
     rw [h_breg, h_bclean, h_brun]
@@ -121,7 +121,7 @@ theorem move_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
     rw [h_ab] at h_free
     simp only [bytes.Mem.isFreed, ← h_lock1.2.2] at h_free ⊢
     simpa using h_free
-  have h_bnd' : aRes.addr + o + placeSize L src ≤ aRes.allocBase + aRes.allocSizeB := by
+  have h_bnd' : aRes.addr + oB + placeSizeB L src ≤ aRes.allocBase + aRes.allocSizeB := by
     rw [← h_addr, ← h_ab, ← h_as]; exact Nat.le_of_not_gt h_bnd
   -- the three events, transported
   have h_tbd1 : TagRenameBounded ρt permsR.NextTag s1.perms.NextTag := by
@@ -136,7 +136,7 @@ theorem move_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
   obtain ⟨q2, h_rd', h_psim2⟩ := sb_read_respects_PermSim h_psim1 h_wf' h_nt h_rd
   obtain ⟨q3, h_die', h_psim3, h_nts, h_ntt⟩ := sb_die_respects_PermSim h_psim2 h_wf' h_nt h_die
   -- the values
-  have hrel := readL_sim h_wf' (ByteMemSim.rename_mono h_incr h_mem1) (aRes.addr + o)
+  have hrel := readL_sim h_wf' (ByteMemSim.rename_mono h_incr h_mem1) (aRes.addr + oB)
     (mirlite.placeLayout L src)
   obtain ⟨h_defT, h_relS⟩ := readL_rel hrel (by rw [h_addr] at h_def; simpa using h_def)
   -- the code
@@ -146,14 +146,14 @@ theorem move_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
       (emit (bumpReg (emit (bumpReg (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA))
         [oseair.Instr.Assgn
           (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg)
-          (oseair.Rhs.Borrow RefKind.Mut false [] (some (placeSize L src)) aOut'.result.reg o)]))
+          (oseair.Rhs.Borrow RefKind.Mut false [] (some (placeSizeB L src)) aOut'.result.reg oB)]))
         ([oseair.Instr.Assgn
           (Register.R ((CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg + 1))
           (oseair.Rhs.Load (mirlite.placeLayout L src)
             (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg))] ++
         [oseair.Instr.Die
           (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg)
-          (placeSize L src)])).code (s1.pc + k) = some i →
+          (placeSizeB L src)])).code (s1.pc + k) = some i →
       compProg (s1.pc + k) = some i := by
     intro k i hk hc
     refine h_code _ i ?_ hc
@@ -164,20 +164,20 @@ theorem move_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
   -- §2 Load through the fresh tag
   let bTmp := Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg
   let lTmp := Register.R ((CheckedCompilerM.run (placeToRegChecked L RefKind.Mut a) csA).nextReg + 1)
-  let vals := (mirlite.readL s1.mem (aRes.addr + o) (mirlite.placeLayout L src)).map oseair.ofMem
+  let vals := (mirlite.readL s1.mem (aRes.addr + oB) (mirlite.placeLayout L src)).map oseair.ofMem
   let S1 : oseair.State MSB :=
     { s1 with
         perms := q1,
         reg := s1.reg.insert bTmp
-          [Val.Ptr aRes.allocBase (aRes.addr - aRes.allocBase + o) (placeSize L src)
+          [Val.Ptr aRes.allocBase (aRes.addr - aRes.allocBase + oB) (placeSizeB L src)
             aRes.allocSizeB s1.perms.NextTag],
         pc := s1.pc + 1 }
-  have hA' : aRes.allocBase + (aRes.addr - aRes.allocBase + o) = aRes.addr + o := by
+  have hA' : aRes.allocBase + (aRes.addr - aRes.allocBase + oB) = aRes.addr + oB := by
     rw [← Nat.add_assoc, hB]
   have h2 : oseair.runN MSB 1 S1 compProg = .Ok
       { S1 with perms := q2, reg := S1.reg.insert lTmp vals, pc := S1.pc + 1 } := by
-    have h_nb : ¬ (aRes.allocBase + (aRes.addr - aRes.allocBase + o)
-        + (mirlite.placeLayout L src).size > aRes.allocBase + aRes.allocSizeB) := by
+    have h_nb : ¬ (aRes.allocBase + (aRes.addr - aRes.allocBase + oB)
+        + (mirlite.placeLayout L src).sizeB > aRes.allocBase + aRes.allocSizeB) := by
       rw [hA']; exact Nat.not_lt.mpr h_bnd'
     have h_instr := h_at 1 _ (by omega) (by rw [hA.pc]; exact (hct _ _ _).2.1)
     simp only [oseair.runN, oseair.step]

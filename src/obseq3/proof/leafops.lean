@@ -115,12 +115,12 @@ theorem readCell_inv {Γ : Ctx} {L : mirlite.LayEnv Γ} {sM : mirlite.State MSB 
     (h : mirlite.readCell MSB L sM src what = .ok (v, perms')) :
     ∃ resolved permsR, mirlite.resolvePlaceAcc MSB L sM src = .ok (resolved, permsR) ∧
       ¬ sM.mem.isFreed resolved.allocBase = true ∧
-      ¬ (resolved.addr + (mirlite.leafKind (mirlite.placeLayout L src)).size
+      ¬ (resolved.addr + (mirlite.leafKind (mirlite.placeLayout L src)).sizeB
           > resolved.allocBase + resolved.allocSizeB) ∧
-      sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size
+      sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB
         resolved.tag = .ok perms' ∧
       v = mirlite.decodeV (mirlite.leafKind (mirlite.placeLayout L src))
-        (sM.mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size) := by
+        (sM.mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB) := by
   simp only [mirlite.readCell] at h
   cases h_r : mirlite.resolvePlaceAcc MSB L sM src with
   | error e => simp [h_r] at h
@@ -141,21 +141,21 @@ theorem readCell_inv {Γ : Ctx} {L : mirlite.LayEnv Γ} {sM : mirlite.State MSB 
   exact ⟨resolved, permsR, rfl, h_free, h_bnd, hp, rfl⟩
 
 theorem readCellThrough_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt)
-    {s1 : oseair.State MSB} {reg : Register} {resolved : PlaceRes} {ext : Nat} {tres : Tag}
+    {s1 : oseair.State MSB} {reg : Register} {resolved : PlaceRes} {extB : Nat} {tres : Tag}
     {mS : bytes.Mem} {permsR perms' : AccessPerms} {k : Scalar}
     (h_reg : s1.reg.lookup reg = some [Val.Ptr resolved.allocBase
-      (resolved.addr - resolved.allocBase) ext resolved.allocSizeB tres])
+      (resolved.addr - resolved.allocBase) extB resolved.allocSizeB tres])
     (h_rt : ρt resolved.tag = some tres) (h_le : resolved.allocBase ≤ resolved.addr)
     (h_psim : PermSim ρt permsR s1.perms) (h_mem : ByteMemSim ρt mS s1.mem)
     (h_lock : ByteAllocLockstep mS s1.mem)
     (h_free : ¬ mS.isFreed resolved.allocBase = true)
-    (h_bnd : ¬ (resolved.addr + k.size > resolved.allocBase + resolved.allocSizeB))
-    (h_rd : sb_read permsR resolved.addr k.size resolved.tag = .ok perms') :
+    (h_bnd : ¬ (resolved.addr + k.sizeB > resolved.allocBase + resolved.allocSizeB))
+    (h_rd : sb_read permsR resolved.addr k.sizeB resolved.tag = .ok perms') :
     ∃ p2, oseair.readCellThrough MSB s1 reg k
-        = .ok (oseair.ofMem (mirlite.decodeV k (s1.mem.read resolved.addr k.size)), p2) ∧
+        = .ok (oseair.ofMem (mirlite.decodeV k (s1.mem.read resolved.addr k.sizeB)), p2) ∧
       PermSim ρt perms' p2 ∧ p2.NextTag = s1.perms.NextTag ∧
-      ValSim ρt (mirlite.decodeV k (mS.read resolved.addr k.size))
-        (mirlite.decodeV k (s1.mem.read resolved.addr k.size)) := by
+      ValSim ρt (mirlite.decodeV k (mS.read resolved.addr k.sizeB))
+        (mirlite.decodeV k (s1.mem.read resolved.addr k.sizeB)) := by
   obtain ⟨p2, h_rd', h_psim'⟩ := sb_read_respects_PermSim h_psim hwf h_rt h_rd
   have hA : resolved.allocBase + (resolved.addr - resolved.allocBase) = resolved.addr :=
     Nat.add_sub_cancel' h_le
@@ -168,9 +168,9 @@ theorem readCellThrough_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt)
 
 /-! ## Value inversions -/
 
-theorem valSim_ptr {ρt : TagRenameMap} {b o e sz : Nat} {t : Tag} {w : MemValue}
-    (h : ValSim ρt (.ptrVal b o e sz t) w) :
-    ∃ t', w = .ptrVal b o e sz t' ∧ ρt t = some t' := by
+theorem valSim_ptr {ρt : TagRenameMap} {b oB eB szB : Nat} {t : Tag} {w : MemValue}
+    (h : ValSim ρt (.ptrVal b oB eB szB t) w) :
+    ∃ t', w = .ptrVal b oB eB szB t' ∧ ρt t = some t' := by
   cases w with
   | undef => simp [ValSim, MemValSim, oseair.ofMem] at h
   | word _ => simp [ValSim, MemValSim, oseair.ofMem] at h
@@ -277,7 +277,7 @@ theorem ptrOffset_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ
     (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int) (inb : Bool) :
     LeafOpB L dstL (RExpr.ptrOffset (τ := τ) src delta inb) src
       (fun r => oseair.Rhs.PtrOffset (mirlite.leafKind (mirlite.placeLayout L src)) r
-        (delta * ((mirlite.pointeeLayout L src).size : Int)) inb) where
+        (delta * ((mirlite.pointeeLayout L src).sizeB : Int)) inb) where
   resolves sM output h := by
     simp only [mirlite.evalRExpr] at h
     split at h
@@ -313,11 +313,11 @@ theorem ptrOffset_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ
         exact ⟨trivial, trivial, trivial, trivial, h_t, fun _ _ => ⟨_, rfl⟩⟩
     · cases h
 
-theorem leafLayout_size (k : Scalar) : (leafLayout k).size = k.size := by
+theorem leafLayout_sizeB (k : Scalar) : (leafLayout k).sizeB = k.sizeB := by
   cases k <;> rfl
 
 theorem readL_leafLayout (m : bytes.Mem) (a : Nat) (k : Scalar) :
-    mirlite.readL m a (leafLayout k) = [mirlite.decodeV k (m.read a k.size)] := by
+    mirlite.readL m a (leafLayout k) = [mirlite.decodeV k (m.read a k.sizeB)] := by
   cases k <;> simp [mirlite.readL, leafLayout, BLayout.leaves]
 
 theorem ptrCast_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ τ : LayoutTy}
@@ -347,11 +347,11 @@ theorem ptrCast_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ �
       obtain ⟨p2, h_rd', h_psim2⟩ := sb_read_respects_PermSim h_psim hwf h_rt h_rd
       have hv : v ≠ .undef := fun h' => h_def (by rw [h']; rfl)
       have h_vs := decodeV_sim hwf (mirlite.leafKind (mirlite.placeLayout L src))
-        (h_mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size)
+        (h_mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB)
       rw [← h_v] at h_vs
       obtain ⟨h_defT, h_relS⟩ := readL_rel (vs := [v])
         (ws := [mirlite.decodeV (mirlite.leafKind (mirlite.placeLayout L src))
-          (s1.mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size)])
+          (s1.mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB)])
         (show ListRel _ [v] [_] from ⟨h_vs, trivial⟩)
         (by simp only [List.any_cons, List.any_nil, Bool.or_false]
             exact Bool.eq_false_iff.mpr h_def)
@@ -362,10 +362,10 @@ theorem ptrCast_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ �
         simpa using h_free
       refine ⟨_, p2, perms', ?_, rfl, h_psim2, ?_, h_relS⟩
       · simp only [oseair.evalRhs, h_reg, hA, h_freeT, Bool.false_eq_true, if_false,
-          leafLayout_size, h_bnd, PermissionModel.stackedBorrows, h_rd', readL_leafLayout,
+          leafLayout_sizeB, h_bnd, PermissionModel.stackedBorrows, h_rd', readL_leafLayout,
           List.map_cons, List.map_nil]
         have h_defT' : ([oseair.ofMem (mirlite.decodeV (mirlite.leafKind (mirlite.placeLayout L src))
-            (s1.mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size))].any
+            (s1.mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB))].any
             fun v => v == Val.Undef) = false := h_defT
         rw [h_defT']
         rfl

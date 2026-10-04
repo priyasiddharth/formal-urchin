@@ -23,7 +23,7 @@ open obseq3.compile
 theorem proj_zero_lowers {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     {ρ τ : LayoutTy} {b : Place Γ ρ} (f : PathTo ρ τ)
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
-    (h0 : pathOffset L b f = 0) (hb : LowersB L compProg b) :
+    (h0 : pathOffsetB L b f = 0) (hb : LowersB L compProg b) :
     LowersB L compProg (.proj b f) := by
   intro ρt sM kind cs sA resolved permsD hwf h_res h_tbd h_lbs h_prb h_mem h_lock h_psim h_pc
     h_inc
@@ -45,7 +45,7 @@ theorem proj_zero_lowers {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.P
   obtain ⟨bOut, n1, s1, btag, hB⟩ :=
     hb ρt sM kind cs sA bRes permsB hwf h_rb h_tbd h_lbs h_prb h_mem h_lock h_psim h_pc h_inc
   obtain ⟨h_runP, outP, h_valP, h_resP⟩ := (proj_lowering (kind := kind) f h_np hB.val).1 h0
-  have h0' : mirlite.fieldOffset (mirlite.placeLayout L b) f.indices = 0 := h0
+  have h0' : mirlite.fieldOffsetB (mirlite.placeLayout L b) f.indices = 0 := h0
   exact ⟨outP, n1, s1, btag, {
     val := h_valP
     clean := by rw [h_resP]; exact hB.clean
@@ -105,7 +105,7 @@ theorem storereg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenam
     {ρ τ : LayoutTy} {b : Place Γ ρ} {f : PathTo ρ τ} {rhs : RExpr Γ τ} {cs : CompilerState}
     (compProg : oseair.Prog)
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
-    (h0 : pathOffset L b f ≠ 0) (hb : LowersB L compProg b)
+    (h0 : pathOffsetB L b f ≠ 0) (hb : LowersB L compProg b)
     (h_prepOK : ∀ s1, mirlite.preparePlaceAssign MSB L s_mir (.proj b f) = .ok s1 →
       s1 = s_mir ∧ ∃ r, mirlite.resolvePlace? MSB L s_mir (.proj b f) = some r)
     (h_pkg : ValuePkgB compProg L (mirlite.placeLayout L (.proj b f)) rhs)
@@ -191,7 +191,7 @@ theorem storereg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenam
   obtain ⟨ext, h_bentry⟩ := hB.entry
   have hA : bRes.allocBase + (bRes.addr - bRes.allocBase) = bRes.addr :=
     Nat.add_sub_cancel' hB.le
-  have h_bnd' : bRes.addr + pathOffset L b f + placeSize L (.proj b f)
+  have h_bnd' : bRes.addr + pathOffsetB L b f + placeSizeB L (.proj b f)
       ≤ bRes.allocBase + bRes.allocSizeB := Nat.le_of_not_gt h_bnd
   have h_mem2 : ByteMemSim ρt' memO s2.mem := by rw [hB.mem]; exact h_memR
   have h_lock2 : ByteAllocLockstep memO s2.mem := by rw [hB.mem]; exact h_allocR
@@ -222,12 +222,12 @@ theorem storereg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenam
         (CheckedCompilerM.run (compileRExprPreChecked L (mirlite.placeLayout L (.proj b f)) rhs) cs)))
         [oseair.Instr.Assgn (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut b)
           (CheckedCompilerM.run (compileRExprPreChecked L (mirlite.placeLayout L (.proj b f)) rhs) cs)).nextReg)
-          (borrowRhs RefKind.Mut (placeSize L (.proj b f)) bOut.result.reg (pathOffset L b f))])
+          (borrowRhs RefKind.Mut (placeSizeB L (.proj b f)) bOut.result.reg (pathOffsetB L b f))])
         [mkStore (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut b)
           (CheckedCompilerM.run (compileRExprPreChecked L (mirlite.placeLayout L (.proj b f)) rhs) cs)).nextReg)])
         [oseair.Instr.Die (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut b)
           (CheckedCompilerM.run (compileRExprPreChecked L (mirlite.placeLayout L (.proj b f)) rhs) cs)).nextReg)
-          (placeSize L (.proj b f))]).code (s2.pc + k) = some instr →
+          (placeSizeB L (.proj b f))]).code (s2.pc + k) = some instr →
       compProg (s2.pc + k) = some instr := by
     intro k instr hk hc
     refine h_code _ instr ?_ hc
@@ -241,18 +241,18 @@ theorem storereg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenam
         reg := s2.reg.insert
           (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut b)
             (CheckedCompilerM.run (compileRExprPreChecked L (mirlite.placeLayout L (.proj b f)) rhs) cs)).nextReg)
-          [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffset L b f)
-            (placeSize L (.proj b f)) bRes.allocSizeB s2.perms.NextTag],
+          [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffsetB L b f)
+            (placeSizeB L (.proj b f)) bRes.allocSizeB s2.perms.NextTag],
         pc := s2.pc + 1 }
   have h_wtp : oseair.writeThroughPtr MSB S1
       (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Mut b)
         (CheckedCompilerM.run (compileRExprPreChecked L (mirlite.placeLayout L (.proj b f)) rhs) cs)).nextReg)
       (mirlite.placeLayout L (.proj b f)) vals "store"
       = .Ok { S1 with perms := q2, mem := mT', pc := S1.pc + 1 } := by
-    have hA' : bRes.allocBase + (bRes.addr - bRes.allocBase + pathOffset L b f)
-        = bRes.addr + pathOffset L b f := by rw [← Nat.add_assoc, hA]
-    have h_nb : ¬ (bRes.allocBase + (bRes.addr - bRes.allocBase + pathOffset L b f)
-        + (mirlite.placeLayout L (.proj b f)).size > bRes.allocBase + bRes.allocSizeB) := by
+    have hA' : bRes.allocBase + (bRes.addr - bRes.allocBase + pathOffsetB L b f)
+        = bRes.addr + pathOffsetB L b f := by rw [← Nat.add_assoc, hA]
+    have h_nb : ¬ (bRes.allocBase + (bRes.addr - bRes.allocBase + pathOffsetB L b f)
+        + (mirlite.placeLayout L (.proj b f)).sizeB > bRes.allocBase + bRes.allocSizeB) := by
       rw [hA']; exact h_bnd
     simp only [oseair.writeThroughPtr, S1, RegMap.lookup_insert_self, h_freeT,
       Bool.false_eq_true, if_false, h_nb, PermissionModel.stackedBorrows]
@@ -328,7 +328,7 @@ theorem storereg_proj_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenameMa
       oseair.runN MSB n s_osea compProg = .Ok s_osea' ∧
       InvAtB L ρt' s_mir' s_osea'
         (CheckedCompilerM.run (compileStmtChecked L (.assign (.proj b f) rhs)) cs) := by
-  by_cases h0 : pathOffset L b f = 0
+  by_cases h0 : pathOffsetB L b f = 0
   · exact storereg_lowered_simB compProg (proj_zero_lowers f h_np h0 hb) h_prepOK h_pkg h_inv
       h_code h_step
   · exact storereg_projoff_simB compProg h_np h0 hb h_prepOK h_pkg h_inv h_code h_step

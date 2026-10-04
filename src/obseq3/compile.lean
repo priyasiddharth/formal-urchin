@@ -10,9 +10,9 @@ Parameterized by the layout table `L : mirlite.LayEnv Γ` the source
 
 - a local's `Alloc` carries its byte layout `L loc.idx`;
 - a projection's `Borrow` offset is the field's byte offset
-  (`fieldOffset (placeLayout L base) path.indices`, the source's
+  (`fieldOffsetB (placeLayout L base) path.indices`, the source's
   `resolvePlace`), and every borrow and `Die` length is the place's byte
-  size `(placeLayout L p).size`;
+  size `(placeLayout L p).sizeB`;
 - loads carry the source place's layout, stores the DESTINATION's (the
   source's `evalRExpr` gets `dstL`): a copy between different
   layouts fails at the store's leaf check in both machines;
@@ -29,7 +29,7 @@ namespace obseq3.compile
 open obseq3.oseair (Register Val)
 open obseq3.oseair (Instr Rhs)
 open obseq3.bytes (BLayout Scalar)
-open obseq3.mirlite (LayEnv placeLayout fieldOffset leafKind maskBytes pointeeLayout)
+open obseq3.mirlite (LayEnv placeLayout fieldOffsetB leafKind maskBytes pointeeLayout)
 
 abbrev TargetProg := obseq3.oseair.Prog
 abbrev PlaceInfo := Register × LayoutTy
@@ -339,13 +339,13 @@ def ensureLocalRegE {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}
                 (setPlaceInfo_state_incr cs2 loc.idx.1 (reg, τ)))⟩)
 
 /-- A projection's byte offset: the source's `resolvePlace`. -/
-abbrev pathOffset {Γ : Ctx} (L : LayEnv Γ) {σ τ : LayoutTy} (base : Place Γ σ)
+abbrev pathOffsetB {Γ : Ctx} (L : LayEnv Γ) {σ τ : LayoutTy} (base : Place Γ σ)
     (p : PathTo σ τ) : Nat :=
-  fieldOffset (placeLayout L base) p.indices
+  fieldOffsetB (placeLayout L base) p.indices
 
 /-- A place's byte size: every borrow's and `Die`'s length. -/
-abbrev placeSize {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy} (p : Place Γ τ) : Nat :=
-  (placeLayout L p).size
+abbrev placeSizeB {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy} (p : Place Γ τ) : Nat :=
+  (placeLayout L p).sizeB
 
 def ensurePlaceRoot {Γ : Ctx} (L : LayEnv Γ) : {τ : LayoutTy} → Place Γ τ → CompilerM Unit
   | _, .local loc => do
@@ -378,15 +378,15 @@ inductive PlaceToRegEvidence {Γ : Ctx} (L : LayEnv Γ) :
       {σ τ : LayoutTy} (base : Place Γ σ) (path : PathTo σ τ)
       (baseRes : PtrResult)
       (baseEv : PlaceToRegEvidence L kind base baseRes)
-      (h_offset : pathOffset L base path = 0) :
+      (h_offset : pathOffsetB L base path = 0) :
       PlaceToRegEvidence L kind (.proj base path) baseRes
   | projOffset
       {σ τ : LayoutTy} (base : Place Γ σ) (path : PathTo σ τ)
       (baseRes : PtrResult) (tmpReg : Register)
       (baseEv : PlaceToRegEvidence L kind base baseRes)
-      (h_offset : pathOffset L base path ≠ 0) :
+      (h_offset : pathOffsetB L base path ≠ 0) :
       PlaceToRegEvidence L kind (.proj base path)
-        { reg := tmpReg, cleanup := baseRes.cleanup ++ [(tmpReg, placeSize L (.proj base path))] }
+        { reg := tmpReg, cleanup := baseRes.cleanup ++ [(tmpReg, placeSizeB L (.proj base path))] }
   | deref
       {σ : LayoutTy} (ptrPlace : Place Γ (LayoutTy.PtrL σ))
       (ptrRes : PtrResult) (loadedReg : Register)
@@ -400,7 +400,7 @@ inductive PlaceToBorrowRegEvidence {Γ : Ctx} (L : LayEnv Γ) :
       {τ : LayoutTy} (loc : Local Γ τ) (baseRes : PtrResult) (tmpReg : Register)
       (baseEv : PlaceToRegEvidence L kind (.local loc) baseRes) :
       PlaceToBorrowRegEvidence L kind (.local loc)
-        { reg := tmpReg, cleanup := [(tmpReg, placeSize L (.local loc))] }
+        { reg := tmpReg, cleanup := [(tmpReg, placeSizeB L (.local loc))] }
   | projAssoc
       {ρ σ τ : LayoutTy} (b : Place Γ ρ) (q : PathTo ρ σ) (p : PathTo σ τ)
       (res : PtrResult)
@@ -411,13 +411,13 @@ inductive PlaceToBorrowRegEvidence {Γ : Ctx} (L : LayEnv Γ) :
       (baseRes : PtrResult) (tmpReg : Register)
       (baseEv : PlaceToRegEvidence L kind base baseRes) :
       PlaceToBorrowRegEvidence L kind (.proj base path)
-        { reg := tmpReg, cleanup := baseRes.cleanup ++ [(tmpReg, placeSize L (.proj base path))] }
+        { reg := tmpReg, cleanup := baseRes.cleanup ++ [(tmpReg, placeSizeB L (.proj base path))] }
   | deref
       {σ : LayoutTy} (ptrPlace : Place Γ (LayoutTy.PtrL σ))
       (ptrRes : PtrResult) (loadedReg tmpReg : Register)
       (ptrEv : PlaceToRegEvidence L RefKind.Shared ptrPlace ptrRes) :
       PlaceToBorrowRegEvidence L kind (.deref ptrPlace)
-        { reg := tmpReg, cleanup := [(tmpReg, placeSize L (.deref ptrPlace))] }
+        { reg := tmpReg, cleanup := [(tmpReg, placeSizeB L (.deref ptrPlace))] }
 
 def placeToRegChecked {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}
     (kind : RefKind) :
@@ -444,7 +444,7 @@ def placeToRegChecked {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}
   | .proj base path => do
       let baseOut ← placeToRegChecked L kind base
       let baseRes := baseOut.result
-      let offset := pathOffset L base path
+      let offset := pathOffsetB L base path
       if h_offset : offset = 0 then
         pure {
           result := baseRes,
@@ -454,10 +454,10 @@ def placeToRegChecked {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}
         let tmpReg ← CheckedCompilerM.lift freshRegM
         let _ ← CheckedCompilerM.lift
           (emitM [Instr.Assgn tmpReg
-            (borrowRhs kind (placeSize L (.proj base path)) baseRes.reg offset)])
+            (borrowRhs kind (placeSizeB L (.proj base path)) baseRes.reg offset)])
         pure {
           result := { reg := tmpReg,
-                      cleanup := baseRes.cleanup ++ [(tmpReg, placeSize L (.proj base path))] },
+                      cleanup := baseRes.cleanup ++ [(tmpReg, placeSizeB L (.proj base path))] },
           evidence := PlaceToRegEvidence.projOffset base path baseRes tmpReg baseOut.evidence h_offset
         }
   | .deref ptrPlace => do
@@ -484,9 +484,9 @@ def placeToBorrowRegChecked {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}
       let tmpReg ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
         (emitM [Instr.Assgn tmpReg
-          (Rhs.Borrow kind prot mask (some (placeSize L (.local loc))) baseRes.reg 0)])
+          (Rhs.Borrow kind prot mask (some (placeSizeB L (.local loc))) baseRes.reg 0)])
       pure {
-        result := { reg := tmpReg, cleanup := [(tmpReg, placeSize L (.local loc))] },
+        result := { reg := tmpReg, cleanup := [(tmpReg, placeSizeB L (.local loc))] },
         evidence := PlaceToBorrowRegEvidence.local loc baseRes tmpReg baseOut.evidence
       }
   | .proj (.proj b q) p => do
@@ -498,14 +498,14 @@ def placeToBorrowRegChecked {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}
   | .proj base path => do
       let baseOut ← placeToRegChecked L kind base
       let baseRes := baseOut.result
-      let offset := pathOffset L base path
+      let offset := pathOffsetB L base path
       let tmpReg ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
         (emitM [Instr.Assgn tmpReg
-          (Rhs.Borrow kind prot mask (some (placeSize L (.proj base path))) baseRes.reg offset)])
+          (Rhs.Borrow kind prot mask (some (placeSizeB L (.proj base path))) baseRes.reg offset)])
       pure {
         result := { reg := tmpReg,
-                    cleanup := baseRes.cleanup ++ [(tmpReg, placeSize L (.proj base path))] },
+                    cleanup := baseRes.cleanup ++ [(tmpReg, placeSizeB L (.proj base path))] },
         evidence := PlaceToBorrowRegEvidence.proj base path baseRes tmpReg baseOut.evidence
       }
   | .deref ptrPlace => do
@@ -518,9 +518,9 @@ def placeToBorrowRegChecked {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}
       let tmpReg ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
         (emitM [Instr.Assgn tmpReg
-          (Rhs.Borrow kind prot mask (some (placeSize L (.deref ptrPlace))) loadedReg 0)])
+          (Rhs.Borrow kind prot mask (some (placeSizeB L (.deref ptrPlace))) loadedReg 0)])
       pure {
-        result := { reg := tmpReg, cleanup := [(tmpReg, placeSize L (.deref ptrPlace))] },
+        result := { reg := tmpReg, cleanup := [(tmpReg, placeSizeB L (.deref ptrPlace))] },
         evidence := PlaceToBorrowRegEvidence.deref ptrPlace ptrRes loadedReg tmpReg ptrOut.evidence
       }
   termination_by p => p.depth
@@ -690,7 +690,7 @@ def compileRExprPreChecked {Γ : Ctx} (L : LayEnv Γ) (dstL : BLayout) {τ : Lay
       let r ← readToReg L src
       let tmp ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
-        (emitM [Instr.Assgn tmp (Rhs.SliceLen (pointeeLayout L src).size r)])
+        (emitM [Instr.Assgn tmp (Rhs.SliceLen (pointeeLayout L src).sizeB r)])
       pure {
         store := fun dstPtr => [Instr.RStore dstL tmp dstPtr],
         postCleanup := [],
@@ -702,7 +702,7 @@ def compileRExprPreChecked {Γ : Ctx} (L : LayEnv Γ) (dstL : BLayout) {τ : Lay
       let rHi ← readToReg L hi
       let tmp ← CheckedCompilerM.lift freshRegM
       let _ ← CheckedCompilerM.lift
-        (emitM [Instr.Assgn tmp (Rhs.SubSlice (pointeeLayout L src).size rp rLo rHi)])
+        (emitM [Instr.Assgn tmp (Rhs.SubSlice (pointeeLayout L src).sizeB rp rLo rHi)])
       pure {
         store := fun dstPtr => [Instr.RStore dstL tmp dstPtr],
         postCleanup := [],
@@ -723,7 +723,7 @@ def compileRExprPreChecked {Γ : Ctx} (L : LayEnv Γ) (dstL : BLayout) {τ : Lay
   | .addr src =>
       -- a load of the pointer's bytes at integer layout: the same decode
       readRhsPre L dstL (RExpr.addr src) src
-        (Rhs.Load (.int (leafKind (placeLayout L src)).size)) (fun _ => [])
+        (Rhs.Load (.int (leafKind (placeLayout L src)).sizeB)) (fun _ => [])
         (fun srcRes evd _ => RExprToEvidence.addr src srcRes evd)
   | .fromExposed (τ := τ) src =>
       readRhsPre L dstL (RExpr.fromExposed (τ := τ) src) src
@@ -737,7 +737,7 @@ def compileRExprPreChecked {Γ : Ctx} (L : LayEnv Γ) (dstL : BLayout) {τ : Lay
       -- delta is in pointees of the SOURCE type; pre-scale to bytes
       readRhsPre L dstL (RExpr.ptrOffset src delta inbounds) src
         (fun r => Rhs.PtrOffset (leafKind (placeLayout L src)) r
-          (delta * ((pointeeLayout L src).size : Int)) inbounds) (fun _ => [])
+          (delta * ((pointeeLayout L src).sizeB : Int)) inbounds) (fun _ => [])
         (fun srcRes evd _ => RExprToEvidence.ptrOffset src delta inbounds srcRes evd)
   | .refSlice (τ := τ) kind prot src =>
       readRhsPre L dstL (RExpr.refSlice (τ := τ) kind prot src) src

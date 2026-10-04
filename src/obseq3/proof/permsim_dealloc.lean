@@ -61,8 +61,8 @@ theorem strongProt_eq {ρt : TagRenameMap} (h_wf : TagRenameWF ρt)
     ItemSim.isSrw_eq hk, isProtectedIn_transport h_wf ht h_pf,
     TagListSim.contains_eq h_wf ht h_wk]
 
-theorem sb_dealloc_eq (ap : AccessPerms) (addr : Word) (len : Nat) (tag : Tag) :
-    sb_dealloc ap addr len tag = foldCells (deallocCellOp tag) ap addr len := rfl
+theorem sb_dealloc_eq (ap : AccessPerms) (addr : Word) (lenB : Nat) (tag : Tag) :
+    sb_dealloc ap addr lenB tag = foldCells (deallocCellOp tag) ap addr lenB := rfl
 
 /-- One cell of `sb_dealloc`, inverted: the stack is there, the tag
     splits it at a write-granting item, nothing above it is protected,
@@ -138,13 +138,13 @@ theorem StackMapSim.filter_cell {x y : SB} (h : StackMapSim ρt x y) (a : Word) 
 theorem sb_dealloc_respects_PermSim
     {ρt : TagRenameMap} {tagS tagT : Tag}
     (h_wf : TagRenameWF ρt) (h_tag : ρt tagS = some tagT) :
-    ∀ (len : Nat) (addr : Word) {src tgt src' : AccessPerms},
+    ∀ (lenB : Nat) (addr : Word) {src tgt src' : AccessPerms},
       PermSim ρt src tgt →
-      sb_dealloc src addr len tagS = .ok src' →
-      ∃ tgt', sb_dealloc tgt addr len tagT = .ok tgt' ∧ PermSim ρt src' tgt' ∧
+      sb_dealloc src addr lenB tagS = .ok src' →
+      ∃ tgt', sb_dealloc tgt addr lenB tagT = .ok tgt' ∧ PermSim ρt src' tgt' ∧
         src'.NextTag = src.NextTag ∧ tgt'.NextTag = tgt.NextTag := by
-  intro len
-  induction len with
+  intro lenB
+  induction lenB with
   | zero =>
       intro addr src tgt src' h_sim h_src
       rw [sb_dealloc_eq] at h_src

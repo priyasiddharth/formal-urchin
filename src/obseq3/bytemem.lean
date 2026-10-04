@@ -72,7 +72,7 @@ structure Pointer where
 deriving Repr, BEq, DecidableEq, Inhabited
 
 /-- Bytes in a pointer (x86_64). -/
-def ptrSize : Nat := 8
+def ptrSizeB : Nat := 8
 
 /-- The byte value, if initialized. -/
 def AbstractByte.byte? : AbstractByte → Option (Fin 256)
@@ -96,16 +96,16 @@ def decodeLE : List (Fin 256) → Nat
   | [] => 0
   | b :: bs => b.val + 256 * decodeLE bs
 
-@[simp] theorem encodeLE_length (n v : Nat) : (encodeLE n v).length = n := by
-  induction n generalizing v <;> simp_all [encodeLE]
+@[simp] theorem encodeLE_length (nB v : Nat) : (encodeLE nB v).length = nB := by
+  induction nB generalizing v <;> simp_all [encodeLE]
 
-theorem decodeLE_encodeLE (n v : Nat) : decodeLE (encodeLE n v) = v % 256 ^ n := by
-  induction n generalizing v with
+theorem decodeLE_encodeLE (nB v : Nat) : decodeLE (encodeLE nB v) = v % 256 ^ nB := by
+  induction nB generalizing v with
   | zero => simp [encodeLE, decodeLE, Nat.mod_one]
-  | succ n ih => simp [encodeLE, decodeLE, ih, Nat.pow_succ', Nat.mod_mul]
+  | succ nB ih => simp [encodeLE, decodeLE, ih, Nat.pow_succ', Nat.mod_mul]
 
-theorem decodeLE_encodeLE_of_lt {n v : Nat} (h : v < 256 ^ n) :
-    decodeLE (encodeLE n v) = v := by
+theorem decodeLE_encodeLE_of_lt {nB v : Nat} (h : v < 256 ^ nB) :
+    decodeLE (encodeLE nB v) = v := by
   rw [decodeLE_encodeLE, Nat.mod_eq_of_lt h]
 
 /-- Bytes all carrying the same provenance slot `p`. -/
@@ -134,7 +134,7 @@ def encodeInt (nB v : Nat) : List AbstractByte := tagBytes none (encodeLE nB v)
 def decodeInt (bs : List AbstractByte) : Option Nat :=
   (bs.mapM AbstractByte.byte?).map decodeLE
 
-def encodePtr (p : Pointer) : List AbstractByte := tagBytes p.prov (encodeLE ptrSize p.addr)
+def encodePtr (p : Pointer) : List AbstractByte := tagBytes p.prov (encodeLE ptrSizeB p.addr)
 
 /-- The provenance a pointer read recovers: the common provenance of all
     its bytes, or none when they disagree. -/
@@ -142,18 +142,18 @@ def commonProv : List (Option Prov) → Option Prov
   | [] => none
   | p :: ps => if ps.all (fun x => decide (x = p)) then p else none
 
-/-- A pointer read: `ptrSize` initialized bytes; the address is their
+/-- A pointer read: `ptrSizeB` initialized bytes; the address is their
     little-endian value; the provenance survives only if every byte
     carries the same one. -/
 def decodePtr (bs : List AbstractByte) : Option Pointer :=
-  if bs.length = ptrSize then do
+  if bs.length = ptrSizeB then do
     let raw ← bs.mapM AbstractByte.byte?
     let provs ← bs.mapM AbstractByte.prov?
     pure ⟨decodeLE raw, commonProv provs⟩
   else none
 
-theorem decodeInt_encodeInt {n v : Nat} (h : v < 256 ^ n) :
-    decodeInt (encodeInt n v) = some v := by
+theorem decodeInt_encodeInt {nB v : Nat} (h : v < 256 ^ nB) :
+    decodeInt (encodeInt nB v) = some v := by
   simp [decodeInt, encodeInt, tagBytes_bytes, decodeLE_encodeLE_of_lt h]
 
 theorem commonProv_replicate (q : Option Prov) (l : List α) (h : l ≠ []) :
@@ -162,21 +162,21 @@ theorem commonProv_replicate (q : Option Prov) (l : List α) (h : l ≠ []) :
   | nil => exact absurd rfl h
   | cons a t => simp [commonProv]
 
-theorem decodePtr_encodePtr {p : Pointer} (h : p.addr < 256 ^ ptrSize) :
+theorem decodePtr_encodePtr {p : Pointer} (h : p.addr < 256 ^ ptrSizeB) :
     decodePtr (encodePtr p) = some p := by
-  have hne : encodeLE ptrSize p.addr ≠ [] := by simp [ptrSize, encodeLE]
+  have hne : encodeLE ptrSizeB p.addr ≠ [] := by simp [ptrSizeB, encodeLE]
   simp [decodePtr, encodePtr, tagBytes_bytes, tagBytes_provs,
     decodeLE_encodeLE_of_lt h, commonProv_replicate _ _ hne]
 
 /-- A pointer's bytes read as an integer: its address, provenance gone. -/
-theorem decodeInt_encodePtr {p : Pointer} (h : p.addr < 256 ^ ptrSize) :
+theorem decodeInt_encodePtr {p : Pointer} (h : p.addr < 256 ^ ptrSizeB) :
     decodeInt (encodePtr p) = some p.addr := by
   simp [decodeInt, encodePtr, tagBytes_bytes, decodeLE_encodeLE_of_lt h]
 
 /-- An integer's bytes read as a pointer: that address, no provenance. -/
-theorem decodePtr_encodeInt {v : Nat} (h : v < 256 ^ ptrSize) :
-    decodePtr (encodeInt ptrSize v) = some ⟨v, none⟩ := by
-  have hne : encodeLE ptrSize v ≠ [] := by simp [ptrSize, encodeLE]
+theorem decodePtr_encodeInt {v : Nat} (h : v < 256 ^ ptrSizeB) :
+    decodePtr (encodeInt ptrSizeB v) = some ⟨v, none⟩ := by
+  have hne : encodeLE ptrSizeB v ≠ [] := by simp [ptrSizeB, encodeLE]
   simp [decodePtr, encodeInt, tagBytes_bytes, tagBytes_provs,
     decodeLE_encodeLE_of_lt h, commonProv_replicate _ _ hne]
 
@@ -186,9 +186,9 @@ inductive Scalar where
   | ptr
 deriving Repr, BEq, DecidableEq, Inhabited
 
-def Scalar.size : Scalar → Nat
+def Scalar.sizeB : Scalar → Nat
   | .int n => n
-  | .ptr => ptrSize
+  | .ptr => ptrSizeB
 
 inductive SVal where
   | int (v : Nat)
@@ -199,7 +199,7 @@ deriving Repr, BEq, DecidableEq, Inhabited
     an integer / address that does not fit. -/
 def encodeS : Scalar → SVal → Option (List AbstractByte)
   | .int n, .int v => if v < 256 ^ n then some (encodeInt n v) else none
-  | .ptr, .ptr p => if p.addr < 256 ^ ptrSize then some (encodePtr p) else none
+  | .ptr, .ptr p => if p.addr < 256 ^ ptrSizeB then some (encodePtr p) else none
   | _, _ => none
 
 def decodeS : Scalar → List AbstractByte → Option SVal
@@ -207,9 +207,9 @@ def decodeS : Scalar → List AbstractByte → Option SVal
   | .ptr, bs => (decodePtr bs).map .ptr
 
 theorem encodeS_length {t : Scalar} {v : SVal} {bs : List AbstractByte}
-    (h : encodeS t v = some bs) : bs.length = t.size := by
+    (h : encodeS t v = some bs) : bs.length = t.sizeB := by
   cases t <;> cases v <;> simp [encodeS] at h <;>
-    (obtain ⟨-, rfl⟩ := h; simp [encodeInt, encodePtr, Scalar.size])
+    (obtain ⟨-, rfl⟩ := h; simp [encodeInt, encodePtr, Scalar.sizeB])
 
 theorem decodeS_encodeS {t : Scalar} {v : SVal} {bs : List AbstractByte}
     (h : encodeS t v = some bs) : decodeS t bs = some v := by
@@ -238,7 +238,7 @@ def Mem.write (m : Mem) (a : Nat) (bs : List AbstractByte) : Mem :=
   { m with bytes := fun x =>
       if a ≤ x ∧ x < a + bs.length then bs.getD (x - a) .uninit else m.bytes x }
 
-@[simp] theorem Mem.read_length (m : Mem) (a n : Nat) : (m.read a n).length = n := by
+@[simp] theorem Mem.read_length (m : Mem) (a nB : Nat) : (m.read a nB).length = nB := by
   simp [Mem.read]
 
 theorem Mem.read_write_same (m : Mem) (a : Nat) (bs : List AbstractByte) :
@@ -248,9 +248,9 @@ theorem Mem.read_write_same (m : Mem) (a : Nat) (bs : List AbstractByte) :
   simp [Mem.read, Mem.write]
   grind
 
-theorem Mem.read_write_disjoint (m : Mem) (a a' n : Nat) (bs : List AbstractByte)
-    (h : a' + n ≤ a ∨ a + bs.length ≤ a') :
-    (m.write a bs).read a' n = m.read a' n := by
+theorem Mem.read_write_disjoint (m : Mem) (a a' nB : Nat) (bs : List AbstractByte)
+    (h : a' + nB ≤ a ∨ a + bs.length ≤ a') :
+    (m.write a bs).read a' nB = m.read a' nB := by
   simp only [Mem.read, Mem.write]
   apply List.map_congr_left
   intro i hi
@@ -261,19 +261,19 @@ theorem Mem.read_write_disjoint (m : Mem) (a a' n : Nat) (bs : List AbstractByte
 def alignUp (a alignB : Nat) : Nat :=
   if alignB = 0 then a else (a + alignB - 1) / alignB * alignB
 
-theorem le_alignUp (a k : Nat) : a ≤ alignUp a k := by
+theorem le_alignUp (a alignB : Nat) : a ≤ alignUp a alignB := by
   unfold alignUp
   split
   · exact Nat.le_refl a
-  · have hk : 0 < k := Nat.pos_of_ne_zero ‹_›
-    have := Nat.div_add_mod' (a + k - 1) k
-    have := Nat.mod_lt (a + k - 1) hk
+  · have hk : 0 < alignB := Nat.pos_of_ne_zero ‹_›
+    have := Nat.div_add_mod' (a + alignB - 1) alignB
+    have := Nat.mod_lt (a + alignB - 1) hk
     omega
 
-theorem alignUp_dvd {a k : Nat} (hk : 0 < k) : k ∣ alignUp a k := by
+theorem alignUp_dvd {a alignB : Nat} (hk : 0 < alignB) : alignB ∣ alignUp a alignB := by
   unfold alignUp
   rw [if_neg (Nat.pos_iff_ne_zero.mp hk)]
-  exact Nat.dvd_mul_left k _
+  exact Nat.dvd_mul_left alignB _
 
 /-- Allocate `sizeB` bytes aligned to `alignB`: a fresh range above every
     live one, never at address 0. Zero-sized allocations still advance the
@@ -287,10 +287,10 @@ def Mem.allocate (m : Mem) (sizeB alignB : Nat) : Nat × Mem :=
 def Mem.WF (m : Mem) : Prop :=
   0 < m.next ∧ ∀ b s, (b, s) ∈ m.allocs → b + s ≤ m.next
 
-theorem Mem.allocate_wf {m : Mem} (hwf : m.WF) (size align : Nat) :
-    (m.allocate size align).2.WF := by
+theorem Mem.allocate_wf {m : Mem} (hwf : m.WF) (sizeB alignB : Nat) :
+    (m.allocate sizeB alignB).2.WF := by
   obtain ⟨hpos, hall⟩ := hwf
-  have hle := le_alignUp m.next align
+  have hle := le_alignUp m.next alignB
   refine ⟨by simp [Mem.allocate]; omega, ?_⟩
   intro b s hmem
   simp [Mem.allocate] at hmem ⊢
@@ -299,11 +299,11 @@ theorem Mem.allocate_wf {m : Mem} (hwf : m.WF) (size align : Nat) :
   · have := hall b s hmem; omega
 
 /-- The new range is disjoint from every live one, and not at 0. -/
-theorem Mem.allocate_fresh {m : Mem} (hwf : m.WF) (size align : Nat) :
-    0 < (m.allocate size align).1 ∧
-    ∀ b s, (b, s) ∈ m.allocs → b + s ≤ (m.allocate size align).1 := by
+theorem Mem.allocate_fresh {m : Mem} (hwf : m.WF) (sizeB alignB : Nat) :
+    0 < (m.allocate sizeB alignB).1 ∧
+    ∀ b s, (b, s) ∈ m.allocs → b + s ≤ (m.allocate sizeB alignB).1 := by
   obtain ⟨hpos, hall⟩ := hwf
-  have hle := le_alignUp m.next align
+  have hle := le_alignUp m.next alignB
   refine ⟨by simp [Mem.allocate]; omega, ?_⟩
   intro b s hmem
   have := hall b s hmem
@@ -337,7 +337,7 @@ def Mem.allocOf (m : Mem) (a : Nat) : Option (Nat × Nat) :=
 /-! ## Typed scalar access -/
 
 def Mem.load (m : Mem) (a : Nat) (t : Scalar) : Option SVal :=
-  decodeS t (m.read a t.size)
+  decodeS t (m.read a t.sizeB)
 
 def Mem.store (m : Mem) (a : Nat) (t : Scalar) (v : SVal) : Option Mem :=
   (encodeS t v).map (m.write a)
@@ -350,7 +350,7 @@ theorem Mem.load_store_same {m m' : Mem} {a : Nat} {t : Scalar} {v : SVal}
 
 theorem Mem.load_store_disjoint {m m' : Mem} {a a' : Nat} {t t' : Scalar} {v : SVal}
     (h : m.store a t v = some m')
-    (hd : a' + t'.size ≤ a ∨ a + t.size ≤ a') :
+    (hd : a' + t'.sizeB ≤ a ∨ a + t.sizeB ≤ a') :
     m'.load a' t' = m.load a' t' := by
   simp only [Mem.store, Option.map_eq_some_iff] at h
   obtain ⟨bs, henc, rfl⟩ := h

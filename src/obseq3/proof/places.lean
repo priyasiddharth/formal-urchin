@@ -31,17 +31,17 @@ open obseq3.compile
 
 /-- Every pointer-typed place has a pointer-sized layout. -/
 def PtrPlacesWF {Γ : Ctx} (L : mirlite.LayEnv Γ) : Prop :=
-  ∀ {τ : LayoutTy} (p : Place Γ (LayoutTy.PtrL τ)), (mirlite.placeLayout L p).size = ptrSize
+  ∀ {τ : LayoutTy} (p : Place Γ (LayoutTy.PtrL τ)), (mirlite.placeLayout L p).sizeB = ptrSizeB
 
 /-! ## Decoding a pointer on both sides -/
 
 theorem decode_ptr_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt) {mS mT : bytes.Mem}
-    (h_mem : ByteMemSim ρt mS mT) {a n : Nat} {b o e sz : Nat} {t : Tag}
-    (h : mirlite.decodeV .ptr (mS.read a n) = .ptrVal b o e sz t) :
-    ∃ t', mirlite.decodeV .ptr (mT.read a n) = .ptrVal b o e sz t' ∧ ρt t = some t' := by
-  have hv := decodeV_sim hwf .ptr (h_mem.read a n)
+    (h_mem : ByteMemSim ρt mS mT) {a nB : Nat} {b oB eB szB : Nat} {t : Tag}
+    (h : mirlite.decodeV .ptr (mS.read a nB) = .ptrVal b oB eB szB t) :
+    ∃ t', mirlite.decodeV .ptr (mT.read a nB) = .ptrVal b oB eB szB t' ∧ ρt t = some t' := by
+  have hv := decodeV_sim hwf .ptr (h_mem.read a nB)
   rw [h] at hv
-  cases hw : mirlite.decodeV .ptr (mT.read a n) with
+  cases hw : mirlite.decodeV .ptr (mT.read a nB) with
   | undef => rw [hw] at hv; exact absurd hv (by simp [ValSim, MemValSim, oseair.ofMem])
   | word _ => rw [hw] at hv; exact absurd hv (by simp [ValSim, MemValSim, oseair.ofMem])
   | ptrVal b' o' e' s' t' =>
@@ -55,22 +55,22 @@ theorem decode_ptr_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt) {mS mT : byt
 /-- A `Load` of one pointer leaf through a register pointing at `addr`:
     liveness, bounds, the SB read, the decoded pointer into `rN`. -/
 theorem runN_Load_ptr {compProg : oseair.Prog} {s : oseair.State MSB}
-    {rN preg : Register} {q : BLayout} {base off ext size : Nat} {tagT : Tag}
-    {p2 : AccessPerms} {b o e sz : Nat} {t : Tag}
+    {rN preg : Register} {q : BLayout} {base offB extB sizeB : Nat} {tagT : Tag}
+    {p2 : AccessPerms} {b oB eB szB : Nat} {t : Tag}
     (h_code : compProg s.pc = some (oseair.Instr.Assgn rN (oseair.Rhs.Load (.ptr q) preg)))
-    (h_reg : s.reg.lookup preg = some [Val.Ptr base off ext size tagT])
+    (h_reg : s.reg.lookup preg = some [Val.Ptr base offB extB sizeB tagT])
     (h_freed : s.mem.isFreed base = false)
-    (h_bnd : base + off + ptrSize ≤ base + size)
-    (h_read : sb_read s.perms (base + off) ptrSize tagT = .ok p2)
-    (h_dec : mirlite.decodeV .ptr (s.mem.read (base + off) ptrSize) = .ptrVal b o e sz t) :
+    (h_bnd : base + offB + ptrSizeB ≤ base + sizeB)
+    (h_read : sb_read s.perms (base + offB) ptrSizeB tagT = .ok p2)
+    (h_dec : mirlite.decodeV .ptr (s.mem.read (base + offB) ptrSizeB) = .ptrVal b oB eB szB t) :
     oseair.runN MSB 1 s compProg =
-      .Ok { s with perms := p2, reg := s.reg.insert rN [Val.Ptr b o e sz t], pc := s.pc + 1 } := by
-  have h_nb : ¬ (base + off + ptrSize > base + size) := by omega
-  have h_rl : mirlite.readL s.mem (base + off) (.ptr q) = [.ptrVal b o e sz t] := by
+      .Ok { s with perms := p2, reg := s.reg.insert rN [Val.Ptr b oB eB szB t], pc := s.pc + 1 } := by
+  have h_nb : ¬ (base + offB + ptrSizeB > base + sizeB) := by omega
+  have h_rl : mirlite.readL s.mem (base + offB) (.ptr q) = [.ptrVal b oB eB szB t] := by
     simp only [mirlite.readL, BLayout.leaves, List.map_cons, List.map_nil, Nat.add_zero]
-    rw [show Scalar.size .ptr = ptrSize from rfl, h_dec]
+    rw [show Scalar.sizeB .ptr = ptrSizeB from rfl, h_dec]
   simp only [oseair.runN, oseair.step, h_code, oseair.evalRhs, h_reg, h_freed,
-    Bool.false_eq_true, if_false, BLayout.size, h_nb, PermissionModel.stackedBorrows, h_read,
+    Bool.false_eq_true, if_false, BLayout.sizeB, h_nb, PermissionModel.stackedBorrows, h_read,
     h_rl]
   rfl
 
@@ -120,7 +120,7 @@ theorem proj_eq {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρ τ : LayoutTy} {kind : Re
     = (do
         let baseOut ← placeToRegChecked L kind b
         let baseRes := baseOut.result
-        let offset := pathOffset L b f
+        let offset := pathOffsetB L b f
         if h_offset : offset = 0 then
           pure {
             result := baseRes,
@@ -130,10 +130,10 @@ theorem proj_eq {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρ τ : LayoutTy} {kind : Re
           let tmpReg ← CheckedCompilerM.lift freshRegM
           let _ ← CheckedCompilerM.lift
             (emitM [oseair.Instr.Assgn tmpReg
-              (borrowRhs kind (placeSize L (.proj b f)) baseRes.reg offset)])
+              (borrowRhs kind (placeSizeB L (.proj b f)) baseRes.reg offset)])
           pure {
             result := { reg := tmpReg,
-                        cleanup := baseRes.cleanup ++ [(tmpReg, placeSize L (.proj b f))] },
+                        cleanup := baseRes.cleanup ++ [(tmpReg, placeSizeB L (.proj b f))] },
             evidence := PlaceToRegEvidence.projOffset b f baseRes tmpReg baseOut.evidence h_offset
           }) := by
   cases b with
@@ -149,23 +149,23 @@ theorem proj_lowering {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρ τ : LayoutTy} {kin
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
     {bOut : ResultWithEvidence PtrResult (PlaceToRegEvidence L kind b)}
     (h_bval : CheckedCompilerM.value (placeToRegChecked L kind b) cs = .ok bOut) :
-    (pathOffset L b f = 0 →
+    (pathOffsetB L b f = 0 →
       CheckedCompilerM.run (placeToRegChecked L kind (.proj b f)) cs
         = CheckedCompilerM.run (placeToRegChecked L kind b) cs ∧
       ∃ out, CheckedCompilerM.value (placeToRegChecked L kind (.proj b f)) cs = .ok out ∧
         out.result = bOut.result) ∧
-    (pathOffset L b f ≠ 0 →
+    (pathOffsetB L b f ≠ 0 →
       CheckedCompilerM.run (placeToRegChecked L kind (.proj b f)) cs
         = emit (bumpReg (CheckedCompilerM.run (placeToRegChecked L kind b) cs))
             [oseair.Instr.Assgn
               (Register.R (CheckedCompilerM.run (placeToRegChecked L kind b) cs).nextReg)
-              (borrowRhs kind (placeSize L (.proj b f)) bOut.result.reg (pathOffset L b f))] ∧
+              (borrowRhs kind (placeSizeB L (.proj b f)) bOut.result.reg (pathOffsetB L b f))] ∧
       ∃ out, CheckedCompilerM.value (placeToRegChecked L kind (.proj b f)) cs = .ok out ∧
         out.result = PtrResult.mk
           (Register.R (CheckedCompilerM.run (placeToRegChecked L kind b) cs).nextReg)
           (bOut.result.cleanup ++
             [(Register.R (CheckedCompilerM.run (placeToRegChecked L kind b) cs).nextReg,
-              placeSize L (.proj b f))])) := by
+              placeSizeB L (.proj b f))])) := by
   rw [proj_eq f h_np]
   refine ⟨fun h0 => ?_, fun h0 => ?_⟩
   · simp only [CheckedCompilerM.run_bind, CheckedCompilerM.value_bind, h_bval, h0, dite_true,
@@ -231,51 +231,51 @@ theorem LocalBindingSimB.of_frame {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagR
   obtain ⟨r, t, hpi, ⟨e, hr⟩, hrt, hnw⟩ := h loc b h_env
   exact ⟨r, t, hpi, ⟨e, by rw [h_frame r (h_prb _ _ _ hpi)]; exact hr⟩, hrt, hnw⟩
 
-/-- A `Borrow` of `n` bytes at `off` past the register's pointer, with the
-    liveness and bounds checks as the machine makes them: only for `n ≠ 0`
+/-- A `Borrow` of `nB` bytes at `offB` past the register's pointer, with the
+    liveness and bounds checks as the machine makes them: only for `nB ≠ 0`
     (a zero-byte retag needs no live, in-bounds memory). -/
 theorem runN_Borrow' {compProg : oseair.Prog} {s : oseair.State MSB}
-    {rN preg : Register} {kind : RefKind} {prot : Bool} {mask : List Bool} {n off : Nat}
-    {base boff ext size : Nat} {tagT newTag : Tag} {p' : AccessPerms}
+    {rN preg : Register} {kind : RefKind} {prot : Bool} {mask : List Bool} {nB offB : Nat}
+    {base boffB extB sizeB : Nat} {tagT newTag : Tag} {p' : AccessPerms}
     (h_code : compProg s.pc = some (oseair.Instr.Assgn rN
-      (oseair.Rhs.Borrow kind prot mask (some n) preg off)))
-    (h_reg : s.reg.lookup preg = some [Val.Ptr base boff ext size tagT])
-    (h_freed : n ≠ 0 → s.mem.isFreed base = false)
-    (h_bnd : n ≠ 0 → base + boff + off + n ≤ base + size)
-    (h_ref : sb_ref s.perms (base + boff + off) n tagT kind prot mask = .ok (p', newTag)) :
+      (oseair.Rhs.Borrow kind prot mask (some nB) preg offB)))
+    (h_reg : s.reg.lookup preg = some [Val.Ptr base boffB extB sizeB tagT])
+    (h_freed : nB ≠ 0 → s.mem.isFreed base = false)
+    (h_bnd : nB ≠ 0 → base + boffB + offB + nB ≤ base + sizeB)
+    (h_ref : sb_ref s.perms (base + boffB + offB) nB tagT kind prot mask = .ok (p', newTag)) :
     oseair.runN MSB 1 s compProg =
-      .Ok { s with perms := p', reg := s.reg.insert rN [Val.Ptr base (boff + off) n size newTag],
+      .Ok { s with perms := p', reg := s.reg.insert rN [Val.Ptr base (boffB + offB) nB sizeB newTag],
                    pc := s.pc + 1 } := by
-  by_cases hn : n = 0
+  by_cases hn : nB = 0
   · subst hn
     simp only [oseair.runN, oseair.step, h_code, oseair.evalRhs, h_reg, bne_self_eq_false,
       Bool.false_and, Bool.false_eq_true, if_false, PermissionModel.stackedBorrows, h_ref]
-  · have h_nb : ¬ (base + boff + off + n > base + size) := by have := h_bnd hn; omega
-    have hn' : (n != 0) = true := by simpa using hn
+  · have h_nb : ¬ (base + boffB + offB + nB > base + sizeB) := by have := h_bnd hn; omega
+    have hn' : (nB != 0) = true := by simpa using hn
     simp only [oseair.runN, oseair.step, h_code, oseair.evalRhs, h_reg, h_freed hn, hn',
       Bool.true_and, Bool.false_eq_true, if_false, h_nb, decide_false,
       PermissionModel.stackedBorrows, h_ref]
 
-/-- A `Borrow` of `n` bytes at `off` past the register's pointer. -/
+/-- A `Borrow` of `nB` bytes at `offB` past the register's pointer. -/
 theorem runN_Borrow {compProg : oseair.Prog} {s : oseair.State MSB}
-    {rN preg : Register} {kind : RefKind} {prot : Bool} {mask : List Bool} {n off : Nat}
-    {base boff ext size : Nat} {tagT newTag : Tag} {p' : AccessPerms}
+    {rN preg : Register} {kind : RefKind} {prot : Bool} {mask : List Bool} {nB offB : Nat}
+    {base boffB extB sizeB : Nat} {tagT newTag : Tag} {p' : AccessPerms}
     (h_code : compProg s.pc = some (oseair.Instr.Assgn rN
-      (oseair.Rhs.Borrow kind prot mask (some n) preg off)))
-    (h_reg : s.reg.lookup preg = some [Val.Ptr base boff ext size tagT])
+      (oseair.Rhs.Borrow kind prot mask (some nB) preg offB)))
+    (h_reg : s.reg.lookup preg = some [Val.Ptr base boffB extB sizeB tagT])
     (h_freed : s.mem.isFreed base = false)
-    (h_bnd : base + boff + off + n ≤ base + size)
-    (h_ref : sb_ref s.perms (base + boff + off) n tagT kind prot mask = .ok (p', newTag)) :
+    (h_bnd : base + boffB + offB + nB ≤ base + sizeB)
+    (h_ref : sb_ref s.perms (base + boffB + offB) nB tagT kind prot mask = .ok (p', newTag)) :
     oseair.runN MSB 1 s compProg =
-      .Ok { s with perms := p', reg := s.reg.insert rN [Val.Ptr base (boff + off) n size newTag],
+      .Ok { s with perms := p', reg := s.reg.insert rN [Val.Ptr base (boffB + offB) nB sizeB newTag],
                    pc := s.pc + 1 } :=
   runN_Borrow' h_code h_reg (fun _ => h_freed) (fun _ => h_bnd) h_ref
 
-theorem runN_Die {compProg : oseair.Prog} {s : oseair.State MSB} {r : Register} {len : Nat}
-    {base off ext size : Nat} {tagT : Tag} {p' : AccessPerms}
-    (h_code : compProg s.pc = some (oseair.Instr.Die r len))
-    (h_reg : s.reg.lookup r = some [Val.Ptr base off ext size tagT])
-    (h_die : sb_die s.perms (base + off) len tagT = .ok p') :
+theorem runN_Die {compProg : oseair.Prog} {s : oseair.State MSB} {r : Register} {lenB : Nat}
+    {base offB extB sizeB : Nat} {tagT : Tag} {p' : AccessPerms}
+    (h_code : compProg s.pc = some (oseair.Instr.Die r lenB))
+    (h_reg : s.reg.lookup r = some [Val.Ptr base offB extB sizeB tagT])
+    (h_die : sb_die s.perms (base + offB) lenB tagT = .ok p') :
     oseair.runN MSB 1 s compProg = .Ok { s with perms := p', pc := s.pc + 1 } := by
   simp only [oseair.runN, oseair.step, h_code, h_reg, PermissionModel.stackedBorrows, h_die]
 
@@ -283,18 +283,18 @@ theorem runN_Die {compProg : oseair.Prog} {s : oseair.State MSB} {r : Register} 
     pointer: the target read transports, the decoded pointer is the
     source's with its tag renamed. -/
 theorem load_level {ρt : TagRenameMap} (hwf : TagRenameWF ρt) {compProg : oseair.Prog}
-    {s : oseair.State MSB} {rN preg : Register} {q : BLayout} {base boff ext size : Nat}
-    {tT tS : Tag} {mS : bytes.Mem} {pS pS' : AccessPerms} {b o e sz : Nat} {t : Tag}
+    {s : oseair.State MSB} {rN preg : Register} {q : BLayout} {base boffB extB sizeB : Nat}
+    {tT tS : Tag} {mS : bytes.Mem} {pS pS' : AccessPerms} {b oB eB szB : Nat} {t : Tag}
     (h_code : compProg s.pc = some (oseair.Instr.Assgn rN (oseair.Rhs.Load (.ptr q) preg)))
-    (h_reg : s.reg.lookup preg = some [Val.Ptr base boff ext size tT])
+    (h_reg : s.reg.lookup preg = some [Val.Ptr base boffB extB sizeB tT])
     (h_rt : ρt tS = some tT) (h_psim : PermSim ρt pS s.perms) (h_mem : ByteMemSim ρt mS s.mem)
     (h_lock : ByteAllocLockstep mS s.mem) (h_freeS : ¬ mS.isFreed base = true)
-    (h_bnd : base + boff + ptrSize ≤ base + size)
-    (h_read : sb_read pS (base + boff) ptrSize tS = .ok pS')
-    (h_dec : mirlite.readOne mS (base + boff) .ptr = .ptrVal b o e sz t) :
+    (h_bnd : base + boffB + ptrSizeB ≤ base + sizeB)
+    (h_read : sb_read pS (base + boffB) ptrSizeB tS = .ok pS')
+    (h_dec : mirlite.readOne mS (base + boffB) .ptr = .ptrVal b oB eB szB t) :
     ∃ p2 t', ρt t = some t' ∧ PermSim ρt pS' p2 ∧ p2.NextTag = s.perms.NextTag ∧
       oseair.runN MSB 1 s compProg =
-        .Ok { s with perms := p2, reg := s.reg.insert rN [Val.Ptr b o e sz t'],
+        .Ok { s with perms := p2, reg := s.reg.insert rN [Val.Ptr b oB eB szB t'],
                      pc := s.pc + 1 } := by
   obtain ⟨p2, h_read', h_psim'⟩ := sb_read_respects_PermSim h_psim hwf h_rt h_read
   obtain ⟨t', h_dec', h_t⟩ := decode_ptr_sim hwf h_mem h_dec
@@ -345,19 +345,19 @@ theorem deref_level {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenameMap}
     (h_mem : ByteMemSim ρt sM.mem sA.mem) (h_lock : ByteAllocLockstep sM.mem sA.mem)
     (h_inc : CodeIncludedB compProg (CheckedCompilerM.run (placeToRegChecked L kind (.deref q)) cs))
     (h_free : ¬ sM.mem.isFreed qRes.allocBase = true)
-    (h_qb : ¬ (qRes.addr < qRes.allocBase ∨ qRes.addr + ptrSize > qRes.allocBase + qRes.allocSizeB))
-    (h_qread : MSB.read permsQ qRes.addr ptrSize qRes.tag = .ok permsQ')
-    {vb vo ve vsz : Nat} {vt : Tag}
-    (h_dec : mirlite.readOne sM.mem qRes.addr .ptr = .ptrVal vb vo ve vsz vt) :
+    (h_qb : ¬ (qRes.addr < qRes.allocBase ∨ qRes.addr + ptrSizeB > qRes.allocBase + qRes.allocSizeB))
+    (h_qread : MSB.read permsQ qRes.addr ptrSizeB qRes.tag = .ok permsQ')
+    {vb voB veB vszB : Nat} {vt : Tag}
+    (h_dec : mirlite.readOne sM.mem qRes.addr .ptr = .ptrVal vb voB veB vszB vt) :
     ∃ out n s' t', LoweredB L ρt compProg kind (.deref q) cs sM sA
-      { addr := vb + vo, tag := vt, allocBase := vb, allocSizeB := vsz } permsQ' out n s' t' := by
+      { addr := vb + voB, tag := vt, allocBase := vb, allocSizeB := vszB } permsQ' out n s' t' := by
   obtain ⟨h_runD, out, h_valD, h_outres⟩ := deref_lowering (kind := kind) hQ.val
   rw [hQ.clean] at h_runD
   simp only [cleanupInstrs, List.reverse_nil, List.map_nil, emit_nil] at h_runD
   obtain ⟨ext, h_qentry⟩ := hQ.entry
   have hA : qRes.allocBase + (qRes.addr - qRes.allocBase) = qRes.addr :=
     Nat.add_sub_cancel' hQ.le
-  have h_qb' : qRes.addr + ptrSize ≤ qRes.allocBase + qRes.allocSizeB :=
+  have h_qb' : qRes.addr + ptrSizeB ≤ qRes.allocBase + qRes.allocSizeB :=
     Nat.le_of_not_gt fun h => h_qb (Or.inr h)
   have h_code : compProg s_mid.pc = some (oseair.Instr.Assgn
       (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared q) cs).nextReg)
@@ -383,7 +383,7 @@ theorem deref_level {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenameMap}
     tgtNT := by
       show sA.perms.NextTag ≤ p2.NextTag
       rw [h_nt2]; exact hQ.tgtNT
-    entry := ⟨ve, by
+    entry := ⟨veB, by
       rw [h_outres]
       simp only [Nat.add_sub_cancel_left]
       exact RegMap.lookup_insert_self _ _ _⟩
@@ -518,12 +518,12 @@ theorem ptrChain_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
           (h_inc.mono ((proj_incr (kind := RefKind.Shared) f cs h_np).trans
             (deref_incr (.proj b f) cs)))
       obtain ⟨hz, hnz⟩ := proj_lowering (kind := RefKind.Shared) f h_np hB.val
-      by_cases h0 : pathOffset L b f = 0
+      by_cases h0 : pathOffsetB L b f = 0
       · -- offset ZERO: the field IS the base; one deref level
         obtain ⟨h_runP, outP, h_valP, h_resP⟩ := hz h0
-        have h0' : mirlite.fieldOffset (mirlite.placeLayout L b) f.indices = 0 := h0
+        have h0' : mirlite.fieldOffsetB (mirlite.placeLayout L b) f.indices = 0 := h0
         have hP : LoweredB L ρt compProg RefKind.Shared (.proj b f) cs sM sA
-            { bRes with addr := bRes.addr + mirlite.fieldOffset (mirlite.placeLayout L b) f.indices }
+            { bRes with addr := bRes.addr + mirlite.fieldOffsetB (mirlite.placeLayout L b) f.indices }
             permsB outP n1 s_mid btag := {
           val := h_valP
           clean := by rw [h_resP]; exact hB.clean
@@ -554,10 +554,10 @@ theorem ptrChain_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
         rw [h_runP] at h_outres
         simp only [emit] at h_outres
         obtain ⟨ext, h_bentry⟩ := hB.entry
-        have hn : placeSize L (.proj b f) = ptrSize := hWF (.proj b f)
+        have hn : placeSizeB L (.proj b f) = ptrSizeB := hWF (.proj b f)
         have hA : bRes.allocBase + (bRes.addr - bRes.allocBase) = bRes.addr :=
           Nat.add_sub_cancel' hB.le
-        have h_qb' : bRes.addr + pathOffset L b f + ptrSize ≤ bRes.allocBase + bRes.allocSizeB :=
+        have h_qb' : bRes.addr + pathOffsetB L b f + ptrSizeB ≤ bRes.allocBase + bRes.allocSizeB :=
           Nat.le_of_not_gt fun h => h_qb (Or.inr h)
         -- the source read, transported; the target's Shared retag succeeds
         obtain ⟨p2, h_read', h_psim2⟩ :=
@@ -577,7 +577,7 @@ theorem ptrChain_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
         subst h_acc
         -- the source pointer, decoded on the target
         have h_decS : mirlite.decodeV .ptr
-            (sM.mem.read (bRes.addr + pathOffset L b f) ptrSize) = .ptrVal vb vo ve vsz vt := h_dec
+            (sM.mem.read (bRes.addr + pathOffsetB L b f) ptrSizeB) = .ptrVal vb vo ve vsz vt := h_dec
         obtain ⟨t', h_decT, h_t⟩ := decode_ptr_sim hwf h_mem h_decS
         have h_freeT : s_mid.mem.isFreed bRes.allocBase = false := by
           rw [hB.mem]
@@ -590,8 +590,8 @@ theorem ptrChain_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
             ((CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextLabel + 0)
             = some (oseair.Instr.Assgn
               (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextReg)
-              (borrowRhs RefKind.Shared (placeSize L (.proj b f)) bOut.result.reg
-                (pathOffset L b f))) := by
+              (borrowRhs RefKind.Shared (placeSizeB L (.proj b f)) bOut.result.reg
+                (pathOffsetB L b f))) := by
           rw [h_runD]; exact (hct _ _ _).1
         have hc2 : (CheckedCompilerM.run (placeToRegChecked L kind (.deref (.proj b f))) cs).code
             ((CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextLabel + 1)
@@ -604,7 +604,7 @@ theorem ptrChain_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
             ((CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextLabel + 2)
             = some (oseair.Instr.Die
               (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextReg)
-              (placeSize L (.proj b f))) := by
+              (placeSizeB L (.proj b f))) := by
           rw [h_runD]; exact (hct _ _ _).2.2.1
         have hnl : (CheckedCompilerM.run (placeToRegChecked L kind (.deref (.proj b f))) cs).nextLabel
             = (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextLabel + 3 := by
@@ -626,8 +626,8 @@ theorem ptrChain_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
               perms := q1,
               reg := s_mid.reg.insert
                 (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextReg)
-                [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffset L b f)
-                  (placeSize L (.proj b f)) bRes.allocSizeB s_mid.perms.NextTag],
+                [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffsetB L b f)
+                  (placeSizeB L (.proj b f)) bRes.allocSizeB s_mid.perms.NextTag],
               pc := s_mid.pc + 1 }
         have h2 := runN_Load_ptr (s := S1) (q := mirlite.placeLayout L (.deref (.proj b f)))
           (h_at 1 _ (by omega) hc2) (RegMap.lookup_insert_self _ _ _)

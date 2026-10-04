@@ -41,9 +41,9 @@ theorem ptrChain_compilesB {Γ : Ctx} {L : mirlite.LayEnv Γ} {τ : LayoutTy} {p
   fun _ _ kind r h_map h_res => ptrChain_compiles h_map h kind r h_res
 
 /-- Borrowing `src` is lowering the anchor `a`, then one `Borrow` of
-    `src`'s bytes at offset `o` from the anchor's pointer. -/
+    `src`'s bytes at offset `oB` from the anchor's pointer. -/
 def BorrowAnchorShape {Γ : Ctx} (L : mirlite.LayEnv Γ) {σ τ : LayoutTy} (src : Place Γ τ)
-    (a : Place Γ σ) (o : Nat) : Prop :=
+    (a : Place Γ σ) (oB : Nat) : Prop :=
   ∀ (kind : RefKind) (prot : Bool) (mask : List Bool) (cs : CompilerState)
     (aOut : ResultWithEvidence PtrResult (PlaceToRegEvidence L kind a)),
     CheckedCompilerM.value (placeToRegChecked L kind a) cs = .ok aOut →
@@ -52,20 +52,20 @@ def BorrowAnchorShape {Γ : Ctx} (L : mirlite.LayEnv Γ) {σ τ : LayoutTy} (src
       = emit (bumpReg (CheckedCompilerM.run (placeToRegChecked L kind a) cs))
           [oseair.Instr.Assgn
             (Register.R (CheckedCompilerM.run (placeToRegChecked L kind a) cs).nextReg)
-            (oseair.Rhs.Borrow kind prot mask (some (placeSize L src)) aOut.result.reg o)] ∧
+            (oseair.Rhs.Borrow kind prot mask (some (placeSizeB L src)) aOut.result.reg oB)] ∧
     ∃ out, CheckedCompilerM.value (placeToBorrowRegChecked L kind prot mask src) cs = .ok out ∧
       out.result.reg = Register.R (CheckedCompilerM.run (placeToRegChecked L kind a) cs).nextReg ∧
       out.result.cleanup =
         [(Register.R (CheckedCompilerM.run (placeToRegChecked L kind a) cs).nextReg,
-          placeSize L src)]
+          placeSizeB L src)]
 
-/-- The source resolves `src` as the anchor, shifted by `o`. -/
+/-- The source resolves `src` as the anchor, shifted by `oB`. -/
 def BorrowAnchorRes {Γ : Ctx} (L : mirlite.LayEnv Γ) {σ τ : LayoutTy} (src : Place Γ τ)
-    (a : Place Γ σ) (o : Nat) : Prop :=
+    (a : Place Γ σ) (oB : Nat) : Prop :=
   ∀ (s : mirlite.State MSB Γ) (r : PlaceRes × MSB.State),
     mirlite.resolvePlaceAcc MSB L s src = .ok r →
     ∃ ra : PlaceRes × MSB.State, mirlite.resolvePlaceAcc MSB L s a = .ok ra ∧
-      r.1.addr = ra.1.addr + o ∧ r.1.tag = ra.1.tag ∧ r.1.allocBase = ra.1.allocBase ∧
+      r.1.addr = ra.1.addr + oB ∧ r.1.tag = ra.1.tag ∧ r.1.allocBase = ra.1.allocBase ∧
       r.1.allocSizeB = ra.1.allocSizeB ∧ r.2 = ra.2
 
 /-! ## The three anchors -/
@@ -121,20 +121,20 @@ theorem borrow_deref_res {Γ : Ctx} {L : mirlite.LayEnv Γ} {σ : LayoutTy}
 theorem borrow_proj_shape {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρ τ : LayoutTy}
     {b : Place Γ ρ} (f : PathTo ρ τ)
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False) :
-    BorrowAnchorShape L (.proj b f) b (pathOffset L b f) := by
+    BorrowAnchorShape L (.proj b f) b (pathOffsetB L b f) := by
   intro kind prot mask cs aOut h_val h_clean
   have h_bind : placeToBorrowRegChecked L kind prot mask (.proj b f)
       = (do
           let baseOut ← placeToRegChecked L kind b
           let baseRes := baseOut.result
-          let offset := pathOffset L b f
+          let offset := pathOffsetB L b f
           let tmpReg ← CheckedCompilerM.lift freshRegM
           let _ ← CheckedCompilerM.lift
             (emitM [oseair.Instr.Assgn tmpReg
-              (oseair.Rhs.Borrow kind prot mask (some (placeSize L (.proj b f))) baseRes.reg offset)])
+              (oseair.Rhs.Borrow kind prot mask (some (placeSizeB L (.proj b f))) baseRes.reg offset)])
           pure {
             result := { reg := tmpReg,
-                        cleanup := baseRes.cleanup ++ [(tmpReg, placeSize L (.proj b f))] },
+                        cleanup := baseRes.cleanup ++ [(tmpReg, placeSizeB L (.proj b f))] },
             evidence := PlaceToBorrowRegEvidence.proj b f baseRes tmpReg baseOut.evidence
           }) := by
     cases b with
@@ -151,7 +151,7 @@ theorem borrow_proj_shape {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρ τ : LayoutTy}
 
 theorem borrow_proj_res {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρ τ : LayoutTy}
     {b : Place Γ ρ} (f : PathTo ρ τ) :
-    BorrowAnchorRes L (.proj b f) b (pathOffset L b f) := by
+    BorrowAnchorRes L (.proj b f) b (pathOffsetB L b f) := by
   intro s r h
   simp only [mirlite.resolvePlaceAcc] at h
   cases h_b : mirlite.resolvePlaceAcc MSB L s b with
@@ -172,8 +172,8 @@ theorem LocalBindingSimB.rename_mono {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt ρt
   exact ⟨r, t, hpi, he, hi _ _ hrt, hnw⟩
 
 theorem ref_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
-    {σ τ : LayoutTy} {src : Place Γ τ} {a : Place Γ σ} {o : Nat}
-    (h_shape : BorrowAnchorShape L src a o) (h_res : BorrowAnchorRes L src a o)
+    {σ τ : LayoutTy} {src : Place Γ τ} {a : Place Γ σ} {oB : Nat}
+    (h_shape : BorrowAnchorShape L src a oB) (h_res : BorrowAnchorRes L src a oB)
     (h_low : LowersB L compProg a) (h_comp : CompilesB L a)
     (dstL : BLayout) (kind : RefKind) (prot : Bool) (mask : List Bool) :
     ValuePkgB compProg L dstL (RExpr.ref kind prot mask src) := by
@@ -244,22 +244,22 @@ theorem ref_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   subst h_fresh
   -- the source checked liveness and bounds only for a nonzero size; so
   -- does the target's `Borrow`
-  have h_freeT : placeSize L src ≠ 0 → s1.mem.isFreed aRes.allocBase = false := fun hn => by
+  have h_freeT : placeSizeB L src ≠ 0 → s1.mem.isFreed aRes.allocBase = false := fun hn => by
     have h_lock1 : ByteAllocLockstep sM.mem s1.mem := by rw [hA.mem]; exact h_alloc
-    have hn' : ((mirlite.placeLayout L src).size != 0) = true := by simpa using hn
+    have hn' : ((mirlite.placeLayout L src).sizeB != 0) = true := by simpa using hn
     rw [hn', Bool.true_and, h_ab] at h_free
     simp only [bytes.Mem.isFreed, ← h_lock1.2.2] at h_free ⊢
     simpa using h_free
-  have h_bnd' : placeSize L src ≠ 0 → aRes.allocBase + (aRes.addr - aRes.allocBase) + o
-      + placeSize L src ≤ aRes.allocBase + aRes.allocSizeB := fun hn => by
-    have hn' : ((mirlite.placeLayout L src).size != 0) = true := by simpa using hn
+  have h_bnd' : placeSizeB L src ≠ 0 → aRes.allocBase + (aRes.addr - aRes.allocBase) + oB
+      + placeSizeB L src ≤ aRes.allocBase + aRes.allocSizeB := fun hn => by
+    have hn' : ((mirlite.placeLayout L src).sizeB != 0) = true := by simpa using hn
     rw [hn', Bool.true_and] at h_bnd
     simp only [decide_eq_true_eq] at h_bnd
     rw [hB, ← h_addr, ← h_ab, ← h_as]; exact Nat.le_of_not_gt h_bnd
   have h_instr : compProg s1.pc = some (oseair.Instr.Assgn
       (Register.R (CheckedCompilerM.run (placeToRegChecked L kind a) csA).nextReg)
       (oseair.Rhs.Borrow kind prot (mirlite.maskBytes (mirlite.placeLayout L src) mask)
-        (some (placeSize L src)) aOut'.result.reg o)) := by
+        (some (placeSizeB L src)) aOut'.result.reg oB)) := by
     rw [hA.pc]
     apply h_code
     · simp [emit]
@@ -267,7 +267,7 @@ theorem ref_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   have h_run1 := runN_Borrow' (s := s1) h_instr h_aentry h_freeT h_bnd'
     (by rw [hB]; exact h_ref')
   refine ⟨ρt.extend permsR.NextTag s1.perms.NextTag, n1 + 1, _, sM.mem, perms',
-    [Val.Ptr aRes.allocBase (aRes.addr - aRes.allocBase + o) (placeSize L src) aRes.allocSizeB
+    [Val.Ptr aRes.allocBase (aRes.addr - aRes.allocBase + oB) (placeSizeB L src) aRes.allocSizeB
       s1.perms.NextTag], h_incr, h_wf', rfl, runN_trans hA.run h_run1, ?_, ?_, h_psim', h_tbd',
     ?_, ?_, ?_, ?_, ?_⟩
   · show csA.nextReg ≤ _ + 1

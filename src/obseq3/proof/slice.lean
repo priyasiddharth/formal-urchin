@@ -15,9 +15,9 @@ open obseq3.mirlite (MemValue Binding Env PlaceRes)
 open obseq3.oseair (Val Register)
 open obseq3.compile
 
-theorem ptr_of_storeSim {ρt : TagRenameMap} {b o e sz : Nat} {t : Tag} {vals : List Val}
-    (h : ListRel (StoreSim ρt) [MemValue.ptrVal b o e sz t] (vals.map oseair.Val.toMem)) :
-    ∃ t', vals = [Val.Ptr b o e sz t'] ∧ ρt t = some t' := by
+theorem ptr_of_storeSim {ρt : TagRenameMap} {b oB eB szB : Nat} {t : Tag} {vals : List Val}
+    (h : ListRel (StoreSim ρt) [MemValue.ptrVal b oB eB szB t] (vals.map oseair.Val.toMem)) :
+    ∃ t', vals = [Val.Ptr b oB eB szB t'] ∧ ρt t = some t' := by
   match vals, h with
   | [w], ⟨hs, _⟩ =>
       rcases hs with ⟨h1, -⟩ | ⟨-, hv⟩
@@ -54,7 +54,7 @@ theorem sliceLen_pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   have h_pre : CheckedCompilerM.run (compileRExprPreChecked L dstL (RExpr.sliceLen (t := tE) src)) csA
       = emit (bumpReg (CheckedCompilerM.run (readToReg L src) csA))
           [oseair.Instr.Assgn (Register.R (CheckedCompilerM.run (readToReg L src) csA).nextReg)
-            (oseair.Rhs.SliceLen (mirlite.pointeeLayout L src).size
+            (oseair.Rhs.SliceLen (mirlite.pointeeLayout L src).sizeB
               (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared src) csA).nextReg))] := by
     simp only [compileRExprPreChecked, CheckedCompilerM.run_bind, h_valA,
       CheckedCompilerM.run_lift, CheckedCompilerM.value_lift, CheckedCompilerM.run_pure]
@@ -76,20 +76,20 @@ theorem sliceLen_pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   obtain ⟨t', rfl, -⟩ := ptr_of_storeSim h_rel1
   have h_instr : compProg s1.pc = some (oseair.Instr.Assgn
       (Register.R (CheckedCompilerM.run (readToReg L src) csA).nextReg)
-      (oseair.Rhs.SliceLen (mirlite.pointeeLayout L src).size
+      (oseair.Rhs.SliceLen (mirlite.pointeeLayout L src).sizeB
         (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared src) csA).nextReg))) := by
     rw [h_inv1.pc]
     apply h_code
     · simp [emit]
     · simp [emit]
-  have h_ev2 : oseair.evalRhs MSB s1 (oseair.Rhs.SliceLen (mirlite.pointeeLayout L src).size
+  have h_ev2 : oseair.evalRhs MSB s1 (oseair.Rhs.SliceLen (mirlite.pointeeLayout L src).sizeB
         (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared src) csA).nextReg))
-      = .Ok [Val.Dat (pe / (mirlite.pointeeLayout L src).size)] s1 := by
+      = .Ok [Val.Dat (pe / (mirlite.pointeeLayout L src).sizeB)] s1 := by
     simp only [oseair.evalRhs, h_r1]
   have h_run2 := runN_Assgn h_instr h_ev2
   rw [h_st1] at h_inv1
   refine ⟨ρt, n1 + 1, _, sM.mem, out1.state.perms,
-    [Val.Dat (pe / (mirlite.pointeeLayout L src).size)],
+    [Val.Dat (pe / (mirlite.pointeeLayout L src).sizeB)],
     TagRenameIncr.refl ρt, h_wf, h_st1, runN_trans h_run1 h_run2,
     ?_, ?_, h_inv1.psim, h_inv1.tbd, h_inv1.mem, h_inv1.alloc, ?_, ?_,
     ⟨Or.inr ⟨by simp, rfl⟩, trivial⟩⟩
@@ -161,7 +161,7 @@ theorem subSlice_pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
           [oseair.Instr.Assgn
             (Register.R (CheckedCompilerM.run (readToReg L hi) (CheckedCompilerM.run (readToReg L lo)
               (CheckedCompilerM.run (readToReg L src) csA))).nextReg)
-            (oseair.Rhs.SubSlice (mirlite.pointeeLayout L src).size
+            (oseair.Rhs.SubSlice (mirlite.pointeeLayout L src).sizeB
               (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared src) csA).nextReg)
               (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared lo)
                 (CheckedCompilerM.run (readToReg L src) csA)).nextReg)
@@ -221,7 +221,7 @@ theorem subSlice_pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   have h_instr : compProg s3.pc = some (oseair.Instr.Assgn
       (Register.R (CheckedCompilerM.run (readToReg L hi) (CheckedCompilerM.run (readToReg L lo)
         (CheckedCompilerM.run (readToReg L src) csA))).nextReg)
-      (oseair.Rhs.SubSlice (mirlite.pointeeLayout L src).size
+      (oseair.Rhs.SubSlice (mirlite.pointeeLayout L src).sizeB
         (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared src) csA).nextReg)
         (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared lo)
           (CheckedCompilerM.run (readToReg L src) csA)).nextReg)
@@ -231,14 +231,14 @@ theorem subSlice_pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     apply h_code
     · simp [emit]
     · simp [emit]
-  have h_ev4 := runN_Assgn (vals := [Val.Ptr pb (po + l * (mirlite.pointeeLayout L src).size)
-      ((h - l) * (mirlite.pointeeLayout L src).size) ps t']) (s' := s3) h_instr
+  have h_ev4 := runN_Assgn (vals := [Val.Ptr pb (po + l * (mirlite.pointeeLayout L src).sizeB)
+      ((h - l) * (mirlite.pointeeLayout L src).sizeB) ps t']) (s' := s3) h_instr
     (by simp only [oseair.evalRhs, h_l1', h_l2', h_l3, h_ok, Bool.false_eq_true, if_false])
   rw [h_st3, h_st2, h_st1] at h_inv3
   simp only at h_inv3
   refine ⟨ρt, n1 + n2 + n3 + 1, _, sM.mem, out3.state.perms,
-    [Val.Ptr pb (po + l * (mirlite.pointeeLayout L src).size)
-      ((h - l) * (mirlite.pointeeLayout L src).size) ps t'],
+    [Val.Ptr pb (po + l * (mirlite.pointeeLayout L src).sizeB)
+      ((h - l) * (mirlite.pointeeLayout L src).sizeB) ps t'],
     TagRenameIncr.refl ρt, h_wf, by rw [h_st3, h_st2, h_st1],
     runN_trans (runN_trans (runN_trans h_r1 h_r2) h_r3) h_ev4,
     ?_, ?_, h_inv3.psim, h_inv3.tbd, h_inv3.mem, h_inv3.alloc, ?_, ?_, ?_⟩

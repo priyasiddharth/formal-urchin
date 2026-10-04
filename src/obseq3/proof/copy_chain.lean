@@ -59,7 +59,7 @@ theorem ptrChain_compiles {Γ : Ctx} {L : mirlite.LayEnv Γ} {M : PermissionMode
       | ok rb =>
       obtain ⟨bOut, h_bval, h_bclean, h_bprm⟩ := ih RefKind.Shared _ h_rb
       obtain ⟨hz, hnz⟩ := proj_lowering (kind := RefKind.Shared) f (PtrChain.not_proj h_b) h_bval
-      by_cases h0 : pathOffset L b f = 0
+      by_cases h0 : pathOffsetB L b f = 0
       · obtain ⟨h_runP, outP, h_valP, h_resP⟩ := hz h0
         obtain ⟨h_run, out, h_val, h_res⟩ := deref_lowering (kind := kind) h_valP
         refine ⟨out, h_val, by rw [h_res], ?_⟩

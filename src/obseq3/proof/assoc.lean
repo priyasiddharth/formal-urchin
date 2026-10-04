@@ -34,7 +34,7 @@ theorem fieldLayout_nontup {lay : BLayout} (h : ∀ fs os sz al, lay ≠ .tup fs
       | ptr q => rfl
 
 theorem fieldOffset_nontup {lay : BLayout} (h : ∀ fs os sz al, lay ≠ .tup fs os sz al) :
-    ∀ ys, mirlite.fieldOffset lay ys = 0
+    ∀ ys, mirlite.fieldOffsetB lay ys = 0
   | [] => rfl
   | _ :: _ => by
       cases lay with
@@ -57,18 +57,18 @@ theorem fieldLayout_append : ∀ (lay : BLayout) (xs ys : List Nat),
       exact (fieldLayout_nontup (by simp) ys).symm
 
 theorem fieldOffset_append : ∀ (lay : BLayout) (xs ys : List Nat),
-    mirlite.fieldOffset lay (xs ++ ys)
-      = mirlite.fieldOffset lay xs + mirlite.fieldOffset (mirlite.fieldLayout lay xs) ys
-  | _, [], _ => by simp [mirlite.fieldOffset, mirlite.fieldLayout]
+    mirlite.fieldOffsetB lay (xs ++ ys)
+      = mirlite.fieldOffsetB lay xs + mirlite.fieldOffsetB (mirlite.fieldLayout lay xs) ys
+  | _, [], _ => by simp [mirlite.fieldOffsetB, mirlite.fieldLayout]
   | .tup fs os sz al, i :: is, ys => by
-      simp only [List.cons_append, mirlite.fieldOffset, mirlite.fieldLayout]
+      simp only [List.cons_append, mirlite.fieldOffsetB, mirlite.fieldLayout]
       rw [fieldOffset_append _ is ys]
       omega
   | .int n, i :: is, ys => by
-      simp only [List.cons_append, mirlite.fieldOffset, mirlite.fieldLayout]
+      simp only [List.cons_append, mirlite.fieldOffsetB, mirlite.fieldLayout]
       rw [fieldOffset_nontup (by simp) ys]
   | .ptr q, i :: is, ys => by
-      simp only [List.cons_append, mirlite.fieldOffset, mirlite.fieldLayout]
+      simp only [List.cons_append, mirlite.fieldOffsetB, mirlite.fieldLayout]
       rw [fieldOffset_nontup (by simp) ys]
 
 theorem placeLayout_assoc {Γ : Ctx} (L : mirlite.LayEnv Γ) {ρ σ τ : LayoutTy}

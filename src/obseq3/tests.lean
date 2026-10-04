@@ -384,7 +384,7 @@ open obseq3.bytes
 /-- A fresh pointer-sized allocation holding a pointer with provenance. -/
 private def bytesSetup : IO (bytes.Mem × Nat × Pointer) := do
   let (target, m) := (({} : bytes.Mem)).allocate 4 4          -- an i32
-  let (slot, m) := m.allocate ptrSize ptrSize           -- a *const i32 slot
+  let (slot, m) := m.allocate ptrSizeB ptrSizeB           -- a *const i32 slot
   let p : Pointer := ⟨target, some { base := target, sizeB := 4, tag := 7 }⟩
   let some m := m.store slot .ptr (.ptr p)
     | throw (IO.userError "bytes setup: pointer store failed")
@@ -409,18 +409,18 @@ def t21_bytes_partial_pointer_read : IO Unit := do
     a time (`MaybeUninit<u8>`) preserves its provenance. -/
 def t22_bytes_bytewise_copy_keeps_provenance : IO Unit := do
   let (m, slot, p) ← bytesSetup
-  let (dst, m) := m.allocate ptrSize ptrSize
-  let m := (List.range ptrSize).foldl (fun m i => m.copyBytes (dst + i) (slot + i) 1) m
+  let (dst, m) := m.allocate ptrSizeB ptrSizeB
+  let m := (List.range ptrSizeB).foldl (fun m i => m.copyBytes (dst + i) (slot + i) 1) m
   assert (m.load dst .ptr == some (SVal.ptr p)) "t22 bytewise raw copy keeps provenance"
 
 /-- Copying a pointer through INTEGERS strips provenance: the copy has the
     address and no provenance (`transmute_strip_provenance`). -/
 def t23_bytes_int_copy_strips_provenance : IO Unit := do
   let (m, slot, p) ← bytesSetup
-  let (dst, m) := m.allocate ptrSize ptrSize
-  let some (SVal.int a) := m.load slot (.int ptrSize)
+  let (dst, m) := m.allocate ptrSizeB ptrSizeB
+  let some (SVal.int a) := m.load slot (.int ptrSizeB)
     | throw (IO.userError "t23 int read of a pointer failed")
-  let some m := m.store dst (.int ptrSize) (.int a)
+  let some m := m.store dst (.int ptrSizeB) (.int a)
     | throw (IO.userError "t23 int store failed")
   assert (m.load dst .ptr == some (SVal.ptr ⟨p.addr, none⟩)) "t23 copy via usize has no provenance"
 
@@ -429,14 +429,14 @@ def t23_bytes_int_copy_strips_provenance : IO Unit := do
     fail. -/
 def t24_bytes_mixed_and_uninit : IO Unit := do
   let (m, slot, _) ← bytesSetup
-  let (slot2, m) := m.allocate ptrSize ptrSize
+  let (slot2, m) := m.allocate ptrSizeB ptrSizeB
   let some m := m.store slot2 .ptr (.ptr ⟨slot, some { base := slot, sizeB := 8, tag := 9 }⟩)
     | throw (IO.userError "t24 store failed")
   let m := m.copyBytes slot slot2 1                      -- one byte from the other pointer
   match m.load slot .ptr with
   | some (SVal.ptr q) => assert (q.prov == none) "t24 mixed bytes lose provenance"
   | _ => throw (IO.userError "t24 mixed pointer read failed")
-  let (fresh, m) := m.allocate ptrSize ptrSize
+  let (fresh, m) := m.allocate ptrSizeB ptrSizeB
   assert (m.load fresh .ptr == none) "t24 uninit pointer read fails"
 
 /-- `repr(C)` layouts: `(u8, u32, u8)` puts the fields at 0, 4, 8 with
@@ -444,9 +444,9 @@ def t24_bytes_mixed_and_uninit : IO Unit := do
 def t25_bytes_reprC_layout : IO Unit := do
   let L := reprC [.int 1, .int 4, .int 1]
   assert (L.leaves.map (·.1) == [0, 4, 8]) s!"t25 offsets {L.leaves.map (·.1)}"
-  assert (L.size == 12 && L.align == 4) s!"t25 size {L.size} align {L.align}"
+  assert (L.sizeB == 12 && L.alignB == 4) s!"t25 size {L.sizeB} align {L.alignB}"
   let L2 := reprC [.int 4, .int 1]
-  assert (L2.size == 8) s!"t25 (i32, u8) size {L2.size}"
+  assert (L2.sizeB == 8) s!"t25 (i32, u8) size {L2.sizeB}"
 
 /-- The uniform layout of `(usize, *usize, (usize, usize))`: four 8-byte
     leaves at 0, 8, 16, 24. -/
@@ -455,14 +455,14 @@ def t26_bytes_uniform_layout : IO Unit := do
   let L := ofLayoutTy τ
   assert (L.leaves.map (·.1) == [0, 8, 16, 24]) s!"t26 offsets {L.leaves.map (·.1)}"
   assert (L.leaves.length == 4) "t26 four leaves"
-  assert (L.size == 32) s!"t26 size {L.size}"
+  assert (L.sizeB == 32) s!"t26 size {L.sizeB}"
 
 /-- A whole `(u8, *const i32, u16)` value stored and loaded back; the
     padding bytes stay uninit. -/
 def t27_bytes_tuple_roundtrip : IO Unit := do
   let L := reprC [.int 1, .ptr (.int 4), .int 2]
-  let (base, m) := (({} : bytes.Mem)).allocate L.size L.align
-  let p : Pointer := ⟨base, some { base := base, sizeB := L.size, tag := 3 }⟩
+  let (base, m) := (({} : bytes.Mem)).allocate L.sizeB L.alignB
+  let p : Pointer := ⟨base, some { base := base, sizeB := L.sizeB, tag := 3 }⟩
   let vs := [SVal.int 200, SVal.ptr p, SVal.int 65000]
   let some m := m.storeL base L vs
     | throw (IO.userError "t27 store failed")

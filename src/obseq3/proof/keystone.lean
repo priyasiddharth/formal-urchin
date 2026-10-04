@@ -161,36 +161,36 @@ theorem setChain_override
 
 /-! ## The per-index entry chain of a fold over `[addr+i, addr+len)` -/
 
-/-- The entries a cell fold writes: `(addr+j, W j)` for `j ∈ [i, len)`. -/
-def chain (W : Nat → BorrowStack) (addr : Word) (i len : Nat) :
+/-- The entries a cell fold writes: `(addr+j, W j)` for `j ∈ [i, lenB)`. -/
+def chain (W : Nat → BorrowStack) (addr : Word) (i lenB : Nat) :
     List (Word × BorrowStack) :=
-  if i < len then (addr + i, W i) :: chain W addr (i + 1) len else []
-  termination_by len - i
+  if i < lenB then (addr + i, W i) :: chain W addr (i + 1) lenB else []
+  termination_by lenB - i
 
-theorem chain_stop {W : Nat → BorrowStack} {addr : Word} {i len : Nat}
-    (h : ¬ i < len) : chain W addr i len = [] := by
+theorem chain_stop {W : Nat → BorrowStack} {addr : Word} {i lenB : Nat}
+    (h : ¬ i < lenB) : chain W addr i lenB = [] := by
   rw [chain.eq_def, if_neg h]
 
-theorem chain_step {W : Nat → BorrowStack} {addr : Word} {i len : Nat}
-    (h : i < len) :
-    chain W addr i len = (addr + i, W i) :: chain W addr (i + 1) len := by
+theorem chain_step {W : Nat → BorrowStack} {addr : Word} {i lenB : Nat}
+    (h : i < lenB) :
+    chain W addr i lenB = (addr + i, W i) :: chain W addr (i + 1) lenB := by
   rw [chain.eq_def]
   exact if_pos h
 
-theorem chain_congr {W W' : Nat → BorrowStack} {addr : Word} {i len : Nat}
-    (h_agree : ∀ j, i ≤ j → j < len → W j = W' j) :
-    chain W addr i len = chain W' addr i len := by
-  by_cases h : i < len
+theorem chain_congr {W W' : Nat → BorrowStack} {addr : Word} {i lenB : Nat}
+    (h_agree : ∀ j, i ≤ j → j < lenB → W j = W' j) :
+    chain W addr i lenB = chain W' addr i lenB := by
+  by_cases h : i < lenB
   · rw [chain_step h, chain_step h, h_agree i (Nat.le_refl i) h,
         chain_congr (i := i + 1) (fun j h1 h2 => h_agree j (by omega) h2)]
   · rw [chain_stop h, chain_stop h]
-  termination_by len - i
+  termination_by lenB - i
 
 theorem mem_keysOf_chain {W : Nat → BorrowStack} {addr : Word} {b : Word}
-    {i len : Nat}
-    (h_mem : b ∈ keysOf (chain W addr i len)) :
-    ∃ j, i ≤ j ∧ j < len ∧ b = addr + j := by
-  by_cases h : i < len
+    {i lenB : Nat}
+    (h_mem : b ∈ keysOf (chain W addr i lenB)) :
+    ∃ j, i ≤ j ∧ j < lenB ∧ b = addr + j := by
+  by_cases h : i < lenB
   · rw [chain_step h] at h_mem
     simp [keysOf] at h_mem
     cases h_mem with
@@ -201,21 +201,21 @@ theorem mem_keysOf_chain {W : Nat → BorrowStack} {addr : Word} {b : Word}
         exact ⟨j, by omega, h2, h3⟩
   · rw [chain_stop h] at h_mem
     simp [keysOf] at h_mem
-  termination_by len - i
+  termination_by lenB - i
 
-theorem keysOf_chain_eq {W W' : Nat → BorrowStack} {addr : Word} {i len : Nat} :
-    keysOf (chain W addr i len) = keysOf (chain W' addr i len) := by
-  by_cases h : i < len
+theorem keysOf_chain_eq {W W' : Nat → BorrowStack} {addr : Word} {i lenB : Nat} :
+    keysOf (chain W addr i lenB) = keysOf (chain W' addr i lenB) := by
+  by_cases h : i < lenB
   · rw [chain_step h, chain_step h]
     simp only [keysOf, List.map_cons, List.cons.injEq]
     exact ⟨trivial, keysOf_chain_eq (i := i + 1)⟩
 
   · rw [chain_stop h, chain_stop h]
-  termination_by len - i
+  termination_by lenB - i
 
-theorem nodup_keysOf_chain {W : Nat → BorrowStack} {addr : Word} {i len : Nat} :
-    (keysOf (chain W addr i len)).Nodup := by
-  by_cases h : i < len
+theorem nodup_keysOf_chain {W : Nat → BorrowStack} {addr : Word} {i lenB : Nat} :
+    (keysOf (chain W addr i lenB)).Nodup := by
+  by_cases h : i < lenB
   · rw [chain_step h]
     simp only [keysOf, List.map_cons, List.nodup_cons]
     constructor
@@ -225,12 +225,12 @@ theorem nodup_keysOf_chain {W : Nat → BorrowStack} {addr : Word} {i len : Nat}
     · exact nodup_keysOf_chain (i := i + 1)
   · rw [chain_stop h]
     simp [keysOf]
-  termination_by len - i
+  termination_by lenB - i
 
-theorem setChain_chain_find? {W : Nat → BorrowStack} {addr : Word} {i len : Nat}
-    (sb : SB) (j : Nat) (h1 : i ≤ j) (h2 : j < len) :
-    SB.find? (setChain sb (chain W addr i len)) (addr + j) = some (W j) := by
-  have h : i < len := by omega
+theorem setChain_chain_find? {W : Nat → BorrowStack} {addr : Word} {i lenB : Nat}
+    (sb : SB) (j : Nat) (h1 : i ≤ j) (h2 : j < lenB) :
+    SB.find? (setChain sb (chain W addr i lenB)) (addr + j) = some (W j) := by
+  have h : i < lenB := by omega
   rw [chain_step h, setChain]
   by_cases hj : j = i
   · subst hj
@@ -241,7 +241,7 @@ theorem setChain_chain_find? {W : Nat → BorrowStack} {addr : Word} {i len : Na
       omega)]
     exact SB.find?_set_self sb (addr + j) (W j)
   · exact setChain_chain_find? (i := i + 1) _ j (by omega) h2
-  termination_by len - i
+  termination_by lenB - i
 
 /-! ## Fold characterizations -/
 
@@ -256,14 +256,14 @@ theorem foldCellsIdx_ok_inv
         match C i (SB.find? ap.StackMap (addr + i)) with
         | .error e => .error e
         | .ok v => .ok { ap with StackMap := SB.set ap.StackMap (addr + i) v }) :
-    ∀ {i len : Nat} (ap ap' : AccessPerms),
+    ∀ {i lenB : Nat} (ap ap' : AccessPerms),
       ap.protFrames = P → ap.exposed = E → ap.NextTag = N →
-      foldCellsIdx op ap addr i len = .ok ap' →
+      foldCellsIdx op ap addr i lenB = .ok ap' →
       ∃ W : Nat → BorrowStack,
-        (∀ j, i ≤ j → j < len → C j (SB.find? ap.StackMap (addr + j)) = .ok (W j)) ∧
-        ap' = { ap with StackMap := setChain ap.StackMap (chain W addr i len) } := by
-  intro i len ap ap' h_pf h_ex h_nt h_fold
-  by_cases h : i < len
+        (∀ j, i ≤ j → j < lenB → C j (SB.find? ap.StackMap (addr + j)) = .ok (W j)) ∧
+        ap' = { ap with StackMap := setChain ap.StackMap (chain W addr i lenB) } := by
+  intro i lenB ap ap' h_pf h_ex h_nt h_fold
+  by_cases h : i < lenB
   · rw [foldCellsIdx.eq_def, if_pos h, h_op ap i h_pf h_ex h_nt] at h_fold
     cases h_C : C i (SB.find? ap.StackMap (addr + i)) with
     | error e => rw [h_C] at h_fold; simp at h_fold
@@ -284,8 +284,8 @@ theorem foldCellsIdx_ok_inv
             rw [SB.find?_set_ne _ h_ne] at this
             simp [hj, this]
         · have h_tail :
-              chain (fun j => if j = i then v else W' j) addr (i + 1) len
-                = chain W' addr (i + 1) len :=
+              chain (fun j => if j = i then v else W' j) addr (i + 1) lenB
+                = chain W' addr (i + 1) lenB :=
             chain_congr (fun j h1 _ => by
               have : j ≠ i := by omega
               simp [this])
@@ -295,7 +295,7 @@ theorem foldCellsIdx_ok_inv
     refine ⟨fun _ => [], fun j h1 h2 => by omega, ?_⟩
     rw [chain_stop h]
     rfl
-  termination_by i len => len - i
+  termination_by i lenB => lenB - i
 
 /-- The two folds agree on success. They differ only in how they DECORATE
     errors (`foldCells` names the failing address, `foldCellsIdx` the
@@ -307,11 +307,11 @@ theorem foldCellsIdx_ok_inv
     `sb_own` is exactly that: it creates the cell. -/
 theorem foldCells_ok_iff_foldCellsIdx_ok
     (op : AccessPerms → Word → Except String AccessPerms) (addr : Word) :
-    ∀ (len i : Nat) (ap ap' : AccessPerms),
-      (foldCells op ap (addr + i) len = .ok ap' ↔
-        foldCellsIdx (fun ap a _ => op ap a) ap addr i (i + len) = .ok ap') := by
-  intro len
-  induction len with
+    ∀ (lenB i : Nat) (ap ap' : AccessPerms),
+      (foldCells op ap (addr + i) lenB = .ok ap' ↔
+        foldCellsIdx (fun ap a _ => op ap a) ap addr i (i + lenB) = .ok ap') := by
+  intro lenB
+  induction lenB with
   | zero =>
       intro i ap ap'
       rw [foldCells, foldCellsIdx.eq_def, if_neg (by omega)]
@@ -341,13 +341,13 @@ theorem foldCellsIdx_ok_of_cells
         match C i (SB.find? ap.StackMap (addr + i)) with
         | .error e => .error e
         | .ok v => .ok { ap with StackMap := SB.set ap.StackMap (addr + i) v }) :
-    ∀ {i len : Nat} (ap : AccessPerms) (W : Nat → BorrowStack),
+    ∀ {i lenB : Nat} (ap : AccessPerms) (W : Nat → BorrowStack),
       ap.protFrames = P → ap.exposed = E → ap.NextTag = N →
-      (∀ j, i ≤ j → j < len → C j (SB.find? ap.StackMap (addr + j)) = .ok (W j)) →
-      foldCellsIdx op ap addr i len
-        = .ok { ap with StackMap := setChain ap.StackMap (chain W addr i len) } := by
-  intro i len ap W h_pf h_ex h_nt h_cells
-  by_cases h : i < len
+      (∀ j, i ≤ j → j < lenB → C j (SB.find? ap.StackMap (addr + j)) = .ok (W j)) →
+      foldCellsIdx op ap addr i lenB
+        = .ok { ap with StackMap := setChain ap.StackMap (chain W addr i lenB) } := by
+  intro i lenB ap W h_pf h_ex h_nt h_cells
+  by_cases h : i < lenB
   · rw [foldCellsIdx.eq_def, if_pos h, h_op ap i h_pf h_ex h_nt,
         h_cells i (Nat.le_refl i) h]
     simp only
@@ -362,7 +362,7 @@ theorem foldCellsIdx_ok_of_cells
     rw [chain_step h, setChain]
   · rw [foldCellsIdx.eq_def, if_neg h, chain_stop h]
     rfl
-  termination_by i len => len - i
+  termination_by i lenB => lenB - i
 
 /-- Construction for `foldCells` whose per-cell op is a content-driven
     rewrite: if every cell's stack is known and every content computation
@@ -550,14 +550,14 @@ theorem dieCellContent_top_ref
     ever contain already-minted tags): the fresh tag is not the wildcard
     and is not protected. -/
 theorem sb_ref_use_die_cancels
-    {s s1 : AccessPerms} {addr : Word} {len : Nat} {tag t' : Tag}
+    {s s1 : AccessPerms} {addr : Word} {lenB : Nat} {tag t' : Tag}
     (h_nt : (s.NextTag == wildcardTag) = false)
     (h_unprot : isProtectedIn s.protFrames s.NextTag = false)
-    (h_ref : sb_ref s addr len tag .Mut false [] = .ok (s1, t')) :
+    (h_ref : sb_ref s addr lenB tag .Mut false [] = .ok (s1, t')) :
     ∃ s2 s3 sAcc,
-      sb_write s1 addr len t' = .ok s2 ∧
-      sb_die s2 addr len t' = .ok s3 ∧
-      sb_write s addr len tag = .ok sAcc ∧
+      sb_write s1 addr lenB t' = .ok s2 ∧
+      sb_die s2 addr lenB t' = .ok s3 ∧
+      sb_write s addr lenB tag = .ok sAcc ∧
       s3.StackMap = sAcc.StackMap ∧
       s3.exposed = sAcc.exposed ∧
       s3.protFrames = sAcc.protFrames ∧
@@ -567,7 +567,7 @@ theorem sb_ref_use_die_cancels
   simp only [sb_ref, freshTag, refCellOp, RefKind.toItem] at h_ref
   cases h_go : foldCellsIdx
       (fun ap a _ => do pushCell (← writeCell ap a tag) a (Item.MutRef s.NextTag))
-      { s with NextTag := s.NextTag + 1 } addr 0 len with
+      { s with NextTag := s.NextTag + 1 } addr 0 lenB with
   | error e =>
       rw [h_go] at h_ref
       simp [Functor.map, Except.map] at h_ref
@@ -606,12 +606,12 @@ theorem sb_ref_use_die_cancels
       rw [show ({ s with NextTag := s.NextTag + 1 } : AccessPerms).StackMap
             = s.StackMap from rfl] at h_cells₁
       -- Extract per-cell source stacks and write contents (total functions).
-      have h_split : ∀ j, ∃ vj, ∃ wj, j < len →
+      have h_split : ∀ j, ∃ vj, ∃ wj, j < lenB →
           SB.find? s.StackMap (addr + j) = some vj ∧
             writeCellContent s.protFrames s.exposed (addr + j) tag vj = .ok wj ∧
             W₁ j = .MutRef s.NextTag :: wj := by
         intro j
-        by_cases hj : j < len
+        by_cases hj : j < lenB
         · have h := h_cells₁ j (Nat.zero_le j) hj
           cases h_find : SB.find? s.StackMap (addr + j) with
           | none =>
@@ -627,17 +627,17 @@ theorem sb_ref_use_die_cancels
         · exact ⟨[], [], fun h => absurd h hj⟩
       let V : Nat → BorrowStack := fun j => (h_split j).choose
       let W : Nat → BorrowStack := fun j => (h_split j).choose_spec.choose
-      have h_VW : ∀ j, j < len →
+      have h_VW : ∀ j, j < lenB →
           SB.find? s.StackMap (addr + j) = some (V j) ∧
             writeCellContent s.protFrames s.exposed (addr + j) tag (V j) = .ok (W j) ∧
             W₁ j = .MutRef s.NextTag :: W j :=
         fun j hj => (h_split j).choose_spec.choose_spec hj
-      have h_V : ∀ j, j < len → SB.find? s.StackMap (addr + j) = some (V j) :=
+      have h_V : ∀ j, j < lenB → SB.find? s.StackMap (addr + j) = some (V j) :=
         fun j hj => (h_VW j hj).1
-      have h_W : ∀ j, j < len →
+      have h_W : ∀ j, j < lenB →
           writeCellContent s.protFrames s.exposed (addr + j) tag (V j) = .ok (W j) :=
         fun j hj => (h_VW j hj).2.1
-      have h_W₁ : ∀ j, j < len → W₁ j = .MutRef s.NextTag :: W j :=
+      have h_W₁ : ∀ j, j < lenB → W₁ j = .MutRef s.NextTag :: W j :=
         fun j hj => (h_VW j hj).2.2
       -- h_op for the plain write fold (shared by source and phase 2).
       have h_op_write : ∀ (t : Tag) (ap : AccessPerms) (a : Word),
@@ -659,38 +659,38 @@ theorem sb_ref_use_die_cancels
             | ok v =>
                 simp only [writeCell, h_pf, h_ex, h_find, h_content]
       -- SOURCE: sb_write s tag succeeds with contents W.
-      have h_src : sb_write s addr len tag =
-          .ok { s with StackMap := setChain s.StackMap (chain W addr 0 len) } := by
-        show foldCells (fun ap a => writeCell ap a tag) s addr len = _
+      have h_src : sb_write s addr lenB tag =
+          .ok { s with StackMap := setChain s.StackMap (chain W addr 0 lenB) } := by
+        show foldCells (fun ap a => writeCell ap a tag) s addr lenB = _
         have := foldCells_ok_of_cells
           (C := fun a stack => writeCellContent s.protFrames s.exposed a tag stack)
           (msgNone := fun a => s!"sb-write: no borrow stack at address {a}")
           (P := s.protFrames) (E := s.exposed) (N := s.NextTag)
           (fun ap a h_pf h_ex _ => h_op_write tag ap a h_pf h_ex)
-          len 0 s V W
+          lenB 0 s V W
           rfl rfl rfl
           (fun j h1 h2 => by simp only [Nat.zero_add] at h2; exact h_V j h2)
           (fun j h1 h2 => by simp only [Nat.zero_add] at h2; exact h_W j h2)
         rw [show addr + 0 = addr from rfl] at this
-        rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
+        rw [show (0 : Nat) + lenB = lenB from Nat.zero_add lenB] at this
         rw [this]
       -- Fields of apR.
       have h_apR_pf : apR.protFrames = s.protFrames := by rw [h_apR]
       have h_apR_ex : apR.exposed = s.exposed := by rw [h_apR]
       have h_apR_wk : apR.weakProt = s.weakProt := by rw [h_apR]
       have h_apR_nt : apR.NextTag = s.NextTag + 1 := by rw [h_apR]
-      have h_apR_sm : apR.StackMap = setChain s.StackMap (chain W₁ addr 0 len) := by
+      have h_apR_sm : apR.StackMap = setChain s.StackMap (chain W₁ addr 0 lenB) := by
         rw [h_apR]
       -- PHASE 2: sb_write apR t' rewrites each cell to itself.
-      have h_phase2 : sb_write apR addr len s.NextTag =
-          .ok { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 len) } := by
-        show foldCells (fun ap a => writeCell ap a s.NextTag) apR addr len = _
+      have h_phase2 : sb_write apR addr lenB s.NextTag =
+          .ok { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) } := by
+        show foldCells (fun ap a => writeCell ap a s.NextTag) apR addr lenB = _
         have := foldCells_ok_of_cells
           (C := fun a stack => writeCellContent s.protFrames s.exposed a s.NextTag stack)
           (msgNone := fun a => s!"sb-write: no borrow stack at address {a}")
           (P := s.protFrames) (E := s.exposed) (N := s.NextTag + 1)
           (fun ap a h_pf h_ex _ => h_op_write s.NextTag ap a h_pf h_ex)
-          len 0 apR W₁ W₁
+          lenB 0 apR W₁ W₁
           h_apR_pf h_apR_ex h_apR_nt
           (fun j h1 h2 => by
             simp only [Nat.zero_add] at h2
@@ -701,13 +701,13 @@ theorem sb_ref_use_die_cancels
             rw [h_W₁ j h2]
             exact writeCellContent_top_mutref h_nt (W j))
         rw [show addr + 0 = addr from rfl] at this
-        rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
+        rw [show (0 : Nat) + lenB = lenB from Nat.zero_add lenB] at this
         exact this
       -- PHASE 3: sb_die pops the fresh item at each cell.
-      have h_phase3 : sb_die { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 len) }
-            addr len s.NextTag =
-          .ok { apR with StackMap := setChain (setChain apR.StackMap (chain W₁ addr 0 len)) (chain W addr 0 len) } := by
-        show foldCells _ _ addr len = _
+      have h_phase3 : sb_die { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) }
+            addr lenB s.NextTag =
+          .ok { apR with StackMap := setChain (setChain apR.StackMap (chain W₁ addr 0 lenB)) (chain W addr 0 lenB) } := by
+        show foldCells _ _ addr lenB = _
         have := foldCells_ok_of_cells
           (op := fun ap a =>
             match ap.StackMap.find? a with
@@ -726,7 +726,7 @@ theorem sb_ref_use_die_cancels
                 cases h_content : dieCellContent s.protFrames s.NextTag stack with
                 | error e => simp only [h_pf, h_find, h_content]
                 | ok below => simp only [h_pf, h_find, h_content])
-          len 0 { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 len) }
+          lenB 0 { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) }
           W₁ W
           h_apR_pf h_apR_ex h_apR_nt
           (fun j h1 h2 => by
@@ -737,14 +737,14 @@ theorem sb_ref_use_die_cancels
             rw [h_W₁ j h2]
             exact dieCellContent_top h_unprot (W j))
         rw [show addr + 0 = addr from rfl] at this
-        rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
+        rw [show (0 : Nat) + lenB = lenB from Nat.zero_add lenB] at this
         exact this
       -- Assemble.
       refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_, ?_⟩
       · -- StackMap: collapse the three chains onto the source's one.
-        show setChain (setChain apR.StackMap (chain W₁ addr 0 len))
-            (chain W addr 0 len)
-          = setChain s.StackMap (chain W addr 0 len)
+        show setChain (setChain apR.StackMap (chain W₁ addr 0 lenB))
+            (chain W addr 0 lenB)
+          = setChain s.StackMap (chain W addr 0 lenB)
         rw [h_apR_sm]
         rw [setChain_override (keysOf_chain_eq) nodup_keysOf_chain,
             setChain_override (keysOf_chain_eq) nodup_keysOf_chain]
@@ -763,14 +763,14 @@ theorem sb_ref_use_die_cancels
     `resolvePlaceAcc` does when it dereferences a projected pointer place.
     Same hypotheses as BRIDGE 1. -/
 theorem sb_ref_read_die_cancels
-    {s s1 : AccessPerms} {addr : Word} {len : Nat} {tag t' : Tag}
+    {s s1 : AccessPerms} {addr : Word} {lenB : Nat} {tag t' : Tag}
     (h_nt : (s.NextTag == wildcardTag) = false)
     (h_unprot : isProtectedIn s.protFrames s.NextTag = false)
-    (h_ref : sb_ref s addr len tag .Shared false [] = .ok (s1, t')) :
+    (h_ref : sb_ref s addr lenB tag .Shared false [] = .ok (s1, t')) :
     ∃ s2 s3 sAcc,
-      sb_read s1 addr len t' = .ok s2 ∧
-      sb_die s2 addr len t' = .ok s3 ∧
-      sb_read s addr len tag = .ok sAcc ∧
+      sb_read s1 addr lenB t' = .ok s2 ∧
+      sb_die s2 addr lenB t' = .ok s3 ∧
+      sb_read s addr lenB tag = .ok sAcc ∧
       s3.StackMap = sAcc.StackMap ∧
       s3.exposed = sAcc.exposed ∧
       s3.protFrames = sAcc.protFrames ∧
@@ -780,7 +780,7 @@ theorem sb_ref_read_die_cancels
   simp only [sb_ref, freshTag, refCellOp, RefKind.toItem] at h_ref
   cases h_go : foldCellsIdx
       (fun ap a i => if ([] : List Bool).getD i false then insertAboveCell ap a tag (.RawPtr true s.NextTag) else do pushCell (← readCell ap a tag) a (Item.Ref s.NextTag))
-      { s with NextTag := s.NextTag + 1 } addr 0 len with
+      { s with NextTag := s.NextTag + 1 } addr 0 lenB with
   | error e =>
       rw [h_go] at h_ref
       simp [Functor.map, Except.map] at h_ref
@@ -820,12 +820,12 @@ theorem sb_ref_read_die_cancels
       rw [show ({ s with NextTag := s.NextTag + 1 } : AccessPerms).StackMap
             = s.StackMap from rfl] at h_cells₁
       -- Extract per-cell source stacks and write contents (total functions).
-      have h_split : ∀ j, ∃ vj, ∃ wj, j < len →
+      have h_split : ∀ j, ∃ vj, ∃ wj, j < lenB →
           SB.find? s.StackMap (addr + j) = some vj ∧
             readCellContent s.protFrames s.exposed (addr + j) tag vj = .ok wj ∧
             W₁ j = .Ref s.NextTag :: wj := by
         intro j
-        by_cases hj : j < len
+        by_cases hj : j < lenB
         · have h := h_cells₁ j (Nat.zero_le j) hj
           cases h_find : SB.find? s.StackMap (addr + j) with
           | none =>
@@ -841,17 +841,17 @@ theorem sb_ref_read_die_cancels
         · exact ⟨[], [], fun h => absurd h hj⟩
       let V : Nat → BorrowStack := fun j => (h_split j).choose
       let W : Nat → BorrowStack := fun j => (h_split j).choose_spec.choose
-      have h_VW : ∀ j, j < len →
+      have h_VW : ∀ j, j < lenB →
           SB.find? s.StackMap (addr + j) = some (V j) ∧
             readCellContent s.protFrames s.exposed (addr + j) tag (V j) = .ok (W j) ∧
             W₁ j = .Ref s.NextTag :: W j :=
         fun j hj => (h_split j).choose_spec.choose_spec hj
-      have h_V : ∀ j, j < len → SB.find? s.StackMap (addr + j) = some (V j) :=
+      have h_V : ∀ j, j < lenB → SB.find? s.StackMap (addr + j) = some (V j) :=
         fun j hj => (h_VW j hj).1
-      have h_W : ∀ j, j < len →
+      have h_W : ∀ j, j < lenB →
           readCellContent s.protFrames s.exposed (addr + j) tag (V j) = .ok (W j) :=
         fun j hj => (h_VW j hj).2.1
-      have h_W₁ : ∀ j, j < len → W₁ j = .Ref s.NextTag :: W j :=
+      have h_W₁ : ∀ j, j < lenB → W₁ j = .Ref s.NextTag :: W j :=
         fun j hj => (h_VW j hj).2.2
       -- h_op for the plain write fold (shared by source and phase 2).
       have h_op_write : ∀ (t : Tag) (ap : AccessPerms) (a : Word),
@@ -873,38 +873,38 @@ theorem sb_ref_read_die_cancels
             | ok v =>
                 simp only [readCell, h_pf, h_ex, h_find, h_content]
       -- SOURCE: sb_write s tag succeeds with contents W.
-      have h_src : sb_read s addr len tag =
-          .ok { s with StackMap := setChain s.StackMap (chain W addr 0 len) } := by
-        show foldCells (fun ap a => readCell ap a tag) s addr len = _
+      have h_src : sb_read s addr lenB tag =
+          .ok { s with StackMap := setChain s.StackMap (chain W addr 0 lenB) } := by
+        show foldCells (fun ap a => readCell ap a tag) s addr lenB = _
         have := foldCells_ok_of_cells
           (C := fun a stack => readCellContent s.protFrames s.exposed a tag stack)
           (msgNone := fun a => s!"sb-read: no borrow stack at address {a}")
           (P := s.protFrames) (E := s.exposed) (N := s.NextTag)
           (fun ap a h_pf h_ex _ => h_op_write tag ap a h_pf h_ex)
-          len 0 s V W
+          lenB 0 s V W
           rfl rfl rfl
           (fun j h1 h2 => by simp only [Nat.zero_add] at h2; exact h_V j h2)
           (fun j h1 h2 => by simp only [Nat.zero_add] at h2; exact h_W j h2)
         rw [show addr + 0 = addr from rfl] at this
-        rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
+        rw [show (0 : Nat) + lenB = lenB from Nat.zero_add lenB] at this
         rw [this]
       -- Fields of apR.
       have h_apR_pf : apR.protFrames = s.protFrames := by rw [h_apR]
       have h_apR_ex : apR.exposed = s.exposed := by rw [h_apR]
       have h_apR_wk : apR.weakProt = s.weakProt := by rw [h_apR]
       have h_apR_nt : apR.NextTag = s.NextTag + 1 := by rw [h_apR]
-      have h_apR_sm : apR.StackMap = setChain s.StackMap (chain W₁ addr 0 len) := by
+      have h_apR_sm : apR.StackMap = setChain s.StackMap (chain W₁ addr 0 lenB) := by
         rw [h_apR]
       -- PHASE 2: sb_write apR t' rewrites each cell to itself.
-      have h_phase2 : sb_read apR addr len s.NextTag =
-          .ok { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 len) } := by
-        show foldCells (fun ap a => readCell ap a s.NextTag) apR addr len = _
+      have h_phase2 : sb_read apR addr lenB s.NextTag =
+          .ok { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) } := by
+        show foldCells (fun ap a => readCell ap a s.NextTag) apR addr lenB = _
         have := foldCells_ok_of_cells
           (C := fun a stack => readCellContent s.protFrames s.exposed a s.NextTag stack)
           (msgNone := fun a => s!"sb-read: no borrow stack at address {a}")
           (P := s.protFrames) (E := s.exposed) (N := s.NextTag + 1)
           (fun ap a h_pf h_ex _ => h_op_write s.NextTag ap a h_pf h_ex)
-          len 0 apR W₁ W₁
+          lenB 0 apR W₁ W₁
           h_apR_pf h_apR_ex h_apR_nt
           (fun j h1 h2 => by
             simp only [Nat.zero_add] at h2
@@ -915,13 +915,13 @@ theorem sb_ref_read_die_cancels
             rw [h_W₁ j h2]
             exact readCellContent_top_ref h_nt (W j))
         rw [show addr + 0 = addr from rfl] at this
-        rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
+        rw [show (0 : Nat) + lenB = lenB from Nat.zero_add lenB] at this
         exact this
       -- PHASE 3: sb_die pops the fresh item at each cell.
-      have h_phase3 : sb_die { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 len) }
-            addr len s.NextTag =
-          .ok { apR with StackMap := setChain (setChain apR.StackMap (chain W₁ addr 0 len)) (chain W addr 0 len) } := by
-        show foldCells _ _ addr len = _
+      have h_phase3 : sb_die { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) }
+            addr lenB s.NextTag =
+          .ok { apR with StackMap := setChain (setChain apR.StackMap (chain W₁ addr 0 lenB)) (chain W addr 0 lenB) } := by
+        show foldCells _ _ addr lenB = _
         have := foldCells_ok_of_cells
           (op := fun ap a =>
             match ap.StackMap.find? a with
@@ -940,7 +940,7 @@ theorem sb_ref_read_die_cancels
                 cases h_content : dieCellContent s.protFrames s.NextTag stack with
                 | error e => simp only [h_pf, h_find, h_content]
                 | ok below => simp only [h_pf, h_find, h_content])
-          len 0 { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 len) }
+          lenB 0 { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) }
           W₁ W
           h_apR_pf h_apR_ex h_apR_nt
           (fun j h1 h2 => by
@@ -951,14 +951,14 @@ theorem sb_ref_read_die_cancels
             rw [h_W₁ j h2]
             exact dieCellContent_top_ref h_unprot (W j))
         rw [show addr + 0 = addr from rfl] at this
-        rw [show (0 : Nat) + len = len from Nat.zero_add len] at this
+        rw [show (0 : Nat) + lenB = lenB from Nat.zero_add lenB] at this
         exact this
       -- Assemble.
       refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_, ?_⟩
       · -- StackMap: collapse the three chains onto the source's one.
-        show setChain (setChain apR.StackMap (chain W₁ addr 0 len))
-            (chain W addr 0 len)
-          = setChain s.StackMap (chain W addr 0 len)
+        show setChain (setChain apR.StackMap (chain W₁ addr 0 lenB))
+            (chain W addr 0 lenB)
+          = setChain s.StackMap (chain W addr 0 lenB)
         rw [h_apR_sm]
         rw [setChain_override (keysOf_chain_eq) nodup_keysOf_chain,
             setChain_override (keysOf_chain_eq) nodup_keysOf_chain]
@@ -980,9 +980,9 @@ reason). Disjointness is supplied by the overlapping-assignment
 guard. -/
 
 theorem chain_key_not_mem {W : Nat → BorrowStack} {addr b : Word}
-    {i len : Nat} (h : ∀ j, i ≤ j → j < len → b ≠ addr + j) :
-    b ∉ keysOf (chain W addr i len) := by
-  by_cases hi : i < len
+    {i lenB : Nat} (h : ∀ j, i ≤ j → j < lenB → b ≠ addr + j) :
+    b ∉ keysOf (chain W addr i lenB) := by
+  by_cases hi : i < lenB
   · rw [chain_step hi]
     intro hmem
     simp only [keysOf, List.map_cons, List.mem_cons] at hmem
@@ -991,5 +991,5 @@ theorem chain_key_not_mem {W : Nat → BorrowStack} {addr b : Word}
     · exact chain_key_not_mem (fun j hj1 hj2 => h j (by omega) hj2) h2
   · rw [chain_stop hi]
     simp [keysOf]
-  termination_by len - i
+  termination_by lenB - i
 

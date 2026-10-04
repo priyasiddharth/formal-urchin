@@ -171,7 +171,7 @@ theorem chainB_compiles {Γ : Ctx} {L : mirlite.LayEnv Γ} {M : PermissionModel}
       | ok rb =>
       obtain ⟨bOut, h_bval, h_bclean, h_bprm⟩ := ih RefKind.Shared _ h_rb
       obtain ⟨hz, hnz⟩ := proj_lowering (kind := RefKind.Shared) f (ChainB.not_proj h_b) h_bval
-      by_cases h0 : pathOffset L b f = 0
+      by_cases h0 : pathOffsetB L b f = 0
       · obtain ⟨h_runP, outP, h_valP, h_resP⟩ := hz h0
         obtain ⟨h_run, out, h_val, h_res⟩ := deref_lowering (kind := kind) h_valP
         refine ⟨out, h_val, by rw [h_res], ?_⟩
@@ -298,12 +298,12 @@ theorem chainB_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRename
           (h_inc.mono ((proj_incr (kind := RefKind.Shared) f cs h_np).trans
             (deref_incr (.proj b f) cs)))
       obtain ⟨hz, hnz⟩ := proj_lowering (kind := RefKind.Shared) f h_np hB.val
-      by_cases h0 : pathOffset L b f = 0
+      by_cases h0 : pathOffsetB L b f = 0
       · -- offset ZERO: the field IS the base; one deref level
         obtain ⟨h_runP, outP, h_valP, h_resP⟩ := hz h0
-        have h0' : mirlite.fieldOffset (mirlite.placeLayout L b) f.indices = 0 := h0
+        have h0' : mirlite.fieldOffsetB (mirlite.placeLayout L b) f.indices = 0 := h0
         have hP : LoweredB L ρt compProg RefKind.Shared (.proj b f) cs sM sA
-            { bRes with addr := bRes.addr + mirlite.fieldOffset (mirlite.placeLayout L b) f.indices }
+            { bRes with addr := bRes.addr + mirlite.fieldOffsetB (mirlite.placeLayout L b) f.indices }
             permsB outP n1 s_mid btag := {
           val := h_valP
           clean := by rw [h_resP]; exact hB.clean
@@ -334,10 +334,10 @@ theorem chainB_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRename
         rw [h_runP] at h_outres
         simp only [emit] at h_outres
         obtain ⟨ext, h_bentry⟩ := hB.entry
-        have hn : placeSize L (.proj b f) = ptrSize := hWF (.proj b f)
+        have hn : placeSizeB L (.proj b f) = ptrSizeB := hWF (.proj b f)
         have hA : bRes.allocBase + (bRes.addr - bRes.allocBase) = bRes.addr :=
           Nat.add_sub_cancel' hB.le
-        have h_qb' : bRes.addr + pathOffset L b f + ptrSize ≤ bRes.allocBase + bRes.allocSizeB :=
+        have h_qb' : bRes.addr + pathOffsetB L b f + ptrSizeB ≤ bRes.allocBase + bRes.allocSizeB :=
           Nat.le_of_not_gt fun h => h_qb (Or.inr h)
         -- the source read, transported; the target's Shared retag succeeds
         obtain ⟨p2, h_read', h_psim2⟩ :=
@@ -357,7 +357,7 @@ theorem chainB_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRename
         subst h_acc
         -- the source pointer, decoded on the target
         have h_decS : mirlite.decodeV .ptr
-            (sM.mem.read (bRes.addr + pathOffset L b f) ptrSize) = .ptrVal vb vo ve vsz vt := h_dec
+            (sM.mem.read (bRes.addr + pathOffsetB L b f) ptrSizeB) = .ptrVal vb vo ve vsz vt := h_dec
         obtain ⟨t', h_decT, h_t⟩ := decode_ptr_sim hwf h_mem h_decS
         have h_freeT : s_mid.mem.isFreed bRes.allocBase = false := by
           rw [hB.mem]
@@ -370,8 +370,8 @@ theorem chainB_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRename
             ((CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextLabel + 0)
             = some (oseair.Instr.Assgn
               (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextReg)
-              (borrowRhs RefKind.Shared (placeSize L (.proj b f)) bOut.result.reg
-                (pathOffset L b f))) := by
+              (borrowRhs RefKind.Shared (placeSizeB L (.proj b f)) bOut.result.reg
+                (pathOffsetB L b f))) := by
           rw [h_runD]; exact (hct _ _ _).1
         have hc2 : (CheckedCompilerM.run (placeToRegChecked L kind (.deref (.proj b f))) cs).code
             ((CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextLabel + 1)
@@ -384,7 +384,7 @@ theorem chainB_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRename
             ((CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextLabel + 2)
             = some (oseair.Instr.Die
               (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextReg)
-              (placeSize L (.proj b f))) := by
+              (placeSizeB L (.proj b f))) := by
           rw [h_runD]; exact (hct _ _ _).2.2.1
         have hnl : (CheckedCompilerM.run (placeToRegChecked L kind (.deref (.proj b f))) cs).nextLabel
             = (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextLabel + 3 := by
@@ -406,8 +406,8 @@ theorem chainB_lowering_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRename
               perms := q1,
               reg := s_mid.reg.insert
                 (Register.R (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) cs).nextReg)
-                [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffset L b f)
-                  (placeSize L (.proj b f)) bRes.allocSizeB s_mid.perms.NextTag],
+                [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffsetB L b f)
+                  (placeSizeB L (.proj b f)) bRes.allocSizeB s_mid.perms.NextTag],
               pc := s_mid.pc + 1 }
         have h2 := runN_Load_ptr (s := S1) (q := mirlite.placeLayout L (.deref (.proj b f)))
           (h_at 1 _ (by omega) hc2) (RegMap.lookup_insert_self _ _ _)

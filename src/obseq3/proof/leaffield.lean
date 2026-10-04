@@ -63,9 +63,9 @@ theorem proj_nested_compiles {Γ : Ctx} {L : mirlite.LayEnv Γ}
     one-leaf read decodes spans the whole place. -/
 def LeafWF {Γ : Ctx} (L : mirlite.LayEnv Γ) : Prop :=
   (∀ {σ : LayoutTy} (p : Place Γ (LayoutTy.PtrL σ)),
-    (mirlite.leafKind (mirlite.placeLayout L p)).size = (mirlite.placeLayout L p).size) ∧
+    (mirlite.leafKind (mirlite.placeLayout L p)).sizeB = (mirlite.placeLayout L p).sizeB) ∧
   (∀ {t : IntTy} (p : Place Γ (LayoutTy.IntL t)),
-    (mirlite.leafKind (mirlite.placeLayout L p)).size = (mirlite.placeLayout L p).size)
+    (mirlite.leafKind (mirlite.placeLayout L p)).sizeB = (mirlite.placeLayout L p).sizeB)
 
 /-! ## Read-only one-leaf ops -/
 
@@ -79,9 +79,9 @@ structure ReadOnlyOpB {Γ : Ctx} (L : mirlite.LayEnv Γ) (dstL : BLayout) {σ τ
     mirlite.evalRExpr MSB L sM dstL rhs = .ok output →
     ∃ resolved permsR perms', mirlite.resolvePlaceAcc MSB L sM src = .ok (resolved, permsR) ∧
       ¬ sM.mem.isFreed resolved.allocBase = true ∧
-      ¬ (resolved.addr + (mirlite.leafKind (mirlite.placeLayout L src)).size
+      ¬ (resolved.addr + (mirlite.leafKind (mirlite.placeLayout L src)).sizeB
           > resolved.allocBase + resolved.allocSizeB) ∧
-      sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size
+      sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB
         resolved.tag = .ok perms' ∧
       output.state = { sM with perms := perms' }
   target : ∀ (ρt : TagRenameMap) (sM : mirlite.State MSB Γ) (s1 : oseair.State MSB) (reg : Register)
@@ -92,24 +92,24 @@ structure ReadOnlyOpB {Γ : Ctx} (L : mirlite.LayEnv Γ) (dstL : BLayout) {σ τ
     s1.reg.lookup reg = some [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase) ext
       resolved.allocSizeB T] →
     resolved.allocBase ≤ resolved.addr →
-    sb_read s1.perms resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size T = .ok pmid →
+    sb_read s1.perms resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB T = .ok pmid →
     ∃ vals, oseair.evalRhs MSB s1 (mk reg) = .Ok vals { s1 with perms := pmid } ∧
       ListRel (StoreSim ρt) output.values (vals.map oseair.Val.toMem)
 
 /-- The target's one-leaf read, given the SB read's outcome. -/
 theorem readCellThrough_ro {ρt : TagRenameMap} (hwf : TagRenameWF ρt)
-    {s1 : oseair.State MSB} {reg : Register} {resolved : PlaceRes} {ext : Nat} {T : Tag}
+    {s1 : oseair.State MSB} {reg : Register} {resolved : PlaceRes} {extB : Nat} {T : Tag}
     {mS : bytes.Mem} {k : Scalar} {pmid : AccessPerms}
     (h_reg : s1.reg.lookup reg = some [Val.Ptr resolved.allocBase
-      (resolved.addr - resolved.allocBase) ext resolved.allocSizeB T])
+      (resolved.addr - resolved.allocBase) extB resolved.allocSizeB T])
     (h_le : resolved.allocBase ≤ resolved.addr) (h_mem : ByteMemSim ρt mS s1.mem)
     (h_lock : ByteAllocLockstep mS s1.mem) (h_free : ¬ mS.isFreed resolved.allocBase = true)
-    (h_bnd : ¬ (resolved.addr + k.size > resolved.allocBase + resolved.allocSizeB))
-    (h_rd : sb_read s1.perms resolved.addr k.size T = .ok pmid) :
+    (h_bnd : ¬ (resolved.addr + k.sizeB > resolved.allocBase + resolved.allocSizeB))
+    (h_rd : sb_read s1.perms resolved.addr k.sizeB T = .ok pmid) :
     oseair.readCellThrough MSB s1 reg k
-        = .ok (oseair.ofMem (mirlite.decodeV k (s1.mem.read resolved.addr k.size)), pmid) ∧
-      ValSim ρt (mirlite.decodeV k (mS.read resolved.addr k.size))
-        (mirlite.decodeV k (s1.mem.read resolved.addr k.size)) := by
+        = .ok (oseair.ofMem (mirlite.decodeV k (s1.mem.read resolved.addr k.sizeB)), pmid) ∧
+      ValSim ρt (mirlite.decodeV k (mS.read resolved.addr k.sizeB))
+        (mirlite.decodeV k (s1.mem.read resolved.addr k.sizeB)) := by
   have hA : resolved.allocBase + (resolved.addr - resolved.allocBase) = resolved.addr :=
     Nat.add_sub_cancel' h_le
   have h_freeT : s1.mem.isFreed resolved.allocBase = false := by
@@ -123,7 +123,7 @@ theorem ptrOffset_ro {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ τ 
     (src : Place Γ (LayoutTy.PtrL σ)) (delta : Int) (inb : Bool) :
     ReadOnlyOpB L dstL (RExpr.ptrOffset (τ := τ) src delta inb) src
       (fun r => oseair.Rhs.PtrOffset (mirlite.leafKind (mirlite.placeLayout L src)) r
-        (delta * ((mirlite.pointeeLayout L src).size : Int)) inb) where
+        (delta * ((mirlite.pointeeLayout L src).sizeB : Int)) inb) where
   source sM output h := by
     simp only [mirlite.evalRExpr] at h
     split at h
@@ -228,11 +228,11 @@ theorem ptrCast_ro {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ τ : 
       obtain ⟨rfl, rfl⟩ := resolve_eq h_res h_r'
       have hv : v ≠ .undef := fun h' => h_def (by rw [h']; rfl)
       have h_vs := decodeV_sim hwf (mirlite.leafKind (mirlite.placeLayout L src))
-        (h_mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size)
+        (h_mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB)
       rw [← h_v] at h_vs
       obtain ⟨h_defT, h_relS⟩ := readL_rel (vs := [v])
         (ws := [mirlite.decodeV (mirlite.leafKind (mirlite.placeLayout L src))
-          (s1.mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size)])
+          (s1.mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB)])
         (show ListRel _ [v] [_] from ⟨h_vs, trivial⟩)
         (by simp only [List.any_cons, List.any_nil, Bool.or_false]
             exact Bool.eq_false_iff.mpr h_def)
@@ -243,10 +243,10 @@ theorem ptrCast_ro {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {σ τ : 
         simpa using h_free
       refine ⟨_, ?_, h_relS⟩
       simp only [oseair.evalRhs, h_reg, hA, h_freeT, Bool.false_eq_true, if_false,
-        leafLayout_size, h_bnd, PermissionModel.stackedBorrows, h_rdT, readL_leafLayout,
+        leafLayout_sizeB, h_bnd, PermissionModel.stackedBorrows, h_rdT, readL_leafLayout,
         List.map_cons, List.map_nil]
       have h_defT' : ([oseair.ofMem (mirlite.decodeV (mirlite.leafKind (mirlite.placeLayout L src))
-          (s1.mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size))].any
+          (s1.mem.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB))].any
           fun v => v == Val.Undef) = false := h_defT
       rw [h_defT']
       rfl
@@ -283,7 +283,7 @@ theorem projoff_compile {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρ τ : LayoutTy} {b
     {f : PathTo ρ τ} {ρt : TagRenameMap} {sM : mirlite.State MSB Γ} {sA : oseair.State MSB}
     {csA : CompilerState} {r : PlaceRes × MSB.State}
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
-    (h0 : pathOffset L b f ≠ 0) (hcb : CompilesB L b)
+    (h0 : pathOffsetB L b f ≠ 0) (hcb : CompilesB L b)
     (h_lbs : LocalBindingSimB L ρt sM.env sA csA)
     (h_res : mirlite.resolvePlaceAcc MSB L sM (.proj b f) = .ok r) :
     ∃ outP, CheckedCompilerM.value (placeToRegChecked L RefKind.Shared (.proj b f)) csA = .ok outP ∧
@@ -313,8 +313,8 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
       (dstPtr : Register) → RExprToEvidence L dstPtr rhs}
     {P : List Val → (AccessPerms → AccessPerms) → Prop}
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
-    (h0 : pathOffset L b f ≠ 0) (hb : LowersB L compProg b) (hcb : CompilesB L b)
-    (h_len : (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size = placeSize L (.proj b f))
+    (h0 : pathOffsetB L b f ≠ 0) (hb : LowersB L compProg b) (hcb : CompilesB L b)
+    (h_len : (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).sizeB = placeSizeB L (.proj b f))
     {ρt : TagRenameMap} {sM : mirlite.State MSB Γ} {sA : oseair.State MSB} {csA : CompilerState}
     (h_wf : TagRenameWF ρt) (h_tbd : TagRenameBounded ρt sM.perms.NextTag sA.perms.NextTag)
     (h_lbs : LocalBindingSimB L ρt sM.env sA csA) (h_prb : PlaceRegMapBoundB csA)
@@ -323,16 +323,16 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
     {resolved : PlaceRes} {permsR perms' : MSB.State}
     (h_res : mirlite.resolvePlaceAcc MSB L sM (.proj b f) = .ok (resolved, permsR))
     (h_free : ¬ sM.mem.isFreed resolved.allocBase = true)
-    (h_bnd : ¬ (resolved.addr + (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size
+    (h_bnd : ¬ (resolved.addr + (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).sizeB
         > resolved.allocBase + resolved.allocSizeB))
-    (h_rd : sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size
+    (h_rd : sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).sizeB
         resolved.tag = .ok perms')
-    (h_op : ∀ (S1 : oseair.State MSB) (reg : Register) (ext : Nat) (T : Tag) (pmid : AccessPerms),
+    (h_op : ∀ (S1 : oseair.State MSB) (reg : Register) (extB : Nat) (T : Tag) (pmid : AccessPerms),
       ByteMemSim ρt sM.mem S1.mem → ByteAllocLockstep sM.mem S1.mem →
-      S1.reg.lookup reg = some [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase) ext
+      S1.reg.lookup reg = some [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase) extB
         resolved.allocSizeB T] →
       resolved.allocBase ≤ resolved.addr →
-      sb_read S1.perms resolved.addr (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size T
+      sb_read S1.perms resolved.addr (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).sizeB T
         = .ok pmid →
       ∃ vals g, oseair.evalRhs MSB S1 (mk reg) = .Ok vals { S1 with perms := g pmid } ∧
         (∀ (p p' : AccessPerms) a n t, sb_die p a n t = .ok p' → sb_die (g p) a n t = .ok (g p')) ∧
@@ -382,7 +382,7 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
     rw [h_bval] at this
     exact (Except.ok.inj this).symm
   subst h_same
-  obtain ⟨ext, h_bentry⟩ := hB.entry
+  obtain ⟨extB, h_bentry⟩ := hB.entry
   have hA : bRes.allocBase + (bRes.addr - bRes.allocBase) = bRes.addr :=
     Nat.add_sub_cancel' hB.le
   have h_mem1 : ByteMemSim ρt sM.mem s1.mem := by rw [hB.mem]; exact h_mem
@@ -391,7 +391,7 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
     rw [h_ab] at h_free
     simp only [bytes.Mem.isFreed, ← h_lock1.2.2] at h_free ⊢
     simpa using h_free
-  have h_bnd' : bRes.addr + pathOffset L b f + placeSize L (.proj b f)
+  have h_bnd' : bRes.addr + pathOffsetB L b f + placeSizeB L (.proj b f)
       ≤ bRes.allocBase + bRes.allocSizeB := by
     rw [← h_ab, ← h_as, ← h_len]
     have := Nat.le_of_not_gt h_bnd
@@ -419,8 +419,8 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
   have h_at : ∀ k i, k < 3 →
       (emit (bumpReg (emit (bumpReg (CheckedCompilerM.run (placeToRegChecked L RefKind.Shared b) csA))
         [oseair.Instr.Assgn tmp
-          (borrowRhs RefKind.Shared (placeSize L (.proj b f)) bOut'.result.reg (pathOffset L b f))]))
-        ([oseair.Instr.Assgn ld (mk tmp)] ++ [oseair.Instr.Die tmp (placeSize L (.proj b f))])).code
+          (borrowRhs RefKind.Shared (placeSizeB L (.proj b f)) bOut'.result.reg (pathOffsetB L b f))]))
+        ([oseair.Instr.Assgn ld (mk tmp)] ++ [oseair.Instr.Die tmp (placeSizeB L (.proj b f))])).code
           (s1.pc + k) = some i →
       compProg (s1.pc + k) = some i := by
     intro k i hk hc
@@ -434,13 +434,13 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
     { s1 with
         perms := q1,
         reg := s1.reg.insert tmp
-          [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffset L b f)
-            (placeSize L (.proj b f)) bRes.allocSizeB s1.perms.NextTag],
+          [Val.Ptr bRes.allocBase (bRes.addr - bRes.allocBase + pathOffsetB L b f)
+            (placeSizeB L (.proj b f)) bRes.allocSizeB s1.perms.NextTag],
         pc := s1.pc + 1 }
   have h_le : resolved.allocBase ≤ resolved.addr := by
     rw [h_ab, h_addr]; exact Nat.le_trans hB.le (Nat.le_add_right _ _)
   have h_regS1 : S1.reg.lookup tmp = some [Val.Ptr resolved.allocBase
-      (resolved.addr - resolved.allocBase) (placeSize L (.proj b f)) resolved.allocSizeB
+      (resolved.addr - resolved.allocBase) (placeSizeB L (.proj b f)) resolved.allocSizeB
       s1.perms.NextTag] := by
     rw [h_ab, h_as, h_addr]
     show (s1.reg.insert tmp _).lookup tmp = _
@@ -486,8 +486,8 @@ theorem leaf_pkg_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.P
     {ev : (srcRes : PtrResult) → PlaceToRegEvidence L RefKind.Shared (.proj b f) srcRes →
       (dstPtr : Register) → RExprToEvidence L dstPtr rhs}
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
-    (h0 : pathOffset L b f ≠ 0) (hb : LowersB L compProg b) (hcb : CompilesB L b)
-    (h_len : (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size = placeSize L (.proj b f))
+    (h0 : pathOffsetB L b f ≠ 0) (hb : LowersB L compProg b) (hcb : CompilesB L b)
+    (h_len : (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).sizeB = placeSizeB L (.proj b f))
     (h_op : ReadOnlyOpB L dstL rhs (.proj b f) mk)
     (h_pre : compileRExprPreChecked L dstL rhs = readRhsPre L dstL rhs (.proj b f) mk (fun _ => []) ev) :
     ValuePkgB compProg L dstL rhs := by
@@ -606,19 +606,19 @@ theorem leaf_pkgL {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog} {d
     (h_core : ∀ p, LowersB L compProg p → CompilesB L p → ValuePkgB compProg L dstL (F p))
     (h_off : ∀ {ρ : LayoutTy} (b : Place Γ ρ) (f : PathTo ρ σ),
       (∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False) →
-      pathOffset L b f ≠ 0 → LowersB L compProg b → CompilesB L b →
-      (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size = placeSize L (.proj b f) →
+      pathOffsetB L b f ≠ 0 → LowersB L compProg b → CompilesB L b →
+      (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).sizeB = placeSizeB L (.proj b f) →
       ValuePkgB compProg L dstL (F (.proj b f)))
     (hWF : PtrPlacesWF L)
     (h_len : ∀ p : Place Γ σ,
-      (mirlite.leafKind (mirlite.placeLayout L p)).size = (mirlite.placeLayout L p).size)
+      (mirlite.leafKind (mirlite.placeLayout L p)).sizeB = (mirlite.placeLayout L p).sizeB)
     (src : Place Γ σ) (h : LeafSrcB src) : ValuePkgB compProg L dstL (F src) := by
   cases h with
   | chain hc => exact h_core _ (chainB_lowers hWF hc) (chainB_compilesB hc)
   | field f hb =>
       rename_i ρ b
       have h_np := ChainB.not_proj hb
-      by_cases h0 : pathOffset L b f = 0
+      by_cases h0 : pathOffsetB L b f = 0
       · exact h_core _ (proj_zero_lowers f h_np h0 (chainB_lowers hWF hb))
           (proj_zero_compiles f h_np h0 (chainB_compilesB hb))
       · exact h_off b f h_np h0 (chainB_lowers hWF hb) (chainB_compilesB hb) (h_len _)
@@ -649,7 +649,7 @@ theorem ro_pkgL {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog} {dst
     (h_leafop : ∀ p, LeafOpB L dstL (F p) p (mk p)) (h_ro : ∀ p, ReadOnlyOpB L dstL (F p) p (mk p))
     (hWF : PtrPlacesWF L)
     (h_len : ∀ p : Place Γ σ,
-      (mirlite.leafKind (mirlite.placeLayout L p)).size = (mirlite.placeLayout L p).size)
+      (mirlite.leafKind (mirlite.placeLayout L p)).sizeB = (mirlite.placeLayout L p).sizeB)
     (src : Place Γ σ) (h : LeafSrcB src) : ValuePkgB compProg L dstL (F src) :=
   leaf_pkgL F mk (fun _ => []) ev h_pre h_mk h_eval
     (fun p hl hc => leaf_pkg_core (ev := ev p) hl hc (h_leafop p) (h_pre p))
@@ -674,7 +674,7 @@ theorem ptrOffset_pkgL {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pro
     ValuePkgB compProg L dstL (RExpr.ptrOffset (τ := τ) src delta inb) :=
   ro_pkgL (fun p => RExpr.ptrOffset (τ := τ) p delta inb)
     (fun p r => oseair.Rhs.PtrOffset (mirlite.leafKind (mirlite.placeLayout L p)) r
-      (delta * ((mirlite.pointeeLayout L p).size : Int)) inb)
+      (delta * ((mirlite.pointeeLayout L p).sizeB : Int)) inb)
     (fun p srcRes evd _ => RExprToEvidence.ptrOffset p delta inb srcRes evd) (fun _ => rfl)
     (fun _ _ _ => by simp only [mirlite.pointeeLayout, placeLayout_assoc])
     (fun _ _ _ _ => by simp only [mirlite.evalRExpr, mirlite.readCell, placeLayout_assoc,

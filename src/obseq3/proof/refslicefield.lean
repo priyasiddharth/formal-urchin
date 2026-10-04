@@ -41,8 +41,8 @@ theorem refSlice_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.P
     (dstL : BLayout) (kind : RefKind) (prot : Bool) {ρ σ τ : LayoutTy} {b : Place Γ ρ}
     {f : PathTo ρ (LayoutTy.PtrL σ)}
     (h_np : ∀ (σ' : LayoutTy) (bb : Place Γ σ') (q : PathTo σ' ρ), b = bb.proj q → False)
-    (h0 : pathOffset L b f ≠ 0) (hb : LowersB L compProg b) (hcb : CompilesB L b)
-    (h_len : (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).size = placeSize L (.proj b f)) :
+    (h0 : pathOffsetB L b f ≠ 0) (hb : LowersB L compProg b) (hcb : CompilesB L b)
+    (h_len : (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).sizeB = placeSizeB L (.proj b f)) :
     ValuePkgB compProg L dstL (RExpr.refSlice (τ := τ) kind prot (.proj b f)) := by
   intro ρt sM sA csA h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc _h_unmap output h_ev
   -- the source: read the fat pointer (as `ptrCast` would), retag its extent

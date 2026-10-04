@@ -5143,3 +5143,14 @@ Later: allocation-size bug in the Vec/String shims (alloc counts pointees,
 not bytes: Vec buffers 4× and literals n² too big), caught while fixing
 stale cell-layout comments; 2 witnesses failed before the fix and pass
 after. LStmt.alloc operand is `n`. Corpus 172/0/0/20 of 192.
+Later: unit suffixes, round 2 (user: proofs and functions too). Functions:
+BLayout.sizeB/alignB, Scalar.sizeB, ptrSizeB, fieldsAlignB, fieldOffsetB,
+IntTy.sizeB (was bytes), pathOffsetB, placeSizeB; loader sizeB (was
+byteSize), fieldStepsOffsetB; theorems scalar_int_sizeB, leafLayout_sizeB,
+agrees_ptr_sizeB. Theorem binders that are byte quantities (lenB, sizeB,
+alignB, extB, offB, boffB, oB, eB, szB, nB, curB), scoped per
+declaration; step counts, register bounds, words, element counts and
+addresses unchanged. The bytelayout.lean renames of afbddf8 had been lost
+to a concurrent edit (its commit carried the user's docstrings, not the
+renames); re-applied. Enum leaf count: `longestVariant` shared by `uSize`
+and `toBLayout`. No result moved.

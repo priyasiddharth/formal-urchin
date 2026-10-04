@@ -108,17 +108,17 @@ theorem ByteMemSim.write {ρt : TagRenameMap} {mS mT : bytes.Mem}
 
 /-- A raw byte copy (`copyBytes`) keeps memories related. -/
 theorem ByteMemSim.copyBytes {ρt : TagRenameMap} {mS mT : bytes.Mem}
-    (h : ByteMemSim ρt mS mT) (dst src n : Nat) :
-    ByteMemSim ρt (mS.copyBytes dst src n) (mT.copyBytes dst src n) :=
-  h.write dst (h.read src n)
+    (h : ByteMemSim ρt mS mT) (dst src nB : Nat) :
+    ByteMemSim ρt (mS.copyBytes dst src nB) (mT.copyBytes dst src nB) :=
+  h.write dst (h.read src nB)
 
 /-- Allocation in lockstep returns the same base and keeps both relations
     (allocation does not touch the bytes). -/
 theorem ByteMemSim.allocate {ρt : TagRenameMap} {mS mT : bytes.Mem}
-    (h : ByteMemSim ρt mS mT) (hl : ByteAllocLockstep mS mT) (size align : Nat) :
-    (mT.allocate size align).1 = (mS.allocate size align).1 ∧
-    ByteMemSim ρt (mS.allocate size align).2 (mT.allocate size align).2 ∧
-    ByteAllocLockstep (mS.allocate size align).2 (mT.allocate size align).2 := by
+    (h : ByteMemSim ρt mS mT) (hl : ByteAllocLockstep mS mT) (sizeB alignB : Nat) :
+    (mT.allocate sizeB alignB).1 = (mS.allocate sizeB alignB).1 ∧
+    ByteMemSim ρt (mS.allocate sizeB alignB).2 (mT.allocate sizeB alignB).2 ∧
+    ByteAllocLockstep (mS.allocate sizeB alignB).2 (mT.allocate sizeB alignB).2 := by
   obtain ⟨ha, hn, hf⟩ := hl
   refine ⟨by simp [bytes.Mem.allocate, hn], fun x => h x, ?_⟩
   simp [ByteAllocLockstep, bytes.Mem.allocate, ha, hn, hf]
@@ -252,7 +252,7 @@ theorem decodeV_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt) (k : Scalar)
       have hlen := ListRel.length_eq h
       unfold mirlite.decodeV decodePtr
       rw [← hlen]
-      by_cases hl : bs.length = ptrSize
+      by_cases hl : bs.length = ptrSizeB
       · simp only [hl, if_true]
         cases hs : bs.mapM AbstractByte.byte? with
         | none => simp [ValSim, MemValSim]
@@ -322,7 +322,7 @@ theorem encodeAt_sim {ρt : TagRenameMap} {k : Scalar} {v w : MemValue}
 theorem readL_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt) {mS mT : bytes.Mem}
     (h : ByteMemSim ρt mS mT) (a : Nat) (lay : BLayout) :
     ListRel (ValSim ρt) (mirlite.readL mS a lay) (mirlite.readL mT a lay) :=
-  ListRel.map_of (fun ⟨o, k⟩ => decodeV_sim hwf k (h.read (a + o) k.size)) lay.leaves
+  ListRel.map_of (fun ⟨o, k⟩ => decodeV_sim hwf k (h.read (a + o) k.sizeB)) lay.leaves
 
 /-- A monadic left fold over related lists, with a step that preserves a
     relation, preserves it. -/
@@ -427,9 +427,9 @@ theorem store_step_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt)
     (hp : PermSim ρt pS pT) (hm : ByteMemSim ρt mS mT)
     {tagS tagT : Tag} (ht : ρt tagS = some tagT)
     {a : Nat} {lay : BLayout} {vs ws : List MemValue} (hv : ListRel (StoreSim ρt) vs ws)
-    (hu : sb_write pS a lay.size tagS = .ok pS')
+    (hu : sb_write pS a lay.sizeB tagS = .ok pS')
     (hw : mirlite.writeL mS a lay vs = .ok mS') :
-    ∃ pT' mT', sb_write pT a lay.size tagT = .ok pT' ∧
+    ∃ pT' mT', sb_write pT a lay.sizeB tagT = .ok pT' ∧
       mirlite.writeL mT a lay ws = .ok mT' ∧
       PermSim ρt pS' pT' ∧ ByteMemSim ρt mS' mT' := by
   obtain ⟨pT', hu', hp'⟩ := sb_write_respects_PermSim hp hwf ht hu
@@ -443,8 +443,8 @@ theorem load_step_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt)
     (hp : PermSim ρt pS pT) (hm : ByteMemSim ρt mS mT)
     {tagS tagT : Tag} (ht : ρt tagS = some tagT)
     {a : Nat} {lay : BLayout}
-    (hu : sb_read pS a lay.size tagS = .ok pS') :
-    ∃ pT', sb_read pT a lay.size tagT = .ok pT' ∧ PermSim ρt pS' pT' ∧
+    (hu : sb_read pS a lay.sizeB tagS = .ok pS') :
+    ∃ pT', sb_read pT a lay.sizeB tagT = .ok pT' ∧ PermSim ρt pS' pT' ∧
       ListRel (ValSim ρt) (mirlite.readL mS a lay) (mirlite.readL mT a lay) := by
   obtain ⟨pT', hu', hp'⟩ := sb_read_respects_PermSim hp hwf ht hu
   exact ⟨pT', hu', hp', readL_sim hwf hm a lay⟩

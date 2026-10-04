@@ -25,21 +25,21 @@ namespace obseq3.bytes
     pointer (its pointee gives the extent and the scaling of pointer
     arithmetic); `tup fs os size align` fields `fs` at offsets `os`. -/
 inductive BLayout where
-  | int (size : Nat) -- size in bytes
+  | int (sizeB : Nat)
   | ptr (pointee : BLayout)
-  | tup (fields : List BLayout) (offsets : List Nat) (size align : Nat)
+  | tup (fields : List BLayout) (offsetsB : List Nat) (sizeB alignB : Nat)
 deriving Repr, Inhabited, BEq
 
-def BLayout.size : BLayout → Nat
+def BLayout.sizeB : BLayout → Nat
   | .int n => n
-  | .ptr _ => ptrSize
+  | .ptr _ => ptrSizeB
   | .tup _ _ s _ => s
 
 /-- Alignment (x86_64: an integer is aligned to its size, u128 included
     since Rust 1.77). -/
-def BLayout.align : BLayout → Nat
+def BLayout.alignB : BLayout → Nat
   | .int n => n
-  | .ptr _ => ptrSize
+  | .ptr _ => ptrSizeB
   | .tup _ _ _ a => a
 
 mutual
@@ -56,48 +56,48 @@ end
 
 /-! ## The C layout -/
 
-/-- Place fields in order from offset `cur`, each at the next multiple of
+/-- Place fields in order from offset `curB`, each at the next multiple of
     its alignment. Returns the offsets and the end. -/
-def placeFields (cur : Nat) : List BLayout → List Nat × Nat
-  | [] => ([], cur)
+def placeFields (curB : Nat) : List BLayout → List Nat × Nat
+  | [] => ([], curB)
   | f :: fs =>
-      let o := alignUp cur f.align
-      let r := placeFields (o + f.size) fs
+      let o := alignUp curB f.alignB
+      let r := placeFields (o + f.sizeB) fs
       (o :: r.1, r.2)
 
 /-- The largest field alignment (1 for no fields). -/
-def fieldsAlign (fs : List BLayout) : Nat := fs.foldr (fun f a => max f.align a) 1
+def fieldsAlignB (fs : List BLayout) : Nat := fs.foldr (fun f a => max f.alignB a) 1
 
 /-- `repr(C)`: fields in order, each aligned, size rounded up to the
     alignment (trailing padding). -/
 def reprC (fs : List BLayout) : BLayout :=
   let r := placeFields 0 fs
-  .tup fs r.1 (alignUp r.2 (fieldsAlign fs)) (fieldsAlign fs)
+  .tup fs r.1 (alignUp r.2 (fieldsAlignB fs)) (fieldsAlignB fs)
 
-@[simp] theorem placeFields_length (cur : Nat) (fs : List BLayout) :
-    (placeFields cur fs).1.length = fs.length := by
-  induction fs generalizing cur <;> simp_all [placeFields]
+@[simp] theorem placeFields_length (curB : Nat) (fs : List BLayout) :
+    (placeFields curB fs).1.length = fs.length := by
+  induction fs generalizing curB <;> simp_all [placeFields]
 
 /-! ## Leaves are separated and in bounds -/
 
 /-- Leaf `p` ends at or before leaf `q` starts. -/
-def LeafSep (p q : Nat × Scalar) : Prop := p.1 + p.2.size ≤ q.1
+def LeafSep (p q : Nat × Scalar) : Prop := p.1 + p.2.sizeB ≤ q.1
 
 /-- A leaf list whose leaves do not overlap, come in address order, and fit
-    in `sz` bytes.
+    in `sizeB` bytes.
     This is true of scalars, pointers, and well formed tuples.
 -/
-def Good (ls : List (Nat × Scalar)) (sz : Nat) : Prop :=
-  ls.Pairwise LeafSep ∧ ∀ p ∈ ls, p.1 + p.2.size ≤ sz
+def Good (ls : List (Nat × Scalar)) (sizeB : Nat) : Prop :=
+  ls.Pairwise LeafSep ∧ ∀ p ∈ ls, p.1 + p.2.sizeB ≤ sizeB
 
 /-- `Good` is preserved under increasing the size. -/
-theorem Good.mono {ls : List (Nat × Scalar)} {sz sz' : Nat}
-    (h : Good ls sz) (hle : sz ≤ sz') : Good ls sz' :=
+theorem Good.mono {ls : List (Nat × Scalar)} {szB szB' : Nat}
+    (h : Good ls szB) (hle : szB ≤ szB') : Good ls szB' :=
   ⟨h.1, fun p hp => Nat.le_trans (h.2 p hp) hle⟩
 
 /-- `Good` is preserved under shifting all leaves by an offset. -/
-theorem Good.shift {ls : List (Nat × Scalar)} {sz : Nat} (h : Good ls sz) (o : Nat) :
-    Good (ls.map fun p => (o + p.1, p.2)) (o + sz) := by
+theorem Good.shift {ls : List (Nat × Scalar)} {szB : Nat} (h : Good ls szB) (oB : Nat) :
+    Good (ls.map fun p => (oB + p.1, p.2)) (oB + szB) := by
   refine ⟨?_, ?_⟩
   · rw [List.pairwise_map]
     exact h.1.imp fun hpq => by unfold LeafSep at *; simp only at *; omega
@@ -107,19 +107,19 @@ theorem Good.shift {ls : List (Nat × Scalar)} {sz : Nat} (h : Good ls sz) (o : 
     have := h.2 q hq
     simp only; omega
 
-theorem placeFields_good (cur : Nat) (fs : List BLayout)
-    (hfs : ∀ f ∈ fs, Good f.leaves f.size) :
-    Good (BLayout.leavesFields fs (placeFields cur fs).1) (placeFields cur fs).2 ∧
-    (∀ p ∈ BLayout.leavesFields fs (placeFields cur fs).1, cur ≤ p.1) ∧
-    cur ≤ (placeFields cur fs).2 := by
-  induction fs generalizing cur with
+theorem placeFields_good (curB : Nat) (fs : List BLayout)
+    (hfs : ∀ f ∈ fs, Good f.leaves f.sizeB) :
+    Good (BLayout.leavesFields fs (placeFields curB fs).1) (placeFields curB fs).2 ∧
+    (∀ p ∈ BLayout.leavesFields fs (placeFields curB fs).1, curB ≤ p.1) ∧
+    curB ≤ (placeFields curB fs).2 := by
+  induction fs generalizing curB with
   | nil => simp [placeFields, BLayout.leavesFields, Good]
   | cons f fs ih =>
     have hf := hfs f (by simp)
-    have hrest := ih (alignUp cur f.align + f.size) (fun g hg => hfs g (by simp [hg]))
+    have hrest := ih (alignUp curB f.alignB + f.sizeB) (fun g hg => hfs g (by simp [hg]))
     obtain ⟨⟨hpw, hin⟩, hlow, hend⟩ := hrest
-    have hsh := hf.shift (alignUp cur f.align)
-    have hcur := le_alignUp cur f.align
+    have hsh := hf.shift (alignUp curB f.alignB)
+    have hcur := le_alignUp curB f.alignB
     simp only [placeFields, BLayout.leavesFields]
     refine ⟨⟨?_, ?_⟩, ?_, ?_⟩
     · rw [List.pairwise_append]
@@ -142,8 +142,8 @@ theorem placeFields_good (cur : Nat) (fs : List BLayout)
       · have := hlow p hp; omega
     · omega
 
-theorem reprC_good (fs : List BLayout) (hfs : ∀ f ∈ fs, Good f.leaves f.size) :
-    Good (reprC fs).leaves (reprC fs).size := by
+theorem reprC_good (fs : List BLayout) (hfs : ∀ f ∈ fs, Good f.leaves f.sizeB) :
+    Good (reprC fs).leaves (reprC fs).sizeB := by
   have := (placeFields_good 0 fs hfs).1
   exact this.mono (le_alignUp _ _)
 
@@ -155,7 +155,7 @@ mutual
     pointer, a tuple the C layout of its fields. The loader's layouts give
     integers their real width instead (`Agrees` checks it). -/
 def ofLayoutTy : LayoutTy → BLayout
-  | .IntL _ => .int ptrSize
+  | .IntL _ => .int ptrSizeB
   | .PtrL τ => .ptr (ofLayoutTy τ)
   | .TupL ts => reprC (ofLayoutTyList ts)
 
@@ -166,17 +166,17 @@ end
 
 mutual
 theorem ofLayoutTy_good : (τ : LayoutTy) →
-    Good (ofLayoutTy τ).leaves (ofLayoutTy τ).size
+    Good (ofLayoutTy τ).leaves (ofLayoutTy τ).sizeB
   | .IntL _ => by
-      simp [ofLayoutTy, BLayout.leaves, BLayout.size, Good, Scalar.size]
+      simp [ofLayoutTy, BLayout.leaves, BLayout.sizeB, Good, Scalar.sizeB]
   | .PtrL _ => by
-      simp [ofLayoutTy, BLayout.leaves, BLayout.size, Good, Scalar.size]
+      simp [ofLayoutTy, BLayout.leaves, BLayout.sizeB, Good, Scalar.sizeB]
   | .TupL ts => by
       rw [ofLayoutTy]
       exact reprC_good _ (ofLayoutTyList_good ts)
 
 theorem ofLayoutTyList_good : (ts : List LayoutTy) →
-    ∀ f ∈ ofLayoutTyList ts, Good f.leaves f.size
+    ∀ f ∈ ofLayoutTyList ts, Good f.leaves f.sizeB
   | [] => by simp [ofLayoutTyList]
   | t :: ts => by
       intro f hf
@@ -210,7 +210,7 @@ def Mem.storeL (m : Mem) (a : Nat) (L : BLayout) (vs : List SVal) : Option Mem :
 theorem Mem.storeLeaves_frame {m m' : Mem} {a : Nat} {ls : List (Nat × Scalar)}
     {vs : List SVal} {x : Nat} {t : Scalar}
     (h : m.storeLeaves a ls vs = some m')
-    (hd : ∀ p ∈ ls, x + t.size ≤ a + p.1 ∨ a + p.1 + p.2.size ≤ x) :
+    (hd : ∀ p ∈ ls, x + t.sizeB ≤ a + p.1 ∨ a + p.1 + p.2.sizeB ≤ x) :
     m'.load x t = m.load x t := by
   induction ls generalizing m vs with
   | nil => cases vs <;> simp [Mem.storeLeaves] at h; subst h; rfl
@@ -246,7 +246,7 @@ theorem Mem.loadLeaves_storeLeaves {m m' : Mem} {a : Nat} {ls : List (Nat × Sca
       rw [hhead, hrest]; rfl
 
 theorem Mem.loadL_storeL {m m' : Mem} {a : Nat} {L : BLayout} {vs : List SVal}
-    (hL : Good L.leaves L.size) (h : m.storeL a L vs = some m') :
+    (hL : Good L.leaves L.sizeB) (h : m.storeL a L vs = some m') :
     m'.loadL a L = some vs :=
   Mem.loadLeaves_storeLeaves hL.1 h
 

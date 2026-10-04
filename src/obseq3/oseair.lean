@@ -96,11 +96,11 @@ def readCellThrough (M : PermissionModel) (state : State M) (reg : Register) (k 
   | some [Val.Ptr base offset _ size tag] =>
       let addr := base + offset
       if state.mem.isFreed base then .error freedMsg
-      else if addr + k.size > base + size then .error "OOB"
+      else if addr + k.sizeB > base + size then .error "OOB"
       else
-        match M.read state.perms addr k.size tag with
+        match M.read state.perms addr k.sizeB tag with
         | .error msg => .error msg
-        | .ok perms2 => .ok (ofMem (decodeV k (state.mem.read addr k.size)), perms2)
+        | .ok perms2 => .ok (ofMem (decodeV k (state.mem.read addr k.sizeB)), perms2)
   | _ => .error "expects a pointer register"
 
 def evalRhs (M : PermissionModel) (state : State M) (rhs : Rhs) : RhsResult M :=
@@ -110,20 +110,20 @@ def evalRhs (M : PermissionModel) (state : State M) (rhs : Rhs) : RhsResult M :=
      | some [Val.Ptr base offset _ size tag] =>
        let addr := base + offset
        if state.mem.isFreed base then RhsResult.Err freedMsg
-       else if addr + lay.size > base + size then RhsResult.Err "OOB"
+       else if addr + lay.sizeB > base + size then RhsResult.Err "OOB"
        else
-         match M.read state.perms addr lay.size tag with
+         match M.read state.perms addr lay.sizeB tag with
          | .ok perms2 =>
            let vals := (readL state.mem addr lay).map ofMem
            if vals.any (fun v => v == Val.Undef) then RhsResult.Err "read of uninitialized memory"
            else RhsResult.Ok vals { state with perms := perms2 }
          | .error msg => RhsResult.Err msg
      | _ => RhsResult.Err "Load expects Ptr"
-  | .Alloc lay => allocPtr M state lay.size lay.align
-  | .AllocN lay n => allocPtr M state (n * lay.size) lay.align
+  | .Alloc lay => allocPtr M state lay.sizeB lay.alignB
+  | .AllocN lay n => allocPtr M state (n * lay.sizeB) lay.alignB
   | .AllocDyn lay lenReg =>
      match state.reg.lookup lenReg with
-     | some [Val.Dat n] => allocPtr M state (n * lay.size) lay.align
+     | some [Val.Dat n] => allocPtr M state (n * lay.sizeB) lay.alignB
      | _ => RhsResult.Err "AllocDyn expects a concrete word"
   | .ExposeAddr k srcPtr =>
      match readCellThrough M state srcPtr k with
@@ -199,9 +199,9 @@ def writeThroughPtr (M : PermissionModel) (state : State M) (ptr : Register)
   | some [Val.Ptr base offset _ size tag] =>
      let addr := base + offset
      if state.mem.isFreed base then Result.Err freedMsg
-     else if addr + lay.size > base + size then Result.Err "write out of bounds"
+     else if addr + lay.sizeB > base + size then Result.Err "write out of bounds"
      else
-       match M.useMut state.perms addr lay.size tag with
+       match M.useMut state.perms addr lay.sizeB tag with
        | .ok perms2 =>
           match writeL state.mem addr lay (vals.map oseair.Val.toMem) with
           | .ok mem2 => Result.Ok { state with perms := perms2, mem := mem2, pc := state.pc + 1 }

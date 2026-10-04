@@ -133,18 +133,18 @@ theorem freshroot_prologue {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenameMa
   simp only [mirlite.Result.ok.injEq] at h_alloc
   subst h_alloc
   obtain ⟨h_base, h_memA, h_lockA⟩ := ByteMemSim.allocate h_inv.mem h_inv.alloc
-    (L loc.idx).size (max 1 (L loc.idx).align)
+    (L loc.idx).sizeB (max 1 (L loc.idx).alignB)
   obtain ⟨tgt', h_own_t, h_tag, h_incr, h_wf', h_tbd', h_psim'⟩ :=
     sb_own_respects_PermSim h_inv.psim h_inv.wf_t h_inv.tbd hown
   subst h_tag
   have h_w : wildcardTag < s_mir.perms.NextTag := (h_inv.tbd _ _ h_inv.wf_t.2).1
   refine ⟨ρt.extend s_mir.perms.NextTag s_osea.perms.NextTag,
     { s_osea with
-        mem := (s_osea.mem.allocate (L loc.idx).size (max 1 (L loc.idx).align)).2,
+        mem := (s_osea.mem.allocate (L loc.idx).sizeB (max 1 (L loc.idx).alignB)).2,
         perms := tgt',
         reg := s_osea.reg.insert (Register.R cs.nextReg)
-          [Val.Ptr (s_mir.mem.allocate (L loc.idx).size (max 1 (L loc.idx).align)).1 0
-            (L loc.idx).size (L loc.idx).size s_osea.perms.NextTag],
+          [Val.Ptr (s_mir.mem.allocate (L loc.idx).sizeB (max 1 (L loc.idx).alignB)).1 0
+            (L loc.idx).sizeB (L loc.idx).sizeB s_osea.perms.NextTag],
         pc := s_osea.pc + 1 }, h_incr, ?_, ?_, ?_⟩
   · simp only [oseair.runN, oseair.step, h_code, oseair.evalRhs, oseair.allocPtr, h_base,
       PermissionModel.stackedBorrows, h_own_t]
@@ -163,7 +163,7 @@ theorem freshroot_prologue {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenameMa
           simp only [Option.some.injEq] at h'
           subst h'
           refine ⟨Register.R cs.nextReg, s_osea.perms.NextTag,
-            getPlaceInfo_freshRoot_self cs loc', ⟨(L loc'.idx).size, ?_⟩,
+            getPlaceInfo_freshRoot_self cs loc', ⟨(L loc'.idx).sizeB, ?_⟩,
             TagRenameMap.extend_self _ _ _, ?_⟩
           · exact RegMap.lookup_insert_self _ _ _
           · simp only [beq_eq_false_iff_ne]; exact (Nat.ne_of_lt h_w).symm

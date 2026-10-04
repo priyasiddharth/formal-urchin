@@ -15,7 +15,7 @@ namespace obseq3.bytes
 
 mutual
 def Agrees : LayoutTy → BLayout → Bool
-  | .IntL t, .int n => n == t.bytes
+  | .IntL t, .int n => n == t.sizeB
   | .PtrL τ, .ptr q => Agrees τ q
   | .TupL ts, .tup fs _ _ _ => AgreesList ts fs
   | _, _ => false

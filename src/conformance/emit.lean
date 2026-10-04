@@ -288,13 +288,11 @@ partial def toBLayout : UTy → obseq3.bytes.BLayout
       -- rustc's own layout (Charon): `repr(Rust)` fields reordered/packed
       .tup (tys.map toBLayout) l.offsetsB l.sizeB (max 1 l.alignB)
   | .tup tys | .structT tys none => obseq3.bytes.reprC (tys.map toBLayout)
-  | .enum vs =>
-      let longest := vs.foldl (fun a f => if f.length > a.length then f else a) []
-      obseq3.bytes.reprC (.int 8 :: longest.map toBLayout)
+  | .enum vs => obseq3.bytes.reprC (.int 8 :: (longestVariant vs).map toBLayout)
   | .unsupported _ => .int 8
 
 /-- A type's size in BYTES (`size_of`, `Layout::new`, `Layout::for_value`). -/
-def byteSize (t : UTy) : Nat := (toBLayout t).size
+def sizeB (t : UTy) : Nat := (toBLayout t).sizeB
 
 /-- Drop the value at `p`, as far as Boxes and Vecs go: a Box drops its contents and
     then frees its allocation through its own pointer (std's
@@ -349,7 +347,7 @@ partial def emitDropGlue (st : LowerSt) (line : Nat) (p : UPlace) : Except Strin
       let tmp : UPlace := { root := .local t, projs := [], ty := .ref true (.vecT elem) }
       let st := pushOut st (.pushProt line)
       let st := pushOut st (.assign tmp (.ref .mut true p) line)
-      let st := if cap.toNat * byteSize elem == 0 then st
+      let st := if cap.toNat * sizeB elem == 0 then st
         else pushOut st (.dealloc { fld (pointee tmp) 0 with ty := .raw true elem } line)
       return markMoved (pushOut st (.popProt line)) p
   | .enum _ => .error s!"unsupported: drop of an enum holding a Box (line {line})"
@@ -357,15 +355,15 @@ partial def emitDropGlue (st : LowerSt) (line : Nat) (p : UPlace) : Except Strin
 
 /-- The byte offset of the field path `steps` in a value of type `t`, at
     the offsets `toBLayout` gives (cells are transparent). -/
-partial def fieldStepsOffset (t : UTy) : List Nat → Option Nat
+partial def fieldStepsOffsetB (t : UTy) : List Nat → Option Nat
   | [] => some 0
   | i :: rest =>
       match t, toBLayout t with
-      | .cell u, _ => fieldStepsOffset u (i :: rest)
+      | .cell u, _ => fieldStepsOffsetB u (i :: rest)
       | .tup tys, .tup _ offs _ _ | .structT tys _, .tup _ offs _ _ => do
           let o ← offs[i]?
           let f ← tys[i]?
-          let r ← fieldStepsOffset f rest
+          let r ← fieldStepsOffsetB f rest
           pure (o + r)
       | _, _ => none
 
@@ -726,7 +724,7 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
       -- offset, retyped by the store into `dst`
       match p.ty with
       | .raw m inner =>
-          let some k := fieldStepsOffset inner steps
+          let some k := fieldStepsOffsetB inner steps
             | .error s!"unsupported: raw field path {steps} (line {line})"
           if k == 0 then emitAssign st line dst (.use (.copy p)) else
           let bty := UTy.raw m (.int { bits := 8 })

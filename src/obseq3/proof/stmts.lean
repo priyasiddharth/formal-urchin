@@ -91,18 +91,18 @@ theorem popProt_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenameMap}
 /-! ## `dealloc` -/
 
 theorem ByteMemSim.free {ρt : TagRenameMap} {mS mT : bytes.Mem}
-    (h : ByteMemSim ρt mS mT) (base size : Nat) :
-    ByteMemSim ρt { mS.write base (List.replicate size .uninit) with
-                      freed := base :: (mS.write base (List.replicate size .uninit)).freed }
-                  { mT.write base (List.replicate size .uninit) with
-                      freed := base :: (mT.write base (List.replicate size .uninit)).freed } :=
-  h.write base (ListRel.replicate (R := ByteSim ρt) (a := .uninit) (b := .uninit) trivial size)
+    (h : ByteMemSim ρt mS mT) (base sizeB : Nat) :
+    ByteMemSim ρt { mS.write base (List.replicate sizeB .uninit) with
+                      freed := base :: (mS.write base (List.replicate sizeB .uninit)).freed }
+                  { mT.write base (List.replicate sizeB .uninit) with
+                      freed := base :: (mT.write base (List.replicate sizeB .uninit)).freed } :=
+  h.write base (ListRel.replicate (R := ByteSim ρt) (a := .uninit) (b := .uninit) trivial sizeB)
 
-theorem ByteAllocLockstep.free {mS mT : bytes.Mem} (h : ByteAllocLockstep mS mT) (base size : Nat) :
-    ByteAllocLockstep { mS.write base (List.replicate size .uninit) with
-                          freed := base :: (mS.write base (List.replicate size .uninit)).freed }
-                      { mT.write base (List.replicate size .uninit) with
-                          freed := base :: (mT.write base (List.replicate size .uninit)).freed } := by
+theorem ByteAllocLockstep.free {mS mT : bytes.Mem} (h : ByteAllocLockstep mS mT) (base sizeB : Nat) :
+    ByteAllocLockstep { mS.write base (List.replicate sizeB .uninit) with
+                          freed := base :: (mS.write base (List.replicate sizeB .uninit)).freed }
+                      { mT.write base (List.replicate sizeB .uninit) with
+                          freed := base :: (mT.write base (List.replicate sizeB .uninit)).freed } := by
   obtain ⟨h1, h2, h3⟩ := h
   exact ⟨h1, h2, by simp only [bytes.Mem.write]; rw [h3]⟩
 

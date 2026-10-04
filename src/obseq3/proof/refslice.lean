@@ -107,7 +107,7 @@ theorem refSlice_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
   -- §1 Load the fat pointer
   obtain ⟨p2, h_rd', h_psim2⟩ := sb_read_respects_PermSim hS.psim h_wf hS.rt h_rd
   have h_vs := decodeV_sim h_wf (mirlite.leafKind (mirlite.placeLayout L src))
-    (h_mem1.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).size)
+    (h_mem1.read resolved.addr (mirlite.leafKind (mirlite.placeLayout L src)).sizeB)
   rw [← h_v] at h_vs
   obtain ⟨t', h_w, h_t⟩ := valSim_ptr h_vs
   have hA : resolved.allocBase + (resolved.addr - resolved.allocBase) = resolved.addr :=
@@ -125,7 +125,7 @@ theorem refSlice_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
     (by
       simp only [PermissionModel.stackedBorrows] at h_rd'
       simp only [oseair.evalRhs, h_entry, hA, h_freeT, Bool.false_eq_true, if_false,
-        leafLayout_size, h_bnd, PermissionModel.stackedBorrows, h_rd', readL_leafLayout,
+        leafLayout_sizeB, h_bnd, PermissionModel.stackedBorrows, h_rd', readL_leafLayout,
         List.map_cons, List.map_nil, h_w, oseair.ofMem]
       rfl)
   -- §2 retag the extent through the temporary

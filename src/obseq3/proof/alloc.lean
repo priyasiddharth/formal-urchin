@@ -17,22 +17,22 @@ open obseq3.oseair (Val Register)
 open obseq3.compile
 
 theorem allocPtr_sim {ρt : TagRenameMap} (hwf : TagRenameWF ρt) {pS pS' : AccessPerms}
-    {s : oseair.State MSB} {mS : bytes.Mem} {size align : Nat} {tag : Tag}
+    {s : oseair.State MSB} {mS : bytes.Mem} {sizeB alignB : Nat} {tag : Tag}
     (h_psim : PermSim ρt pS s.perms) (h_tbd : TagRenameBounded ρt pS.NextTag s.perms.NextTag)
     (h_mem : ByteMemSim ρt mS s.mem) (h_lock : ByteAllocLockstep mS s.mem)
-    (h_own : sb_own pS (mS.allocate size (max 1 align)).1 size = .ok (pS', tag)) :
-    ∃ tgt', oseair.allocPtr MSB s size align
-        = .Ok [Val.Ptr (mS.allocate size (max 1 align)).1 0 size size s.perms.NextTag]
-          { s with mem := (s.mem.allocate size (max 1 align)).2, perms := tgt' } ∧
+    (h_own : sb_own pS (mS.allocate sizeB (max 1 alignB)).1 sizeB = .ok (pS', tag)) :
+    ∃ tgt', oseair.allocPtr MSB s sizeB alignB
+        = .Ok [Val.Ptr (mS.allocate sizeB (max 1 alignB)).1 0 sizeB sizeB s.perms.NextTag]
+          { s with mem := (s.mem.allocate sizeB (max 1 alignB)).2, perms := tgt' } ∧
       tag = pS.NextTag ∧
       TagRenameIncr ρt (ρt.extend pS.NextTag s.perms.NextTag) ∧
       TagRenameWF (ρt.extend pS.NextTag s.perms.NextTag) ∧
       TagRenameBounded (ρt.extend pS.NextTag s.perms.NextTag) pS'.NextTag tgt'.NextTag ∧
       PermSim (ρt.extend pS.NextTag s.perms.NextTag) pS' tgt' ∧
-      ByteMemSim (ρt.extend pS.NextTag s.perms.NextTag) (mS.allocate size (max 1 align)).2
-        (s.mem.allocate size (max 1 align)).2 ∧
-      ByteAllocLockstep (mS.allocate size (max 1 align)).2 (s.mem.allocate size (max 1 align)).2 := by
-  obtain ⟨h_base, h_memA, h_lockA⟩ := ByteMemSim.allocate h_mem h_lock size (max 1 align)
+      ByteMemSim (ρt.extend pS.NextTag s.perms.NextTag) (mS.allocate sizeB (max 1 alignB)).2
+        (s.mem.allocate sizeB (max 1 alignB)).2 ∧
+      ByteAllocLockstep (mS.allocate sizeB (max 1 alignB)).2 (s.mem.allocate sizeB (max 1 alignB)).2 := by
+  obtain ⟨h_base, h_memA, h_lockA⟩ := ByteMemSim.allocate h_mem h_lock sizeB (max 1 alignB)
   obtain ⟨tgt', h_own_t, h_tag, h_incr, h_wf', h_tbd', h_psim'⟩ :=
     sb_own_respects_PermSim h_psim hwf h_tbd h_own
   refine ⟨tgt', ?_, h_tag, h_incr, h_wf', h_tbd', h_psim', ByteMemSim.rename_mono h_incr h_memA,
@@ -79,14 +79,14 @@ theorem alloc_const_pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
     · simp [emit]
     · simp [emit]
   have h_run1 := runN_Assgn (s' := { sA with
-      mem := (sA.mem.allocate (n * (mirlite.allocPointee dstL σ).size)
-        (max 1 (mirlite.allocPointee dstL σ).align)).2, perms := tgt' }) h_instr h_ap
+      mem := (sA.mem.allocate (n * (mirlite.allocPointee dstL σ).sizeB)
+        (max 1 (mirlite.allocPointee dstL σ).alignB)).2, perms := tgt' }) h_instr h_ap
   refine ⟨ρt.extend sM.perms.NextTag sA.perms.NextTag, 1, _,
-    (sM.mem.allocate (n * (mirlite.allocPointee dstL σ).size)
-      (max 1 (mirlite.allocPointee dstL σ).align)).2, perms',
-    [Val.Ptr (sM.mem.allocate (n * (mirlite.allocPointee dstL σ).size)
-      (max 1 (mirlite.allocPointee dstL σ).align)).1 0 (n * (mirlite.allocPointee dstL σ).size)
-      (n * (mirlite.allocPointee dstL σ).size) sA.perms.NextTag], h_incr, h_wf', rfl,
+    (sM.mem.allocate (n * (mirlite.allocPointee dstL σ).sizeB)
+      (max 1 (mirlite.allocPointee dstL σ).alignB)).2, perms',
+    [Val.Ptr (sM.mem.allocate (n * (mirlite.allocPointee dstL σ).sizeB)
+      (max 1 (mirlite.allocPointee dstL σ).alignB)).1 0 (n * (mirlite.allocPointee dstL σ).sizeB)
+      (n * (mirlite.allocPointee dstL σ).sizeB) sA.perms.NextTag], h_incr, h_wf', rfl,
     h_run1, ?_, ?_, h_psim', h_tbd', h_mem', h_lock', ?_, ?_, ?_⟩
   · show csA.nextReg ≤ csA.nextReg + 1
     omega
@@ -183,15 +183,15 @@ theorem alloc_dyn_pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
     · simp [emit]
     · simp [emit]
   have h_run2 := runN_Assgn (s' := { s1 with
-      mem := (s1.mem.allocate (n * (mirlite.allocPointee dstL σ).size)
-        (max 1 (mirlite.allocPointee dstL σ).align)).2, perms := tgt' }) h_instr
+      mem := (s1.mem.allocate (n * (mirlite.allocPointee dstL σ).sizeB)
+        (max 1 (mirlite.allocPointee dstL σ).alignB)).2, perms := tgt' }) h_instr
     (by simp only [oseair.evalRhs, h_r1]; exact h_ap)
   refine ⟨ρt.extend out1.state.perms.NextTag s1.perms.NextTag, n1 + 1, _,
-    (sM.mem.allocate (n * (mirlite.allocPointee dstL σ).size)
-      (max 1 (mirlite.allocPointee dstL σ).align)).2, perms',
-    [Val.Ptr (sM.mem.allocate (n * (mirlite.allocPointee dstL σ).size)
-      (max 1 (mirlite.allocPointee dstL σ).align)).1 0 (n * (mirlite.allocPointee dstL σ).size)
-      (n * (mirlite.allocPointee dstL σ).size) s1.perms.NextTag], h_incr, h_wf',
+    (sM.mem.allocate (n * (mirlite.allocPointee dstL σ).sizeB)
+      (max 1 (mirlite.allocPointee dstL σ).alignB)).2, perms',
+    [Val.Ptr (sM.mem.allocate (n * (mirlite.allocPointee dstL σ).sizeB)
+      (max 1 (mirlite.allocPointee dstL σ).alignB)).1 0 (n * (mirlite.allocPointee dstL σ).sizeB)
+      (n * (mirlite.allocPointee dstL σ).sizeB) s1.perms.NextTag], h_incr, h_wf',
     by rw [h_st1], runN_trans h_run1 h_run2, ?_, ?_, h_psim', h_tbd', h_mem', h_lock', ?_, ?_, ?_⟩
   · show csA.nextReg ≤ _ + 1
     have := (CheckedCompilerM.incr (readToReg L p) csA).nextReg_le

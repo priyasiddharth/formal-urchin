@@ -9,7 +9,7 @@ The invariant `InvAtB` relates the two machines' memories by the per-byte
 relation of `memsim.lean` (`ByteMemSim ρt`, `ByteAllocLockstep`):
 addresses are not renamed, since both machines allocate in lockstep. A
 bound local's register holds a pointer to the local's whole block at its
-byte size `(L loc.idx).size`. The permission half is `PermSim` under the
+byte size `(L loc.idx).sizeB`. The permission half is `PermSim` under the
 tag renaming (`TagRenameWF`, `TagRenameBounded`); the compiler-state
 half is about `compile.CompilerState`.
 
@@ -31,11 +31,11 @@ open obseq3.compile
 
 /-! ## The byte invariant -/
 
-/-- Register `reg` holds a pointer to `[base, base + size)` at offset 0
+/-- Register `reg` holds a pointer to `[base, base + sizeB)` at offset 0
     with tag `tag` (some extent). -/
-def PtrRegEntry (regMap : oseair.RegMap) (reg : Register) (base size : Nat) (tag : Tag) :
+def PtrRegEntry (regMap : oseair.RegMap) (reg : Register) (base sizeB : Nat) (tag : Tag) :
     Prop :=
-  ∃ extent, regMap.lookup reg = some [Val.Ptr base 0 extent size tag]
+  ∃ extent, regMap.lookup reg = some [Val.Ptr base 0 extent sizeB tag]
 
 /-- Bound locals: the compiler mapped the local to a register that holds
     a pointer to the local's block (same address, byte size, renamed
@@ -46,7 +46,7 @@ def LocalBindingSimB {Γ : Ctx} (L : mirlite.LayEnv Γ) (ρt : TagRenameMap)
     env.lookup loc = some binding →
     ∃ reg tag,
       getPlaceInfo cs loc.idx.1 = some (reg, τ) ∧
-      PtrRegEntry s_osea.reg reg binding.addr (L loc.idx).size tag ∧
+      PtrRegEntry s_osea.reg reg binding.addr (L loc.idx).sizeB tag ∧
       ρt binding.tag = some tag ∧
       (binding.tag == wildcardTag) = false
 

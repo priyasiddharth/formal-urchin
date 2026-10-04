@@ -17,7 +17,7 @@ def u64 : IntTy := ⟨64, false⟩
 def modulus (t : IntTy) : Nat := 2 ^ t.bits
 
 /-- The width in bytes (at least one: `bool` is a byte). -/
-def bytes (t : IntTy) : Nat := max 1 (t.bits / 8)
+def sizeB (t : IntTy) : Nat := max 1 (t.bits / 8)
 
 /-- The mathematical value of a bit pattern. -/
 def toInt (t : IntTy) (w : Word) : Int :=

@@ -85,19 +85,22 @@ partial def containsRefTy : UTy → Bool
   | .cell t => containsRefTy t
   | _ => false  -- a raw pointer is not retagged, whatever it points to
 
+/-- The variant an enum value is laid out as: the one with the most
+    fields (`toBLayout`, `uSize`; `elab.toLayout` requires every other
+    variant's fields to be a prefix of it). -/
+def longestVariant (vs : List (List UTy)) : List UTy :=
+  vs.foldl (fun a f => if f.length > a.length then f else a) []
+
 /-- Leaf count of a type: one per scalar (integer or pointer) of its byte
     layout, i.e. `(toBLayout t).leaves.length` (`emit.lean`) — the length
-    of its `freezeMask`. For an enum: the tag plus the most leaves of any
-    variant (`toBLayout` lays out the variant with the most FIELDS; the
-    two agree unless that variant has fewer leaves than another). -/
+    of its `freezeMask`. An enum: the tag and `longestVariant`'s leaves. -/
 partial def uSize : UTy → Nat
   | .nat | .int _ | .ref _ _ | .raw _ _ | .slice _ _ _ | .boxT _ => 1
   | .sliceData _ => 0
   | .vecT _ => 3
   | .cell inner => uSize inner
   | .tup tys | .structT tys _ => (tys.map uSize).foldl (· + ·) 0
-  | .enum variants =>
-      1 + (variants.map (fun fs => (fs.map uSize).foldl (· + ·) 0)).foldl Nat.max 0
+  | .enum variants => 1 + ((longestVariant variants).map uSize).foldl (· + ·) 0
   | .unsupported _ => 1
 
 /-- Is there an interior-mutable region in the value itself (not behind a

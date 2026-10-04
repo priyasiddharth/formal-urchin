@@ -67,25 +67,25 @@ theorem placeLayout_agrees {Γ : Ctx} {L : mirlite.LayEnv Γ} (hL : LocalsAgree 
         | int _ => rw [h] at ih; simp [Agrees] at ih
         | tup _ _ _ _ => rw [h] at ih; simp [Agrees] at ih
 
-theorem agrees_ptr_size {τ : LayoutTy} {l : BLayout} (h : Agrees (.PtrL τ) l = true) :
-    l.size = ptrSize ∧ (mirlite.leafKind l).size = l.size := by
+theorem agrees_ptr_sizeB {τ : LayoutTy} {l : BLayout} (h : Agrees (.PtrL τ) l = true) :
+    l.sizeB = ptrSizeB ∧ (mirlite.leafKind l).sizeB = l.sizeB := by
   cases l with
   | ptr q => exact ⟨rfl, rfl⟩
   | int _ => simp [Agrees] at h
   | tup _ _ _ _ => simp [Agrees] at h
 
 theorem agrees_nat_leaf {t : IntTy} {l : BLayout} (h : Agrees (.IntL t) l = true) :
-    (mirlite.leafKind l).size = l.size := by
+    (mirlite.leafKind l).sizeB = l.sizeB := by
   cases l with
   | int n => rfl
   | ptr _ => simp [Agrees] at h
   | tup _ _ _ _ => simp [Agrees] at h
 
 theorem LocalsAgree.ptrWF {Γ : Ctx} {L : mirlite.LayEnv Γ} (hL : LocalsAgree L) :
-    PtrPlacesWF L := fun p => (agrees_ptr_size (placeLayout_agrees hL p)).1
+    PtrPlacesWF L := fun p => (agrees_ptr_sizeB (placeLayout_agrees hL p)).1
 
 theorem LocalsAgree.leafWF {Γ : Ctx} {L : mirlite.LayEnv Γ} (hL : LocalsAgree L) : LeafWF L :=
-  ⟨fun p => (agrees_ptr_size (placeLayout_agrees hL p)).2,
+  ⟨fun p => (agrees_ptr_sizeB (placeLayout_agrees hL p)).2,
    fun p => agrees_nat_leaf (placeLayout_agrees hL p)⟩
 
 /-- **Compiler correctness, for layouts of their types' shape.**

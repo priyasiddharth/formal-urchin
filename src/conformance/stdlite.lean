@@ -47,7 +47,7 @@ def layoutForValue : Shim := fun st args dest line => do
   match args with
   | [.copy p] | [.move p] =>
       let sz := match p.ty with
-        | .ref _ i | .raw _ i => byteSize i
+        | .ref _ i | .raw _ i => sizeB i
         | _ => 8
       emitAssign st line dest (.use (.const sz))
   | _ => .error s!"unsupported: for_value argument is not a place (line {line})"
@@ -597,14 +597,14 @@ def cellGetMut : Shim := fun st args dest line => do
     as its size, as in `layoutForValue`); `T` is the call's instantiation. -/
 def layoutNew (tyArgs : List UTy) : Shim := fun st _args dest line => do
   match tyArgs with
-  | [t] => emitAssign st line dest (.use (.const (byteSize t)))
+  | [t] => emitAssign st line dest (.use (.const (sizeB t)))
   | _ => .error s!"unsupported: Layout::new instantiation {reprStr tyArgs} (line {line})"
 
 /-- `mem::size_of::<T>()`: `T`'s size in BYTES, as Rust reports it (for a
     C-layout aggregate). -/
 def sizeOf (tyArgs : List UTy) : Shim := fun st _args dest line => do
   match tyArgs with
-  | [t] => emitAssign st line dest (.use (.const (byteSize t)))
+  | [t] => emitAssign st line dest (.use (.const (sizeB t)))
   | _ => .error s!"unsupported: size_of instantiation {reprStr tyArgs} (line {line})"
 
 /-! ## Vec
@@ -654,7 +654,7 @@ def vecNew : Shim := fun st args dest line => do
   let e ← match dest.ty, args with
     | .vecT e, [] => pure e
     | t, _ => throw s!"unsupported: Vec::new into {reprStr t} (line {line})"
-  let st ← withoutProvenance st [.const (toBLayout e).align] (vecPtrF dest e) line
+  let st ← withoutProvenance st [.const (toBLayout e).alignB] (vecPtrF dest e) line
   let st ← emitAssign st line (vecCapF dest) (.use (.const 0))
   emitAssign st line (vecLenF dest) (.use (.const 0))
 
@@ -687,7 +687,7 @@ def vecAsPtr : Shim := fun st args dest line => do
     one), deallocate through the stored pointer. -/
 def vecGrow (st : LowerSt) (line : Nat) (h : UPlace) (e : UTy) (cap need : Nat) :
     Except String LowerSt := do
-  let sz := byteSize e
+  let sz := sizeB e
   let minCap := if sz == 1 then 8 else if sz ≤ 1024 then 4 else 1
   let newCap := max (max (cap * 2) need) minCap
   let (st, np) := freshLocal st (.raw true e)
@@ -713,7 +713,7 @@ def vecPush : Shim := fun st args _dest line => do
   | [recv, valOp] =>
       let st := pushOut st (.pushProt line)
       let (st, h, e) ← vecEntry st line recv "Vec::push"
-      if containsRefTy e || byteSize e == 0 then
+      if containsRefTy e || sizeB e == 0 then
         throw s!"unsupported: Vec::push of {reprStr e} (line {line})"
       let some len := constOfPlace st (vecLenF h)
         | throw s!"unsupported: Vec::push with a runtime length (line {line})"
