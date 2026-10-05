@@ -9,6 +9,7 @@ import obseq3.permission
 import obseq3.values
 import obseq3.mirlite
 import obseq3.oseair
+import obseq3.brackets
 import obseq3.compile
 import obseq3.tests
 import obseq3.compile_tests

@@ -1,4 +1,5 @@
 import obseq3.compile
+import obseq3.brackets
 import obseq3.tests
 
 /-!
@@ -296,6 +297,12 @@ def expectDiff (Γ : Ctx) (prog : Prog Γ) (expected : DiffOut) (label : String)
   | .ok tgt =>
       assert (tgt == expected)
         s!"{label}: target verdict {reprStr tgt}, expected {reprStr expected} (source agrees)"
+  -- the compiled code's `Die`s close route brackets (`oseair.bracketIssues`)
+  match codeList Γ prog with
+  | .error e => throw (IO.userError s!"{label}: compile error: {reprStr e}")
+  | .ok code =>
+      let issues := oseair.bracketIssues code
+      assert issues.isEmpty s!"{label}: route brackets: {issues}"
   -- OSEA-IR_B (`Die` elided) must reach the same verdict. The theorem
   -- (`proof.die_elision`) only gives ok ⇒ ok; equality on the UB tests
   -- holds because compiled code never accesses through a died tag

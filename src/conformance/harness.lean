@@ -1,5 +1,6 @@
 import conformance.elab
 import obseq3.compile
+import obseq3.brackets
 import obseq3.mirlite
 import obseq3.layout_agree
 
@@ -241,9 +242,10 @@ inductive OseaRun
 
 inductive OseaStatus
 | skipped (reason : String)
-| matched
+| matched (dies : Nat)
 | mismatch (why : String)
 | mismatchB (why : String)
+| brackets (issues : List String)
 deriving Repr
 
 /-- The compiled program on its target (`oseair.lean`) under permission
@@ -286,11 +288,11 @@ def oseaStatus (l : Loaded) (src : Verdict) : OseaStatus :=
       let runA := runOseaProgL M tprog fuel
       let runB := runOseaProgL PermissionModel.stackedBorrowsNoDie tprog fuel
       let st : OseaStatus := match runA, src, src.stmt? with
-      | .ok, .ok, _ => .matched
+      | .ok, .ok, _ => .matched 0
       | .ub label msg, _, some srcIdx =>
           match ranges.findIdx? (fun r => r.1 ≤ label && label < r.2) with
           | some i =>
-              if i == srcIdx then .matched
+              if i == srcIdx then .matched 0
               else .mismatch
                 s!"target UB at stmt {i} (label {label}: {msg}), source UB at stmt {srcIdx}"
           | none => .mismatch s!"target UB at unattributable label {label}: {msg}"
@@ -298,9 +300,13 @@ def oseaStatus (l : Loaded) (src : Verdict) : OseaStatus :=
       | .ub label msg, v, _ =>
           .mismatch s!"target UB (label {label}: {msg}), source {v.render}"
       | .fuelExhausted, _, _ => .mismatch "target fuel exhausted"
+      let code := (List.range (compile.emittedLabels l.layEnv l.prog)).map tprog
+      let issues := oseair.bracketIssues code
+      let dies := (code.filter fun i => match i with | some (.Die _ _) => true | _ => false).length
       match st with
-      | .matched =>
-          if runA.same runB then .matched
+      | .matched _ =>
+          if !issues.isEmpty then .brackets issues
+          else if runA.same runB then .matched dies
           else .mismatchB s!"OSEA-IR {runA.render}, OSEA-IR_B {runB.render}"
       | other => other
 
@@ -493,9 +499,10 @@ def reportResult (r : TestResult) (record : Bool) : IO Unit := do
   if r.stats.used && (record || r.stats.pinned > 0) then
     IO.println s!"        [certified: {r.stats.checked} checked ({r.stats.runtime} at runtime), {r.stats.pinned} unchecked]"
   match r.osea with
-  | some .matched => if record then IO.println s!"        [osea: matched]"
+  | some (.matched _) => if record then IO.println s!"        [osea: matched]"
   | some (.mismatch why) => IO.println s!"        OSEA MISMATCH: {why}"
   | some (.mismatchB why) => IO.println s!"        OSEA-IR_B MISMATCH (die elided): {why}"
+  | some (.brackets issues) => IO.println s!"        ROUTE BRACKETS: {issues}"
   | some (.skipped reason) =>
       if record then IO.println s!"        [osea: skipped — {reason}]"
   | none => pure ()
@@ -538,12 +545,14 @@ def summarize (rs : List TestResult) : IO UInt32 := do
     if oseaSts.isEmpty then pure 0
     else do
       let cnt (f : OseaStatus → Bool) := (oseaSts.filter f).length
-      let matched := cnt (fun s => match s with | .matched => true | _ => false)
+      let matched := cnt (fun s => match s with | .matched _ => true | _ => false)
+      let dies := (oseaSts.map fun s => match s with | .matched n => n | _ => 0).foldl (· + ·) 0
       let mism := cnt (fun s => match s with | .mismatch _ => true | _ => false)
       let skipped := cnt (fun s => match s with | .skipped _ => true | _ => false)
       let mismB := cnt (fun s => match s with | .mismatchB _ => true | _ => false)
-      IO.println s!"osea: matched {matched} | mismatch {mism} | skipped {skipped} | die-elided (OSEA-IR_B) mismatch {mismB}"
-      pure (mism + mismB)
+      let brk := cnt (fun s => match s with | .brackets _ => true | _ => false)
+      IO.println s!"osea: matched {matched} | mismatch {mism} | skipped {skipped} | die-elided (OSEA-IR_B) mismatch {mismB} | route-bracket issues {brk} ({dies} Dies checked)"
+      pure (mism + mismB + brk)
   let reasons := rs.filterMap (·.reason)
   if !reasons.isEmpty then
     let rc (f : ReasonStatus → Bool) := (reasons.filter f).length
