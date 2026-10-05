@@ -5212,3 +5212,6 @@ unconditionally (`compiled_die_elision`, audit root). 50 proof files,
 1265 declarations, 3 axioms, 0 sorries. Paper theorem made unconditional.
 Later: `compile_correct_noDie_all` (mirlite ⇒ OSEA-IR_B, composition;
 audit root); paper corollary. 51 proof files, 1268 declarations.
+Later: `(*p)[i]` lowers to `ptrOffsetBy` (from `p` via `ptrCast`);
+`dispatchRuntimeIndex` deleted. `assignIf` now only serves certificate
+checks, enum-seam retags and `format!` assumptions. Corpus unchanged.

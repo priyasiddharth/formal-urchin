@@ -113,3 +113,20 @@ on this point (the arithmetic part of that answer stands).
   references, which the dispatch rejected. In _popped, Miri reports UB at
   the retag of the loaded reference (line 12), and the model agrees.
 - Corpus 188/0/0/18 of 206; units 33 + 145.
+
+## Later: the dispatch is gone
+
+[DEC] The user asked whether `assignIf` is still needed once branches have
+certificates. Inventory of the loader's uses: certificate checks, enum-seam
+retags, `format!` assumptions, and the run-time array dispatch. The last
+was a lowering choice, not a need: `(*p)[i]` is Miri's place projection
+through `p`'s own tag, the same shape as slice data.
+
+[OBS] `arrayElemPlace` now covers `(*q)[i]`: `t := copy q` at type
+`*mut Elem` (a tag-preserving `ptrCast` at elaboration), `t := ptrOffsetBy
+t i`, place `(*t)…`. `dispatchRuntimeIndex` deleted; a run-time index the
+lowering cannot reach (`(*p).f[i]`) is now `unsupported`. Both `(*p)[i]`
+witnesses (`array_index_runtime_ref_popped`, `_ref_other_elem`) still
+pass with Miri's line and reason; the dump shows `ptrOffsetBy`, no
+`assignIf`. Corpus 188/0/0/18 of 206, `--osea` 188, `--layouts` 188, units
+33 + 149. No proof change (the loader is outside the proof).

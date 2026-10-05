@@ -725,11 +725,14 @@ def projTy (st : LowerSt) (n : Nat) (projs : List UProj) : Option UTy := do
     | _, _ => none) t0
 
 /-- An element of an ARRAY (a tuple in the loader) at an index known only
-    when the program runs, `ℓ.q[i]…` with no dereference before the index:
-    `t := addrOf(ℓ.q.0)` (the local's own tag, no retag),
-    `t := ptrOffsetBy t i`, then the place `(*t)…`. That is Miri's place
-    projection: an address computed from the place, the access made with
-    the place's tag. (Behind a dereference, `dispatchRuntimeIndex`.) -/
+    when the program runs: `t := ` the address of element 0, then
+    `t := ptrOffsetBy t i`, then the place `(*t)…`. For `ℓ.q[i]…` (no
+    dereference) element 0 is `addrOf(ℓ.q.0)`, the local's own tag; for
+    `(*q)[i]…` it is the pointer `q` itself, reinterpreted as a pointer to
+    the element. Either way, no retag: that is Miri's place projection, an
+    address computed from the place and the access made with the place's
+    tag. An index after a field of a dereference, `(*q).f[i]`, is not
+    covered (no address-of through a pointer); `emitAssign` rejects it. -/
 def arrayElemPlace (st : LowerSt) (line : Nat) (p : UPlace) :
     Except String (LowerSt × UPlace) := do
   let .local n := p.root | return (st, p)
@@ -740,13 +743,27 @@ def arrayElemPlace (st : LowerSt) (line : Nat) (p : UPlace) :
         else split (.index (.fromLocal l) :: pre) rest
     | pr :: rest => split (pr :: pre) rest
   let some (pre, l, rest) := split [] p.projs | return (st, p)
-  if pre.any (· matches .deref) || pre.any (· matches .index _) then return (st, p)
+  if pre.any (· matches .index _) then return (st, p)
   let some (.tup (elem :: _)) := projTy st n pre | return (st, p)
   let raw := UTy.raw true elem
   let t := st.locals.length
   let tP : UPlace := { root := .local t, projs := [], ty := raw }
+  -- the address of element 0, with the tag of the place's provenance
+  let start? : Option URvalue :=
+    if !pre.any (· matches .deref) then
+      -- a local's array: its own pointer register (`addrOf`, no retag)
+      some (.addrOf { root := .local n, projs := pre ++ [.field 0], ty := elem })
+    else match pre.reverse with
+      | .deref :: baseRev =>
+          -- `(*q)[i]`: the pointer `q` itself, reinterpreted as a pointer to
+          -- the element (a tag-preserving `ptrCast` at elaboration)
+          let base := baseRev.reverse
+          (projTy st n base).map fun qty =>
+            .use (.copy { root := .local n, projs := base, ty := qty })
+      | _ => none
+  let some start := start? | return (st, p)
   let st := { st with locals := st.locals ++ [raw] }
-  let st := pushOut st (.assign tP (.addrOf { root := .local n, projs := pre ++ [.field 0], ty := elem }) line)
+  let st := pushOut st (.assign tP start line)
   let iP : UPlace := { root := .local l, projs := [], ty := st.locals[l]?.getD .nat }
   let st := pushOut st (.assign tP (.ptrOffsetBy tP iP true) line)
   return (st, { p with root := .local t, projs := .deref :: rest })
@@ -801,68 +818,6 @@ def runtimeIndexOf (st : LowerSt) (p : UPlace) : Option (Nat × List UProj) :=
     | pr :: rest => go (pr :: pre) rest
   go [] p.projs
 
-/-- Replace the run-time index by local `l` with the field `k`. -/
-def fixIndex (l k : Nat) (p : UPlace) : UPlace :=
-  { p with projs := p.projs.map fun pr =>
-      match pr with
-      | .index (.fromLocal l') => if l' == l then .field k else pr
-      | pr => pr }
-
-/-- A run-time index into an ARRAY (a tuple in the loader; slice data is
-    `sliceElemPlace`'s, through its pointer): `dst := rv` with `a[i]` in
-    either becomes one guarded assignment per possible index,
-    `assignIf i k (dst := rv)[a[i] := a[k]]` for `k < N`, as many as the
-    array has elements (at most `maxArrayLen`). Exactly the one with
-    `k = i` assigns; each reads `i` (Miri reads it once — repeating a read
-    with the same tag changes no borrow stack) and nothing else unless it
-    fires, so no access is added. Miri's `a[i]` is a place projection:
-    no pointer, no retag. Since `addrOf`, a local-rooted index goes through
-    `arrayElemPlace` instead; this dispatch is left for an index behind a
-    dereference, `(*p)[i]`. An out-of-range `i` is excluded by MIR's bounds assert
-    before it. Covered: `copy`/`move`/constant values and references
-    `&a[i]`, of types without references (whose loads would need a seam
-    retag per branch). -/
-def dispatchRuntimeIndex (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue) :
-    Except String (Option LowerSt) := do
-  let places := dst :: rv.places
-  let hits := places.filterMap fun p => (runtimeIndexOf st p).map (p, ·)
-  match hits with
-  | [] => return none
-  | (p, (l, pre)) :: _ =>
-      if hits.any (fun (_, (l', _)) => l' != l) then
-        throw s!"unsupported: two run-time array indices in one statement (line {line})"
-      let root ← match p.root with
-        | .local n => pure n
-        | .global _ => throw s!"unsupported: run-time index into a global (line {line})"
-      let n ← match projTy st root pre with
-        | some (.tup ts) => pure ts.length
-        | t => throw s!"unsupported: run-time index into {reprStr t} (line {line})"
-      let holdsRefs := match rv with
-        | .ref _ _ q => containsRefTy q.ty
-        | _ => containsRefTy dst.ty || places.any (containsRefTy ·.ty)
-      if holdsRefs then
-        throw s!"unsupported: run-time array index of a value holding references (line {line})"
-      let rvK (k : Nat) : Except String URvalue :=
-        match rv with
-        | .use (.copy q) => pure (.use (.copy (fixIndex l k q)))
-        | .use (.move q) => pure (.use (.move (fixIndex l k q)))
-        | .use (.const c) => pure (.use (.const c))
-        | .ref kind prot q => pure (.ref kind prot (fixIndex l k q))
-        | _ => throw s!"unsupported: run-time array index in {reprStr rv} (line {line})"
-      let iP : UPlace := { root := .local l, projs := [], ty := st.locals[l]?.getD .nat }
-      let mut st := st
-      for k in [0:n] do
-        let dK ← resolveIdxPlace st line (fixIndex l k dst)
-        let rK ← resolveIdxRvalue st line (← rvK k)
-        st := pushOut st (.assignIf iP k dK rK line)
-      -- which element was written, or what `dst` now holds, is not known
-      let dKey := match runtimeIndexOf st dst with
-        | some (_, dpre) => fieldPath? { dst with projs := dpre }
-        | none => fieldPath? dst <|> resolveKey st 32 dst
-      return some (match dKey with
-        | some k => killKey st k
-        | none => killAllConsts st)
-
 /-- Append one lowered assignment, desugaring aggregates, applying the
     reference-load retag rule, and rejecting unsupported payloads.
     Places/rvalues must already be rebased. -/
@@ -870,7 +825,9 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
     Except String LowerSt := do
   let (st, dst) ← sliceElemPlace st line dst
   let (st, rv) ← sliceElemRvalue st line rv
-  if let some st' ← dispatchRuntimeIndex st line dst rv then return st'
+  -- an array index the element lowering could not reach (see `arrayElemPlace`)
+  if (dst :: rv.places).any (fun q => (runtimeIndexOf st q).isSome) then
+    throw s!"unsupported: run-time array index after a field of a dereference (line {line})"
   let dst ← resolveIdxPlace st line dst
   let rv ← resolveIdxRvalue st line rv
   let st := trackAssign st dst rv

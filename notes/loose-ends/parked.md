@@ -547,6 +547,10 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   (mirlite/OSEA-IR `PlaceAddr`, proof `addrOf_pkg`), used by
   `arrayElemPlace` for local-rooted `a[i]` (lifting option 1's
   reference-element limit); option (1) remains for `(*p)[i]`.]
+  [DONE 2026-10-05 (later): option (1) REMOVED. `(*p)[i]` also lowers to
+  `ptrOffsetBy`, from `p` itself reinterpreted as a pointer to the element
+  (`ptrCast`, no retag); `dispatchRuntimeIndex` is gone. Left unsupported:
+  `(*p).f[i]` (no address-of through a pointer).]
   [DONE 2026-10-05: option (1),
   `dispatchRuntimeIndex` in emit.lean — copy/move/const values and `&a[i]`
   of reference-free types, also behind a pointer `(*p)[i]`; 4 Miri
