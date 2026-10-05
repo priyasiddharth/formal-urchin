@@ -120,3 +120,20 @@ exist in leafops/alloc. The generic lemmas are now `*_msim`.
 [OBS] Audit: roots now include `die_elision`; 3 axioms, 0 sorries;
 `proof_axioms.lean` 945 declarations (was 802). Suites unchanged:
 33 + 145, 188/0/0/18 of 206, `--osea` 188, `--layouts` 188.
+
+## Group C: tests and harness
+
+[OBS] Four OSEA-IR witnesses in `compile_tests` (149 now), each run on
+both machines (`expectOseaAB`):
+- w1: die of an exposed tag. A: "sb-die: tag 3 is exposed"; B ok.
+- w2: expose of a retired tag. A: "sb-expose: tag 3 is retired"; B ok.
+- w3: use after die. A: tag does not exist; B ok. This is the direction
+  the theorem allows: B may succeed where A fails.
+- w4: the counterexample from the plan. A now stops at the `Die`. B
+  runs on and fails at the last store ("sb-write: tag 7 does not
+  exist"). Checked by running a prefix: B is ok through instruction 15,
+  so its failure is the dead-`Ref 3` wildcard resolution, as claimed.
+
+[OBS] `--osea` also runs every compiled corpus program on OSEA-IR_B and
+requires the same outcome at the same label (`mismatchB`, which fails
+the suite). 188 matched, 0 mismatches, 0 OSEA-IR_B mismatches.

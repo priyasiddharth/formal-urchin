@@ -227,7 +227,12 @@ def Verdict.agrees : Verdict → Verdict → Bool
 Compile the loaded program to OSEA-IR (`compile.lean`, at the
 loader's layouts) and require the SAME verdict as mirlite: ok↔ok, or UB
 attributed (via the compiler's per-statement label ranges) to the same
-source statement. A verdict mismatch is a hard failure of the suite. -/
+source statement. A verdict mismatch is a hard failure of the suite.
+
+The compiled program also runs on OSEA-IR_B (`stackedBorrowsNoDie`, `Die`
+a no-op) and must reach the same verdict at the same label as on OSEA-IR
+(`mismatchB` otherwise). `proof.die_elision` gives only ok ⇒ ok; equality
+holds because compiled code never accesses through a died tag. -/
 
 inductive OseaRun
 | ok
@@ -238,22 +243,35 @@ inductive OseaStatus
 | skipped (reason : String)
 | matched
 | mismatch (why : String)
+| mismatchB (why : String)
 deriving Repr
 
-/-- The compiled program on its target (`oseair.lean`). -/
-def runOseaProgL (tprog : obseq3.oseair.Prog) (fuel : Nat) : OseaRun :=
-  go fuel (oseair.State.initial M)
+/-- The compiled program on its target (`oseair.lean`) under permission
+    model `Mt`: OSEA-IR (`M`) or OSEA-IR_B (`stackedBorrowsNoDie`). -/
+def runOseaProgL (Mt : PermissionModel) (tprog : obseq3.oseair.Prog) (fuel : Nat) : OseaRun :=
+  go fuel (oseair.State.initial Mt)
 where
-  go : Nat → oseair.State M → OseaRun
+  go : Nat → oseair.State Mt → OseaRun
     | 0, _ => .fuelExhausted
     | n + 1, st =>
         match tprog st.pc with
         | none => .ok
         | some .Halt => .ok
         | some _ =>
-            match oseair.step M st tprog with
+            match oseair.step Mt st tprog with
             | .Ok st' => go n st'
             | .Err msg => .ub st.pc msg
+
+def OseaRun.render : OseaRun → String
+  | .ok => "ok"
+  | .ub label msg => s!"UB at label {label}: {msg}"
+  | .fuelExhausted => "fuel exhausted"
+
+def OseaRun.same : OseaRun → OseaRun → Bool
+  | .ok, .ok => true
+  | .ub l1 _, .ub l2 _ => l1 == l2
+  | .fuelExhausted, .fuelExhausted => true
+  | _, _ => false
 
 /-- `--osea`: compiled at the loader's real layouts and run on the
     target, against the source's (judged) verdict `src` on the same
@@ -265,7 +283,9 @@ def oseaStatus (l : Loaded) (src : Verdict) : OseaStatus :=
   | .ok tprog =>
       let ranges := compile.stmtLabelRanges l.layEnv l.prog
       let fuel := compile.emittedLabels l.layEnv l.prog + 2
-      match runOseaProgL tprog fuel, src, src.stmt? with
+      let runA := runOseaProgL M tprog fuel
+      let runB := runOseaProgL PermissionModel.stackedBorrowsNoDie tprog fuel
+      let st : OseaStatus := match runA, src, src.stmt? with
       | .ok, .ok, _ => .matched
       | .ub label msg, _, some srcIdx =>
           match ranges.findIdx? (fun r => r.1 ≤ label && label < r.2) with
@@ -278,6 +298,11 @@ def oseaStatus (l : Loaded) (src : Verdict) : OseaStatus :=
       | .ub label msg, v, _ =>
           .mismatch s!"target UB (label {label}: {msg}), source {v.render}"
       | .fuelExhausted, _, _ => .mismatch "target fuel exhausted"
+      match st with
+      | .matched =>
+          if runA.same runB then .matched
+          else .mismatchB s!"OSEA-IR {runA.render}, OSEA-IR_B {runB.render}"
+      | other => other
 
 /-! ## Manifest -/
 
@@ -470,6 +495,7 @@ def reportResult (r : TestResult) (record : Bool) : IO Unit := do
   match r.osea with
   | some .matched => if record then IO.println s!"        [osea: matched]"
   | some (.mismatch why) => IO.println s!"        OSEA MISMATCH: {why}"
+  | some (.mismatchB why) => IO.println s!"        OSEA-IR_B MISMATCH (die elided): {why}"
   | some (.skipped reason) =>
       if record then IO.println s!"        [osea: skipped — {reason}]"
   | none => pure ()
@@ -515,8 +541,9 @@ def summarize (rs : List TestResult) : IO UInt32 := do
       let matched := cnt (fun s => match s with | .matched => true | _ => false)
       let mism := cnt (fun s => match s with | .mismatch _ => true | _ => false)
       let skipped := cnt (fun s => match s with | .skipped _ => true | _ => false)
-      IO.println s!"osea: matched {matched} | mismatch {mism} | skipped {skipped}"
-      pure mism
+      let mismB := cnt (fun s => match s with | .mismatchB _ => true | _ => false)
+      IO.println s!"osea: matched {matched} | mismatch {mism} | skipped {skipped} | die-elided (OSEA-IR_B) mismatch {mismB}"
+      pure (mism + mismB)
   let reasons := rs.filterMap (·.reason)
   if !reasons.isEmpty then
     let rc (f : ReasonStatus → Bool) := (reasons.filter f).length

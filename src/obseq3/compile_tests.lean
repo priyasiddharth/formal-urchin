@@ -2724,6 +2724,110 @@ def d121_addrof_write_pops_shared : IO Unit :=
      .assign tF (.copy (.proj (.deref rF) path1F))]
     (.ub 5) "d121 addrOf: a write through it pops the shared borrow"
 
+/-! ## Die elision witnesses (OSEA-IR → OSEA-IR_B)
+
+Hand-written OSEA-IR, run on OSEA-IR and on OSEA-IR_B (`Die` a no-op).
+`proof.die_elision` says OSEA-IR ok ⇒ OSEA-IR_B ok; these pin the two
+checks that make it true (`sb_die` refuses an exposed tag, `sb_expose`
+a retired one) and the direction it allows (B may succeed where A
+fails). -/
+
+/-- An OSEA-IR program's verdict under `Mt`: `ok` at `Halt`, else the
+    first error. No loops (`SkipIf` jumps forward), so the fuel suffices. -/
+def oseaVerdict (Mt : PermissionModel) (code : List Instr) : Except String Unit :=
+  go (code.length + 2) (oseair.State.initial Mt)
+where
+  go : Nat → oseair.State Mt → Except String Unit
+    | 0, _ => .error "out of fuel"
+    | n + 1, st =>
+        match code[st.pc]? with
+        | none | some .Halt => .ok ()
+        | some _ =>
+            match oseair.step Mt st (fun pc => code[pc]?) with
+            | .Ok st' => go n st'
+            | .Err e => .error e
+
+def hasSubstr (s sub : String) : Bool := (s.splitOn sub).length > 1
+
+/-- `none`: the run must succeed; `some m`: it must fail with an error
+    containing `m`. -/
+def expectVerdict (Mt : PermissionModel) (code : List Instr) (exp : Option String)
+    (label : String) : IO Unit :=
+  match oseaVerdict Mt code, exp with
+  | .ok (), none => pure ()
+  | .error e, some m => assert (hasSubstr e m) s!"{label}: error '{e}', expected '{m}'"
+  | .ok (), some m => throw (IO.userError s!"{label}: ok, expected an error '{m}'")
+  | .error e, none => throw (IO.userError s!"{label}: error '{e}', expected ok")
+
+def expectOseaAB (code : List Instr) (expA expB : Option String) (label : String) :
+    IO Unit := do
+  expectVerdict PermissionModel.stackedBorrows code expA s!"{label} (OSEA-IR)"
+  expectVerdict PermissionModel.stackedBorrowsNoDie code expB s!"{label} (OSEA-IR_B)"
+
+def rr (n : Nat) : Register := Register.R n
+def noMask : List Bool := List.replicate 8 false
+
+/-- x (tag 1) with a `&raw mut` child (tag 3) stored in a holder (tag 2). -/
+def witnessPrefix : List Instr :=
+  [Instr.Assgn (rr 0) (Rhs.Alloc natB),
+   Instr.CStore natB [Val.Dat 1] (rr 0),
+   Instr.Assgn (rr 1) (Rhs.Alloc ptrB),
+   Instr.Assgn (rr 2) (Rhs.Borrow (.Raw true) false noMask (some 8) (rr 0) 0),
+   Instr.RStore ptrB (rr 2) (rr 1)]
+
+def w1_die_of_exposed : IO Unit :=
+  expectOseaAB (witnessPrefix ++
+    [Instr.Assgn (rr 3) (Rhs.ExposeAddr .ptr (rr 1)),
+     Instr.Die (rr 2) 8,
+     Instr.Halt])
+    (some "sb-die: tag 3 is exposed") none "w1 die of an exposed tag"
+
+def w2_expose_of_retired : IO Unit :=
+  expectOseaAB (witnessPrefix ++
+    [Instr.Die (rr 2) 8,
+     Instr.Assgn (rr 3) (Rhs.ExposeAddr .ptr (rr 1)),
+     Instr.Halt])
+    (some "sb-expose: tag 3 is retired") none "w2 expose of a retired tag"
+
+/-- B is more permissive: a use after `Die` fails only on OSEA-IR. -/
+def w3_die_then_use : IO Unit :=
+  expectOseaAB
+    [Instr.Assgn (rr 0) (Rhs.Alloc natB),
+     Instr.CStore natB [Val.Dat 1] (rr 0),
+     Instr.Assgn (rr 1) (Rhs.Borrow .Shared false noMask (some 8) (rr 0) 0),
+     Instr.Die (rr 1) 8,
+     Instr.Assgn (rr 2) (Rhs.Load natB (rr 1)),
+     Instr.Halt]
+    (some "does not exist") none "w3 use after die"
+
+/-- The counterexample the two checks rule out. A shared child (tag 3) is
+    exposed, then died. Without the exposed check OSEA-IR would run on:
+    B keeps the dead `Ref 3` at the top, so a wildcard retag resolves to
+    it in B (to tag 4 in A), a write through the SRW tag 5 pops B's new
+    child with it, and the last write fails in B only. With the check,
+    OSEA-IR stops at the `Die`. -/
+def w4_exposed_die_counterexample : IO Unit :=
+  expectOseaAB
+    [Instr.Assgn (rr 0) (Rhs.Alloc natB),                                    -- x: [Own 1]
+     Instr.CStore natB [Val.Dat 1] (rr 0),
+     Instr.Assgn (rr 1) (Rhs.Alloc ptrB),                                    -- holder, tag 2
+     Instr.Assgn (rr 2) (Rhs.Borrow .Shared false noMask (some 8) (rr 0) 0), -- [Ref 3, Own 1]
+     Instr.RStore ptrB (rr 2) (rr 1),
+     Instr.Assgn (rr 3) (Rhs.ExposeAddr .ptr (rr 1)),                        -- exposed {3}
+     Instr.Die (rr 2) 8,                                                     -- A stops here
+     Instr.Assgn (rr 4) (Rhs.Borrow (.Raw true) false noMask (some 8) (rr 0) 0), -- [Ref 3, 4, Own 1]
+     Instr.RStore ptrB (rr 4) (rr 1),
+     Instr.Assgn (rr 5) (Rhs.ExposeAddr .ptr (rr 1)),                        -- exposed {4, 3}
+     Instr.Assgn (rr 6) (Rhs.Borrow (.Raw true) false noMask (some 8) (rr 4) 0), -- [Ref 3, 5, 4, Own 1]
+     Instr.Assgn (rr 7) (Rhs.Alloc natB),
+     Instr.RStore natB (rr 5) (rr 7),
+     Instr.Assgn (rr 8) (Rhs.FromExposed (.int 8) (rr 7)),                   -- wildcard pointer to x
+     Instr.Assgn (rr 9) (Rhs.Borrow (.Raw true) false noMask (some 8) (rr 8) 0), -- resolves to Ref 3
+     Instr.CStore natB [Val.Dat 5] (rr 6),                                   -- pops [7, Ref 3]
+     Instr.CStore natB [Val.Dat 6] (rr 9),                                   -- tag 7 gone
+     Instr.Halt]
+    (some "sb-die: tag 3 is exposed") (some "sb-write: tag 7 does not exist") "w4 exposed-then-died counterexample"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2869,7 +2973,11 @@ def allTests : List (IO Unit) := [
   d118_addrof_write_read,
   d119_addrof_read_keeps_shared,
   d120_raw_mut_retag_keeps_shared,
-  d121_addrof_write_pops_shared]
+  d121_addrof_write_pops_shared,
+  w1_die_of_exposed,
+  w2_expose_of_retired,
+  w3_die_then_use,
+  w4_exposed_die_counterexample]
 
 def runAll : IO Unit := do
   allTests.forM id
