@@ -328,6 +328,7 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
     (h_rd : sb_read permsR resolved.addr (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).sizeB
         resolved.tag = .ok perms')
     (h_op : ∀ (S1 : oseair.State MSB) (reg : Register) (extB : Nat) (T : Tag) (pmid : AccessPerms),
+      sA.perms.NextTag ≤ T → RetiredSim ρt perms' pmid →
       ByteMemSim ρt sM.mem S1.mem → ByteAllocLockstep sM.mem S1.mem →
       S1.reg.lookup reg = some [Val.Ptr resolved.allocBase (resolved.addr - resolved.allocBase) extB
         resolved.allocSizeB T] →
@@ -335,7 +336,7 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
       sb_read S1.perms resolved.addr (mirlite.leafKind (mirlite.placeLayout L (.proj b f))).sizeB T
         = .ok pmid →
       ∃ vals g, oseair.evalRhs MSB S1 (mk reg) = .Ok vals { S1 with perms := g pmid } ∧
-        (∀ (p p' : AccessPerms) a n t, sb_die p a n t = .ok p' → sb_die (g p) a n t = .ok (g p')) ∧
+        (∀ (p p' : AccessPerms) a n, sb_die p a n T = .ok p' → sb_die (g p) a n T = .ok (g p')) ∧
         P vals g)
     (h_code : CodeIncludedB compProg
       (CheckedCompilerM.run (readRhsPre L dstL rhs (.proj b f) mk post ev) csA)) :
@@ -408,8 +409,9 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
   have h0w : wildcardTag < s1.perms.NextTag := (h_tbd_mid _ _ h_wf.2).2
   have h_ntw : (s1.perms.NextTag == wildcardTag) = false := by
     simp only [beq_eq_false_iff_ne]; exact (Nat.ne_of_lt h0w).symm
-  obtain ⟨q2, q3, sAcc, h_rd1, h_die1, h_rd2, h_sm, h_ex, h_pf, h_ntle, h_wk⟩ :=
-    sb_ref_read_die_cancels h_ntw h_unprot h_ref
+  obtain ⟨q2, q3, sAcc, h_rd1, h_die1, h_rd2, h_sm, h_ex, h_pf, h_ntle, h_wk, h_rtq, h_rlt⟩ :=
+    sb_ref_read_die_cancels h_ntw h_unprot
+      (freshTag_not_exposed hB.psim h_tbd_mid) h_ref
   have h_acc : sAcc = p2 := Except.ok.inj (h_rd2.symm.trans h_rd')
   subst h_acc
   -- the code
@@ -445,7 +447,12 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
     rw [h_ab, h_as, h_addr]
     show (s1.reg.insert tmp _).lookup tmp = _
     rw [RegMap.lookup_insert_self, Nat.sub_add_comm hB.le]
-  obtain ⟨vals, g, h_evT, h_gdie, hP⟩ := h_op S1 tmp _ _ q2 h_mem1 h_lock1 h_regS1 h_le
+  have h_rsim : RetiredSim ρt perms' q2 := by
+    have h_q1 := sb_ref_retired h_ref
+    refine RetiredSim.of_eq hB.psim.2.2.2.2.2 (sb_read_retired h_rd0) ?_ ?_
+    · rw [sb_read_retired h_rd1, h_q1.1]
+    · rw [sb_read_NextTag h_rd1, h_q1.2]; exact Nat.le_succ _
+  obtain ⟨vals, g, h_evT, h_gdie, hP⟩ := h_op S1 tmp _ _ q2 hB.tgtNT h_rsim h_mem1 h_lock1 h_regS1 h_le
     (by rw [h_len, h_addr]; exact h_rd1)
   have h2 := runN_Assgn (h_at 1 _ (by omega) (by rw [hB.pc]; exact (hct _ _ _).2.1)) h_evT
   -- §3 Die
@@ -456,14 +463,12 @@ theorem projoff_bracket {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Pr
       show (S1.reg.insert ld vals).lookup tmp = _
       rw [RegMap.lookup_insert_ne _ _ hne]
       exact RegMap.lookup_insert_self _ _ _)
-    (by rw [← Nat.add_assoc, hA]; exact h_gdie _ _ _ _ _ h_die1)
+    (by rw [← Nat.add_assoc, hA]; exact h_gdie _ _ _ _ h_die1)
   refine ⟨n1 + 1 + 1 + 1, { S2 with perms := g q3, pc := S2.pc + 1 }, q3, vals, g,
     runN_trans (runN_trans (runN_trans hB.run h1) h2) h3, ?_, hB.mem, rfl, ?_, ?_, ?_, ?_, ?_, hP⟩
   · show s1.pc + 1 + 1 + 1 = _
     rw [(hct _ _ _).2.2.2, hB.pc]
-  · exact ⟨by rw [h_sm]; exact h_psim2.1, by rw [h_pf]; exact h_psim2.2.1,
-      by rw [h_ex]; exact h_psim2.2.2.1, Nat.le_trans h_psim2.2.2.2.1 h_ntle,
-      by rw [h_wk]; exact h_psim2.2.2.2.2⟩
+  · exact PermSim.of_cancel h_psim2 h_tbd_mid.not_image h_sm h_pf h_ex h_wk h_ntle h_rtq h_rlt
   · rw [sb_read_NextTag h_rd, hB.srcNT]
     refine TagRenameBounded.mono h_tbd (Nat.le_refl _) (Nat.le_trans hB.tgtNT ?_)
     rw [← sb_read_NextTag h_rd']; exact h_ntle
@@ -504,10 +509,10 @@ theorem leaf_pkg_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.P
     projoff_bracket (P := fun vals g => g = id ∧
         ListRel (StoreSim ρt) output.values (vals.map oseair.Val.toMem))
       h_np h0 hb hcb h_len h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_res h_free h_bnd h_rd
-      (fun S1 reg ext T pmid hm hl hr hle hrd => by
+      (fun S1 reg ext T pmid _ _ hm hl hr hle hrd => by
         obtain ⟨vals, h_ev', h_rel⟩ :=
           h_op.target ρt sM S1 reg resolved permsR ext T output pmid h_ev h_res h_wf hm hl hr hle hrd
-        exact ⟨vals, id, h_ev', fun _ _ _ _ _ h => h, rfl, h_rel⟩)
+        exact ⟨vals, id, h_ev', fun _ _ _ _ h => h, rfl, h_rel⟩)
       h_code
   refine ⟨ρt, n, s3, sM.mem, perms', vals, TagRenameIncr.refl ρt, h_wf, h_ost, h_runT,
     ?_, ?_, by rw [h_g]; exact h_ps, by rw [h_g]; exact h_tb, by rw [h_mem3]; exact h_mem,

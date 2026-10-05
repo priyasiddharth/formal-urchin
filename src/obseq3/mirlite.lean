@@ -485,8 +485,11 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
       match readCell M L state src "ptr-to-int cast" with
       | .error e => .err e
       | .ok (.ptrVal base offset _ _ tag, perms') =>
-          .ok { values := [MemValue.word (base + offset)],
-                state := { state with perms := M.expose perms' tag } }
+          match M.expose perms' tag with
+          | .error e => .err s!"ptr-to-int cast failed: {e}"
+          | .ok perms'' =>
+              .ok { values := [MemValue.word (base + offset)],
+                    state := { state with perms := perms'' } }
       | .ok _ => .err "ptr-to-int cast of a non-pointer value"
   | .fromExposed src =>
       match readCell M L state src "int-to-ptr cast" with

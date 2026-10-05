@@ -211,32 +211,77 @@ theorem StackMapSim.find?_none {ρt : TagRenameMap} {x y : SB}
 def TagListSim (ρt : TagRenameMap) (src tgt : List Tag) : Prop :=
   ListRel (fun t t' => ρt t = some t') src tgt
 
+/-- The retired sets (`AccessPerms.retired`, tags a `Die` ended): a target
+    tag that is a renamed source tag is retired only if the source tag is —
+    the target also retires its route tags, which are outside ρt's range —
+    and every target-retired tag was minted (below the target counter), so
+    a fresh pair added to ρt is never a retired one. This is what lets the
+    target's `sb_expose` succeed whenever the source's does. -/
+def RetiredSim (ρt : TagRenameMap) (src tgt : AccessPerms) : Prop :=
+  (∀ t t', ρt t = some t' → t' ∈ tgt.retired → t ∈ src.retired) ∧
+  (∀ t' ∈ tgt.retired, t' < tgt.NextTag)
+
 /-- The v3 permission relation: ρt-renamed stacks (position- and
     constructor-preserving), renamed protector frames and exposed set, a
     target counter at least the source's (the target mints extra tags for
-    its internal borrows; `Die` pops the items but not the counter), and
-    the renamed weak-protector set. -/
+    its internal borrows; `Die` pops the items but not the counter), the
+    renamed weak-protector set, and the retired sets (`RetiredSim`). -/
 def PermSim (ρt : TagRenameMap) (src tgt : AccessPerms) : Prop :=
   StackMapSim ρt src.StackMap tgt.StackMap ∧
   ListRel (TagListSim ρt) src.protFrames tgt.protFrames ∧
   TagListSim ρt src.exposed tgt.exposed ∧
   src.NextTag ≤ tgt.NextTag ∧
-  TagListSim ρt src.weakProt tgt.weakProt
+  TagListSim ρt src.weakProt tgt.weakProt ∧
+  RetiredSim ρt src tgt
 
-/-- `PermSim` transports along rename growth (renames only appear
-    positively). -/
+/-- `PermSim` transports along rename growth when no newly renamed target
+    tag is retired (renames otherwise only appear positively). -/
 theorem PermSim.rename_mono
     {ρt ρt' : TagRenameMap} {src tgt : AccessPerms}
     (h_incr : TagRenameIncr ρt ρt')
+    (h_new : ∀ t t', ρt' t = some t' → ρt t = none → t' ∉ tgt.retired)
     (h_sim : PermSim ρt src tgt) :
     PermSim ρt' src tgt := by
-  obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk⟩ := h_sim
-  refine ⟨?_, ?_, ?_, h_next, ?_⟩
+  obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk, h_rt, h_rtb⟩ := h_sim
+  refine ⟨?_, ?_, ?_, h_next, ?_, ?_, h_rtb⟩
   · exact StackMapSim.imp (fun i i' => ItemSim.mono h_incr i i') h_stacks
   · exact ListRel.imp (fun f f' hf =>
       ListRel.imp (fun t t' ht => h_incr _ _ ht) hf) h_prot
   · exact ListRel.imp (fun t t' ht => h_incr _ _ ht) h_exp
   · exact ListRel.imp (fun t t' ht => h_incr _ _ ht) h_wk
+  · intro t t' h hr
+    cases h0 : ρt t with
+    | none => exact absurd hr (h_new t t' h h0)
+    | some t0 =>
+        have h1 := h_incr _ _ h0
+        rw [h] at h1
+        cases h1
+        exact h_rt t t' h0 hr
+
+/-- `PermSim` transports along the fresh-pair extension of ρt (the only
+    way the renaming grows): the new target tag is the target counter,
+    which no retired target tag reaches. -/
+theorem PermSim.rename_extend {ρt : TagRenameMap} {src tgt : AccessPerms}
+    (h_bd : TagRenameBounded ρt src.NextTag tgt.NextTag)
+    (h_sim : PermSim ρt src tgt) :
+    PermSim (ρt.extend src.NextTag tgt.NextTag) src tgt :=
+  PermSim.rename_mono (TagRenameIncr.extend h_bd (Nat.le_refl _)) (fun t t' h h0 => by
+    simp only [TagRenameMap.extend] at h
+    split at h
+    · cases h
+      intro hm
+      exact absurd (h_sim.2.2.2.2.2.2 _ hm) (Nat.lt_irrefl _)
+    · rw [h0] at h
+      cases h) h_sim
+
+/-- `RetiredSim` survives any step that leaves both retired sets alone and
+    does not lower the target counter. -/
+theorem RetiredSim.of_eq {ρt : TagRenameMap} {src tgt src' tgt' : AccessPerms}
+    (h : RetiredSim ρt src tgt) (h1 : src'.retired = src.retired)
+    (h2 : tgt'.retired = tgt.retired) (h3 : tgt.NextTag ≤ tgt'.NextTag) :
+    RetiredSim ρt src' tgt' :=
+  ⟨fun t t' ht hm => by rw [h1]; exact h.1 t t' ht (by rw [← h2]; exact hm),
+   fun t' hm => Nat.lt_of_lt_of_le (h.2 t' (by rw [← h2]; exact hm)) h3⟩
 
 /-- Pointwise simulation between a source `MemValue` and a target `Val`. -/
 def MemValSim

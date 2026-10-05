@@ -135,7 +135,9 @@ def evalRhs (M : PermissionModel) (state : State M) (rhs : Rhs) : RhsResult M :=
      match readCellThrough M state srcPtr k with
      | .error msg => RhsResult.Err msg
      | .ok (Val.Ptr pBase pOff _ _ pTag, perms2) =>
-         RhsResult.Ok [Val.Dat (pBase + pOff)] { state with perms := M.expose perms2 pTag }
+         match M.expose perms2 pTag with
+         | .ok perms3 => RhsResult.Ok [Val.Dat (pBase + pOff)] { state with perms := perms3 }
+         | .error msg => RhsResult.Err msg
      | .ok _ => RhsResult.Err "ptr-to-int cast of a non-pointer value"
   | .FromExposed k srcPtr =>
      match readCellThrough M state srcPtr k with

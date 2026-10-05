@@ -170,14 +170,23 @@ structure AccessPerms where
       `sb_dealloc` reads it; a tag here counts only while it is also in
       `protFrames`, so it is never removed. -/
   weakProt : List Tag := []
+  /-- Tags a `Die` has retired. Not Miri state: the record that makes `Die`
+      elidable (`proof.die_elision`). A retired tag can no longer be exposed,
+      and an exposed tag cannot be retired, so a wildcard access never
+      resolves to an item a `Die` would have removed. -/
+  retired : List Tag := []
 deriving Inhabited, Repr, BEq
 
 def AccessPerms.init : AccessPerms := { StackMap := [], NextTag := 1 }
 
-/-- Expose a tag (ptr-to-int cast). Exposing the wildcard is a no-op. -/
-def sb_expose (ap : AccessPerms) (tag : Tag) : AccessPerms :=
-  if tag == wildcardTag then ap
-  else { ap with exposed := tag :: ap.exposed }
+/-- Expose a tag (ptr-to-int cast). Exposing the wildcard is a no-op.
+    Exposing a RETIRED tag (one a `Die` ended) is an error — stricter than
+    Miri, which has no `Die`; no compiled program triggers it, since only
+    the compiler's own temporaries are died and they never reach memory. -/
+def sb_expose (ap : AccessPerms) (tag : Tag) : Except String AccessPerms :=
+  if tag == wildcardTag then .ok ap
+  else if ap.retired.contains tag then .error s!"sb-expose: tag {tag} is retired"
+  else .ok { ap with exposed := tag :: ap.exposed }
 
 /-- Resolve a wildcard access at one cell: the topmost exposed item that
     grants the access (Miri's optimistic wildcard resolution). Takes the
@@ -534,17 +543,24 @@ def dieCellContent (pf : List (List Tag)) (tag : Tag) : BorrowStack → Except S
       else .error s!"sb-die: top of stack is {item.tag}, expected {tag}"
 
 /-- Kill a reference over a range: pop the item with `tag` if it is on top
-    of each cell's stack (and is not the root `Own`). -/
+    of each cell's stack (and is not the root `Own`), and record the tag as
+    retired. An EXPOSED tag cannot be killed (stricter than Miri; never hit
+    by compiled programs, whose died tags are never stored): with
+    `sb_expose` refusing retired tags, no wildcard can ever resolve to an
+    item a `Die` removed, which is what lets `Die` be elided. -/
+def dieCellOp (tag : Tag) (ap : AccessPerms) (a : Word) : Except String AccessPerms :=
+  match ap.StackMap.find? a with
+  | none => .error s!"sb-die: no borrow stack at address {a}"
+  | some stack =>
+      match dieCellContent ap.protFrames tag stack with
+      | .error e => .error e
+      | .ok below => .ok { ap with StackMap := ap.StackMap.set a below }
+
 def sb_die (ap : AccessPerms) (addr : Word) (lenB : Nat) (tag : Tag) :
     Except String AccessPerms :=
-  foldCells
-    (fun ap a =>
-      match ap.StackMap.find? a with
-      | none => .error s!"sb-die: no borrow stack at address {a}"
-      | some stack =>
-          match dieCellContent ap.protFrames tag stack with
-          | .error e => .error e
-          | .ok below => .ok { ap with StackMap := ap.StackMap.set a below })
-    ap addr lenB
+  if ap.exposed.contains tag then .error s!"sb-die: tag {tag} is exposed" else
+  match foldCells (dieCellOp tag) ap addr lenB with
+  | .error e => .error e
+  | .ok ap' => .ok { ap' with retired := tag :: ap'.retired }
 
 end obseq3

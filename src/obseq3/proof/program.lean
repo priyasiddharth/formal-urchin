@@ -298,10 +298,14 @@ theorem InvAtB_initial {Γ : Ctx} (L : mirlite.LayEnv Γ) :
   have h_psim : PermSim initialTagRename (mirlite.State.initial MSB Γ).perms
       (oseair.State.initial MSB).perms := by
     -- empty stacks, no protector frames, nothing exposed, no weak tags
-    refine ⟨?_, trivial, trivial, Nat.le_refl _, trivial⟩
-    intro a
-    simp [SB.find?, mirlite.State.initial, oseair.State.initial, MSB,
-      PermissionModel.stackedBorrows, AccessPerms.init]
+    refine ⟨?_, trivial, trivial, Nat.le_refl _, trivial, ?_, ?_⟩
+    · intro a
+      simp [SB.find?, mirlite.State.initial, oseair.State.initial, MSB,
+        PermissionModel.stackedBorrows, AccessPerms.init]
+    · intro t t' _ h
+      simp [oseair.State.initial, MSB, PermissionModel.stackedBorrows, AccessPerms.init] at h
+    · intro t' h
+      simp [oseair.State.initial, MSB, PermissionModel.stackedBorrows, AccessPerms.init] at h
   have h_wf : TagRenameWF initialTagRename := by
     -- injective (one point) and fixes the wildcard
     refine ⟨?_, by simp [initialTagRename]⟩

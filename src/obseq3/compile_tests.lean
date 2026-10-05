@@ -257,23 +257,25 @@ where
             | .err _ => .ub st.pc
 
 /-- The compiler's output (`compile.lean`) on its own target
-    (`oseair.lean`), both at layout table `L`. -/
-def tgtRunL (Γ : Ctx) (L : mirlite.LayEnv Γ) (prog : Prog Γ) : Except String DiffOut :=
+    (`oseair.lean`) under permission model `Mt` — OSEA-IR, or OSEA-IR_B
+    (`stackedBorrowsNoDie`, `Die` a no-op) — at layout table `L`. -/
+def tgtRunLM (Mt : PermissionModel) (Γ : Ctx) (L : mirlite.LayEnv Γ) (prog : Prog Γ) :
+    Except String DiffOut :=
   match compile.compileProg L prog with
   | .error e => .error s!"compile error: {reprStr e}"
   | .ok tp =>
       .ok (go tp (compile.stmtLabelRanges L prog) (compile.emittedLabels L prog + 2)
-        (oseair.State.initial M))
+        (oseair.State.initial Mt))
 where
   go (tp : oseair.Prog) (ranges : List (Nat × Nat)) :
-      Nat → oseair.State M → DiffOut
+      Nat → oseair.State Mt → DiffOut
     | 0, _ => .stuck
     | n + 1, st =>
         match tp st.pc with
         | none => .ok
         | some .Halt => .ok
         | some _ =>
-            match oseair.step M st tp with
+            match oseair.step Mt st tp with
             | .Ok st' => go tp ranges n st'
             | .Err _ =>
                 match ranges.findIdx? (fun r => r.1 ≤ st.pc && st.pc < r.2) with
@@ -283,6 +285,9 @@ where
 /-- Every differential program runs on the source and the
     compiled program on its target, both at the uniform layout, and both
     must reach the expected verdict. -/
+def tgtRunL (Γ : Ctx) (L : mirlite.LayEnv Γ) (prog : Prog Γ) : Except String DiffOut :=
+  tgtRunLM M Γ L prog
+
 def expectDiff (Γ : Ctx) (prog : Prog Γ) (expected : DiffOut) (label : String) : IO Unit := do
   let src := srcRunB Γ prog
   assert (src == expected) s!"{label}: source verdict {reprStr src}, expected {reprStr expected}"
@@ -291,6 +296,14 @@ def expectDiff (Γ : Ctx) (prog : Prog Γ) (expected : DiffOut) (label : String)
   | .ok tgt =>
       assert (tgt == expected)
         s!"{label}: target verdict {reprStr tgt}, expected {reprStr expected} (source agrees)"
+  -- OSEA-IR_B (`Die` elided) must reach the same verdict. The theorem
+  -- (`proof.die_elision`) only gives ok ⇒ ok; equality on the UB tests
+  -- holds because compiled code never accesses through a died tag
+  match tgtRunLM PermissionModel.stackedBorrowsNoDie Γ (mirlite.uniformEnv Γ) prog with
+  | .error e => throw (IO.userError s!"{label}: {e}")
+  | .ok tgtB =>
+      assert (tgtB == expected)
+        s!"{label}: OSEA-IR_B (die elided) verdict {reprStr tgtB}, expected {reprStr expected}"
 
 def ΓA : Ctx := [natL, ptrNat, natL]
 def xA : Place ΓA natL := .local ⟨⟨0, by decide⟩, rfl⟩

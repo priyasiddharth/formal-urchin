@@ -153,7 +153,7 @@ theorem sb_dealloc_respects_PermSim
       exact ⟨tgt, rfl, h_sim, rfl, rfl⟩
   | succ n ih =>
       intro addr src tgt src' h_sim h_src
-      obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk⟩ := h_sim
+      obtain ⟨h_stacks, h_prot, h_exp, h_next, h_wk, h_rt⟩ := h_sim
       rw [sb_dealloc_eq] at h_src ⊢
       simp only [foldCells] at h_src
       split at h_src
@@ -174,7 +174,7 @@ theorem sb_dealloc_respects_PermSim
       have h_sim1 : PermSim ρt
           { src with StackMap := src.StackMap.filter (fun (x, _) => x != addr) }
           { tgt with StackMap := tgt.StackMap.filter (fun (x, _) => x != addr) } :=
-        ⟨StackMapSim.filter_cell h_stacks addr, h_prot, h_exp, h_next, h_wk⟩
+        ⟨StackMapSim.filter_cell h_stacks addr, h_prot, h_exp, h_next, h_wk, h_rt⟩
       obtain ⟨tgt', h_tgt, h_sim', h_ns, h_nt⟩ := ih (addr + 1) h_sim1 h_src
       refine ⟨tgt', ?_, h_sim', h_ns, h_nt⟩
       simp only [foldCells]
@@ -186,8 +186,8 @@ theorem sb_dealloc_respects_PermSim
     `ListRel` of `[]` with `[]` is `True`. Nothing else moves. -/
 theorem PermSim.pushFrame {sp tp : AccessPerms} (h : PermSim ρt sp tp) :
     PermSim ρt (MSB.pushFrame sp) (MSB.pushFrame tp) := by
-  obtain ⟨h_st, h_pf, h_ex, h_nt, h_wk⟩ := h
-  exact ⟨h_st, ⟨trivial, h_pf⟩, h_ex, h_nt, h_wk⟩
+  obtain ⟨h_st, h_pf, h_ex, h_nt, h_wk, h_rt⟩ := h
+  exact ⟨h_st, ⟨trivial, h_pf⟩, h_ex, h_nt, h_wk, h_rt⟩
 
 /-- Popping succeeds on the target whenever it does on the source — the
     lists are positionally related, so the target's is non-empty too —
@@ -196,7 +196,7 @@ theorem PermSim.popFrame {sp sp' tp : AccessPerms} (h : PermSim ρt sp tp)
     (h_src : MSB.popFrame sp = .ok sp') :
     ∃ tp', MSB.popFrame tp = .ok tp' ∧ PermSim ρt sp' tp' ∧
       sp'.NextTag = sp.NextTag ∧ tp'.NextTag = tp.NextTag := by
-  obtain ⟨h_st, h_pf, h_ex, h_nt, h_wk⟩ := h
+  obtain ⟨h_st, h_pf, h_ex, h_nt, h_wk, h_rt⟩ := h
   change sb_pop_frame sp = .ok sp' at h_src
   cases hs : sp.protFrames with
   | nil => simp [sb_pop_frame, hs] at h_src
@@ -208,7 +208,7 @@ theorem PermSim.popFrame {sp sp' tp : AccessPerms} (h : PermSim ρt sp tp)
       injection h_src with h_src
       subst h_src
       rw [hs, ht] at h_pf
-      refine ⟨{ tp with protFrames := rest' }, ?_, ⟨h_st, h_pf.2, h_ex, h_nt, h_wk⟩, rfl, rfl⟩
+      refine ⟨{ tp with protFrames := rest' }, ?_, ⟨h_st, h_pf.2, h_ex, h_nt, h_wk, h_rt⟩, rfl, rfl⟩
       change sb_pop_frame tp = _
       simp [sb_pop_frame, ht]
 

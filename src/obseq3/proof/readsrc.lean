@@ -145,8 +145,9 @@ theorem readToReg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
   have h0w : wildcardTag < s1.perms.NextTag := (h_tbd_mid _ _ h_inv.wf_t.2).2
   have h_ntw : (s1.perms.NextTag == wildcardTag) = false := by
     simp only [beq_eq_false_iff_ne]; exact (Nat.ne_of_lt h0w).symm
-  obtain ⟨q2, q3, sAcc, h_rd1, h_die1, h_rd2, h_sm, h_ex, h_pf, h_ntle, h_wk⟩ :=
-    sb_ref_read_die_cancels h_ntw h_unprot h_ref
+  obtain ⟨q2, q3, sAcc, h_rd1, h_die1, h_rd2, h_sm, h_ex, h_pf, h_ntle, h_wk, h_rtq, h_rlt⟩ :=
+    sb_ref_read_die_cancels h_ntw h_unprot
+      (freshTag_not_exposed hB.psim h_tbd_mid) h_ref
   have h_acc : sAcc = p2 := Except.ok.inj (h_rd2.symm.trans h_rd')
   subst h_acc
   -- the values
@@ -233,9 +234,7 @@ theorem readToReg_projoff_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRena
     lbs := LocalBindingSimB.prm_congr (LocalBindingSimB.of_frame h_inv.lbs h_inv.prb h_frame) hB.prm
     mem := h_mem1
     alloc := h_lock1
-    psim := ⟨by rw [h_sm]; exact h_psim2.1, by rw [h_pf]; exact h_psim2.2.1,
-      by rw [h_ex]; exact h_psim2.2.2.1, Nat.le_trans h_psim2.2.2.2.1 h_ntle,
-      by rw [h_wk]; exact h_psim2.2.2.2.2⟩
+    psim := PermSim.of_cancel h_psim2 h_tbd_mid.not_image h_sm h_pf h_ex h_wk h_ntle h_rtq h_rlt
     wf_t := h_inv.wf_t
     tbd := by
       show TagRenameBounded ρt permsR'.NextTag q3.NextTag

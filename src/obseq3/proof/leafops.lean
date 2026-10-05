@@ -216,6 +216,9 @@ theorem exposeAddr_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {�
     split at h
     · cases h
     · rename_i base offset e sz tag perms' h_rc
+      split at h
+      · cases h
+      rename_i perms'' h_exp
       simp only [mirlite.EvalResult.ok.injEq] at h
       subst h
       obtain ⟨r', p', h_r', h_free, h_bnd, h_rd, h_v⟩ := readCell_inv h_rc
@@ -224,12 +227,14 @@ theorem exposeAddr_leafop {Γ : Ctx} {L : mirlite.LayEnv Γ} (dstL : BLayout) {�
         readCellThrough_sim hwf h_reg h_rt h_le h_psim h_mem h_lock h_free h_bnd h_rd
       rw [← h_v] at h_vs
       obtain ⟨t', h_w, h_t⟩ := valSim_ptr h_vs
-      refine ⟨[Val.Dat (base + offset)], sb_expose p2 t', sb_expose perms' tag, ?_, rfl,
-        sb_expose_respects_PermSim h_psim2 hwf h_t, ?_, ⟨Or.inr ⟨by simp, rfl⟩, trivial⟩⟩
+      obtain ⟨p3, h_expT, h_psim3⟩ := sb_expose_respects_PermSim h_psim2 hwf h_t h_exp
+      refine ⟨[Val.Dat (base + offset)], p3, perms'', ?_, rfl,
+        h_psim3, ?_, ⟨Or.inr ⟨by simp, rfl⟩, trivial⟩⟩
       · simp only [oseair.evalRhs]
         rw [h_rct, h_w]
-        rfl
-      · rw [sb_expose_NextTag, sb_expose_NextTag, sb_read_NextTag h_rd, h_nt2]
+        simp only [PermissionModel.stackedBorrows, oseair.ofMem]
+        rw [h_expT]
+      · rw [sb_expose_NextTag h_expT, sb_expose_NextTag h_exp, sb_read_NextTag h_rd, h_nt2]
         exact h_tbd
     · cases h
 

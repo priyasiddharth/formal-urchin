@@ -89,11 +89,11 @@ theorem refSlice_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.P
     projoff_bracket (P := fun vals g => g = id ∧ ∃ t',
         vals = [Val.Ptr base offset extent size t'] ∧ ρt tag = some t')
       h_np h0 hb hcb h_len h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_res h_free h_bnd h_rd
-      (fun S1 reg ext T pmid hm hl hr hle hrd => by
+      (fun S1 reg ext T pmid _ _ hm hl hr hle hrd => by
         obtain ⟨vals, h_ev', h_rel⟩ := (ptrCast_ro (τ := τ) dstL (.proj b f)).target ρt sM S1 reg
           resolved permsR ext T _ pmid h_evC h_res h_wf hm hl hr hle hrd
         obtain ⟨t', rfl, h_t⟩ := ptr_of_storeSim h_rel
-        exact ⟨_, id, h_ev', fun _ _ _ _ _ h => h, rfl, t', rfl, h_t⟩)
+        exact ⟨_, id, h_ev', fun _ _ _ _ h => h, rfl, t', rfl, h_t⟩)
       h_code
   -- §4 retag the extent through the loaded pointer
   obtain ⟨q, h_ref', h_fresh, h_incr, h_wf', h_tbd', h_psim'⟩ :=

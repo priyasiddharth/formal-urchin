@@ -14,7 +14,7 @@ structure PermissionModel where
   ref : State → Word → Nat → Tag → RefKind → Bool → List Bool → Except String (State × Tag)
   die : State → Word → Nat → Tag → Except String State
   dealloc : State → Word → Nat → Tag → Except String State
-  expose : State → Tag → State
+  expose : State → Tag → Except String State
   pushFrame : State → State
   popFrame : State → Except String State
 
@@ -32,6 +32,11 @@ def stackedBorrows : PermissionModel where
   expose := sb_expose
   pushFrame := sb_push_frame
   popFrame := sb_pop_frame
+
+/-- OSEA-IR_B's model: Stacked Borrows with `Die` a no-op — die elision
+    (`proof.die_elision`). -/
+def stackedBorrowsNoDie : PermissionModel :=
+  { stackedBorrows with die := fun s _ _ _ => .ok s }
 
 end PermissionModel
 

@@ -542,6 +542,30 @@ theorem dieCellContent_top_ref
 
 /-! ## The keystone -/
 
+/-- `sb_die` from its fold: the exposed check passes, the fold succeeds,
+    and the tag is retired. -/
+theorem sb_die_ok_of_fold {ap q : AccessPerms} {addr : Word} {lenB : Nat} {tag : Tag}
+    (h_ex : ap.exposed.contains tag = false)
+    (h : foldCells (dieCellOp tag) ap addr lenB = .ok q) :
+    sb_die ap addr lenB tag = .ok { q with retired := tag :: q.retired } := by
+  simp only [sb_die, h_ex, Bool.false_eq_true, if_false, h]
+
+/-- Inversion of a successful `sb_die`. -/
+theorem sb_die_ok_inv {ap q' : AccessPerms} {addr : Word} {lenB : Nat} {tag : Tag}
+    (h : sb_die ap addr lenB tag = .ok q') :
+    ap.exposed.contains tag = false ∧ ∃ q, foldCells (dieCellOp tag) ap addr lenB = .ok q ∧
+      q' = { q with retired := tag :: q.retired } := by
+  unfold sb_die at h
+  split at h
+  · cases h
+  rename_i h_ex
+  refine ⟨by simpa using h_ex, ?_⟩
+  split at h
+  · cases h
+  rename_i q h_f
+  cases h
+  exact ⟨q, h_f, rfl⟩
+
 /-- BRIDGE 1 (keystone), CLOSED: the compiled place-write pattern
     `Borrow(Mut) ; useMut via the fresh tag ; Die` has exactly the stack
     effect of the source's bare `useMut` via the parent tag, up to the tag
@@ -553,6 +577,7 @@ theorem sb_ref_use_die_cancels
     {s s1 : AccessPerms} {addr : Word} {lenB : Nat} {tag t' : Tag}
     (h_nt : (s.NextTag == wildcardTag) = false)
     (h_unprot : isProtectedIn s.protFrames s.NextTag = false)
+    (h_unexp : s.exposed.contains s.NextTag = false)
     (h_ref : sb_ref s addr lenB tag .Mut false [] = .ok (s1, t')) :
     ∃ s2 s3 sAcc,
       sb_write s1 addr lenB t' = .ok s2 ∧
@@ -562,7 +587,9 @@ theorem sb_ref_use_die_cancels
       s3.exposed = sAcc.exposed ∧
       s3.protFrames = sAcc.protFrames ∧
       sAcc.NextTag ≤ s3.NextTag ∧
-      s3.weakProt = sAcc.weakProt := by
+      s3.weakProt = sAcc.weakProt ∧
+      s3.retired = t' :: sAcc.retired ∧
+      t' < s3.NextTag := by
   -- Unpack sb_ref: mint, run the per-cell fold, no protector registration.
   simp only [sb_ref, freshTag, refCellOp, RefKind.toItem] at h_ref
   cases h_go : foldCellsIdx
@@ -678,6 +705,7 @@ theorem sb_ref_use_die_cancels
       have h_apR_pf : apR.protFrames = s.protFrames := by rw [h_apR]
       have h_apR_ex : apR.exposed = s.exposed := by rw [h_apR]
       have h_apR_wk : apR.weakProt = s.weakProt := by rw [h_apR]
+      have h_apR_rt : apR.retired = s.retired := by rw [h_apR]
       have h_apR_nt : apR.NextTag = s.NextTag + 1 := by rw [h_apR]
       have h_apR_sm : apR.StackMap = setChain s.StackMap (chain W₁ addr 0 lenB) := by
         rw [h_apR]
@@ -704,8 +732,8 @@ theorem sb_ref_use_die_cancels
         rw [show (0 : Nat) + lenB = lenB from Nat.zero_add lenB] at this
         exact this
       -- PHASE 3: sb_die pops the fresh item at each cell.
-      have h_phase3 : sb_die { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) }
-            addr lenB s.NextTag =
+      have h_fold3 : foldCells (dieCellOp s.NextTag)
+            { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) } addr lenB =
           .ok { apR with StackMap := setChain (setChain apR.StackMap (chain W₁ addr 0 lenB)) (chain W addr 0 lenB) } := by
         show foldCells _ _ addr lenB = _
         have := foldCells_ok_of_cells
@@ -739,8 +767,13 @@ theorem sb_ref_use_die_cancels
         rw [show addr + 0 = addr from rfl] at this
         rw [show (0 : Nat) + lenB = lenB from Nat.zero_add lenB] at this
         exact this
+      have h_phase3 := sb_die_ok_of_fold
+        (show ({ apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) } :
+          AccessPerms).exposed.contains s.NextTag = false by
+            show apR.exposed.contains s.NextTag = false
+            rw [h_apR_ex]; exact h_unexp) h_fold3
       -- Assemble.
-      refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · -- StackMap: collapse the three chains onto the source's one.
         show setChain (setChain apR.StackMap (chain W₁ addr 0 lenB))
             (chain W addr 0 lenB)
@@ -753,6 +786,10 @@ theorem sb_ref_use_die_cancels
       · rw [h_apR_nt]
         exact Nat.le_succ s.NextTag
       · exact h_apR_wk
+      · show s.NextTag :: apR.retired = s.NextTag :: _
+        rw [h_apR_rt]
+      · show s.NextTag < apR.NextTag
+        rw [h_apR_nt]; exact Nat.lt_succ_self _
 
 /-- BRIDGE 1S (the read-side keystone): the compiled pointer-place pattern
     `Borrow(Shared) ; read via the fresh tag ; Die` has exactly the stack
@@ -766,6 +803,7 @@ theorem sb_ref_read_die_cancels
     {s s1 : AccessPerms} {addr : Word} {lenB : Nat} {tag t' : Tag}
     (h_nt : (s.NextTag == wildcardTag) = false)
     (h_unprot : isProtectedIn s.protFrames s.NextTag = false)
+    (h_unexp : s.exposed.contains s.NextTag = false)
     (h_ref : sb_ref s addr lenB tag .Shared false [] = .ok (s1, t')) :
     ∃ s2 s3 sAcc,
       sb_read s1 addr lenB t' = .ok s2 ∧
@@ -775,7 +813,9 @@ theorem sb_ref_read_die_cancels
       s3.exposed = sAcc.exposed ∧
       s3.protFrames = sAcc.protFrames ∧
       sAcc.NextTag ≤ s3.NextTag ∧
-      s3.weakProt = sAcc.weakProt := by
+      s3.weakProt = sAcc.weakProt ∧
+      s3.retired = t' :: sAcc.retired ∧
+      t' < s3.NextTag := by
   -- Unpack sb_ref: mint, run the per-cell fold, no protector registration.
   simp only [sb_ref, freshTag, refCellOp, RefKind.toItem] at h_ref
   cases h_go : foldCellsIdx
@@ -892,6 +932,7 @@ theorem sb_ref_read_die_cancels
       have h_apR_pf : apR.protFrames = s.protFrames := by rw [h_apR]
       have h_apR_ex : apR.exposed = s.exposed := by rw [h_apR]
       have h_apR_wk : apR.weakProt = s.weakProt := by rw [h_apR]
+      have h_apR_rt : apR.retired = s.retired := by rw [h_apR]
       have h_apR_nt : apR.NextTag = s.NextTag + 1 := by rw [h_apR]
       have h_apR_sm : apR.StackMap = setChain s.StackMap (chain W₁ addr 0 lenB) := by
         rw [h_apR]
@@ -918,8 +959,8 @@ theorem sb_ref_read_die_cancels
         rw [show (0 : Nat) + lenB = lenB from Nat.zero_add lenB] at this
         exact this
       -- PHASE 3: sb_die pops the fresh item at each cell.
-      have h_phase3 : sb_die { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) }
-            addr lenB s.NextTag =
+      have h_fold3 : foldCells (dieCellOp s.NextTag)
+            { apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) } addr lenB =
           .ok { apR with StackMap := setChain (setChain apR.StackMap (chain W₁ addr 0 lenB)) (chain W addr 0 lenB) } := by
         show foldCells _ _ addr lenB = _
         have := foldCells_ok_of_cells
@@ -953,8 +994,13 @@ theorem sb_ref_read_die_cancels
         rw [show addr + 0 = addr from rfl] at this
         rw [show (0 : Nat) + lenB = lenB from Nat.zero_add lenB] at this
         exact this
+      have h_phase3 := sb_die_ok_of_fold
+        (show ({ apR with StackMap := setChain apR.StackMap (chain W₁ addr 0 lenB) } :
+          AccessPerms).exposed.contains s.NextTag = false by
+            show apR.exposed.contains s.NextTag = false
+            rw [h_apR_ex]; exact h_unexp) h_fold3
       -- Assemble.
-      refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨_, _, _, h_phase2, h_phase3, h_src, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · -- StackMap: collapse the three chains onto the source's one.
         show setChain (setChain apR.StackMap (chain W₁ addr 0 lenB))
             (chain W addr 0 lenB)
@@ -967,6 +1013,10 @@ theorem sb_ref_read_die_cancels
       · rw [h_apR_nt]
         exact Nat.le_succ s.NextTag
       · exact h_apR_wk
+      · show s.NextTag :: apR.retired = s.NextTag :: _
+        rw [h_apR_rt]
+      · show s.NextTag < apR.NextTag
+        rw [h_apR_nt]; exact Nat.lt_succ_self _
 
 /-! ## Disjoint-range commutation (2026-08-28)
 

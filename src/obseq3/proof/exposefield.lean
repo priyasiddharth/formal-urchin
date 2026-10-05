@@ -7,9 +7,10 @@ import obseq3.proof.leaffield
 nested fields the chain skeleton applies through the lowering contract
 and congruence. At a nonzero offset the compiled code is the bracket
 `Borrow(Shared); ExposeAddr; Die`: the exposure sits between the read and
-the `Die`, and moves past it by `sb_die_expose_comm` (a `die` never reads
-the exposed set): `projoff_bracket` with the exposure as its permission
-transform.
+the `Die`, and moves past it by `sb_die_exposeBody_comm` (the die checks
+only its own tag against the exposed set, and the exposed tag is a renamed
+one, below the route tag's counter): `projoff_bracket` with the exposure
+as its permission transform.
 -/
 
 namespace obseq3.proof
@@ -32,6 +33,9 @@ theorem exposeAddr_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair
   · cases h_ev
   case h_3 => cases h_ev
   rename_i base offset extent size tag perms' h_rc
+  split at h_ev
+  · cases h_ev
+  rename_i perms'' h_exp
   simp only [mirlite.EvalResult.ok.injEq] at h_ev
   subst h_ev
   obtain ⟨resolved, permsR, h_res, h_free, h_bnd, h_rd, h_v⟩ := readCell_inv h_rc
@@ -52,28 +56,44 @@ theorem exposeAddr_projoff {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair
   -- the bracket, with the exposure inside it
   obtain ⟨n, s3, q3, vals, g, h_runT, h_pc3, h_mem3, h_g, h_ps, h_tb, h_ld, h_fr, h_nr,
       t', rfl, rfl, h_t⟩ :=
-    projoff_bracket (P := fun vals g => ∃ t', g = (fun p => sb_expose p t') ∧
+    projoff_bracket (P := fun vals g => ∃ t', g = (fun p => exposeBody p t') ∧
         vals = [Val.Dat (base + offset)] ∧ ρt tag = some t')
       h_np h0 hb hcb h_len h_wf h_tbd h_lbs h_prb h_mem h_alloc h_psim h_pc h_res h_free h_bnd h_rd
-      (fun S1 reg ext T pmid hm hl hr hle hrd => by
+      (fun S1 reg ext T pmid hT hRS hm hl hr hle hrd => by
         obtain ⟨h_rct, h_vs⟩ := readCellThrough_ro h_wf hr hle hm hl h_free h_bnd hrd
         rw [← h_v] at h_vs
         obtain ⟨t', h_w, h_t⟩ := valSim_ptr h_vs
-        refine ⟨[Val.Dat (base + offset)], fun p => sb_expose p t', ?_,
-          fun _ _ _ _ _ h => sb_die_expose_comm h, t', rfl, rfl, h_t⟩
+        have h_ne : t' ≠ T := fun h =>
+          Nat.lt_irrefl _ (Nat.lt_of_lt_of_le (h ▸ (h_tbd _ _ h_t).2) hT)
+        -- the target's exposure succeeds: the source's did (`RetiredSim`)
+        have h_expT : sb_expose pmid t' = .ok (exposeBody pmid t') := by
+          refine sb_expose_ok_iff.mpr ⟨?_, rfl⟩
+          have h_beq : (t' == wildcardTag) = (tag == wildcardTag) := h_wf.beq_eq h_t h_wf.2
+          rcases (sb_expose_ok_iff.mp h_exp).1 with hw | hr
+          · exact Or.inl (by rw [h_beq]; exact hw)
+          · right
+            cases hc : pmid.retired.contains t' with
+            | false => rfl
+            | true =>
+                have h1 := hRS.1 tag t' h_t (by simpa using hc)
+                have h2 : perms'.retired.contains tag = true := by simpa using h1
+                rw [hr] at h2; cases h2
+        refine ⟨[Val.Dat (base + offset)], fun p => exposeBody p t', ?_,
+          fun _ _ _ _ h => sb_die_exposeBody_comm h_ne h, t', rfl, rfl, h_t⟩
         simp only [mk, oseair.evalRhs]
         rw [h_rct, h_w]
-        rfl)
+        simp only [PermissionModel.stackedBorrows, oseair.ofMem]
+        rw [h_expT])
       h_code
-  refine ⟨ρt, n, s3, sM.mem, sb_expose perms' tag, [Val.Dat (base + offset)],
+  refine ⟨ρt, n, s3, sM.mem, perms'', [Val.Dat (base + offset)],
     TagRenameIncr.refl ρt, h_wf, rfl, h_runT, ?_, ?_, ?_, ?_, by rw [h_mem3]; exact h_mem,
     by rw [h_mem3]; exact h_alloc, h_pc3, ?_, ⟨Or.inr ⟨by simp, rfl⟩, trivial⟩⟩
   · rw [h_run]; show csA.nextReg ≤ _ + 1; omega
   · exact LocalBindingSimB.prm_congr (LocalBindingSimB.of_frame h_lbs h_prb h_fr) h_prmR
-  · rw [h_g]; exact sb_expose_respects_PermSim h_ps h_wf h_t
-  · rw [h_g]
-    show TagRenameBounded ρt (sb_expose perms' tag).NextTag (sb_expose q3 t').NextTag
-    rw [sb_expose_NextTag, sb_expose_NextTag]; exact h_tb
+  · rw [h_g, (sb_expose_ok_iff.mp h_exp).2]; exact exposeBody_respects_PermSim h_ps h_wf h_t
+  · rw [h_g, (sb_expose_ok_iff.mp h_exp).2]
+    show TagRenameBounded ρt (exposeBody perms' tag).NextTag (exposeBody q3 t').NextTag
+    rw [exposeBody_NextTag, exposeBody_NextTag]; exact h_tb
   · rw [h_run]
     exact StoreStepB.rstore compProg _ _ dstL _ _ h_ld (show _ < _ + 1 by omega)
 

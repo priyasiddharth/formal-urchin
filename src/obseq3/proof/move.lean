@@ -134,7 +134,11 @@ theorem move_pkg_core {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog
   have h_nt : (ρt.extend permsR.NextTag s1.perms.NextTag) permsR.NextTag
       = some s1.perms.NextTag := TagRenameMap.extend_self _ _ _
   obtain ⟨q2, h_rd', h_psim2⟩ := sb_read_respects_PermSim h_psim1 h_wf' h_nt h_rd
-  obtain ⟨q3, h_die', h_psim3, h_nts, h_ntt⟩ := sb_die_respects_PermSim h_psim2 h_wf' h_nt h_die
+  have h_tbd2 : TagRenameBounded (ρt.extend permsR.NextTag s1.perms.NextTag)
+      permsRd.NextTag q2.NextTag := by
+    rw [sb_read_NextTag h_rd, sb_read_NextTag h_rd']; exact h_tbd'
+  obtain ⟨q3, h_die', h_psim3, h_nts, h_ntt⟩ :=
+    sb_die_respects_PermSim h_psim2 h_wf' h_tbd2 h_nt h_die
   -- the values
   have hrel := readL_sim h_wf' (ByteMemSim.rename_mono h_incr h_mem1) (aRes.addr + oB)
     (mirlite.placeLayout L src)
