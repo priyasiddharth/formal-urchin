@@ -1440,6 +1440,34 @@ instruction, never makes a valid program invalid:
   registers, and memory as $T'$.
 ] <thm:die-elision>
 
+The permission states of the two machines are related as follows.
+
+#definition("Die-elision relation")[
+  Let $E$ be a set of tags. A stack $sigma_B$ _extends_ a stack $sigma_A$
+  by $E$ when $sigma_B$ is $sigma_A$ with items whose tags are in $E$, the
+  _extras_, inserted at any positions, and no item $"RawPtr"("true",t)$ of
+  $sigma_A$ lies directly above an extra. Permission states are related,
+  $Pi_A prec.eq Pi_B$, when
+  - they have the same `NextTag`, protector frames, exposed tags, and weakly
+    protected tags, and $Pi_B$ has retired no tag;
+  - no tag retired in $Pi_A$ is exposed in $Pi_A$;
+  - at every byte address $a$, either both stacks are absent, or
+    $Pi_B (a)$ extends $Pi_A (a)$ by the tags that are retired and
+    unprotected in $Pi_A$, the tags of $Pi_B (a)$ are pairwise distinct and
+    below `NextTag`, and the bottom item of $Pi_A (a)$ is an $"Own"$ item.
+] <def:dierel>
+
+#theorem("Die elision per operation")[
+  The initial permission state is related to itself. If
+  $Pi_A prec.eq Pi_B$, then:
+  - if $"die"(Pi_A,a,n,u)=Pi'_A$, then $Pi'_A prec.eq Pi_B$;
+  - for every other operation of the interface (@sec:perm,
+    @tab:surface-perm), if it succeeds on $Pi_A$ with result $Pi'_A$ (and
+    tag $u$, for `own` and `ref`), it succeeds on $Pi_B$ with the same
+    arguments, with a result $Pi'_B$ (and the same tag $u$), and
+    $Pi'_A prec.eq Pi'_B$.
+] <thm:die-rel>
+
 These results are preservation of successful finite executions. They are
 not backward simulation, divergence preservation, or an equivalence between
 source and target error messages. Their observable consequences are the
@@ -1590,6 +1618,8 @@ declaration in `src/obseq3/proof/`:
   ([@thm:run], [`compile_correct_all`], [`coverage.lean`]),
   ([@cor:agrees], [`compile_correct_agrees`], [`layoutagree.lean`]),
   ([@cor:uniform], [`compile_correct_uniform`], [`coverage.lean`]),
+  ([@def:dierel], [`StackSub`, `CellRel`, `Extra`, `PermSub`], [`stacksub.lean`, `cellsub.lean`, `permsub.lean`]),
+  ([@thm:die-rel], [`modelSim_noDie`], [`die_elision.lean`]),
   ([@thm:die-elision], [`die_elision`], [`die_elision.lean`]),
 ) <tab:lean>
 
