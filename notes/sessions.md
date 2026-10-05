@@ -5205,3 +5205,8 @@ invariant (tagsin, die_back*). `StateIncr` gained `code_none`. 48 proof
 files, 1109 declarations, 3 axioms, 0 sorries. Parked: proving the check
 always passes for compile.lean output. Journal:
 2026-10/2026-10-05-die-elision-backward.md.
+Later: the compiler always passes the route-bracket check
+(`compiled_routeProg`, route_seg/route_compile, ~2300 lines): every
+compiled program reaches the same verdict on OSEA-IR and OSEA-IR_B,
+unconditionally (`compiled_die_elision`, audit root). 50 proof files,
+1265 declarations, 3 axioms, 0 sorries. Paper theorem made unconditional.

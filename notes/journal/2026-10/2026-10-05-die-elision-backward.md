@@ -78,3 +78,35 @@ retired one included). Compiled code stores only data/uninit literals;
 `routeOK` checks it.
 
 Audit: 5 roots; 1109 declarations. Suites unchanged.
+
+## The compiler always passes the check (same day, later)
+
+[OBS] `compiled_routeProg : compileProg L P = .ok Q → RouteProg Q`, hence
+`compiled_die_elision` (audit root): every compiled program reaches the
+same verdict on OSEA-IR and OSEA-IR_B — no per-program hypothesis.
+`route_seg.lean` (269) + `route_compile.lean` (2030), sorry-free, 3 axioms.
+
+[OBS] Method: each compile function's emitted code is a SEGMENT (`Emits`)
+with a spec (`Seg`): every register it mentions is a local's, passed in,
+or created in its register window; every `Die` closes a bracket inside the
+segment on a window register; no pointer literal; no `SkipIf`. A place
+lowering may end in an OPEN bracket (`PlaceOut`), which the caller closes
+with one access and the `Die` (`close_access`, the one lemma every
+consumer uses: readToReg, readRhsPre, move, deref, the assignment's store).
+Statement level: `Code` (allows the guard's `SkipIf`, jump target within
+the segment and never inside a bracket) composes by concatenation; the
+program is one `Code` segment from label 0, hence `RouteProg`
+(`Code.routeProg`).
+
+[OBS] Two facts about the compiler that the spec needed and that held:
+nested projections are reassociated before lowering, so a projection's
+base never has a cleanup (every cleanup list has ≤ 1 entry); and the
+assignment's store immediately follows the destination's route borrow.
+`assignIf`'s guard register is created before the body — handled by
+`Code.append_guard` (treat it as live inside, then drop).
+
+[OBS] The audit caught one more name clash (`emitSkipIfAround_ok`, in
+assignif.lean); renamed `skipIfAround_ok`. Audit: 6 roots, 1265
+declarations. Suites unchanged. Paper: the theorem is now unconditional;
+the check's definition is gone from the paper (not needed to state it); the
+check still runs in the tests as a regression guard.

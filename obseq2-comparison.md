@@ -21,6 +21,10 @@ compiled test program passes it (771 `Die` instructions in the Miri-based
 corpus alone). Proving that the compiler always passes the check is left
 for later.
 
+Later the same day we proved it: every program the compiler produces passes
+the check, so the two versions agree for every compiled program, with no
+check needed.
+
 ---
 
 ## 2026-10-05 — The Cleanup Instruction Can Be Removed
