@@ -872,7 +872,7 @@
       "prep": null,
       "artifact": "box-custom-alloc-aliasing.ullbc.json",
       "status": "unsupported",
-      "reason": "Box + custom allocator + trait objects",
+      "reason": "the user allocator calls `std::thread::current()` (threads); Box with a custom allocator and trait objects after that (probed 2026-10-05)",
       "expected": {
         "verdict": "ub"
       }
@@ -930,11 +930,12 @@
       "source": "corpus/tests/fail/both_borrows/buggy_split_at_mut.rs",
       "prep": null,
       "artifact": "buggy_split_at_mut.ullbc.json",
-      "status": "unsupported",
-      "reason": "slice length (`.len()`), `from_raw_parts_mut`, runtime pointer offset; control flow is certified since 2026-09-23",
+      "status": "supported",
       "expected": {
         "verdict": "ub"
-      }
+      },
+      "certificate": "buggy_split_at_mut.cert.json",
+      "reason": null
     },
     {
       "id": "fail/both_borrows/deallocate_against_protector1",
@@ -1576,7 +1577,7 @@
       "prep": null,
       "artifact": null,
       "status": "unsupported",
-      "reason": "Cell/RefCell/UnsafeCell",
+      "reason": "whole file: `into_interior_mutability` calls `MaybeUninit::uninit` (no shim; MaybeUninit methods, parked t); every other scenario passes as a split-out (probed 2026-10-05)",
       "expected": {
         "verdict": "ok"
       },
@@ -1630,7 +1631,7 @@
       "prep": null,
       "artifact": null,
       "status": "unsupported",
-      "reason": "smallvec-style unions/arrays",
+      "reason": "the std constant `isize::MAX` is evaluated through a bodyless function (constant evaluation in the loader); unions/arrays after that (probed 2026-10-05)",
       "expected": {
         "verdict": "ok"
       },
@@ -1690,7 +1691,7 @@
       "prep": null,
       "artifact": null,
       "status": "unsupported",
-      "reason": "int-to-ptr + GC internals",
+      "reason": "`for` loops: `<Range as IntoIterator>::into_iter` has no shim (probed 2026-10-05)",
       "expected": {
         "verdict": "ok"
       },
@@ -1702,7 +1703,7 @@
       "prep": null,
       "artifact": null,
       "status": "unsupported",
-      "reason": "closures + recursion-depth checks",
+      "reason": "`[(); usize::MAX]`: the loader expands arrays element by element (mirlite has no array type) and rejects arrays longer than 4096 (probed 2026-10-05; it used to run out of memory)",
       "expected": {
         "verdict": "ok"
       },
@@ -2465,6 +2466,63 @@
       "provenance": "local; real-Miri verified (pinned submodule), 2026-10-04 via scripts/miri_local.sh and live.py",
       "notes": "format! with Display and Debug placeholders of an integer, a &str and a String, and literal pieces; assert_eq! makes the certificate check the model's output bytes.",
       "certificate": "local/format_display_debug.cert.json"
+    },
+    {
+      "id": "local/ptr_add_runtime_ok",
+      "artifact": "local/ptr_add_runtime_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
+      "notes": "p.add(k) with k read from a Box (unknown when loading): in-bounds arithmetic that succeeds (ptrOffsetBy); the certificate checks the element read through it.",
+      "certificate": "local/ptr_add_runtime_ok.cert.json"
+    },
+    {
+      "id": "local/ptr_add_runtime_oob",
+      "artifact": "local/ptr_add_runtime_oob.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 8
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
+      "notes": "p.add(k) with k read from a Box, past the end of a 12-byte array: in-bounds arithmetic fails.",
+      "certificate": "local/ptr_add_runtime_oob.cert.json"
+    },
+    {
+      "id": "local/slice_index_runtime_ok",
+      "artifact": "local/slice_index_runtime_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
+      "notes": "slice data indexed at a run-time index (ptrOffsetBy through the slice pointer, no retag); the certificate checks the element read.",
+      "certificate": "local/slice_index_runtime_ok.cert.json"
+    },
+    {
+      "id": "local/slice_index_runtime_other_elem",
+      "artifact": "local/slice_index_runtime_other_elem.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
+      "notes": "stacks are per byte: a raw write to element 0 leaves the shared slice's tag on element 2, read at a run-time index.",
+      "certificate": "local/slice_index_runtime_other_elem.cert.json"
+    },
+    {
+      "id": "local/slice_index_runtime_popped",
+      "artifact": "local/slice_index_runtime_popped.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 11
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
+      "notes": "a raw write to element 2 pops the shared slice's tag there; reading element 2 through the slice at a run-time index is UB.",
+      "certificate": "local/slice_index_runtime_popped.cert.json"
     },
     {
       "id": "local/ptr_add_out_of_bounds",

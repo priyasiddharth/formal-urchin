@@ -1,0 +1,58 @@
+{
+ "version": 1,
+ "source": "corpus/tests/fail/both_borrows/buggy_split_at_mut.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ub",
+ "user_fns": [
+  "main",
+  "split_at_mut"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "split_at_mut",
+   "miri_path": "safe::split_at_mut::<i32>",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _8",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _8) -> [0: bb4, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_18.1: bool)",
+     "success": 5,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_18.1: bool), \"attempt to compute `{} - {}`, which would overflow\", move _16, move _17) -> [success: bb5, unwind continue]",
+     "next": 5,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_28.1: bool)",
+     "success": 8,
+     "descr": "rustc_const_eval::interpret::step assert(!move (_28.1: bool), \"attempt to compute `{} - {}`, which would overflow\", move _26, move _27) -> [success: bb8, unwind continue]",
+     "next": 8,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

@@ -76,6 +76,11 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
     (`add`/`offset`, not `wrapping_*`) makes a move out of the allocation
     UB, as Miri's in-bounds pointer arithmetic (`bytes.Mem.offsetPtr`). -/
 | ptrOffset : Place Γ (LayoutTy.PtrL σ) → Int → Bool → RExpr Γ (LayoutTy.PtrL τ)
+/-- `ptrOffsetBy p i inbounds`: `p` moved by the value of the integer place
+    `i` (in pointees, read when the program runs, at `i`'s type): the
+    run-time `ptrOffset`. Both places are copy-read, as `subSlice`'s. -/
+| ptrOffsetBy {t : IntTy} : Place Γ (LayoutTy.PtrL σ) → Place Γ (LayoutTy.IntL t) → Bool →
+    RExpr Γ (LayoutTy.PtrL τ)
 | refSlice : RefKind → Bool → Place Γ (LayoutTy.PtrL σ) → RExpr Γ (LayoutTy.PtrL τ)
 | sliceLen {t : IntTy} : Place Γ (LayoutTy.PtrL σ) → RExpr Γ (LayoutTy.IntL t)
 | subSlice {tl th : IntTy} : Place Γ (LayoutTy.PtrL σ) → Place Γ (LayoutTy.IntL tl)

@@ -1566,23 +1566,23 @@ declaration in `src/obseq3/proof/`:
   ([@cor:uniform], [`compile_correct_uniform`], [`coverage.lean`]),
 ) <tab:lean>
 
-The proof is about 12,900 lines and 410 theorems across the 36 files of
+The proof is about 13,000 lines and 414 theorems across the 36 files of
 that directory, which also hold the Stacked Borrows lemmas it rests on.
 None of it contains an admitted goal. A checked audit prints the axioms
 that @thm:run and its corollaries depend on and fails if that set differs
 in either direction from a pinned whitelist; a second check covers every
-one of the directory's 780 declarations. The whitelist contains exactly the
+one of the directory's 782 declarations. The whitelist contains exactly the
 three standard Lean axioms, propositional extensionality, choice, and
 quotient soundness, and no `sorryAx`.
 
 The executable compiler is additionally validated by testing: a compiler
-witness corpus of 138 programs, run on both machines at the uniform layout
+witness corpus of 141 programs, run on both machines at the uniform layout
 and pinned as golden listings where the shape of the code matters; a
-corpus of 195 entries, drawn from Miri's Stacked Borrows tests and
+corpus of 200 entries, drawn from Miri's Stacked Borrows tests and
 completed by local witnesses, loaded from rustc's MIR through Charon with
-rustc's own layouts, whose 176 supported programs reach Miri's verdict
+rustc's own layouts, whose 182 supported programs reach Miri's verdict
 and, where Miri reports undefined behavior, the same statement and, with
-four documented exceptions, the same reason; and a differential run that compiles each of those 176
+four documented exceptions, the same reason; and a differential run that compiles each of those 182
 programs and requires the same verdict from both machines. The layout
 check of @def:layoutwf passes on all of them. The running program of this
 paper is part of the witness corpus, both as a golden listing
@@ -1606,12 +1606,12 @@ same format, to the language the compiler and the theorem actually cover.
 #grammarfig(
   [The remaining syntax of MIRLite (left) and OSEA-IR (right), extending @fig:mir-grammar and @fig:oseair-grammar. $d$ in `ptrOffset` and $delta$ in `offset` are integers and $i$ a boolean, set for in-bounds arithmetic; a `borrow` of length $bot$ retags the pointer's extent; $"op"$ is an integer operation at an integer type.],
   panel([MIRLite], bnf(
-    prod($"Expr" in.rev e$, $dots$, $"uninit" | "alloc"("len")$, $"exposeAddr"(p) | "addr"(p)$, $"fromExposed"(p)$, $"ptrCast"(p) | "ptrOffset"(p,d,i)$, $"refSlice"(k,c,p)$, $"sliceLen"(p) | "subSlice"(p, p_l, p_h)$, $"binOp"("op", p_a, p_b)$),
+    prod($"Expr" in.rev e$, $dots$, $"uninit" | "alloc"("len")$, $"exposeAddr"(p) | "addr"(p)$, $"fromExposed"(p)$, $"ptrCast"(p) | "ptrOffset"(p,d,i) | "ptrOffset"(p,p_n,i)$, $"refSlice"(k,c,p)$, $"sliceLen"(p) | "subSlice"(p, p_l, p_h)$, $"binOp"("op", p_a, p_b)$),
     prod($"Stmt" in.rev s$, $dots$, $"assignIf"(p = w, thick d := e)$, $"dealloc"(p)$, $"pushProtectors" | "popProtectors"$),
     prod($"len"$, $"const"(n) | "from"(p)$),
   )),
   panel([OSEA-IR], bnf(
-    prod($"Rhs" in.rev h$, $dots$, $"allocN"_beta (n) | "allocDyn"_beta (r)$, $"expose"_kappa (r) | "fromExposed"_kappa (r)$, $"offset"_kappa (r,delta,i)$, $"borrow"(k,c,m,bot,r,delta)$, $"sliceLen"_n (r) | "subSlice"_n (r, r_l, r_h)$, $"binOp"("op", r_a, r_b)$),
+    prod($"Rhs" in.rev h$, $dots$, $"allocN"_beta (n) | "allocDyn"_beta (r)$, $"expose"_kappa (r) | "fromExposed"_kappa (r)$, $"offset"_kappa (r,delta,i) | "offsetBy"_(t,n) (r,r_n,i)$, $"borrow"(k,c,m,bot,r,delta)$, $"sliceLen"_n (r) | "subSlice"_n (r, r_l, r_h)$, $"binOp"("op", r_a, r_b)$),
     prod($"Instr" in.rev I$, $dots$, $"dealloc"(r)$, $"skipIf"(r, w, n)$, $"pushProt" | "popProt"$),
   )),
 ) <fig:surface-grammar>
@@ -1700,6 +1700,9 @@ theorem is a statement about it rather than about Miri's angelic choice.
   ir(rn[rval-offset],
     [one-leaf read through $r$ at $kappa$, \ leaf $="ptr"(b',o',e',sz',t')$, #h(3pt) $o'+delta >= 0$, \ $i and delta != 0 => b' "live" and o' <= sz' and o'+delta <= sz'$],
     [$T tack "offset"_kappa (r,delta,i) #dH$ \ $quad (["ptr"(b',o'+delta,e',sz',t')], T[Pi |-> Pi_1])$]),
+  ir(rn[rval-offsetby],
+    [$T.R(r)=["ptr"(b',o',e',sz',t')]$, #h(3pt) $T.R(r_n)=["dat"(w)]$, #h(3pt) $delta = "int"_t (w) dot n$, \ $o'+delta >= 0$, #h(3pt) $i and delta != 0 => b' "live" and o' <= sz' and o'+delta <= sz'$],
+    [$T tack "offsetBy"_(t,n) (r,r_n,i) #dH$ \ $quad (["ptr"(b',o'+delta,e',sz',t')], T)$]),
   ir(rn[rval-borrow-rest],
     [$T.R(r)=["ptr"(b,o,e,sz,t)]$, #h(3pt) $b$ live, \ $"ref"(T.Pi,b+o+delta,e,t,k,c,m)=(Pi',u)$],
     [$T tack "borrow"(k,c,m,bot,r,delta) #dH$ \ $quad (["ptr"(b,o+delta,e,sz,u)], T[Pi |-> Pi'])$]),
@@ -1790,6 +1793,7 @@ before the destination is lowered.
   ([`fromExposed(p)`], [Lower $p$; $r_v := "fromExposed"_kappa (r_s)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`ptrCast(p)`], [Lower $p$; $r_v := "load"_(beta_kappa) (r_s)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`ptrOffset(p,d,i)`], [Lower $p$; $r_v := "offset"_kappa (r_s, d dot |beta_e|, i)$; $"cleanup"(D_s)$.], [$"store"_(beta_d) (r_v, r_d)$]),
+  ([`ptrOffset(p,`$p_n$`,i)`], [Read $p$, $p_n$ into $r, r_n$; $r_v := "offsetBy"_(t,|beta_e|) (r,r_n,i)$, $t$ the type of $p_n$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`refSlice(k,c,p)`], [Lower $p$; $r_v := "load"_(beta_kappa) (r_s)$; $"cleanup"(D_s)$; then $r_v := "borrow"(k,c,[],bot,r_v,0)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`sliceLen(p)`], [Read $p$ into $r$; $r_v := "sliceLen"_(|beta_e|) (r)$.], [$"store"_(beta_d) (r_v, r_d)$]),
   ([`subSlice(p,`$p_l$`,`$p_h$`)`], [Read $p$, $p_l$, $p_h$ into $r, r_l, r_h$; $r_v := "subSlice"_(|beta_e|) (r,r_l,r_h)$.], [$"store"_(beta_d) (r_v, r_d)$]),
@@ -1798,6 +1802,9 @@ before the destination is lowered.
 
 Pointer offsets are expressed by the source in pointee units, so the
 compiler scales $d$ by the pointee's byte size before OSEA-IR sees it. A
+count known only when the program runs is an integer place $p_n$: both
+places are copy-read into registers, as for `subSlice`, and `offsetBy`
+scales the word, read at its integer type $t$, when it executes. A
 pointer cast is tag-preserving: a `borrow` would mint a new tag, whereas a
 load and a store copy the pointer value unchanged while performing the
 source's read and write. The placement of cleanup is semantic. In

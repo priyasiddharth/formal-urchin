@@ -163,6 +163,9 @@ inductive RhsB {Γ : Ctx} : {τ : LayoutTy} → RExpr Γ τ → Prop
   | subSlice {σ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)}
       {tl th : IntTy} {lo : Place Γ (LayoutTy.IntL tl)} {hi : Place Γ (LayoutTy.IntL th)} :
       ReadSrcB src → ReadSrcB lo → ReadSrcB hi → RhsB (.subSlice src lo hi)
+  | ptrOffsetBy {σ τ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)}
+      {t : IntTy} {idx : Place Γ (LayoutTy.IntL t)} (inb : Bool) :
+      ReadSrcB src → ReadSrcB idx → RhsB (.ptrOffsetBy (τ := τ) src idx inb)
   | allocConst {τ : LayoutTy} (n : Nat) : RhsB (.alloc (τ := τ) (.const n))
   | allocDyn {τ : LayoutTy} {t : IntTy} {p : Place Γ (LayoutTy.IntL t)} :
       ReadSrcB p → RhsB (.alloc (τ := τ) (.fromPlace p))
@@ -188,6 +191,7 @@ theorem RhsB.pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   | fromExposed h => exact fromExposed_pkgL hWF hLeaf dstL _ h
   | sliceLen h => exact sliceLen_pkg hWF dstL h
   | subSlice h1 h2 h3 => exact subSlice_pkg hWF dstL h1 h2 h3
+  | ptrOffsetBy inb h1 h2 => exact ptrOffsetBy_pkg hWF dstL inb h1 h2
   | allocConst n => exact alloc_const_pkg dstL n
   | allocDyn h => exact alloc_dyn_pkg hWF dstL h
   | binOp op ha hb => exact binOp_pkg hWF dstL op ha hb

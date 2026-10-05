@@ -79,10 +79,13 @@ Not covered (rejected as `unsupported`), with the reason:
   complexity, and no SB rule needs them;
 - **unwind paths / `abort` / certified panic paths** — exception
   machinery, no SB content;
-- **runtime array indices / pointer offsets / allocation sizes whose
-  VALUE the lowering cannot fold** — an index PROJECTION needs a static
-  field, and neither `sliceLen`'s nor `subSlice`'s word is one (lengths
-  and sub-slices are real; a runtime `ptr::add` is the next gap);
+- **a runtime index into a LOCAL array** (`a[i]`, `i` unknown when
+  loading) — mirlite has no array type (`[T; N]` is a tuple; N ≤
+  `maxArrayLen`) and an index projection needs a static field. Through a
+  POINTER the gap is closed (2026-10-05): `ptr.add(i)`/`offset(i)` and
+  slice data `(*s)[i]` lower to the run-time `ptrOffsetBy`. A local array
+  has no pointer to move without a `&raw` retag, an access Miri does not
+  make (it would invalidate shared borrows of the array: false UB);
 - **recursion & deep (>8) call chains, unknown/bodyless callees,
   unresolved indirect calls** — inlining must terminate statically;
 - **drop glue, closures, containers, threads, unions** (as they arise in
@@ -399,6 +402,8 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
   | .addr p => do return .addr (← resolveGlobalRoot gmap p)
   | .fromExposed p => do return .fromExposed (← resolveGlobalRoot gmap p)
   | .ptrOffset p d ib => do return .ptrOffset (← resolveGlobalRoot gmap p) d ib
+  | .ptrOffsetBy p i ib => do
+      return .ptrOffsetBy (← resolveGlobalRoot gmap p) (← resolveGlobalRoot gmap i) ib
   | .rawField p steps => do return .rawField (← resolveGlobalRoot gmap p) steps
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveGlobalRoot gmap p)
   | .discriminant p => do return .discriminant (← resolveGlobalRoot gmap p)

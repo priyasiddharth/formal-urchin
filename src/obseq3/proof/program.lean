@@ -105,6 +105,24 @@ theorem evalRExpr_pc {Γ : Ctx} {L : mirlite.LayEnv Γ} {s : mirlite.State MSB �
     subst h
     dsimp only
     exact (evalCopy_pc h3).trans ((evalCopy_pc h2).trans (evalCopy_pc h1))
+  case ptrOffsetBy src idx inb =>
+    simp only [mirlite.evalRExpr] at h
+    split at h
+    · cases h
+    rename_i out1 h1
+    split at h
+    case h_2 => cases h
+    split at h
+    · cases h
+    rename_i out2 h2
+    split at h
+    case h_2 => cases h
+    split at h
+    · cases h
+    simp only [mirlite.EvalResult.ok.injEq] at h
+    subst h
+    dsimp only
+    exact (evalCopy_pc h2).trans (evalCopy_pc h1)
   case copy src =>
     exact evalCopy_pc (by simpa [mirlite.evalRExpr] using h)
   all_goals simp only [mirlite.evalRExpr] at h

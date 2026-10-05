@@ -1,0 +1,41 @@
+{
+ "version": 1,
+ "source": "local/ptr_add_runtime_ok.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "drop",
+     "ty": "Box<usize>",
+     "descr": "<std::boxed::Box<usize> as std::ops::Drop>::drop"
+    },
+    {
+     "k": "switch",
+     "discr": "move _11",
+     "cases": [
+      [
+       0,
+       5
+      ]
+     ],
+     "otherwise": 4,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _11) -> [0: bb5, otherwise: bb4]",
+     "next": 5,
+     "arm": "0"
+    }
+   ]
+  }
+ ]
+}

@@ -204,6 +204,8 @@ inductive URvalue
 | fromExposed (p : UPlace)
 -- `inbounds`: `add`/`offset` (Miri's in-bounds arithmetic), not `wrapping_*`
 | ptrOffset (p : UPlace) (delta : Int) (inbounds : Bool)
+-- the run-time `ptrOffset`: `p` moved by the integer place `idx` (pointees)
+| ptrOffsetBy (p idx : UPlace) (inbounds : Bool)
 -- `&raw (*p).f…` with `p` raw (rustc's `place_base_raw`: no retag): `p`
 -- moved, in bounds, by the byte offset of the field path `steps` in `p`'s
 -- pointee — resolved at emission, where layouts are known
@@ -766,6 +768,9 @@ def parseScalarValue (j : Json) : Option Nat :=
   (parseScalarInt j).map Int.toNat
 
 
+/-- The longest array the loader expands (see `parseTy`'s `Array` case). -/
+def maxArrayLen : Nat := 4096
+
 partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
   if fuel == 0 then .unsupported "type recursion depth exceeded" else
   let j := resolveTyJson ctx.tbl j
@@ -883,7 +888,10 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
               | none => .unsupported s!"adt id {idJ.compress}"
       | none => .unsupported "adt without id"
   | some ("Array", args) =>
-      -- [T; N] is a homogeneous tuple of N elements
+      -- [T; N] is a homogeneous tuple of N elements: one field per element
+      -- in every loader structure (and `TupL` in mirlite, which has no
+      -- array type), so N is bounded (`maxArrayLen`) — `[(); usize::MAX]`
+      -- would otherwise be materialised (Miri keeps arrays symbolic)
       match asArr args with
       | [elemJ, lenJ] =>
           match getK lenJ "kind" >>= sumKey with
@@ -891,7 +899,9 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
               match sumKey lit with
               | some ("Scalar", sc) =>
                   match parseScalarValue sc with
-                  | some n => .tup (List.replicate n (parseTy ctx (fuel - 1) elemJ))
+                  | some n =>
+                      if n > maxArrayLen then .unsupported s!"array of {n} elements (more than {maxArrayLen})"
+                      else .tup (List.replicate n (parseTy ctx (fuel - 1) elemJ))
                   | none => .unsupported "array length not a scalar"
               | _ => .unsupported "array length not a literal"
           | _ => .unsupported "array length not a const"
@@ -1249,7 +1259,9 @@ def parseRvalue (ctx : ParseCtx) (j : Json) : URvalue :=
                         | ("Scalar", sc) => parseScalarValue sc
                         | _ => none)
                   | _ => none) with
-          | some n => .aggregate none (List.replicate n (parseOperand ctx opJ))
+          | some n =>
+              if n > maxArrayLen then .unsupported s!"array repeat of {n} elements (more than {maxArrayLen})"
+              else .aggregate none (List.replicate n (parseOperand ctx opJ))
           | none => .unsupported "repeat length not a constant"
       | _ => .unsupported "malformed Repeat"
   | some ("Aggregate", payload) =>
@@ -1403,6 +1415,7 @@ def URvalue.places : URvalue → List UPlace
   | .refSlice _ _ p | .sliceLen p | .discriminant p => [p]
   | .aggregate _ ops => ops.flatMap (·.places)
   | .subSlice p lo hi => p :: lo.places ++ hi.places
+  | .ptrOffsetBy p i _ => [p, i]
   | .binOp _ _ a b => a.places ++ b.places
   | _ => []
 

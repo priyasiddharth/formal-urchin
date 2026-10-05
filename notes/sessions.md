@@ -5158,3 +5158,15 @@ Later: push_str, format! (narrow checked model: Argument/Arguments as
 registry words, Debug/Display of ints, String, &str, Vec<int>; shapes
 checked at run time, new assumeFailed verdict) and String == &str;
 disjoint_mutable_subborrows passes; 3 witnesses. Corpus 176/0/0/19 of 195.
+
+## 2026-10-05 (array guard; run-time ptrOffset)
+
+Probe of the 18 unsupported Miri entries: zst-field-retagging-terminates
+exhausted memory (`[(); usize::MAX]` expanded). Guard: arrays > 4096
+unsupported. New `ptrOffsetBy` (mirlite + OSEA-IR + compiler + proof
+`ptrOffsetBy_pkg`); the loader uses it for `ptr.add(i)` and slice data
+`(*s)[i]`. A local-array run-time index stays unsupported (it would need a
+retag Miri doesn't do; options in parked y). buggy_split_at_mut passes; 5
+witnesses; stale reasons updated. Corpus 182/0/0/18 of 200; units 33 + 141;
+782 proof declarations, 3 axioms, 0 sorries. Journal:
+2026-10/2026-10-05-runtime-offset.md.

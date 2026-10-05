@@ -531,6 +531,27 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   non-static function") — every current closure use is avoidable by a
   named-fn prep, so it is optional.
 
+- y. Arrays (2026-10-05; journal 2026-10-05-runtime-offset.md). mirlite has
+  no array type: the loader expands `[T; N]` into a tuple of N fields and
+  rejects N > 4096 (`maxArrayLen`; `[(); usize::MAX]` in
+  zst-field-retagging-terminates used to exhaust memory). Run-time
+  offsets through a POINTER are supported (`ptrOffsetBy`: `ptr.add(i)`,
+  `offset(i)`, slice data `(*s)[i]`). Still unsupported: a run-time index
+  into a LOCAL array (`a[i]`, `i` unknown when loading). A pointer to the
+  array would need a `&raw` retag, an SB access Miri does not make (false
+  UB on shared borrows of the array). Options, cheapest first:
+  (1) loader-only DISPATCH over the N possible indices with `assignIf`
+  (`assignIf i k (dst := a[k])` for k < N; re-reading `i` with the same
+  tag is idempotent in SB; N ≤ 4096 bounds the code), no proof change;
+  (2) an address-of-place rvalue without a retag (a raw pointer with the
+  place's own tag, as Miri's place projection) + `ptrOffsetBy`: one new
+  RExpr and proof leaf; (3) an array `LayoutTy` (`ArrL τ n`) with a
+  run-time index projection: every place lemma (`projoff_bracket`,
+  `pathOffsetB`, ChainB/LeafSrcB) assumes static offsets — large; also
+  needed for large arrays of non-zero-sized elements, since `BLayout.leaves`
+  lists every leaf. No corpus test needs (1)–(3) yet. [DEC: guard + pointer
+  path now; user, 2026-10-05]
+
 **Tier 3 — out of scope or blocked upstream (6)**
 retag_data_race_{read,write,protected_read} (threads + a data-race
 checker, A5); return_pointer_aliasing_write_tail_call (pinned Charon:

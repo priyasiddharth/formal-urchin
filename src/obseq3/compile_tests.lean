@@ -2638,6 +2638,31 @@ def d114_inbounds_freed : IO Unit :=
      .assign pA (.ptrOffset pA 1 true)]
     (.ub 4) "d114 in-bounds offset of a freed pointer"
 
+/-- The run-time `ptrOffsetBy` on both machines: two copy-reads, then the
+    move; in bounds, past the end, and a write through the result. -/
+def d115_ptr_offset_by_ok : IO Unit :=
+  expectDiff ΓA
+    [.assign pA (.alloc (.const 2)),
+     .assign tA (.constInit 1),
+     .assign pA (.ptrOffsetBy pA tA true),
+     .assign (.deref pA) (.constInit 5)]
+    .ok "d115 ptrOffsetBy in bounds, write through it"
+
+def d116_ptr_offset_by_past_end : IO Unit :=
+  expectDiff ΓA
+    [.assign pA (.alloc (.const 2)),
+     .assign tA (.constInit 3),
+     .assign pA (.ptrOffsetBy pA tA true)]
+    (.ub 2) "d116 ptrOffsetBy past the end"
+
+def d117_ptr_offset_by_wrapping_oob_write : IO Unit :=
+  expectDiff ΓA
+    [.assign pA (.alloc (.const 2)),
+     .assign tA (.constInit 3),
+     .assign pA (.ptrOffsetBy pA tA false),
+     .assign (.deref pA) (.constInit 5)]
+    (.ub 3) "d117 wrapping ptrOffsetBy, then an out-of-bounds write"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2776,7 +2801,10 @@ def allTests : List (IO Unit) := [
   d111_sized_retag_out_of_bounds,
   d112_inbounds_one_past_end,
   d113_inbounds_past_end,
-  d114_inbounds_freed]
+  d114_inbounds_freed,
+  d115_ptr_offset_by_ok,
+  d116_ptr_offset_by_past_end,
+  d117_ptr_offset_by_wrapping_oob_write]
 
 def runAll : IO Unit := do
   allTests.forM id

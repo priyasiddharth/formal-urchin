@@ -37,6 +37,9 @@ inductive Rhs
 | FromExposed (k : Scalar) (srcPtr : Register)
 -- `inbounds`: Miri's in-bounds arithmetic (`bytes.Mem.offsetPtr`)
 | PtrOffset (k : Scalar) (srcPtr : Register) (deltaB : Int) (inbounds : Bool)
+-- the run-time `PtrOffset`: the pointer VALUE in `srcPtr` moved by the word
+-- in `idx` (read at `t`) times `elemSizeB` (mirlite's `.ptrOffsetBy`)
+| PtrOffsetBy (t : IntTy) (elemSizeB : Nat) (srcPtr idx : Register) (inbounds : Bool)
 | BinOp (op : BinOp) (r1 r2 : Register)
 | SliceLen (elemSizeB : Nat) (srcPtr : Register)
 | SubSlice (elemSizeB : Nat) (srcPtr rLo rHi : Register)
@@ -159,6 +162,13 @@ def evalRhs (M : PermissionModel) (state : State M) (rhs : Rhs) : RhsResult M :=
          if h < l || h * esz > extent then RhsResult.Err "sub-slice range out of bounds"
          else RhsResult.Ok [Val.Ptr base (offset + l * esz) ((h - l) * esz) size tag] state
      | _, _, _ => RhsResult.Err "SubSlice expects a pointer and two words"
+  | .PtrOffsetBy t esz rp ri inbounds =>
+     match state.reg.lookup rp, state.reg.lookup ri with
+     | some [Val.Ptr base offset extent size tag], some [Val.Dat w] =>
+         match state.mem.offsetPtr inbounds base offset size (t.toInt w * (esz : Int)) with
+         | .error msg => RhsResult.Err msg
+         | .ok newOff => RhsResult.Ok [Val.Ptr base newOff extent size tag] state
+     | _, _ => RhsResult.Err "PtrOffsetBy expects a pointer and a word"
   | .BinOp op r1 r2 =>
      match state.reg.lookup r1, state.reg.lookup r2 with
      | some [Val.Dat x], some [Val.Dat y] =>

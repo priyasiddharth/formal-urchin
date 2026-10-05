@@ -163,6 +163,7 @@ def rebaseRvalue (off : Nat) : URvalue → URvalue
   | .addr p => .addr (rebasePlace off p)
   | .fromExposed p => .fromExposed (rebasePlace off p)
   | .ptrOffset p d ib => .ptrOffset (rebasePlace off p) d ib
+  | .ptrOffsetBy p i ib => .ptrOffsetBy (rebasePlace off p) (rebasePlace off i) ib
   | .rawField p steps => .rawField (rebasePlace off p) steps
   | .refSlice kind prot p => .refSlice kind prot (rebasePlace off p)
   | .sliceLen p => .sliceLen (rebasePlace off p)
@@ -453,6 +454,8 @@ def resolveIdxRvalue (st : LowerSt) (line : Nat) : URvalue → Except String URv
   | .addr p => do return .addr (← resolveIdxPlace st line p)
   | .fromExposed p => do return .fromExposed (← resolveIdxPlace st line p)
   | .ptrOffset p d ib => do return .ptrOffset (← resolveIdxPlace st line p) d ib
+  | .ptrOffsetBy p i ib => do
+      return .ptrOffsetBy (← resolveIdxPlace st line p) (← resolveIdxPlace st line i) ib
   | .rawField p steps => do return .rawField (← resolveIdxPlace st line p) steps
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveIdxPlace st line p)
   | .discriminant p => do return .discriminant (← resolveIdxPlace st line p)
@@ -582,7 +585,7 @@ def trackAssign (st : LowerSt) (dst : UPlace) (rv : URvalue) : LowerSt :=
           match resolveKey st 32 sp >>= fun k => constLookup st (k.1, k.2 ++ [lenField]) with
           | some n => { st with constVals := ((d, path ++ [lenField]), n) :: st.constVals }
           | none => st
-      | .ptrOffset sp _ _ =>
+      | .ptrOffset sp _ _ | .ptrOffsetBy sp _ _ =>
           if (resolveKey st 32 sp).any st.heapPtrs.contains then
             { st with heapPtrs := (d, path) :: st.heapPtrs }
           else st
@@ -710,27 +713,31 @@ def propagateFnPtr (st : LowerSt) (src dst : UPlace) : LowerSt :=
     local: the data has the element's layout (the pointer's extent covers
     the rest), so the index is not a field. Miri reaches element `k`
     through `s` itself at an offset — same tag, no retag — so `k = 0`
-    drops the index and `k > 0` goes through `tmp := ptrOffset s k`. -/
+    drops the index and `k > 0` goes through `tmp := ptrOffset s k`; an
+    index known only when the program runs, through `ptrOffsetBy s i`
+    (the bounds check before it is MIR's own `assert`). -/
 def sliceElemPlace (st : LowerSt) (line : Nat) (p : UPlace) :
     Except String (LowerSt × UPlace) := do
   match p.root, p.projs with
   | .local n, .deref :: .index ix :: rest =>
       match st.locals[n]? with
       | some (.slice isRaw mutbl elem) =>
-          let k ← match ix with
-            | .const k => pure k
-            | .fromLocal l =>
-                match constLookup st (l, []) with
-                | some k => pure k
-                | none => throw s!"unsupported: runtime slice index (line {line})"
+          let k? : Option Nat ← match ix with
+            | .const k => pure (some k)
+            | .fromLocal l => pure (constLookup st (l, []))
             | .unsupported d => throw s!"unsupported: slice index: {d} (line {line})"
-          if k == 0 then return (st, { p with projs := .deref :: rest })
+          if k? == some 0 then return (st, { p with projs := .deref :: rest })
           let sty := UTy.slice isRaw mutbl elem
           let t := st.locals.length
           let tmp : UPlace := { root := .local t, projs := [], ty := sty }
           let st := { st with locals := st.locals ++ [sty] }
-          let st := pushOut st (.assign tmp
-            (.ptrOffset { root := .local n, projs := [], ty := sty } (Int.ofNat k) false) line)
+          let sp : UPlace := { root := .local n, projs := [], ty := sty }
+          let rv : URvalue ← match k?, ix with
+            | some k, _ => pure (.ptrOffset sp (Int.ofNat k) false)
+            | none, .fromLocal l =>
+                pure (.ptrOffsetBy sp { root := .local l, projs := [], ty := st.locals[l]?.getD .nat } false)
+            | none, _ => throw s!"unsupported: slice index (line {line})"
+          let st := pushOut st (.assign tmp rv line)
           return (st, { p with root := .local t, projs := .deref :: rest })
       | _ => return (st, p)
   | _, _ => return (st, p)
@@ -763,7 +770,7 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
       -- a negative constant is stored as its two's-complement bit pattern
       -- at its own width (was: clamped to 0)
       emitAssign st line dst (.use (.const ((⟨bits, true⟩ : obseq3.IntTy).ofInt (-(Int.ofNat n)))))
-  | .ptrOffset _ _ _ | .refSlice _ _ _ | .sliceLen _ =>
+  | .ptrOffset _ _ _ | .ptrOffsetBy _ _ _ | .refSlice _ _ _ | .sliceLen _ =>
       return pushOut st (.assign dst rv line)
   | .rawField p steps =>
       -- `&raw (*p).f`: `p` as a `*u8`, moved in bounds by the field's byte

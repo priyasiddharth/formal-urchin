@@ -605,6 +605,20 @@ def t33_inbounds_offset : IO Unit := do
     .dealloc pX,
     .assign qX (.ptrOffset pX 1 true)]) "t33 freed" "in-bounds pointer arithmetic"
 
+/-- The run-time `ptrOffsetBy`: the index is a word read when the program
+    runs; the same in-bounds rule as `ptrOffset`. -/
+def t34_ptr_offset_by : IO Unit := do
+  let pre (k : Nat) : List (Stmt ΓX) := [
+    .assign xX (.constInit 7),
+    .assign pX (.ref (.Raw true) false [] xX),
+    .assign yX (.constInit k)]
+  let _ ← expectOk (run ΓX (pre 1 ++ [.assign qX (.ptrOffsetBy pX yX true)])) "t34 one past the end"
+  expectErr (run ΓX (pre 2 ++ [.assign qX (.ptrOffsetBy pX yX true)])) "t34 past the end"
+    "in-bounds pointer arithmetic"
+  let _ ← expectOk (run ΓX (pre 2 ++ [.assign qX (.ptrOffsetBy pX yX false)])) "t34 wrapping"
+  let _ ← expectOk (run ΓX (pre 0 ++ [.assign qX (.ptrOffsetBy pX yX true),
+    .assign (.deref qX) (.constInit 9)])) "t34 offset 0 writes"
+
 def allTests : List (IO Unit) := [
   t1_child_popped_by_parent_read,
   t2_raw_const_is_read_only,
@@ -637,7 +651,8 @@ def allTests : List (IO Unit) := [
   t30_typed_arithmetic,
   t31_narrow_int_to_ptr,
   t32_addr_strips_provenance,
-  t33_inbounds_offset]
+  t33_inbounds_offset,
+  t34_ptr_offset_by]
 
 def runAll : IO Unit := do
   allTests.forM id

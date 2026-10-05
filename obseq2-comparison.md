@@ -4,6 +4,28 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-05 — Pointer Arithmetic With a Computed Count, and a Limit on Arrays
+
+Until now the model could only move a pointer by a number written in
+the program. It can now move one by a number the program computes, such
+as `p.add(i)` or `slice[i]` where `i` comes from earlier work. The
+check that the result stays inside its block of memory works the same
+way as before, and the correctness proof covers the new operation.
+One more Miri test (`buggy_split_at_mut`) passes, and five new test
+programs, each checked against Miri, pin down the new behaviour.
+
+One case is left out on purpose: indexing a local array (not reached
+through a pointer) by a computed number. Doing it the simple way would
+add a step that real Rust does not perform, and that step would wrongly
+flag correct programs. The notes record three ways to add it later.
+
+While investigating, we found that one Miri test declares an array of
+about 18 quintillion empty elements. The tool that reads programs into
+the model tried to build all of them and ran out of memory. Very large
+arrays are now rejected cleanly instead.
+
+---
+
 ## 2026-10-04 — Vectors
 
 Many of Miri's aliasing tests use `Vec`, mostly as a convenient value to

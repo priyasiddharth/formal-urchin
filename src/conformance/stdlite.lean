@@ -253,18 +253,21 @@ def cellReplace : Shim := fun st args dest line => do
       emitAssign st line (pointee tmp) (.use valOp)
   | _ => .error s!"unsupported: replace arguments (line {line})"
 
-/-- pointer arithmetic with a constant delta (scaled by the pointee
-    size at elaboration); provenance/tag is preserved. `inbounds`:
+/-- pointer arithmetic by a delta in pointees (scaled by the pointee size
+    at elaboration): a constant (`ptrOffset`) or an integer place read when
+    the program runs (`ptrOffsetBy`); provenance/tag is preserved. `inbounds`:
     `add`/`offset` must stay in the allocation (Miri's in-bounds
     arithmetic); `wrapping_add`/`wrapping_offset` need not. -/
 def ptrOffset (inbounds : Bool) : Shim := fun st args dest line => do
   match args with
   | [.copy p, d] | [.move p, d] =>
-      let delta ← match d with
-        | .const n => pure (Int.ofNat n)
-        | .constNeg n _ => pure (-(Int.ofNat n))
-        | _ => throw s!"unsupported: runtime pointer offset (line {line})"
-      return pushOut st (.assign dest (.ptrOffset p delta inbounds) line)
+      match d with
+        | .const n => return pushOut st (.assign dest (.ptrOffset p (Int.ofNat n) inbounds) line)
+        | .constNeg n _ => return pushOut st (.assign dest (.ptrOffset p (-(Int.ofNat n)) inbounds) line)
+        -- a place, even one the tracker knows: its word is a bit pattern,
+        -- which `ptrOffsetBy` reads at the place's own (maybe signed) type
+        | .copy i | .move i => return pushOut st (.assign dest (.ptrOffsetBy p i inbounds) line)
+        | _ => throw s!"unsupported: pointer offset count (line {line})"
   | _ => .error s!"unsupported: pointer offset arguments (line {line})"
 
 /-- `&s[lo..hi]` / `&mut s[lo..hi]`: the std chain bottoms out in

@@ -125,6 +125,7 @@ def elabRvalue (Γ : Ctx) (expected : LayoutTy) :
   | .fromExposed _ => .error "fromExposed is elaborated against the destination type"
   | .rawField _ _ => .error "rawField is expanded at emission"
   | .ptrOffset _ _ _ => .error "ptrOffset is elaborated against the destination type"
+  | .ptrOffsetBy _ _ _ => .error "ptrOffsetBy is elaborated against the destination type"
   | .sliceLen p => do
       -- slice metadata: the fat pointer's extent, in elements
       let ⟨τ, pl⟩ ← elabPlace Γ p
@@ -167,6 +168,12 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           let ⟨τp, pp⟩ ← elabPlace Γ p
           match τp, pp, τd, pd with
           | .PtrL _, pp, .PtrL _, pd => return .assign pd (.ptrOffset pp delta inb)
+          | _, _, _, _ => .error s!"pointer offset on a non-pointer place (line {line})"
+      | .ptrOffsetBy p i inb =>
+          let ⟨τp, pp⟩ ← elabPlace Γ p
+          let ⟨_, pi⟩ ← elabIntPlace Γ i "pointer offset count"
+          match τp, pp, τd, pd with
+          | .PtrL _, pp, .PtrL _, pd => return .assign pd (.ptrOffsetBy pp pi inb)
           | _, _, _, _ => .error s!"pointer offset on a non-pointer place (line {line})"
       | .refSlice kind prot p =>
           let ⟨τp, pp⟩ ← elabPlace Γ p
@@ -251,6 +258,7 @@ def rvaluePlaces : URvalue → List UPlace
   | .move p | .ref _ _ p | .exposeAddr p | .addr p | .fromExposed p | .ptrOffset p _ _ | .rawField p _
   | .refSlice _ _ p | .discriminant p | .sliceLen p => [p]
   | .subSlice p lo hi => p :: (operandPlaces lo ++ operandPlaces hi)
+  | .ptrOffsetBy p i _ => [p, i]
   | .aggregate _ ops => ops.flatMap operandPlaces
   | .binOp _ _ a b => operandPlaces a ++ operandPlaces b
   | .fnRef _ | .uninit | .unsupported _ => []

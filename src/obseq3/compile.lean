@@ -552,6 +552,9 @@ inductive RExprToEvidence {Γ : Ctx} (L : LayEnv Γ)
       RExprToEvidence L dstPtr (.binOp (tr := tr) op a b)
   | sliceLen {σ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.PtrL σ)) (r tmp : Register) :
       RExprToEvidence L dstPtr (.sliceLen (t := t) src)
+  | ptrOffsetBy {σ τ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.PtrL σ))
+      (idx : Place Γ (LayoutTy.IntL t)) (inbounds : Bool) (rp ri tmp : Register) :
+      RExprToEvidence L dstPtr (.ptrOffsetBy (τ := τ) src idx inbounds)
   | subSlice {σ : LayoutTy} (src : Place Γ (LayoutTy.PtrL σ))
       {tl th : IntTy} (lo : Place Γ (LayoutTy.IntL tl)) (hi : Place Γ (LayoutTy.IntL th))
       (rp rLo rHi tmp : Register) :
@@ -695,6 +698,17 @@ def compileRExprPreChecked {Γ : Ctx} (L : LayEnv Γ) (dstL : BLayout) {τ : Lay
         store := fun dstPtr => [Instr.RStore dstL tmp dstPtr],
         postCleanup := [],
         ev := fun _ => RExprToEvidence.sliceLen src r tmp
+      }
+  | .ptrOffsetBy (t := t) src idx inbounds => do
+      let rp ← readToReg L src
+      let ri ← readToReg L idx
+      let tmp ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift
+        (emitM [Instr.Assgn tmp (Rhs.PtrOffsetBy t (pointeeLayout L src).sizeB rp ri inbounds)])
+      pure {
+        store := fun dstPtr => [Instr.RStore dstL tmp dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.ptrOffsetBy src idx inbounds rp ri tmp
       }
   | .subSlice src lo hi => do
       let rp ← readToReg L src

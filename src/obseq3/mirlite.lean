@@ -399,6 +399,26 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
                           | _ => .err "sub-slice bound is not a concrete word"
                   | _ => .err "sub-slice bound is not a concrete word"
           | _ => .err "sub-slice of a non-pointer value"
+  | .ptrOffsetBy (t := t) src idx inbounds =>
+      let stride := (pointeeLayout L src).sizeB
+      match evalCopy M L state src with
+      | .err e => .err e
+      | .ok out1 =>
+          match out1.values with
+          | [.ptrVal base offset extent size tag] =>
+              match evalCopy M L out1.state idx with
+              | .err e => .err e
+              | .ok out2 =>
+                  match out2.values with
+                  | [.word w] =>
+                      match out2.state.mem.offsetPtr inbounds base offset size
+                          (t.toInt w * (stride : Int)) with
+                      | .error e => .err e
+                      | .ok newOff =>
+                          .ok { values := [MemValue.ptrVal base newOff extent size tag],
+                                state := out2.state }
+                  | _ => .err "pointer offset by a non-word"
+          | _ => .err "pointer offset of a non-pointer value"
   | .binOp op a b =>
       match evalCopy M L state a with
       | .err e => .err e
