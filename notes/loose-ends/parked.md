@@ -1172,3 +1172,21 @@ listed lemmas through `compileAssignChecked` (`ensurePlaceRoot (.local)`
 `placeToRegChecked_local_run` from assign_if.lean); delete the bridge.
 **Effort estimate:** ~2h
 **References:** journal/2026-09/2026-09-17-assignif-guarded-root.md
+
+## Die elision: the two-sided statement and the compiler composition
+**Status:** parked 2026-10-05
+**Context:** `proof.die_elision` (die_elision.lean) is ok ⇒ ok, lockstep,
+for EVERY OSEA-IR program. The tests check more: every compiled program
+reaches the SAME verdict, at the same label, on OSEA-IR and OSEA-IR_B
+(`expectDiff`, `--osea` `mismatchB`). That equality is true for
+compiled code because it never accesses through a died tag, but it is
+unproved. Also unstated: the composition mirlite ⇒ OSEA-IR_B
+(`compile_correct_all` then `die_elision`; the step counts compose).
+**Why parked:** not asked for; the composition is a few lines, the
+UB-direction needs a "no access through a retired tag" invariant on
+compiled code (route tags and move temporaries are died last).
+**To resume:** composition: state it next to `compile_correct_all` with
+the final `InvAtB` replaced by pc/reg/mem of the B run. UB direction:
+an invariant that no register reachable after a `Die` holds the died tag.
+**Effort estimate:** composition ~30 min; UB direction ~1–2 days
+**References:** journal/2026-10/2026-10-05-die-elision.md

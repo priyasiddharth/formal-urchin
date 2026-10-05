@@ -5179,3 +5179,19 @@ ptrOffsetBy (reference elements now work); d118–d121; witnesses
 array_index_runtime_refs_{ok,popped}. CORRECTION: a `&raw mut` retag is
 no access in Miri (no false UB as I had claimed); d120 pins it. Corpus
 188/0/0/18 of 206; 784 declarations.
+
+## 2026-10-05 (die elision: OSEA-IR → OSEA-IR_B)
+
+OSEA-IR_B = OSEA-IR with `Die` a no-op (`stackedBorrowsNoDie`). Theorem
+`proof.die_elision`: an OSEA-IR run that succeeds succeeds on OSEA-IR_B in
+lockstep, same pc/reg/mem; an audit root, 3 axioms, 0 sorries. False under
+the old rules (exposed-then-died counterexample, witness w4), so: `retired`
+tags; `sb_die` refuses an exposed tag, `sb_expose` a retired one (032cf57,
+no verdict moved). Proof: stacksub/cellsub/permsub (B-stack = A-stack +
+retired unprotected unexposed extras, never directly under an SRW A-item),
+then a model-generic `ModelSim` → `runN_msim` (2a9cee9). Tests: w1–w4, and
+`expectDiff`/`--osea` also run OSEA-IR_B (69a610b). Paper: rules, PermSim
+retired clause, Theorem "Die elision", counts. Units 33 + 149; corpus
+188/0/0/18 of 206; `--osea` 188, 0 B mismatches; 945 declarations.
+Parked: the same-verdict direction and the mirlite ⇒ OSEA-IR_B composition.
+Journal: 2026-10/2026-10-05-die-elision.md.

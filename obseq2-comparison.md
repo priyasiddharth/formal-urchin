@@ -4,6 +4,29 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-05 — The Cleanup Instruction Can Be Removed
+
+The compiler ends some borrows it creates for its own use with a cleanup
+instruction, `Die`. We now have a proof that removing every `Die` from a
+target program never turns a program that runs correctly into one that
+fails: the version without `Die` runs the same steps and ends with the
+same registers and memory.
+
+At first this was not true. A borrow could be published as a plain
+number (an "exposed" address), then ended by `Die`. Without the `Die`, a
+later access through a pointer rebuilt from such a number could pick the
+dead borrow instead of a live one, and a correct program could then fail.
+Two new rules close the gap: `Die` refuses to end a borrow whose address
+was published, and publishing refuses a borrow that `Die` already ended.
+Miri checks neither (it has no `Die`), and neither ever fires on code our
+compiler produces, so no test result changed.
+
+Four new hand-written target programs show each rule and the original
+problem. Every compiled test program is now also run with its `Die`
+instructions removed, and must give the same result. All do.
+
+---
+
 ## 2026-10-05 — Pointer Arithmetic With a Computed Count, and a Limit on Arrays
 
 Until now the model could only move a pointer by a number written in

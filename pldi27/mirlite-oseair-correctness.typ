@@ -407,12 +407,13 @@ of this subsection, as Miri does. The full executable language uses four
 further operations, for deallocation, exposed provenance, and protector
 frames; they are in @sec:surface-perm.
 
-A permission state is $Pi=("stacks","NextTag","frames","exposed")$. The
+A permission state is $Pi=("stacks","NextTag","frames","exposed","retired")$. The
 component `stacks` is a partial map from byte addresses to _borrow
-stacks_; `NextTag` is the next fresh tag; `frames` and `exposed` are the
-protector frames and the list of exposed tags, which only the full
-language uses (@sec:surface-perm). We write $Pi(a)$ for the
-stack at $a$ and leave the other three components implicit when a rule does
+stacks_; `NextTag` is the next fresh tag; `frames`, `exposed`, and
+`retired` are the protector frames, the list of exposed tags, and the list
+of tags that `die` has ended, which only the full language reads
+(@sec:surface-perm). We write $Pi(a)$ for the
+stack at $a$ and leave the other four components implicit when a rule does
 not change them. A borrow stack is a list of _items_, topmost first,
 
 #align(center)[
@@ -1280,6 +1281,10 @@ field inside a wider one.
   - Two _protector frame lists_ are related as lists of related tag lists,
     and two _exposed-tag lists_, and two lists of weakly protected tags, are
     related as tag lists.
+  - Two _retired-tag lists_ are related in one direction: if
+    $rho_t (t)=t'$ and $t'$ is retired in the target, then $t$ is retired in
+    the source; and every retired target tag is below the target's
+    `NextTag`.
   Permission states $Pi_s$ and $Pi_t$ are related, written
   $Pi_s approx Pi_t$, when all of these components are related and
   $Pi_s."NextTag" <= Pi_t."NextTag"$.
@@ -1422,6 +1427,18 @@ $rho_0$ that maps only the wildcard tag to itself.
   @thm:run holds, with no hypothesis beyond compilation, for the uniform
   layout.
 ] <cor:uniform>
+
+Let OSEA-IR#sub[B] be OSEA-IR with the permission model in which `die`
+returns its state unchanged, $"runT"_B^n$ its machine, and $T^B_"init"$
+its initial state. Eliding every `die`, the compiler's cleanup
+instruction, never makes a valid program invalid:
+
+#theorem("Die elision")[
+  For every OSEA-IR program $Q$ and every $n$, if
+  $"runT"^n (Q,T_"init")="ok"(T')$, then
+  $"runT"_B^n (Q,T^B_"init")="ok"(T'')$ for some $T''$ with the same PC,
+  registers, and memory as $T'$.
+] <thm:die-elision>
 
 These results are preservation of successful finite executions. They are
 not backward simulation, divergence preservation, or an equivalence between
@@ -1573,26 +1590,30 @@ declaration in `src/obseq3/proof/`:
   ([@thm:run], [`compile_correct_all`], [`coverage.lean`]),
   ([@cor:agrees], [`compile_correct_agrees`], [`layoutagree.lean`]),
   ([@cor:uniform], [`compile_correct_uniform`], [`coverage.lean`]),
+  ([@thm:die-elision], [`die_elision`], [`die_elision.lean`]),
 ) <tab:lean>
 
-The proof is about 13,100 lines and 415 theorems across the 37 files of
+The proof is about 15,200 lines and 506 theorems across the 41 files of
 that directory, which also hold the Stacked Borrows lemmas it rests on.
 None of it contains an admitted goal. A checked audit prints the axioms
-that @thm:run and its corollaries depend on and fails if that set differs
-in either direction from a pinned whitelist; a second check covers every
-one of the directory's 784 declarations. The whitelist contains exactly the
+that @thm:run, its corollaries, and @thm:die-elision depend on and fails
+if that set differs in either direction from a pinned whitelist; a second
+check covers every one of the directory's 945 declarations. The whitelist contains exactly the
 three standard Lean axioms, propositional extensionality, choice, and
 quotient soundness, and no `sorryAx`.
 
 The executable compiler is additionally validated by testing: a compiler
-witness corpus of 145 programs, run on both machines at the uniform layout
+witness corpus of 149 programs, run on both machines at the uniform layout
+(four of them are OSEA-IR programs run with and without `die`, for
+@thm:die-elision)
 and pinned as golden listings where the shape of the code matters; a
 corpus of 206 entries, drawn from Miri's Stacked Borrows tests and
 completed by local witnesses, loaded from rustc's MIR through Charon with
 rustc's own layouts, whose 188 supported programs reach Miri's verdict
 and, where Miri reports undefined behavior, the same statement and, with
 four documented exceptions, the same reason; and a differential run that compiles each of those 188
-programs and requires the same verdict from both machines. The layout
+programs and requires the same verdict from both machines, and the same
+OSEA-IR verdict with every `die` elided. The layout
 check of @def:layoutwf passes on all of them. The running program of this
 paper is part of the witness corpus, both as a golden listing
 (@fig:compile-example) and as a differential test; the states of
@@ -1658,7 +1679,7 @@ the assignment when the value read equals $w$.
   ([Operation], [Meaning]),
   (40%, 60%),
   ([$"dealloc"(Pi,a,n,t)=Pi'$], [Deallocate the $n$ bytes from $a$ through $t$ and forget their permissions. The item carrying $t$ must grant writes at every byte, and no item of those stacks may be strongly protected.]),
-  ([$"expose"(Pi,t)=Pi'$], [Record $t$ as exposed, so that a later wildcard access may resolve to it.]),
+  ([$"expose"(Pi,t)=Pi'$], [Record $t$ as exposed, so that a later wildcard access may resolve to it. Fails if $t$ is retired.]),
   ([$"pushProt"(Pi)=Pi'$, $"popProt"(Pi)=Pi'$], [Open a protector frame; close the innermost frame, ending the protection of every tag registered in it.]),
 ) <tab:surface-perm>
 
@@ -1688,6 +1709,13 @@ only what lies above the whole group. _Wildcard:_ an access through tag 0
 resolves to the topmost exposed item that grants it. This rule is a
 determinization: for programs that use integer-to-pointer casts, the
 theorem is a statement about it rather than about Miri's angelic choice.
+_Retirement:_ a range $"die"(Pi,a,n,u)$ fails if $u$ is exposed, and
+otherwise adds $u$ to `retired`, once for the whole range; `expose` fails
+on a retired tag. Miri has no `die` and neither check; neither fires on
+compiled code, whose died tags are route tags and move temporaries, which
+are never stored and so never exposed. Together they keep a wildcard
+access from resolving to an item that a `die` removed, which is what makes
+`die` removable (@thm:die-elision).
 
 == OSEA-IR
 

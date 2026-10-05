@@ -137,3 +137,18 @@ both machines (`expectOseaAB`):
 [OBS] `--osea` also runs every compiled corpus program on OSEA-IR_B and
 requires the same outcome at the same label (`mismatchB`, which fails
 the suite). 188 matched, 0 mismatches, 0 OSEA-IR_B mismatches.
+
+## Group D: paper and notes
+
+[OBS] Paper: the permission state gains `retired`; the `expose` row
+fails on a retired tag; a "Retirement" paragraph in the permission-model
+appendix gives the two checks and why they never fire on compiled code;
+`def:permsim` gains the one-directional retired clause; Theorem "Die
+elision" after the corollaries, with OSEA-IR_B defined in one sentence.
+Following the standing rule (theorems + the definitions needed to state
+them), the sub-stack relation is NOT in the paper: the theorem's
+statement does not mention it. `tab:lean` row; counts 41 files, ~15,200
+lines, 506 theorems, 945 declarations, 149 witnesses.
+
+[DEC] Parked (loose-ends/parked.md): the same-verdict direction the tests
+check, and the mirlite ⇒ OSEA-IR_B composition.
