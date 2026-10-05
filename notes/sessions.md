@@ -5195,3 +5195,13 @@ retired clause, Theorem "Die elision", counts. Units 33 + 149; corpus
 188/0/0/18 of 206; `--osea` 188, 0 B mismatches; 945 declarations.
 Parked: the same-verdict direction and the mirlite ⇒ OSEA-IR_B composition.
 Journal: 2026-10/2026-10-05-die-elision.md.
+Later: die elision BACKWARD. `compiled_die_elision_iff` (audit root): a
+compiled program accepted by the decidable route-bracket check
+(`oseair.routeOK`, proved sound) reaches the same verdict on OSEA-IR and
+OSEA-IR_B. Every `Die` closes `Borrow r; one access through r; Die r` with
+r used nowhere else; the check runs on all compiled programs (771 Dies in
+the corpus). Proof: reverse per-op lemmas (permsub_rev), tag-location
+invariant (tagsin, die_back*). `StateIncr` gained `code_none`. 48 proof
+files, 1109 declarations, 3 axioms, 0 sorries. Parked: proving the check
+always passes for compile.lean output. Journal:
+2026-10/2026-10-05-die-elision-backward.md.

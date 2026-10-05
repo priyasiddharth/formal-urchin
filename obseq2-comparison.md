@@ -4,6 +4,25 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-05 — Removing the Cleanup Instruction Changes Nothing in Compiled Code
+
+Earlier today we proved that removing every `Die` from a target program
+never makes a correct run fail. We have now proved the other direction
+for the programs our compiler produces: if the program without `Die`
+runs correctly, so does the program with it. So for compiled programs the
+two versions always agree, correct or not.
+
+This needed a fact about the compiler's output: every `Die` closes a
+short pattern of three instructions that the compiler uses to reach a
+place in memory, and the borrow it ends is used nowhere else. Rather
+than prove this for the compiler in general, we check it on each compiled
+program with a small checker, and proved that the checker is right. Every
+compiled test program passes it (771 `Die` instructions in the Miri-based
+corpus alone). Proving that the compiler always passes the check is left
+for later.
+
+---
+
 ## 2026-10-05 — The Cleanup Instruction Can Be Removed
 
 The compiler ends some borrows it creates for its own use with a cleanup

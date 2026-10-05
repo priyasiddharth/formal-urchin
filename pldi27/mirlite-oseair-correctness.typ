@@ -1468,9 +1468,27 @@ The permission states of the two machines are related as follows.
     $Pi'_A prec.eq Pi'_B$.
 ] <thm:die-rel>
 
-These results are preservation of successful finite executions. They are
-not backward simulation, divergence preservation, or an equivalence between
-source and target error messages. Their observable consequences are the
+For compiled code the converse holds as well, under a decidable check of
+the program text. A `die` at label $l$ closes a _route bracket_ when the
+instruction at $l-2$ is $r := "borrow"(k,"false",[],n,r',delta)$ of a kind
+$k$ that pushes its item (`mutable`, `shared`, or `raw-const`), the
+instruction at $l-1$ accesses memory through $r$ (a load, an expose, a
+pointer offset, or a store, at $r$) without copying $r$, and the `die` is
+$"die"(r,n)$; $r$ is mentioned by no other instruction, and no jump lands
+inside the bracket. A program passes the _route-bracket check_ when every
+`die` closes a route bracket and no $"storec"$ stores a pointer.
+
+#theorem("Die elision for compiled code")[
+  Let $P$ compile to $Q$, and let $Q$ pass the route-bracket check. For
+  every $n$, $"runT"^n (Q,T_"init")$ succeeds if and only if
+  $"runT"_B^n (Q,T^B_"init")$ succeeds.
+] <thm:die-iff>
+
+The check is run on every compiled program of the test corpora below.
+Apart from @thm:die-iff, these results are preservation of successful
+finite executions. They are not backward simulation, divergence
+preservation, or an equivalence between source and target error
+messages. Their observable consequences are the
 memory and permission clauses of the final invariant, made explicit in
 @cor:observe.
 
@@ -1620,15 +1638,16 @@ declaration in `src/obseq3/proof/`:
   ([@cor:uniform], [`compile_correct_uniform`], [`coverage.lean`]),
   ([@def:dierel], [`StackSub`, `CellRel`, `Extra`, `PermSub`], [`stacksub.lean`, `cellsub.lean`, `permsub.lean`]),
   ([@thm:die-rel], [`modelSim_noDie`], [`die_elision.lean`]),
+  ([@thm:die-iff], [`compiled_die_elision_iff`], [`die_back_check.lean`]),
   ([@thm:die-elision], [`die_elision`], [`die_elision.lean`]),
 ) <tab:lean>
 
-The proof is about 15,200 lines and 506 theorems across the 41 files of
+The proof is about 17,400 lines and 599 theorems across the 48 files of
 that directory, which also hold the Stacked Borrows lemmas it rests on.
 None of it contains an admitted goal. A checked audit prints the axioms
-that @thm:run, its corollaries, and @thm:die-elision depend on and fails
+that @thm:run, its corollaries, @thm:die-elision, and @thm:die-iff depend on and fails
 if that set differs in either direction from a pinned whitelist; a second
-check covers every one of the directory's 945 declarations. The whitelist contains exactly the
+check covers every one of the directory's 1,109 declarations. The whitelist contains exactly the
 three standard Lean axioms, propositional extensionality, choice, and
 quotient soundness, and no `sorryAx`.
 
@@ -1643,7 +1662,8 @@ rustc's own layouts, whose 188 supported programs reach Miri's verdict
 and, where Miri reports undefined behavior, the same statement and, with
 four documented exceptions, the same reason; and a differential run that compiles each of those 188
 programs and requires the same verdict from both machines, and the same
-OSEA-IR verdict with every `die` elided. The layout
+OSEA-IR verdict with every `die` elided; every compiled program, there and
+in the witness corpus, passes the route-bracket check of @thm:die-iff. The layout
 check of @def:layoutwf passes on all of them. The running program of this
 paper is part of the witness corpus, both as a golden listing
 (@fig:compile-example) and as a differential test; the states of
