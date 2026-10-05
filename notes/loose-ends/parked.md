@@ -1182,7 +1182,8 @@ over every compile function: a route register is written once, used once
 as an access pointer, then died, and no later code mentions it), which
 would drop the per-program check; (2) the mirlite ⇒ OSEA-IR_B composition.
 **Update 2026-10-05 (later still):** (1) is DONE (`compiled_routeProg`,
-route_compile.lean). Only (2) remains.
+route_compile.lean). (2) is DONE too (`compile_correct_noDie_all`,
+die_compose.lean). Entry closed.
 **Status:** parked 2026-10-05
 **Context:** `proof.die_elision` (die_elision.lean) is ok ⇒ ok, lockstep,
 for EVERY OSEA-IR program. The tests check more: every compiled program

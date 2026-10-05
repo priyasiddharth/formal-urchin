@@ -3,6 +3,7 @@ import obseq3.proof.layoutagree
 import obseq3.proof.die_elision
 import obseq3.proof.die_back_check
 import obseq3.proof.route_compile
+import obseq3.proof.die_compose
 
 /-!
 # Axiom audit
@@ -33,7 +34,8 @@ def auditRoots : List Name :=
    ``obseq3.proof.compile_correct_all,
    ``obseq3.proof.die_elision,
    ``obseq3.proof.compiled_die_elision_iff,
-   ``obseq3.proof.compiled_die_elision]
+   ``obseq3.proof.compiled_die_elision,
+   ``obseq3.proof.compile_correct_noDie_all]
 
 /-- The whitelist lives in a data file next to this script; the audit
     compares the CURRENT state against it in both directions. -/

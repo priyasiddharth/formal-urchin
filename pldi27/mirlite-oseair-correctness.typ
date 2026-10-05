@@ -1475,6 +1475,12 @@ For compiled code the converse holds as well:
   and only if $"runT"_B^n (Q,T^B_"init")$ succeeds.
 ] <thm:die-iff>
 
+#corollary("Compiler correctness without `die`")[
+  Under the hypotheses of @thm:run, with $T'$ and $n_t$ as there,
+  $"runT"_B^(n_t) (Q,T^B_"init")="ok"(T'')$ for some $T''$ with the same PC,
+  registers, and memory as $T'$.
+] <cor:nodie>
+
 Apart from @thm:die-iff, these results are preservation of successful
 finite executions. They are not backward simulation, divergence
 preservation, or an equivalence between source and target error
@@ -1629,15 +1635,16 @@ declaration in `src/obseq3/proof/`:
   ([@def:dierel], [`StackSub`, `CellRel`, `Extra`, `PermSub`], [`stacksub.lean`, `cellsub.lean`, `permsub.lean`]),
   ([@thm:die-rel], [`modelSim_noDie`], [`die_elision.lean`]),
   ([@thm:die-iff], [`compiled_die_elision`], [`route_compile.lean`]),
+  ([@cor:nodie], [`compile_correct_noDie_all`], [`die_compose.lean`]),
   ([@thm:die-elision], [`die_elision`], [`die_elision.lean`]),
 ) <tab:lean>
 
-The proof is about 19,700 lines and 674 theorems across the 50 files of
+The proof is about 19,800 lines and 677 theorems across the 51 files of
 that directory, which also hold the Stacked Borrows lemmas it rests on.
 None of it contains an admitted goal. A checked audit prints the axioms
-that @thm:run, its corollaries, @thm:die-elision, and @thm:die-iff depend on and fails
+that @thm:run, its corollaries, @thm:die-elision, @thm:die-iff, and @cor:nodie depend on and fails
 if that set differs in either direction from a pinned whitelist; a second
-check covers every one of the directory's 1,265 declarations. The whitelist contains exactly the
+check covers every one of the directory's 1,268 declarations. The whitelist contains exactly the
 three standard Lean axioms, propositional extensionality, choice, and
 quotient soundness, and no `sorryAx`.
 

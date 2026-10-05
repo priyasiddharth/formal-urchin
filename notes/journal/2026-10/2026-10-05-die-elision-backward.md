@@ -110,3 +110,14 @@ assignif.lean); renamed `skipIfAround_ok`. Audit: 6 roots, 1265
 declarations. Suites unchanged. Paper: the theorem is now unconditional;
 the check's definition is gone from the paper (not needed to state it); the
 check still runs in the tests as a regression guard.
+
+## mirlite ⇒ OSEA-IR_B (closing the parked item)
+
+[OBS] `compile_correct_noDie_all` (+ `_agrees`, `_uniform`; die_compose.lean,
+audit root): a successful mirlite run is matched by a successful OSEA-IR_B
+run of the compiled program in the same target steps, with the same pc,
+registers and memory as the OSEA-IR state `InvAtB` relates to the source.
+Pure composition of `compile_correct_all` and `die_elision`; the B state's
+permissions are not related to the source's directly (they carry the died
+extras), so the statement relates B to the OSEA-IR state. Paper: Corollary
+"Compiler correctness without die". Audit 7 roots, 1268 declarations.

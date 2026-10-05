@@ -15,7 +15,8 @@ notes at: notes/
 - Axiom/sorry audit: `scripts/audit_axioms.sh` machine-checks that the
   roots (`obseq3.proof.compile_correct_agrees`, `compile_correct_uniform`,
   `compile_correct_all`, `die_elision`, `compiled_die_elision_iff`,
-  `compiled_die_elision`) rest only on the whitelisted axioms
+  `compiled_die_elision`, `compile_correct_noDie_all`) rest only on the
+  whitelisted axioms
   and EXACTLY the audited sorries (pinned in
   `scripts/axiom_whitelist.txt`; the audit fails on drift in either
   direction). Run it as part of validation before every
