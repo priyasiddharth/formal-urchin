@@ -1,5 +1,6 @@
 import Lean
 import obseq3.proof.layoutagree
+import obseq3.proof.die_elision
 
 /-!
 # Axiom audit
@@ -27,7 +28,8 @@ open Lean
 def auditRoots : List Name :=
   [``obseq3.proof.compile_correct_agrees,
    ``obseq3.proof.compile_correct_uniform,
-   ``obseq3.proof.compile_correct_all]
+   ``obseq3.proof.compile_correct_all,
+   ``obseq3.proof.die_elision]
 
 /-- The whitelist lives in a data file next to this script; the audit
     compares the CURRENT state against it in both directions. -/

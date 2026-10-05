@@ -77,3 +77,46 @@ The pieces:
   exposed tag is a renamed tag, below `T`, and the target expose
   succeeds.
 - Audit: 3 axioms, 0 sorries, 802 declarations.
+
+## Group B: the per-state layer
+
+[OBS] `stacksub.lean` (397 lines): the spike held. `srwSplit_sub` and
+`splitStack_sub` go through with the `same`-only SRW side condition.
+`cellsub.lean` (491): `CellRel E N` = StackSub + B-tags distinct + below
+`N` + A's bottom is `Own`. That replaces the separate `PermWF` file the
+plan had: the well-formedness travels inside the cell relation.
+
+[OBS] `permsub.lean` (541): `PermSub` and the range transports — read,
+write, ref, own, dealloc, die, expose, push/pop frame. All sorry-free.
+- One generic lifter (`foldCells_sub`) turns a cell transport into a
+  fold transport; read and write are ten lines each.
+- Retag: a ZERO-LENGTH `Die` retires any tag, including one not yet
+  minted. So the fresh tag `N` may already be "retired", and a protected
+  retag of it would break `Extra` for a B-item tagged `N`. Fix: restrict
+  the extras to `t < N` before the fold (`CellRel.restrict`, free from
+  the bound in `CellRel`), then `regProt_prot` only protects `N`.
+- `sb_ref_eq` factors the registration (`regProt`) out of `sb_ref`, so
+  A and B finish with the same function of equal frames.
+- Die: B unchanged; per cell `dieCellContent_cell` with `Extra A'`; the
+  unprotectedness of the died tag comes from the cell op itself, so a
+  zero-length die of a protected tag creates no extra and needs nothing.
+
+## Group B: the machine level
+
+[OBS] `die_elision.lean` (≈390 lines) is model-GENERIC. `ModelSim M1 M2 R`
+asks each permission op of `M1` that succeeds to be matched by `M2`'s with
+the same returned tag and `R`-related states; `runN_msim` then gives
+lockstep simulation for any program. The machine never inspects a
+permission state, so the proof is pure case analysis on `step`/`evalRhs`
+(`split at h` also rewrites the goal's identical discriminants; the
+`rw [hl]` I first wrote after each split was redundant and failed).
+`modelSim_noDie : ModelSim MSB MSB_B PermSub` is nine one-liners over
+`permsub.lean`. No separate `PermWF` file was needed (it lives in `CellRel`).
+
+[OBS] Name clash caught only by the audit scripts (they import every
+proof module together): `readCellThrough_sim`/`allocPtr_sim` already
+exist in leafops/alloc. The generic lemmas are now `*_msim`.
+
+[OBS] Audit: roots now include `die_elision`; 3 axioms, 0 sorries;
+`proof_axioms.lean` 945 declarations (was 802). Suites unchanged:
+33 + 145, 188/0/0/18 of 206, `--osea` 188, `--layouts` 188.
