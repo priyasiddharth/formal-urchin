@@ -41,6 +41,9 @@ inductive Rhs
 -- in `idx` (read at `t`) times `elemSizeB` (mirlite's `.ptrOffsetBy`)
 | PtrOffsetBy (t : IntTy) (elemSizeB : Nat) (srcPtr idx : Register) (inbounds : Bool)
 | BinOp (op : BinOp) (r1 r2 : Register)
+-- the pointer VALUE in `reg`, moved by `offsetB` and claiming `extentB`
+-- bytes, its tag kept: no event (mirlite's `.addrOf`)
+| PlaceAddr (reg : Register) (offsetB extentB : Nat)
 | SliceLen (elemSizeB : Nat) (srcPtr : Register)
 | SubSlice (elemSizeB : Nat) (srcPtr rLo rHi : Register)
 deriving Inhabited, Repr, BEq
@@ -169,6 +172,11 @@ def evalRhs (M : PermissionModel) (state : State M) (rhs : Rhs) : RhsResult M :=
          | .error msg => RhsResult.Err msg
          | .ok newOff => RhsResult.Ok [Val.Ptr base newOff extent size tag] state
      | _, _ => RhsResult.Err "PtrOffsetBy expects a pointer and a word"
+  | .PlaceAddr r offB extB =>
+     match state.reg.lookup r with
+     | some [Val.Ptr base offset _ size tag] =>
+         RhsResult.Ok [Val.Ptr base (offset + offB) extB size tag] state
+     | _ => RhsResult.Err "PlaceAddr expects a pointer"
   | .BinOp op r1 r2 =>
      match state.reg.lookup r1, state.reg.lookup r2 with
      | some [Val.Dat x], some [Val.Dat y] =>

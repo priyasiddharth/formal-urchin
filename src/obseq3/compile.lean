@@ -552,6 +552,8 @@ inductive RExprToEvidence {Γ : Ctx} (L : LayEnv Γ)
       RExprToEvidence L dstPtr (.binOp (tr := tr) op a b)
   | sliceLen {σ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.PtrL σ)) (r tmp : Register) :
       RExprToEvidence L dstPtr (.sliceLen (t := t) src)
+  | addrOf {σ τ : LayoutTy} (loc : Local Γ σ) (path : PathTo σ τ) (reg tmp : Register) :
+      RExprToEvidence L dstPtr (.addrOf loc path)
   | ptrOffsetBy {σ τ : LayoutTy} {t : IntTy} (src : Place Γ (LayoutTy.PtrL σ))
       (idx : Place Γ (LayoutTy.IntL t)) (inbounds : Bool) (rp ri tmp : Register) :
       RExprToEvidence L dstPtr (.ptrOffsetBy (τ := τ) src idx inbounds)
@@ -698,6 +700,19 @@ def compileRExprPreChecked {Γ : Ctx} (L : LayEnv Γ) (dstL : BLayout) {τ : Lay
         store := fun dstPtr => [Instr.RStore dstL tmp dstPtr],
         postCleanup := [],
         ev := fun _ => RExprToEvidence.sliceLen src r tmp
+      }
+  | .addrOf loc path => do
+      -- the local's own pointer register, moved within the block: no
+      -- borrow (a route borrow would mint a tag the source does not have)
+      let out ← placeToRegChecked L RefKind.Shared (.local loc)
+      let tmp ← CheckedCompilerM.lift freshRegM
+      let _ ← CheckedCompilerM.lift (emitM [Instr.Assgn tmp
+        (Rhs.PlaceAddr out.result.reg (pathOffsetB L (.local loc) path)
+          (placeSizeB L (.proj (.local loc) path)))])
+      pure {
+        store := fun dstPtr => [Instr.RStore dstL tmp dstPtr],
+        postCleanup := [],
+        ev := fun _ => RExprToEvidence.addrOf loc path out.result.reg tmp
       }
   | .ptrOffsetBy (t := t) src idx inbounds => do
       let rp ← readToReg L src

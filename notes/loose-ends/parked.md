@@ -538,8 +538,16 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   offsets through a POINTER are supported (`ptrOffsetBy`: `ptr.add(i)`,
   `offset(i)`, slice data `(*s)[i]`). Still unsupported: a run-time index
   into a LOCAL array (`a[i]`, `i` unknown when loading). A pointer to the
-  array would need a `&raw` retag, an SB access Miri does not make (false
-  UB on shared borrows of the array). [DONE 2026-10-05: option (1),
+  array would need a `&raw` retag, which Miri does not make. [CORRECTED
+  2026-10-05: this said the retag is an access giving false UB on shared
+  borrows. Wrong — Miri's mutable raw retag is NO access (`from_ref_ty`:
+  `access: None`; its SharedReadWrite is inserted right above the granting
+  item), so it pops nothing; it only adds a stack item Miri does not.
+  Pinned by compiler test d120.] [DONE 2026-10-05: option (2) too — `addrOf`
+  (mirlite/OSEA-IR `PlaceAddr`, proof `addrOf_pkg`), used by
+  `arrayElemPlace` for local-rooted `a[i]` (lifting option 1's
+  reference-element limit); option (1) remains for `(*p)[i]`.]
+  [DONE 2026-10-05: option (1),
   `dispatchRuntimeIndex` in emit.lean — copy/move/const values and `&a[i]`
   of reference-free types, also behind a pointer `(*p)[i]`; 4 Miri
   witnesses. Left: element values holding references, two run-time indices

@@ -27,20 +27,20 @@ notes at: notes/
 
       ./.lake/build/bin/sb_conformance --unit
         # obseq3 tests           33/33   (mirlite SB semantics on bytes)
-        # obseq3 compiler tests  141/141 (compiler witness corpus)
+        # obseq3 compiler tests  145/145 (compiler witness corpus)
 
       ./.lake/build/bin/sb_conformance \
         --manifest conformance/manifest.json --charon-dir conformance/charon
         # ULLBC corpus, Charon artifacts vs Miri verdicts
-        # 186 pass / 0 fail / 0 xfail / 18 unsupported (204 total)
+        # 188 pass / 0 fail / 0 xfail / 18 unsupported (206 total)
 
       ...same, plus --osea
         # differential: compile each program and require the SAME verdict
-        # from both machines. 186 matched / 0 mismatch / 0 skipped
+        # from both machines. 188 matched / 0 mismatch / 0 skipped
 
       ...same, with --layouts instead
         # the loader's byte layouts have their types' shape (the proof's
-        # layout hypothesis): 186 agree / 0 disagree
+        # layout hypothesis): 188 agree / 0 disagree
 
   The validation build above does NOT relink this binary: run
   `lake build sb_conformance` after touching a test file, or `--unit`

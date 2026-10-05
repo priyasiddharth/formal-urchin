@@ -1,0 +1,49 @@
+{
+ "version": 1,
+ "source": "local/array_index_runtime_refs_ok.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "drop",
+     "ty": "Box<usize>",
+     "descr": "<std::boxed::Box<usize> as std::ops::Drop>::drop"
+    },
+    {
+     "k": "assert",
+     "cond": "move _11",
+     "success": 3,
+     "descr": "rustc_const_eval::interpret::step assert(move _11, \"index out of bounds: the length is {} but the index is {}\", const 2_usize, copy _10) -> [success: bb3, unwind continue]",
+     "next": 3,
+     "outcome": "success"
+    },
+    {
+     "k": "switch",
+     "discr": "move _12",
+     "cases": [
+      [
+       0,
+       5
+      ]
+     ],
+     "otherwise": 4,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _12) -> [0: bb5, otherwise: bb4]",
+     "next": 5,
+     "arm": "0"
+    }
+   ]
+  }
+ ]
+}

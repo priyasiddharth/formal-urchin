@@ -72,6 +72,16 @@ def elabPlaceAux (Γ : Ctx) :
   | _, _, .index _ :: _ => .error "array index not resolved by lowering"
   | _, _, .ptrMetadata :: _ => .error "pointer metadata not turned into `sliceLen` by lowering"
 
+/-- A field path through `σ`. -/
+def elabPath : (σ : LayoutTy) → List UProj → Except String ((τ : LayoutTy) × PathTo σ τ)
+  | σ, [] => .ok ⟨σ, .nil⟩
+  | .TupL tys, .field i :: rest =>
+      if h : i < tys.length then do
+        let ⟨τ, p⟩ ← elabPath (tys.get ⟨i, h⟩) rest
+        return ⟨τ, .field ⟨i, h⟩ p⟩
+      else .error s!"field index {i} out of range"
+  | _, _ => .error "addrOf of a place that is not a local and fields"
+
 def elabPlace (Γ : Ctx) (p : UPlace) : Except String ((τ : LayoutTy) × Place Γ τ) := do
   let ⟨τ, pl⟩ ← elabRoot Γ p.root
   elabPlaceAux Γ τ pl p.projs
@@ -126,6 +136,7 @@ def elabRvalue (Γ : Ctx) (expected : LayoutTy) :
   | .rawField _ _ => .error "rawField is expanded at emission"
   | .ptrOffset _ _ _ => .error "ptrOffset is elaborated against the destination type"
   | .ptrOffsetBy _ _ _ => .error "ptrOffsetBy is elaborated against the destination type"
+  | .addrOf _ => .error "addrOf is elaborated against the destination type"
   | .sliceLen p => do
       -- slice metadata: the fat pointer's extent, in elements
       let ⟨τ, pl⟩ ← elabPlace Γ p
@@ -169,6 +180,17 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           match τp, pp, τd, pd with
           | .PtrL _, pp, .PtrL _, pd => return .assign pd (.ptrOffset pp delta inb)
           | _, _, _, _ => .error s!"pointer offset on a non-pointer place (line {line})"
+      | .addrOf p =>
+          match p.root with
+          | .local n =>
+              if hn : n < Γ.length then do
+                let ⟨τ, path⟩ ← elabPath (Γ.get ⟨n, hn⟩) p.projs
+                let loc : Local Γ (Γ.get ⟨n, hn⟩) := ⟨⟨n, hn⟩, rfl⟩
+                if h : τd = .PtrL τ then
+                  return .assign pd (h ▸ .addrOf loc path)
+                else .error s!"addrOf type mismatch (line {line})"
+              else .error s!"local _{n} out of range"
+          | .global _ => .error s!"addrOf of a global (line {line})"
       | .ptrOffsetBy p i inb =>
           let ⟨τp, pp⟩ ← elabPlace Γ p
           let ⟨_, pi⟩ ← elabIntPlace Γ i "pointer offset count"
@@ -259,6 +281,7 @@ def rvaluePlaces : URvalue → List UPlace
   | .refSlice _ _ p | .discriminant p | .sliceLen p => [p]
   | .subSlice p lo hi => p :: (operandPlaces lo ++ operandPlaces hi)
   | .ptrOffsetBy p i _ => [p, i]
+  | .addrOf p => [p]
   | .aggregate _ ops => ops.flatMap operandPlaces
   | .binOp _ _ a b => operandPlaces a ++ operandPlaces b
   | .fnRef _ | .uninit | .unsupported _ => []

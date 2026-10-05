@@ -14,13 +14,18 @@ way as before, and the correctness proof covers the new operation.
 One more Miri test (`buggy_split_at_mut`) passes, and five new test
 programs, each checked against Miri, pin down the new behaviour.
 
-Indexing a local array by a computed number could not use this. Getting
-a pointer to the array would add a step real Rust does not perform, and
-that step would wrongly flag correct programs. Instead, later the same
-day, the loader handles `a[i]` by writing one guarded line per possible
-index: "if `i` is 0, use element 0; if `i` is 1, use element 1; …".
-Exactly one line runs, and it touches only what Rust touches. Four more
-test programs, checked against Miri, confirm it.
+Indexing a local array by a computed number could not use this directly.
+Getting a pointer to the array would add a step real Rust does not
+perform. (We first thought that step would wrongly flag correct programs;
+checking Miri's code showed it would not, but it is still an extra step.)
+Later the same day the loader handled `a[i]` by writing one guarded line
+per possible index: "if `i` is 0, use element 0; if `i` is 1, use element
+1; …". Later still, the model gained an exact counterpart of Rust's own
+step: an "address of this place" operation that adds nothing to the
+borrow records. The loader now uses it for local arrays, which also
+covers arrays of references, and the guarded lines remain for arrays
+reached through a pointer. Six more test programs, checked against Miri,
+confirm both, and the correctness proof covers the new operation.
 
 While investigating, we found that one Miri test declares an array of
 about 18 quintillion empty elements. The tool that reads programs into

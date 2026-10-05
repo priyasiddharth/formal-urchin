@@ -81,6 +81,12 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
     run-time `ptrOffset`. Both places are copy-read, as `subSlice`'s. -/
 | ptrOffsetBy {t : IntTy} : Place Γ (LayoutTy.PtrL σ) → Place Γ (LayoutTy.IntL t) → Bool →
     RExpr Γ (LayoutTy.PtrL τ)
+/-- `addrOf loc path`: a raw pointer to the place `loc.path` carrying the
+    local's OWN tag — no retag, no memory or permission event, as Miri's
+    place projection (`a[i]`, `(*p).f`'s base). The loader uses it only where
+    Rust makes no reference: never for `&`/`&raw`, which are retags (`ref`).
+    Rooted at a local, so the pointer is exactly the place's provenance. -/
+| addrOf : Local Γ σ → PathTo σ τ → RExpr Γ (LayoutTy.PtrL τ)
 | refSlice : RefKind → Bool → Place Γ (LayoutTy.PtrL σ) → RExpr Γ (LayoutTy.PtrL τ)
 | sliceLen {t : IntTy} : Place Γ (LayoutTy.PtrL σ) → RExpr Γ (LayoutTy.IntL t)
 | subSlice {tl th : IntTy} : Place Γ (LayoutTy.PtrL σ) → Place Γ (LayoutTy.IntL tl)

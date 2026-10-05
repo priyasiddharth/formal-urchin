@@ -5173,3 +5173,9 @@ witnesses; stale reasons updated. Corpus 182/0/0/18 of 200; units 33 + 141;
 Later: run-time index into arrays by dispatch (parked y option 1:
 `dispatchRuntimeIndex`, one assignIf per element, no retag); 4 witnesses.
 Corpus 186/0/0/18 of 204.
+Later: option 2, `addrOf` (place address with the local's own tag; OSEA-IR
+PlaceAddr; proof addrOf_pkg): local-rooted run-time `a[i]` via addrOf +
+ptrOffsetBy (reference elements now work); d118–d121; witnesses
+array_index_runtime_refs_{ok,popped}. CORRECTION: a `&raw mut` retag is
+no access in Miri (no false UB as I had claimed); d120 pins it. Corpus
+188/0/0/18 of 206; 784 declarations.

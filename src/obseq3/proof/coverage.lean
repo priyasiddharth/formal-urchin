@@ -66,6 +66,7 @@ theorem RhsB.all {Γ : Ctx} {τ : LayoutTy} (rhs : RExpr Γ τ) : RhsB rhs := by
   | sliceLen p => exact .sliceLen (ReadSrcB.all p)
   | subSlice p lo hi => exact .subSlice (ReadSrcB.all p) (ReadSrcB.all lo) (ReadSrcB.all hi)
   | ptrOffsetBy p i inb => exact .ptrOffsetBy inb (ReadSrcB.all p) (ReadSrcB.all i)
+  | addrOf loc path => exact .addrOf loc path
   | exposeAddr p => exact .exposeAddr (LeafSrcB.all p)
   | addr p => exact .addr (LeafSrcB.all p)
   | fromExposed p => exact .fromExposed (LeafSrcB.all p)

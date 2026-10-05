@@ -78,3 +78,38 @@ pointer to a local, which only a retag makes in mirlite.
 The first versions of ref_popped/_other_elem failed rustc's borrow check
 and were rewritten through a raw pointer.
 Corpus 186/0/0/18 of 204; no proof change.
+
+## Later: option 2, `addrOf` — and a correction
+
+[OBS] CORRECTION, superseding the "Correction to my own plan" above and
+the keeps_shared remark: a `&raw mut` retag is NOT an access in Miri. In
+`from_ref_ty`, `RawPtr Mut` gives SharedReadWrite with `access: None`, and
+`grant` inserts it right above the parent's granting item, so it pops
+nothing. Indexing a local array through `&raw mut a` would therefore not
+have been a false UB; it would only add a stack item Miri does not create.
+The model agrees: compiler test d120, planned as a "pops the shared
+borrow" contrast, came out ok on both machines, and it now pins this
+rule. The user's question "why do we need 2" got a wrong answer from me
+on this point (the arithmetic part of that answer stands).
+
+[DEC] (user) Option 2 anyway, being the faithful lowering (no extra item).
+- `RExpr.addrOf loc path` (local-rooted only, so the result is exactly
+  the place's provenance): `ptrVal base (offset of path) (field size)
+  (local size) (owning tag)`, no event.
+- Target `Rhs.PlaceAddr reg offB extB`: moves the pointer value in the
+  local's own register. No borrow, so no route tag.
+- Proof `addrOf_pkg` (proof/addrof.lean, new file): `LocalBindingSimB`
+  gives the register `Ptr base 0 _ size tag'` with ρt(owning) = tag', and
+  `placeToRegChecked_local_existing` the code shape. 784 declarations,
+  3 axioms, 0 sorries.
+- Compiler tests d118 (write/read through it), d119 (a read keeps a
+  shared borrow), d120 (pins a raw mut retag as no access), d121 (a
+  write through it pops the shared borrow: UB at the same statement on
+  both machines).
+- Loader `arrayElemPlace`: a local-rooted `a[i]` (no dereference before
+  the index) is `t := addrOf(a.0); t := ptrOffsetBy t i; (*t)…`. The
+  dispatch stays for `(*p)[i]`.
+- Local witnesses array_index_runtime_refs_{ok,popped}: arrays of
+  references, which the dispatch rejected. In _popped, Miri reports UB at
+  the retag of the loaded reference (line 12), and the model agrees.
+- Corpus 188/0/0/18 of 206; units 33 + 145.

@@ -206,6 +206,9 @@ inductive URvalue
 | ptrOffset (p : UPlace) (delta : Int) (inbounds : Bool)
 -- the run-time `ptrOffset`: `p` moved by the integer place `idx` (pointees)
 | ptrOffsetBy (p idx : UPlace) (inbounds : Bool)
+-- a raw pointer to the place `p` (a local and fields) with the local's OWN
+-- tag: no retag (mirlite `addrOf`; lowering of Miri's place projections)
+| addrOf (p : UPlace)
 -- `&raw (*p).f…` with `p` raw (rustc's `place_base_raw`: no retag): `p`
 -- moved, in bounds, by the byte offset of the field path `steps` in `p`'s
 -- pointee — resolved at emission, where layouts are known
@@ -1416,6 +1419,7 @@ def URvalue.places : URvalue → List UPlace
   | .aggregate _ ops => ops.flatMap (·.places)
   | .subSlice p lo hi => p :: lo.places ++ hi.places
   | .ptrOffsetBy p i _ => [p, i]
+  | .addrOf p => [p]
   | .binOp _ _ a b => a.places ++ b.places
   | _ => []
 

@@ -399,6 +399,14 @@ def evalRExpr (state : State M Γ) (dstL : BLayout) {τ : LayoutTy} (expr : RExp
                           | _ => .err "sub-slice bound is not a concrete word"
                   | _ => .err "sub-slice bound is not a concrete word"
           | _ => .err "sub-slice of a non-pointer value"
+  | .addrOf loc path =>
+      match state.env.lookup loc with
+      | none => .err "place root local not allocated"
+      | some b =>
+          .ok { values := [MemValue.ptrVal b.addr
+                  (fieldOffsetB (placeLayout L (.local loc)) path.indices)
+                  (placeLayout L (.proj (.local loc) path)).sizeB (L loc.idx).sizeB b.tag],
+                state := state }
   | .ptrOffsetBy (t := t) src idx inbounds =>
       let stride := (pointeeLayout L src).sizeB
       match evalCopy M L state src with

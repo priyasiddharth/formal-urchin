@@ -3,6 +3,7 @@ import obseq3.proof.leaffield
 import obseq3.proof.refslicefield
 import obseq3.proof.exposefield
 import obseq3.proof.addr
+import obseq3.proof.addrof
 import obseq3.proof.const_write
 
 /-!
@@ -163,6 +164,8 @@ inductive RhsB {Γ : Ctx} : {τ : LayoutTy} → RExpr Γ τ → Prop
   | subSlice {σ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)}
       {tl th : IntTy} {lo : Place Γ (LayoutTy.IntL tl)} {hi : Place Γ (LayoutTy.IntL th)} :
       ReadSrcB src → ReadSrcB lo → ReadSrcB hi → RhsB (.subSlice src lo hi)
+  | addrOf {σ τ : LayoutTy} (loc : Local Γ σ) (path : PathTo σ τ) :
+      RhsB (.addrOf loc path)
   | ptrOffsetBy {σ τ : LayoutTy} {src : Place Γ (LayoutTy.PtrL σ)}
       {t : IntTy} {idx : Place Γ (LayoutTy.IntL t)} (inb : Bool) :
       ReadSrcB src → ReadSrcB idx → RhsB (.ptrOffsetBy (τ := τ) src idx inb)
@@ -192,6 +195,7 @@ theorem RhsB.pkg {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
   | sliceLen h => exact sliceLen_pkg hWF dstL h
   | subSlice h1 h2 h3 => exact subSlice_pkg hWF dstL h1 h2 h3
   | ptrOffsetBy inb h1 h2 => exact ptrOffsetBy_pkg hWF dstL inb h1 h2
+  | addrOf loc path => exact addrOf_pkg dstL loc path
   | allocConst n => exact alloc_const_pkg dstL n
   | allocDyn h => exact alloc_dyn_pkg hWF dstL h
   | binOp op ha hb => exact binOp_pkg hWF dstL op ha hb

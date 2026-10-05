@@ -405,6 +405,7 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
   | .ptrOffset p d ib => do return .ptrOffset (← resolveGlobalRoot gmap p) d ib
   | .ptrOffsetBy p i ib => do
       return .ptrOffsetBy (← resolveGlobalRoot gmap p) (← resolveGlobalRoot gmap i) ib
+  | .addrOf p => do return .addrOf (← resolveGlobalRoot gmap p)
   | .rawField p steps => do return .rawField (← resolveGlobalRoot gmap p) steps
   | .refSlice kind prot p => do return .refSlice kind prot (← resolveGlobalRoot gmap p)
   | .discriminant p => do return .discriminant (← resolveGlobalRoot gmap p)

@@ -1,7 +1,7 @@
 // Local witness: Miri's `a[i]` is a place projection, not a retag, so a
 // read of `a[i]` at a run-time index leaves an earlier shared borrow of `a`
-// valid. Indexing through a `&raw mut a` instead would retag — a write
-// access — and pop `s`: this program would then be a false UB.
+// valid. (A `&raw mut a` retag would not pop `s` either — Miri's mutable
+// raw retag is no access — but it would add a stack item Miri does not.)
 // expected: ok (checked against the pinned Miri by scripts/live.py)
 fn main() {
     let a = [1u32, 2, 3];

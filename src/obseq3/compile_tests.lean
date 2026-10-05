@@ -2663,6 +2663,54 @@ def d117_ptr_offset_by_wrapping_oob_write : IO Unit :=
      .assign (.deref pA) (.constInit 5)]
     (.ub 3) "d117 wrapping ptrOffsetBy, then an out-of-bounds write"
 
+/-- `addrOf` makes a pointer with the local's OWN tag and no retag, on both
+    machines. d118: a write through it to field 1, read back: ok. d119: a
+    read through it does not pop a shared borrow of the tuple. d120 pins
+    that a `&raw mut` retag does not either (Miri: a mutable raw retag is
+    no access; its SharedReadWrite goes right above the granting item).
+    d121: a write through it pops the shared borrow (the owning tag
+    writes), and the read through that borrow is UB. -/
+def locF : Local ΓF pairL := ⟨⟨0, by decide⟩, rfl⟩
+def path1F : PathTo pairL natL := .field ⟨1, by decide⟩ .nil
+
+def d118_addrof_write_read : IO Unit :=
+  expectDiff ΓF
+    [.assign fld0F (.constInit 1),
+     .assign qF (.addrOf locF path1F),
+     .assign (.deref qF) (.constInit 5),
+     .assign tF (.copy (.proj tupF path1F))]
+    .ok "d118 addrOf: write through it, read back"
+
+def d119_addrof_read_keeps_shared : IO Unit :=
+  expectDiff ΓF
+    [.assign fld0F (.constInit 1),
+     .assign (.proj tupF path1F) (.constInit 2),
+     .assign rF (.ref .Shared false [] tupF),
+     .assign qF (.addrOf locF path1F),
+     .assign tF (.copy (.deref qF)),
+     .assign tF (.copy (.proj (.deref rF) path1F))]
+    .ok "d119 addrOf: a read through it keeps a shared borrow"
+
+def d120_raw_mut_retag_keeps_shared : IO Unit :=
+  expectDiff ΓF
+    [.assign fld0F (.constInit 1),
+     .assign (.proj tupF path1F) (.constInit 2),
+     .assign rF (.ref .Shared false [] tupF),
+     .assign qF (.ref (.Raw true) false [] (.proj tupF path1F)),
+     .assign tF (.copy (.deref qF)),
+     .assign tF (.copy (.proj (.deref rF) path1F))]
+    .ok "d120 a &raw mut retag is no access: the shared borrow stays"
+
+def d121_addrof_write_pops_shared : IO Unit :=
+  expectDiff ΓF
+    [.assign fld0F (.constInit 1),
+     .assign (.proj tupF path1F) (.constInit 2),
+     .assign rF (.ref .Shared false [] tupF),
+     .assign qF (.addrOf locF path1F),
+     .assign (.deref qF) (.constInit 5),
+     .assign tF (.copy (.proj (.deref rF) path1F))]
+    (.ub 5) "d121 addrOf: a write through it pops the shared borrow"
+
 def allTests : List (IO Unit) := [
   g1_const_fresh_local,
   g2_protected_masked_ref,
@@ -2804,7 +2852,11 @@ def allTests : List (IO Unit) := [
   d114_inbounds_freed,
   d115_ptr_offset_by_ok,
   d116_ptr_offset_by_past_end,
-  d117_ptr_offset_by_wrapping_oob_write]
+  d117_ptr_offset_by_wrapping_oob_write,
+  d118_addrof_write_read,
+  d119_addrof_read_keeps_shared,
+  d120_raw_mut_retag_keeps_shared,
+  d121_addrof_write_pops_shared]
 
 def runAll : IO Unit := do
   allTests.forM id
