@@ -567,7 +567,12 @@ its _leaves_ are the scalars it holds, with their offsets:
      plus.double_(j) [(o_j + o', kappa) | (o',kappa) in "leaves"(beta_j)].$
 ]
 
-A scalar has size $|"int"(n)|=n$ and $|"ptr"|=8$. The layout type and the
+A scalar has size $|"int"(n)|=n$ and $|"ptr"|=8$. Alignment is
+$"al"("int"(n))=n$, $"al"("ptr"(beta))=8$, and a tuple's own $"al"$. The
+_C layout_ of fields $overline(beta)$ places them in order, each at the
+next multiple of its alignment, and rounds the size up to the largest
+field alignment: `(u8, u32)` has its fields at offsets 0 and 4 and size 8.
+The layout type and the
 byte layout are two halves of one Rust type: the type says what a place
 holds, the layout where its bytes are. Keeping them apart lets the source
 take rustc's own field offsets for `repr(Rust)` structs, which reorder
@@ -640,7 +645,11 @@ typed read and write of a value of layout $beta$ at address $a$ are
 so padding becomes uninitialized, as a typed copy does in MiniRust; the
 write fails when $overline(v)$ has the wrong number of values or a word
 does not fit its leaf. The environment $E$ maps a local either to no
-binding or to an allocation base and its owning tag. A state is
+binding or to an allocation base and its owning tag. A local is allocated
+when it is first written: one contiguous block of $|Lambda(ell)|$ bytes
+aligned to $"al"(Lambda(ell))$, with a fresh owning tag on the borrow
+stack of every byte, padding included. Its fields are bytes of that block
+at their offsets, so a borrow of a field retags only the field's bytes. A state is
 $S=(i,E,mu,Pi)$ with $i$ the program counter. @tab:mir gives the rules;
 they use three judgments, which we introduce before the interpreter.
 
