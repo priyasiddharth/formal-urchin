@@ -32,6 +32,7 @@ import obseq3.proof.correct
 import obseq3.proof.coverage
 import obseq3.proof.layoutagree
 import obseq3.proof.die_elision
+import obseq3.proof.die_back_check
 open Lean Elab Command
 
 -- The byte-level proof (obseq3.proof, branch `byteaddress`) may rest

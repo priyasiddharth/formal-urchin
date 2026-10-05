@@ -108,4 +108,46 @@ def bracketIssues (code : List (Option Instr)) : List String := Id.run do
     | _ => pure ()
   return issues
 
+/-! ## The decidable check the proof uses
+
+`routeOK prog len` is the same check, as a `Bool` the proof
+(`proof.routeOK_sound`) turns into `proof.RouteProg`; it also requires
+that no `CStore` stores a pointer literal. -/
+
+def _root_.obseq3.RefKind.pushes : RefKind → Bool
+  | .Mut | .BoxMut | .Shared | .Raw false => true
+  | _ => false
+
+def Instr.routeBorrowOf (r : Register) (n : Nat) : Instr → Bool
+  | .Assgn r' (.Borrow k false [] (some n') _ _) => r' == r && n' == n && k.pushes
+  | _ => false
+
+def Val.isPtr : Val → Bool
+  | .Ptr .. => true
+  | _ => false
+
+def Instr.noPtrConst : Instr → Bool
+  | .CStore _ vals _ => !(vals.any Val.isPtr)
+  | _ => true
+
+def Instr.skipLandsIn (l lo hi : Nat) : Instr → Bool
+  | .SkipIf _ _ skip => lo < l + 1 + skip && l + 1 + skip ≤ hi
+  | _ => false
+
+/-- The `Die` at `d`, if any, closes a route bracket. -/
+def bracketAt (prog : Nat → Option Instr) (len d : Nat) : Bool :=
+  match prog d with
+  | some (.Die r n) =>
+      2 ≤ d &&
+      ((prog (d - 2)).map (Instr.routeBorrowOf r n)).getD false &&
+      ((prog (d - 1)).map (Instr.through r)).getD false &&
+      (List.range len).all (fun l =>
+        (d - 2 ≤ l && l ≤ d) || ((prog l).map (fun i => !(i.regs.contains r))).getD true) &&
+      (List.range len).all (fun l => !(((prog l).map (Instr.skipLandsIn l (d - 2) d)).getD false))
+  | _ => true
+
+def routeOK (prog : Nat → Option Instr) (len : Nat) : Bool :=
+  (List.range len).all (bracketAt prog len) &&
+    (List.range len).all (fun l => ((prog l).map Instr.noPtrConst).getD true)
+
 end obseq3.oseair

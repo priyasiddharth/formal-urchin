@@ -301,7 +301,9 @@ def oseaStatus (l : Loaded) (src : Verdict) : OseaStatus :=
           .mismatch s!"target UB (label {label}: {msg}), source {v.render}"
       | .fuelExhausted, _, _ => .mismatch "target fuel exhausted"
       let code := (List.range (compile.emittedLabels l.layEnv l.prog)).map tprog
-      let issues := oseair.bracketIssues code
+      let issues := oseair.bracketIssues code ++
+        (if oseair.routeOK tprog (compile.emittedLabels l.layEnv l.prog) then []
+         else ["routeOK rejects the compiled code"])
       let dies := (code.filter fun i => match i with | some (.Die _ _) => true | _ => false).length
       match st with
       | .matched _ =>

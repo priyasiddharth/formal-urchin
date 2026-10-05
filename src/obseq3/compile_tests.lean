@@ -303,6 +303,9 @@ def expectDiff (Γ : Ctx) (prog : Prog Γ) (expected : DiffOut) (label : String)
   | .ok code =>
       let issues := oseair.bracketIssues code
       assert issues.isEmpty s!"{label}: route brackets: {issues}"
+      -- the decidable check `proof.compiled_die_elision_iff` consumes
+      assert (oseair.routeOK (fun l => (code[l]?).getD none) code.length)
+        s!"{label}: routeOK rejects the compiled code"
   -- OSEA-IR_B (`Die` elided) must reach the same verdict. The theorem
   -- (`proof.die_elision`) only gives ok ⇒ ok; equality on the UB tests
   -- holds because compiled code never accesses through a died tag

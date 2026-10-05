@@ -14,7 +14,8 @@ notes at: notes/
   `scripts/audit_axioms.sh`, which builds Obseq3Proof).
 - Axiom/sorry audit: `scripts/audit_axioms.sh` machine-checks that the
   roots (`obseq3.proof.compile_correct_agrees`, `compile_correct_uniform`,
-  `compile_correct_all`, `die_elision`) rest only on the whitelisted axioms
+  `compile_correct_all`, `die_elision`, `compiled_die_elision_iff`) rest
+  only on the whitelisted axioms
   and EXACTLY the audited sorries (pinned in
   `scripts/axiom_whitelist.txt`; the audit fails on drift in either
   direction). Run it as part of validation before every
@@ -28,7 +29,8 @@ notes at: notes/
       ./.lake/build/bin/sb_conformance --unit
         # obseq3 tests           33/33   (mirlite SB semantics on bytes)
         # obseq3 compiler tests  149/149 (compiler witness corpus; the
-        #   differential ones also run on OSEA-IR_B, Die elided)
+        #   differential ones also run on OSEA-IR_B, Die elided, and
+        #   pass the route-bracket check)
 
       ./.lake/build/bin/sb_conformance \
         --manifest conformance/manifest.json --charon-dir conformance/charon
@@ -38,8 +40,10 @@ notes at: notes/
       ...same, plus --osea
         # differential: compile each program and require the SAME verdict
         # from both machines, and the same OSEA-IR verdict with Die
-        # elided (OSEA-IR_B). 188 matched / 0 mismatch / 0 skipped /
-        # 0 OSEA-IR_B mismatch
+        # elided (OSEA-IR_B), and that the compiled code passes the
+        # route-bracket check (`oseair.routeOK`, the hypothesis of
+        # `compiled_die_elision_iff`). 188 matched / 0 mismatch /
+        # 0 skipped / 0 OSEA-IR_B mismatch / 0 route-bracket issues
 
       ...same, with --layouts instead
         # the loader's byte layouts have their types' shape (the proof's

@@ -50,11 +50,16 @@ structure StateIncr (s1 s2 : CompilerState) : Prop where
   code_eq      : ∀ label, label < s1.nextLabel → s2.code label = s1.code label
   placeRegMap_mono :
     ∀ idx info, (idx, info) ∈ s1.placeRegMap → (idx, info) ∈ s2.placeRegMap
+  /-- Nothing is emitted beyond `nextLabel`: the compiled program is its
+      emitted labels (used by `proof.compiled_routeProg`). -/
+  code_none :
+    (∀ label, s1.nextLabel ≤ label → s1.code label = none) →
+      ∀ label, s2.nextLabel ≤ label → s2.code label = none
 
 namespace StateIncr
 
 theorem refl (cs : CompilerState) : StateIncr cs cs :=
-  ⟨Nat.le_refl _, Nat.le_refl _, fun _ _ => rfl, fun _ _ h => h⟩
+  ⟨Nat.le_refl _, Nat.le_refl _, fun _ _ => rfl, fun _ _ h => h, fun h => h⟩
 
 theorem trans {s1 s2 s3 : CompilerState}
     (h12 : StateIncr s1 s2) (h23 : StateIncr s2 s3) : StateIncr s1 s3 :=
@@ -64,7 +69,8 @@ theorem trans {s1 s2 s3 : CompilerState}
      (h23.code_eq label (Nat.lt_of_lt_of_le h_label h12.nextLabel_le)).trans
        (h12.code_eq label h_label),
    fun idx info h_idx =>
-     h23.placeRegMap_mono idx info (h12.placeRegMap_mono idx info h_idx)⟩
+     h23.placeRegMap_mono idx info (h12.placeRegMap_mono idx info h_idx),
+   fun h => h23.code_none (h12.code_none h)⟩
 
 end StateIncr
 
@@ -247,7 +253,14 @@ theorem emit_code_at_new
     sits strictly above the bracket the lemma reasons about. -/
 theorem emit_append_state_incr (cs : CompilerState) (l1 l2 : List Instr) :
     StateIncr (emit cs l1) (emit cs (l1 ++ l2)) := by
-  refine ⟨by simp [emit], by simp [emit], ?_, fun _ _ h => h⟩
+  refine ⟨by simp [emit], by simp [emit], ?_, fun _ _ h => h, ?_⟩
+  rotate_left
+  · intro h label h_label
+    have := h label (by simp only [emit, List.length_append] at h_label ⊢; omega)
+    simp only [emit, List.length_append] at this h_label ⊢
+    rw [if_neg (by omega)] at this
+    rw [if_neg (by omega)]
+    exact this
   intro label h_label
   simp only [emit] at h_label ⊢
   by_cases h_lo : cs.nextLabel ≤ label
@@ -266,7 +279,11 @@ theorem emit_state_incr (cs : CompilerState) (instrs : List Instr) :
     StateIncr cs (emit cs instrs) :=
   ⟨emit_nextLabel_ge cs instrs, Nat.le_refl _,
    fun label h_label => @emit_code_lt_nextLabel cs instrs label h_label,
-   fun _ _ h => h⟩
+   fun _ _ h => h,
+   fun h label h_label => by
+     simp only [emit] at h_label ⊢
+     rw [if_neg (by omega)]
+     exact h label (by omega)⟩
 
 def emitM (instrs : List Instr) : CompilerM Unit :=
   fun cs => ((), ⟨emit cs instrs, emit_state_incr cs instrs⟩)
@@ -276,7 +293,7 @@ def freshReg (cs : CompilerState) : Register × CompilerState :=
 
 theorem freshReg_state_incr (cs : CompilerState) :
     StateIncr cs (freshReg cs).2 :=
-  ⟨Nat.le_refl _, Nat.le_succ _, fun _ _ => rfl, fun _ _ h => h⟩
+  ⟨Nat.le_refl _, Nat.le_succ _, fun _ _ => rfl, fun _ _ h => h, fun h => h⟩
 
 def freshRegM : CompilerM Register :=
   fun cs =>
@@ -295,7 +312,7 @@ def setPlaceInfo (cs : CompilerState) (idx : Nat) (info : PlaceInfo) : CompilerS
 theorem setPlaceInfo_state_incr (cs : CompilerState) (idx : Nat) (info : PlaceInfo) :
     StateIncr cs (setPlaceInfo cs idx info) :=
   ⟨Nat.le_refl _, Nat.le_refl _, fun _ _ => rfl,
-   fun _ _ h => List.mem_cons_of_mem (idx, info) h⟩
+   fun _ _ h => List.mem_cons_of_mem (idx, info) h, fun h => h⟩
 
 
 /-- The layout of a one-leaf read at scalar `k`: what the source's
@@ -833,17 +850,25 @@ theorem reserveLabel_state_incr (cs : CompilerState) :
    fun l h_l => by
      show (if l = cs.nextLabel then none else cs.code l) = cs.code l
      rw [if_neg (by omega)],
-   fun _ _ h => h⟩
+   fun _ _ h => h,
+   fun h l h_l => by
+     show (if l = cs.nextLabel then none else cs.code l) = none
+     rw [if_neg (by simp only [reserveLabel] at h_l; omega)]
+     exact h l (by simp only [reserveLabel] at h_l; omega)⟩
 
 theorem StateIncr.patchLabel {cs cs' : CompilerState} (h : StateIncr cs cs')
-    {label : Nat} (h_label : cs.nextLabel ≤ label) (i : Instr) :
+    {label : Nat} (h_label : cs.nextLabel ≤ label) (h_lt : label < cs'.nextLabel) (i : Instr) :
     StateIncr cs (patchLabel cs' label i) :=
   ⟨h.nextLabel_le, h.nextReg_le,
    fun l h_l => by
      show (if l = label then some i else cs'.code l) = cs.code l
      rw [if_neg (by omega)]
      exact h.code_eq l h_l,
-   h.placeRegMap_mono⟩
+   h.placeRegMap_mono,
+   fun h0 l h_l => by
+     show (if l = label then some i else cs'.code l) = none
+     rw [if_neg (by have : l ≥ cs'.nextLabel := h_l; omega)]
+     exact h.code_none h0 l h_l⟩
 
 def emitSkipIfAround (discrReg : Register) (val : Word)
     (body : CheckedCompilerM α) : CheckedCompilerM Unit :=
@@ -856,7 +881,7 @@ def emitSkipIfAround (discrReg : Register) (val : Word)
       let bodyLen := real.2.1.nextLabel - cs1.nextLabel
       (.ok (), ⟨patchLabel real.2.1 cs.nextLabel (Instr.SkipIf discrReg val bodyLen),
         StateIncr.patchLabel ((reserveLabel_state_incr cs).trans real.2.2)
-          (Nat.le_refl _) _⟩)⟩
+          (Nat.le_refl _) (Nat.lt_of_lt_of_le (Nat.lt_succ_self _) real.2.2.nextLabel_le) _⟩)⟩
 
 def compileStmtChecked {Γ : Ctx} (L : LayEnv Γ) :
     (stmt : Stmt Γ) → CheckedEvidenceM Unit (fun _ => StmtEvidence L stmt)
