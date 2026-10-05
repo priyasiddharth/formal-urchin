@@ -2525,6 +2525,51 @@
       "certificate": "local/slice_index_runtime_popped.cert.json"
     },
     {
+      "id": "local/array_index_runtime_ok",
+      "artifact": "local/array_index_runtime_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
+      "notes": "a local array read and written at a run-time index: the loader dispatches over the indices (assignIf per element); the certificate checks the values.",
+      "certificate": "local/array_index_runtime_ok.cert.json"
+    },
+    {
+      "id": "local/array_index_runtime_keeps_shared",
+      "artifact": "local/array_index_runtime_keeps_shared.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
+      "notes": "a[i] at a run-time index adds no retag: an earlier shared borrow of the array stays valid (a &raw mut retag would pop it: false UB).",
+      "certificate": "local/array_index_runtime_keeps_shared.cert.json"
+    },
+    {
+      "id": "local/array_index_runtime_ref_popped",
+      "artifact": "local/array_index_runtime_ref_popped.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 10
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
+      "notes": "&mut (*p)[i] at a run-time index retags element i; a write to the same element through p pops it.",
+      "certificate": "local/array_index_runtime_ref_popped.cert.json"
+    },
+    {
+      "id": "local/array_index_runtime_ref_other_elem",
+      "artifact": "local/array_index_runtime_ref_other_elem.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
+      "notes": "&mut (*p)[i] at a run-time index retags element i only: a write to another element leaves it valid.",
+      "certificate": "local/array_index_runtime_ref_other_elem.cert.json"
+    },
+    {
       "id": "local/ptr_add_out_of_bounds",
       "artifact": "local/ptr_add_out_of_bounds.ullbc.json",
       "status": "supported",

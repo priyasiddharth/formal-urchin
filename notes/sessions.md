@@ -5170,3 +5170,6 @@ retag Miri doesn't do; options in parked y). buggy_split_at_mut passes; 5
 witnesses; stale reasons updated. Corpus 182/0/0/18 of 200; units 33 + 141;
 782 proof declarations, 3 axioms, 0 sorries. Journal:
 2026-10/2026-10-05-runtime-offset.md.
+Later: run-time index into arrays by dispatch (parked y option 1:
+`dispatchRuntimeIndex`, one assignIf per element, no retag); 4 witnesses.
+Corpus 186/0/0/18 of 204.

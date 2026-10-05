@@ -51,3 +51,30 @@ The local-array case stays unsupported; the options are in parked item y.
   unknown-bottom-gc, zst-field-retagging-terminates and
   box-custom-alloc-aliasing were replaced by the probed blockers.
 - Units 33 + 141; corpus 182/0/0/18 of 200; --osea 182; --layouts 182.
+
+## Later: run-time index into an array by dispatch (parked y, option 1)
+
+[DEC] (user) Option 1: `dispatchRuntimeIndex` (emit.lean). A statement
+whose destination or value has `a[i]`, with `i` unknown, becomes
+`assignIf i k (dst := rv)[i := k]` for each `k < N`.
+- Each guard reads `i`. Miri reads it once, and re-reading with the same
+  tag changes no stack.
+- Only the matching branch performs its accesses.
+- No pointer and no retag, as with Miri's place projection.
+- MIR's bounds assert precedes the dispatch, and the certificate checks
+  it at run time.
+- Covered: copy/move/constant values and `&a[i]` (also through a
+  pointer, `(*p)[i]`), for types without references.
+- The tracker forgets the array (destination) or the destination value.
+[OBS] The user asked why not a binOp on pointers. Arithmetic was never
+the gap (`ptrOffsetBy` is pointer-plus-integer). The gap is the first
+pointer to a local, which only a retag makes in mirlite.
+[OBS] Witnesses, all Miri-verified:
+- array_index_runtime_ok;
+- keeps_shared: ok; a `&raw mut` retag would pop the shared borrow, so
+  this would be a false UB under the rejected lowering;
+- ref_popped: UB;
+- ref_other_elem: ok, per-byte stacks.
+The first versions of ref_popped/_other_elem failed rustc's borrow check
+and were rewritten through a raw pointer.
+Corpus 186/0/0/18 of 204; no proof change.

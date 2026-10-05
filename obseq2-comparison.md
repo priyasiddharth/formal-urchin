@@ -14,10 +14,13 @@ way as before, and the correctness proof covers the new operation.
 One more Miri test (`buggy_split_at_mut`) passes, and five new test
 programs, each checked against Miri, pin down the new behaviour.
 
-One case is left out on purpose: indexing a local array (not reached
-through a pointer) by a computed number. Doing it the simple way would
-add a step that real Rust does not perform, and that step would wrongly
-flag correct programs. The notes record three ways to add it later.
+Indexing a local array by a computed number could not use this. Getting
+a pointer to the array would add a step real Rust does not perform, and
+that step would wrongly flag correct programs. Instead, later the same
+day, the loader handles `a[i]` by writing one guarded line per possible
+index: "if `i` is 0, use element 0; if `i` is 1, use element 1; …".
+Exactly one line runs, and it touches only what Rust touches. Four more
+test programs, checked against Miri, confirm it.
 
 While investigating, we found that one Miri test declares an array of
 about 18 quintillion empty elements. The tool that reads programs into

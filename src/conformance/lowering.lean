@@ -79,13 +79,14 @@ Not covered (rejected as `unsupported`), with the reason:
   complexity, and no SB rule needs them;
 - **unwind paths / `abort` / certified panic paths** — exception
   machinery, no SB content;
-- **a runtime index into a LOCAL array** (`a[i]`, `i` unknown when
-  loading) — mirlite has no array type (`[T; N]` is a tuple; N ≤
-  `maxArrayLen`) and an index projection needs a static field. Through a
-  POINTER the gap is closed (2026-10-05): `ptr.add(i)`/`offset(i)` and
-  slice data `(*s)[i]` lower to the run-time `ptrOffsetBy`. A local array
-  has no pointer to move without a `&raw` retag, an access Miri does not
-  make (it would invalidate shared borrows of the array: false UB);
+- **run-time array indices beyond the dispatch** — mirlite has no array
+  type (`[T; N]` is a tuple; N ≤ `maxArrayLen`). Since 2026-10-05:
+  `ptr.add(i)`/`offset(i)` and slice data `(*s)[i]` lower to the run-time
+  `ptrOffsetBy`; an array `a[i]` (local, or behind a pointer) to one
+  guarded assignment per index (`dispatchRuntimeIndex`; no pointer, no
+  retag, as Miri's place projection). Not covered: element values holding
+  references (each branch would need a seam retag), two run-time indices
+  in one statement, an index inside an operation's operand;
 - **recursion & deep (>8) call chains, unknown/bodyless callees,
   unresolved indirect calls** — inlining must terminate statically;
 - **drop glue, closures, containers, threads, unions** (as they arise in

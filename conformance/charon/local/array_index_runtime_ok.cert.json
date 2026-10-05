@@ -1,0 +1,79 @@
+{
+ "version": 1,
+ "source": "local/array_index_runtime_ok.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "drop",
+     "ty": "Box<usize>",
+     "descr": "<std::boxed::Box<usize> as std::ops::Drop>::drop"
+    },
+    {
+     "k": "assert",
+     "cond": "move _5",
+     "success": 3,
+     "descr": "rustc_const_eval::interpret::step assert(move _5, \"index out of bounds: the length is {} but the index is {}\", const 3_usize, copy _4) -> [success: bb3, unwind continue]",
+     "next": 3,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "move _8",
+     "success": 4,
+     "descr": "rustc_const_eval::interpret::step assert(move _8, \"index out of bounds: the length is {} but the index is {}\", const 3_usize, copy _7) -> [success: bb4, unwind continue]",
+     "next": 4,
+     "outcome": "success"
+    },
+    {
+     "k": "switch",
+     "discr": "move _9",
+     "cases": [
+      [
+       0,
+       6
+      ]
+     ],
+     "otherwise": 5,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _9) -> [0: bb6, otherwise: bb5]",
+     "next": 6,
+     "arm": "0"
+    },
+    {
+     "k": "assert",
+     "cond": "move _14",
+     "success": 7,
+     "descr": "rustc_const_eval::interpret::step assert(move _14, \"index out of bounds: the length is {} but the index is {}\", const 3_usize, copy _13) -> [success: bb7, unwind continue]",
+     "next": 7,
+     "outcome": "success"
+    },
+    {
+     "k": "switch",
+     "discr": "move _11",
+     "cases": [
+      [
+       0,
+       10
+      ]
+     ],
+     "otherwise": 8,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _11) -> [0: bb10, otherwise: bb8]",
+     "next": 10,
+     "arm": "0"
+    }
+   ]
+  }
+ ]
+}

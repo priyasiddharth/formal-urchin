@@ -1578,11 +1578,11 @@ quotient soundness, and no `sorryAx`.
 The executable compiler is additionally validated by testing: a compiler
 witness corpus of 141 programs, run on both machines at the uniform layout
 and pinned as golden listings where the shape of the code matters; a
-corpus of 200 entries, drawn from Miri's Stacked Borrows tests and
+corpus of 204 entries, drawn from Miri's Stacked Borrows tests and
 completed by local witnesses, loaded from rustc's MIR through Charon with
-rustc's own layouts, whose 182 supported programs reach Miri's verdict
+rustc's own layouts, whose 186 supported programs reach Miri's verdict
 and, where Miri reports undefined behavior, the same statement and, with
-four documented exceptions, the same reason; and a differential run that compiles each of those 182
+four documented exceptions, the same reason; and a differential run that compiles each of those 186
 programs and requires the same verdict from both machines. The layout
 check of @def:layoutwf passes on all of them. The running program of this
 paper is part of the witness corpus, both as a golden listing

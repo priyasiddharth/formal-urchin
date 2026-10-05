@@ -539,7 +539,11 @@ item q) landed: corpus 109/0/31 (was 99/0/39; +2 split-out entries),
   `offset(i)`, slice data `(*s)[i]`). Still unsupported: a run-time index
   into a LOCAL array (`a[i]`, `i` unknown when loading). A pointer to the
   array would need a `&raw` retag, an SB access Miri does not make (false
-  UB on shared borrows of the array). Options, cheapest first:
+  UB on shared borrows of the array). [DONE 2026-10-05: option (1),
+  `dispatchRuntimeIndex` in emit.lean — copy/move/const values and `&a[i]`
+  of reference-free types, also behind a pointer `(*p)[i]`; 4 Miri
+  witnesses. Left: element values holding references, two run-time indices
+  in one statement.] Options, cheapest first:
   (1) loader-only DISPATCH over the N possible indices with `assignIf`
   (`assignIf i k (dst := a[k])` for k < N; re-reading `i` with the same
   tag is idempotent in SB; N ≤ 4096 bounds the code), no proof change;
