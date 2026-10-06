@@ -2,7 +2,7 @@
  "version": 1,
  "source": "prep/box_cell_alias.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
   "flags": [
    "-Zmir-opt-level=0"
   ]

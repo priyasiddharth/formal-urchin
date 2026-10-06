@@ -24,15 +24,25 @@ export MIRI_AUTO_OPS=no   # ./miri: no automatic toolchain/fmt/clippy runs
 git -C "$REPO" submodule update --init conformance/vendor/miri conformance/vendor/charon
 charon_rev="$(git -C "$HERE/vendor/charon" rev-parse HEAD)"
 # vendor/miri is the formal-urchin FORK (branch formal-urchin): upstream Miri
-# at the PIN commit plus our tests under tests/formal-urchin/. The TOOL is
-# built from the pinned upstream commit, so test edits never rebuild Miri
-# (or miss the CI cache); the fork may differ from it only in that dir.
-miri_rev="$(sed -n 's/^miri_commit: *//p' "$HERE/PIN")"
-git -C "$HERE/vendor/miri" cat-file -e "$miri_rev^{commit}" 2>/dev/null ||
-  git -C "$HERE/vendor/miri" fetch -q --depth=1 origin "$miri_rev"
+# at PIN's miri_commit, plus ONE logging-only patch in src/machine.rs
+# (miri_tool_commit, from which the TOOL is built), plus our tests under
+# tests/formal-urchin/. Test edits never rebuild Miri (or miss the CI cache);
+# the tool may differ from upstream only in src/machine.rs.
+miri_up="$(sed -n 's/^miri_commit: *//p' "$HERE/PIN")"
+miri_rev="$(sed -n 's/^miri_tool_commit: *//p' "$HERE/PIN")"
+for c in "$miri_up" "$miri_rev"; do
+  git -C "$HERE/vendor/miri" cat-file -e "$c^{commit}" 2>/dev/null ||
+    git -C "$HERE/vendor/miri" fetch -q --depth=1 origin "$c"
+done
+patch="$(git -C "$HERE/vendor/miri" diff --name-only "$miri_up" "$miri_rev" -- . ':!tests/formal-urchin')"
+if [ "$patch" != "src/machine.rs" ]; then
+  echo "bootstrap: the Miri tool commit $miri_rev differs from upstream $miri_up in:" >&2
+  echo "$patch" >&2
+  exit 1
+fi
 outside="$(git -C "$HERE/vendor/miri" diff --name-only "$miri_rev" HEAD -- . ':!tests/formal-urchin')"
 if [ -n "$outside" ]; then
-  echo "bootstrap: vendor/miri differs from the pinned $miri_rev outside tests/formal-urchin:" >&2
+  echo "bootstrap: vendor/miri differs from the tool commit $miri_rev outside tests/formal-urchin:" >&2
   echo "$outside" >&2
   exit 1
 fi

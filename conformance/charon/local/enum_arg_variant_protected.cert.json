@@ -1,0 +1,55 @@
+{
+ "version": 1,
+ "source": "local/enum_arg_variant_protected.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ub",
+ "user_fns": [
+  "f",
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "drop",
+     "ty": "Box<u8>",
+     "descr": "<std::boxed::Box<u8> as std::ops::Drop>::drop"
+    },
+    {
+     "k": "switch",
+     "discr": "move _7",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "rustc_const_eval::interpret::step switchInt(move _7) -> [0: bb4, otherwise: bb3]",
+     "next": 3,
+     "arm": "otherwise"
+    }
+   ]
+  },
+  {
+   "fn": "f",
+   "miri_path": "f",
+   "events": [],
+   "variants": [
+    {
+     "arg": 1,
+     "path": [],
+     "variant": 1,
+     "ty": "E<'_>"
+    }
+   ]
+  }
+ ]
+}

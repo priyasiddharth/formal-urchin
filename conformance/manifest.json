@@ -2532,7 +2532,7 @@
         "verdict": "ok"
       },
       "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
-      "notes": "a local array read and written at a run-time index: the loader dispatches over the indices (assignIf per element); the certificate checks the values.",
+      "notes": "a local array read and written at a run-time index: the loader computes the element address (addrOf + ptrOffsetBy); the certificate checks the values.",
       "certificate": "local/array_index_runtime_ok.cert.json"
     },
     {
@@ -2577,7 +2577,7 @@
         "verdict": "ok"
       },
       "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
-      "notes": "a local array of references read at a run-time index: a[i] lowered as Miri's place projection (addrOf a.0 with the local's own tag, ptrOffsetBy i, load + the reference-load retag); the certificate checks the value. The assignIf dispatch rejects reference elements.",
+      "notes": "a local array of references read at a run-time index: a[i] lowered as Miri's place projection (addrOf a.0 with the local's own tag, ptrOffsetBy i, load + the reference-load retag); the certificate checks the value.",
       "certificate": "local/array_index_runtime_refs_ok.cert.json"
     },
     {
@@ -2591,6 +2591,29 @@
       "provenance": "local; real-Miri verified (pinned submodule), 2026-10-05 via scripts/miri_local.sh and live.py",
       "notes": "references in a local array, popped by a raw write, read at a run-time index: the retag of the loaded reference is UB (Miri: retag from a tag not in the stack).",
       "certificate": "local/array_index_runtime_refs_popped.cert.json"
+    },
+    {
+      "id": "local/enum_arg_variant_protected",
+      "artifact": "local/enum_arg_variant_protected.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 9
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-06 via scripts/miri_local.sh and live.py",
+      "notes": "an enum argument holding &mut (variant B, chosen at run time): Miri's fn-entry retag protects it for the variant it reads; the loader takes the variant from the certificate (CertVariant) and checks it at run time; the write through an aliasing raw pointer is UB.",
+      "certificate": "local/enum_arg_variant_protected.cert.json"
+    },
+    {
+      "id": "local/enum_arg_variant_unprotected",
+      "artifact": "local/enum_arg_variant_unprotected.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-06 via scripts/miri_local.sh and live.py",
+      "notes": "the same program with variant A (a raw pointer, which the entry retag does not protect): the write is fine; the recorded variant is checked at run time.",
+      "certificate": "local/enum_arg_variant_unprotected.cert.json"
     },
     {
       "id": "local/ptr_add_out_of_bounds",

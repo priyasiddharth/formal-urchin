@@ -624,13 +624,31 @@ def materialiseStrArgs (st : LowerSt) (line : Nat) (args : List UOperand) : Lowe
     | .str bs => let (st, r) := materialiseStr st line bs; (st, acc ++ [.copy r])
     | op => (st, acc ++ [op])) (st, [])
 
+/-- Count one checked branch. `pinned` — a branch followed on Miri's
+    word alone — has no lowering path left since `binOp` (2026-09-24):
+    the counter stays in the report as the standing witness that it is
+    0. -/
+def certBump (st : LowerSt) (checked : Nat) (runtime : Nat := 0) : LowerSt :=
+  { st with cert := st.cert.map fun c =>
+      { c with checked := c.checked + checked, runtime := c.runtime + runtime } }
+
+/-- UB unless `discr == v`. -/
+def emitCheckEq (st : LowerSt) (line : Nat) (discr : UPlace) (v : Nat) : LowerSt :=
+  let bad := natLocal st.certBad
+  let tmp := natLocal st.certTmp
+  let l := certLineBase + line
+  let st := pushOut st (.assign bad .uninit l)
+  let st := pushOut st (.assignIf discr v bad (.use (.const 0)) l)
+  certBump (pushOut st (.assign tmp (.use (.copy bad)) l)) 1 1
+
 /-- Retag/copy `src` into `dst` at a retag point (inline seam or a
     reference-typed load through a deref): every reference — including
     refs inside tuples and enum payloads — is retagged; enum payload
     accesses are guarded on the discriminant (`assignIf`). Non-ref
     components are plain copies. -/
 partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace)
-    (ty : UTy) (src : UPlace) : Except String LowerSt := do
+    (ty : UTy) (src : UPlace) (vk : Option (Nat × List Nat) := none) :
+    Except String LowerSt := do
   match ty with
   | .ref mutbl inner =>
       -- pointee ty drives the UnsafeCell freeze mask at elaboration. An
@@ -653,8 +671,38 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
       let mut st := st
       for h : i in [0:tys.length] do
         st ← emitSeamCopy st line prot (fld dst i) tys[i] (fld src i)
+          (vk.map fun (a, p) => (a, p ++ [i]))
       return st
   | .enum variants => do
+      -- a fn-entry argument whose variant Miri recorded (`CertVariant`):
+      -- CHECK it when the program runs, then retag that variant's fields
+      -- only, unguarded
+      let recorded? : Option Nat := do
+        let (a, path) ← vk
+        let c ← st.cert
+        let v ← c.variantOf? a path
+        if v < variants.length then some v else none
+      if let some v := recorded? then
+        let mut st := if dst == src then st
+          else pushOut st (.assign (fld dst 0) (.use (.copy (fld src 0))) line)
+        st := emitCheckEq st line (fld src 0) v
+        let fields := variants[v]!
+        for h2 : i in [0:fields.length] do
+          let dstF := fld dst (1 + i)
+          let srcF := fld src (1 + i)
+          match fields[i] with
+          | .ref mutbl finner =>
+              st := pushOut st (.assign dstF
+                (.ref (if mutbl then .mut else .shared) prot
+                  { pointee srcF with ty := finner }) line)
+          | fty =>
+              if containsRef fty then
+                throw s!"unsupported: nested references in enum payload (line {line})"
+              else if dst == src then
+                pure ()
+              else
+                st := pushOut st (.assign dstF (.use (.copy srcF)) line)
+        return st
       -- discriminant is payload slot 0; variant v's field i lives at 1+i.
       -- IN-PLACE retags (dst == src, a moved argument already bound):
       -- no plain copies, only the guarded reborrows
@@ -1002,17 +1050,18 @@ def protectInPlace (st : LowerSt) (line : Nat) (p : UPlace) (ty : UTy) :
     are the same final state), then the fn-entry retags on the callee
     local in place. Shims get none of this (real MIR frames only). -/
 def emitSeamBind (st : LowerSt) (line : Nat) (prot : Bool) (dstLocal : UPlace)
-    (ty : UTy) (op : UOperand) : Except String LowerSt := do
+    (ty : UTy) (op : UOperand) (arg? : Option Nat := none) : Except String LowerSt := do
+  let vk := arg?.map fun a => (a, ([] : List Nat))
   match op with
   | .move p =>
       let st ← emitAssign st line dstLocal (.move p)
-      let st ← if containsRef ty then emitSeamCopy st line prot dstLocal ty dstLocal
+      let st ← if containsRef ty then emitSeamCopy st line prot dstLocal ty dstLocal vk
         else pure st
       protectInPlace st line p ty
   | _ =>
     if containsRef ty then
       match op with
-      | .copy p => emitSeamCopy st line prot dstLocal ty p
+      | .copy p => emitSeamCopy st line prot dstLocal ty p vk
       | _ => .error s!"unsupported: reference-typed argument is not a place (line {line})"
     else
       emitAssign st line dstLocal (.use op)

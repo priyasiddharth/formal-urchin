@@ -29,6 +29,10 @@ RE_SWITCH = re.compile(r"\bswitchInt\((.*?)\) -> \[(.*)\]\s*$")
 RE_ASSERT = re.compile(r"\bassert\((.*)\) -> \[success: bb(\d+)")
 RE_ASSIGN = re.compile(r"^\s*(?:\d+ms\s+INFO\s+\S+\s+)?(_\d+) = (.*)$")
 RE_TARGET = re.compile(r"(\d+|otherwise): bb(\d+)")
+# formal-urchin's Miri fork (logging only): after a call's arguments are
+# passed, the active variant of every enum inside each argument, by
+# argument local and field path (`miri::machine=info`)
+RE_VARIANT = re.compile(r"formal-urchin variant: arg=(\d+) path=\[([^\]]*)\] variant=(\d+) ty=(.*)$")
 
 
 def strip_generics(s):
@@ -139,6 +143,7 @@ class Frame:
         self.pending = None          # (kind, dict) awaiting the next executing block
         self.assigns = {}            # local -> list of rvalue texts (drop-flag classification)
         self.switched = set()        # locals switched on
+        self.variants = []           # fn-entry argument enum variants
 
     def record_assign(self, local, rv):
         self.assigns.setdefault(local, []).append(rv.strip())
@@ -242,6 +247,12 @@ def parse_log(lines, user_fns):
             continue
         if not top.user:
             continue
+        m = RE_VARIANT.search(line)
+        if m:
+            path = [int(x) for x in m.group(2).split(".") if x != ""]
+            top.variants.append({"arg": int(m.group(1)), "path": path,
+                                 "variant": int(m.group(3)), "ty": m.group(4).strip()})
+            continue
         m = RE_SWITCH.search(line)
         if m:
             targets = RE_TARGET.findall(m.group(2))
@@ -308,7 +319,8 @@ def main():
         "miri": {"toolchain": a.toolchain, "flags": ["-Zmir-opt-level=0"] + a.flag},
         "outcome": outcome,
         "user_fns": sorted(user_fns),
-        "frames": [{"fn": last_segment(fr.path), "miri_path": fr.path, "events": fr.events}
+        "frames": [dict({"fn": last_segment(fr.path), "miri_path": fr.path, "events": fr.events},
+                        **({"variants": fr.variants} if fr.variants else {}))
                    for fr in frames],
     }
     with open(a.out, "w") as f:

@@ -50,10 +50,24 @@ structure CertDrop where
   descr : String := ""
 deriving Repr, Inhabited
 
+/-- The active variant of an enum inside a call argument, as Miri's
+    fn-entry retags walked it (formal-urchin's Miri fork logs it after the
+    arguments are passed): argument local `arg` (1-based), field path
+    `path` (field indices; inside an enum, of its active variant). A lookup
+    table, not an ordered event: the lowering asks for the enums it
+    retags, and CHECKS each answer when the program runs. -/
+structure CertVariant where
+  arg : Nat
+  path : List Nat
+  variant : Nat
+  ty : String := ""
+deriving Repr, Inhabited
+
 structure CertFrame where
   fn : String
   events : Array CertEvent
   drops : Array CertDrop := #[]
+  variants : Array CertVariant := #[]
 deriving Repr, Inhabited
 
 structure Cert where
@@ -110,7 +124,13 @@ def parseCert (j : Json) : Except String Cert := do
                               descr := (getK ej "descr" >>= asStr).getD "" }
       else
         events := events.push (← parseCertEvent ej)
-    pure ({ fn, events, drops } : CertFrame)
+    let varsJ := (getK fj "variants").map asArr |>.getD []
+    let variants ← varsJ.toArray.mapM fun vj => do
+      let some arg := getK vj "arg" >>= asNat | .error "certificate: variant without arg"
+      let some v := getK vj "variant" >>= asNat | .error "certificate: variant without variant"
+      let path := ((getK vj "path").map asArr |>.getD []).filterMap asNat
+      pure ({ arg, path, variant := v, ty := (getK vj "ty" >>= asStr).getD "" } : CertVariant)
+    pure ({ fn, events, drops, variants } : CertFrame)
   return { outcome, frames := frames.toArray }
 
 /-- What the lowering did with a certificate, for the harness report. -/
@@ -222,6 +242,15 @@ def closeFrame (c : CertCursor) (fn : String) : Except String CertCursor :=
       else match c.missedDrop? fn with
         | some msg => .error msg
         | none => .ok { c with stack := rest, dropsDone := c.dropsDone.drop 1 }
+
+/-- The recorded variant of the enum at field path `path` of argument
+    `arg` of the innermost open frame (`CertVariant`), if Miri logged it. -/
+def variantOf? (c : CertCursor) (arg : Nat) (path : List Nat) : Option Nat :=
+  match c.stack with
+  | (fi, _) :: _ =>
+      (c.cert.frames[fi]? >>= fun fr =>
+        fr.variants.find? (fun v => v.arg == arg && v.path == path)).map (·.variant)
+  | [] => none
 
 /-- The next real event of the innermost frame, if any. -/
 partial def nextEvent (c : CertCursor) : Option (CertEvent × CertCursor) :=

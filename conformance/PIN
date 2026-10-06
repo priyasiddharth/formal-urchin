@@ -1,10 +1,15 @@
 # Charon's pin is its submodule commit. Miri's pin is `miri_commit` BELOW:
 # conformance/vendor/miri is our fork (github.com/priyasiddharth/miri,
-# branch formal-urchin) = that commit + tests/formal-urchin only, and the
-# tool is built from that commit. Move the Miri pin by rebasing the fork
-# branch onto a new upstream commit and updating miri_commit here;
-# then scripts/live.py --update and commit the regenerated artifacts.
+# branch formal-urchin) = that upstream commit + ONE logging-only patch in
+# src/machine.rs (`miri_tool_commit`: fn-entry argument enum variants, for
+# the certificates; it changes no verdict) + tests/formal-urchin. The tool
+# is built from miri_tool_commit; bootstrap_tools.sh checks that it differs
+# from miri_commit only in src/machine.rs and the fork head from it only in
+# tests/formal-urchin. Move the Miri pin by rebasing the fork branch onto a
+# new upstream commit and updating both commits here; then
+# scripts/live.py --update and commit the regenerated artifacts.
 miri_commit: 34d6a7954425f3d97d6a7ff19bdf0f7a51560754
+miri_tool_commit: d5bcab3bc94262fdb7e01ac211bce88a78e702b3
 miri_date: 2026-08-13
 miri_rustc: 4667d75565e47ba5df36c0df598c556b543e8624 (vendor/miri/rust-version; installed as the rustup toolchain `miri`)
 charon_commit: 0c229235fe28aeea953d03fb5d5096db574ccc1a (= release tag nightly-2026.08.14, charon 0.1.232)

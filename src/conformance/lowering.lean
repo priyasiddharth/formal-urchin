@@ -112,23 +112,6 @@ the pin is wrong. The check statements carry a SENTINEL line so the
 harness reports a failure as "certificate rejected", not as a program
 verdict. -/
 
-/-- Count one checked branch. `pinned` — a branch followed on Miri's
-    word alone — has no lowering path left since `binOp` (2026-09-24):
-    the counter stays in the report as the standing witness that it is
-    0. -/
-def certBump (st : LowerSt) (checked : Nat) (runtime : Nat := 0) : LowerSt :=
-  { st with cert := st.cert.map fun c =>
-      { c with checked := c.checked + checked, runtime := c.runtime + runtime } }
-
-/-- UB unless `discr == v`. -/
-def emitCheckEq (st : LowerSt) (line : Nat) (discr : UPlace) (v : Nat) : LowerSt :=
-  let bad := natLocal st.certBad
-  let tmp := natLocal st.certTmp
-  let l := certLineBase + line
-  let st := pushOut st (.assign bad .uninit l)
-  let st := pushOut st (.assignIf discr v bad (.use (.const 0)) l)
-  certBump (pushOut st (.assign tmp (.use (.copy bad)) l)) 1 1
-
 /-- UB unless `discr ∉ vs` (the `otherwise` arm of a switch). -/
 def emitCheckNotIn (st : LowerSt) (line : Nat) (discr : UPlace) (vs : List Nat) : LowerSt :=
   -- an `otherwise` arm with NO cases to exclude is vacuous: nothing to
@@ -333,12 +316,21 @@ partial def inlineCall (crate : UCrate) (depth : Nat) (st : LowerSt)
       let mut st := { st with locals := st.locals ++ f.locals }
       -- enter the call's protector frame
       st := { st with out := .pushProt line :: st.out }
+      -- open the callee's certificate frame (shims never do: they are
+      -- std frames on Miri's side, which the extractor drops) BEFORE the
+      -- arguments: the enum variants Miri's fn-entry retags walked are
+      -- recorded in it (`CertVariant`)
+      match st.cert with
+      | some c =>
+          let c ← c.openFrame f.name
+          st := { st with cert := some c }
+      | none => pure ()
       -- bind args into callee arg locals (indices 1..argCount), with
       -- protected fn-entry retags for reference-typed components
       for h : i in [0:args.length] do
         let argLocal : UPlace := { root := .local (offset + 1 + i), projs := [] }
         let ty := f.locals[1 + i]? |>.getD (.unsupported "missing arg local")
-        st ← emitSeamBind st line true argLocal ty args[i]
+        st ← emitSeamBind st line true argLocal ty args[i] (some (1 + i))
       -- the RETURN PLACE is passed in place too (Miri: "Protect return
       -- place for in-place return value passing"): the caller's
       -- destination is deinit'd and protected for the call, and receives
@@ -349,13 +341,6 @@ partial def inlineCall (crate : UCrate) (depth : Nat) (st : LowerSt)
       if !(isUnitTy retTy) then
         st ← emitAssign st line dest .uninit
         st ← protectInPlace st line dest retTy
-      -- open the callee's certificate frame (shims never do: they are
-      -- std frames on Miri's side, which the extractor drops)
-      match st.cert with
-      | some c =>
-          let c ← c.openFrame f.name
-          st := { st with cert := some c }
-      | none => pure ()
       -- walk the body
       st ← walkBlock crate (depth - 1) st f offset 0 []
       if st.halted then return st

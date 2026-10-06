@@ -7,14 +7,18 @@ pass tests must run clean. Design: `plans/sb_conformance_obseq3.md`.
 ## Layout
 
 - `vendor/miri` — git SUBMODULE on OUR FORK, github.com/priyasiddharth/miri
-  branch `formal-urchin`: upstream Miri at `PIN`'s `miri_commit` plus
+  branch `formal-urchin`: upstream Miri at `PIN`'s `miri_commit`, plus ONE
+  logging-only patch in `src/machine.rs` (`PIN`'s `miri_tool_commit`: after
+  a call's arguments are passed, it logs the active variant of every enum
+  inside each argument, for the certificates; it reads, never writes), plus
   `tests/formal-urchin/` (the rewrites that REPLACE std code with
   user-written code — a local `Option` with std's bodies, a local trait
   for a std operator, named `fn`s for closures, `dealloc` for a Box drop).
-  The Miri TOOL is built from `miri_commit` itself (a worktree in
+  The Miri TOOL is built from `miri_tool_commit` (a worktree in
   `.tools/miri-src`), so editing those tests never rebuilds Miri or
-  misses the CI cache; the bootstrap refuses a fork that differs from
-  `miri_commit` anywhere else.
+  misses the CI cache; the bootstrap refuses a tool commit that differs
+  from `miri_commit` outside `src/machine.rs`, and a fork head that differs
+  from the tool commit outside `tests/formal-urchin/`.
 - `vendor/charon` — git submodule; its commit is the Charon pin.
   `scripts/bootstrap_tools.sh` builds both tools into `.tools/` and the
   rustup toolchain `miri` (idempotent; CI caches the result keyed on the
@@ -184,6 +188,15 @@ There is no third tier since mirlite gained the word `binOp` rvalue
 (2026-09-24): arithmetic the seam cannot fold is EMITTED rather than
 replaced by a placeholder, so every recorded branch has a real word to
 check.
+
+**Enum arguments at inline seams** (2026-10-06): a certificate frame
+also records, for each enum inside the function's arguments, the variant
+Miri's fn-entry retags walked (`variants`: argument, field path, variant;
+logged by the fork's patch, `MIRI_LOG=…,miri::machine=info`). The loader
+retags only that variant's references and CHECKS the variant at runtime
+with the same construction (`emitCheckEq`); without a recorded variant it
+falls back to one guarded retag per variant (return-value seams, and UB
+raised before the callee's frame exists).
 
 Coverage as of 2026-09-25 — **every recorded event is checked**: the 24
 certificates record 43 branch events between them (6 record none: those

@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-06 — Miri Now Tells Us Which Variant an Enum Argument Holds
+
+When a function receives an enum that contains references, Rust's rules
+retag those references on entry, but only for the variant the value
+actually holds. Our tool used to emit a guarded retag for every possible
+variant. We added a small logging-only change to our copy of Miri: when a
+function is entered, it records which variant each enum argument holds.
+The tool that turns Miri's run into a certificate now saves that, and our
+loader retags just that variant and adds a run-time check that the
+program really holds it, so Miri's word is never taken on trust. Two new
+test programs, checked against Miri, exercise it; corrupting the recorded
+variant makes the check fire. All 208 tests still get Miri's own verdict.
+
+---
+
 ## 2026-10-05 — Removing the Cleanup Instruction Changes Nothing in Compiled Code
 
 Earlier today we proved that removing every `Die` from a target program

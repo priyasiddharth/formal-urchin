@@ -27,7 +27,7 @@ for f in "${files[@]}"; do
   flagargs=()
   for fl in $(miri_file_flags "$f"); do flagargs+=("--flag=$fl"); done
   set +e
-  MIRI_LOG="rustc_const_eval::interpret::step=info,rustc_const_eval::interpret::stack=info,rustc_const_eval::interpret::call=info" \
+  MIRI_LOG="rustc_const_eval::interpret::step=info,rustc_const_eval::interpret::stack=info,rustc_const_eval::interpret::call=info,miri::machine=info" \
     run_miri "$f" -Zmir-opt-level=0 > /dev/null 2> "$log"
   status=$?
   set -e

@@ -1204,3 +1204,28 @@ the final `InvAtB` replaced by pc/reg/mem of the B run. UB direction:
 an invariant that no register reachable after a `Die` holds the died tag.
 **Effort estimate:** composition ~30 min; UB direction ~1–2 days
 **References:** journal/2026-10/2026-10-05-die-elision.md
+
+## Moving an enum with an uninit payload is a false UB
+**Status:** parked 2026-10-06
+**Context:** `enum E { A, B(&mut u32) }`, `f(E::A)`: the seam's whole-value
+`move` of the argument reads the payload slot, uninit for `A`, and mirlite
+reports "read of uninitialized memory"; Miri's typed copy copies only the
+active variant's bytes. Pre-existing (the guarded fallback fails the same
+way). Not hit by the corpus; the enum_arg_variant witnesses avoid it with
+`A(*mut u32)`.
+**To resume:** move an enum field by field (discriminant + the active
+variant's payload, known from the certificate's `variants` or guarded),
+or let a move of an uninit payload slot copy uninit (as `copy` of a word
+with `undef` does where the model allows it).
+**References:** journal/2026-10/2026-10-06-cert-enum-variants.md
+
+## Enum retags without a recorded variant
+**Status:** parked 2026-10-06
+**Context:** the certificate records enum variants at FN ENTRY only (the
+fork's log in `with_retag_mode(FnEntry)`). Return-value seams (3 corpus
+programs) and UB raised while the caller copies the argument (1:
+pass_invalid_shr_option, no callee frame) still use the guarded retags.
+**To resume:** log Default-mode retags too — the hook has no destination,
+but the current statement (`ecx.frame()`'s location) is an `Assign` whose
+place can be walked after the copy; key the record by frame + statement
+order, as branch events are.

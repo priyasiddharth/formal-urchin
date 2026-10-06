@@ -2,7 +2,7 @@
  "version": 1,
  "source": "corpus/tests/formal-urchin/interior_mutability__rust_issue_68303.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (34d6a79544 2026-08-13)",
+  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -81,6 +81,14 @@
      "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb2, 1: bb3, otherwise: bb1]",
      "next": 3,
      "arm": "1"
+    }
+   ],
+   "variants": [
+    {
+     "arg": 1,
+     "path": [],
+     "variant": 1,
+     "ty": "Option<&std::cell::RefCell<bool>>"
     }
    ]
   },

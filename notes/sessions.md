@@ -5215,3 +5215,16 @@ audit root); paper corollary. 51 proof files, 1268 declarations.
 Later: `(*p)[i]` lowers to `ptrOffsetBy` (from `p` via `ptrCast`);
 `dispatchRuntimeIndex` deleted. `assignIf` now only serves certificate
 checks, enum-seam retags and `format!` assumptions. Corpus unchanged.
+
+## 2026-10-06 (certificates record fn-entry enum variants)
+
+`(*p)[i]` → `ptrOffsetBy` (dispatch gone, 2026-10-05 late). Then the Miri
+FORK gained a logging-only patch (`miri_tool_commit` in PIN; bootstrap and
+live.py pin it): after argument passing it logs each argument enum's
+variant. Certificates record them (`variants`, a lookup); the loader
+retags only the recorded variant at fn-entry seams and checks it at
+runtime (`emitCheckEq`). Witnesses enum_arg_variant_{protected,unprotected}.
+A first patch ICE'd on `[(); usize::MAX]` (fixed; all 208 Miri verdicts
+agree). Remaining guarded enum retags: 3 return seams + 1 UB-before-entry.
+Corpus 190/0/0/18 of 208. Fork commits are local: push the branch.
+Journal: 2026-10/2026-10-06-cert-enum-variants.md.
