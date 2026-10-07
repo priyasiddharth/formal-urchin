@@ -68,14 +68,14 @@ Covered (interpreted):
   with a `<name>.cert.json` recording Miri's branch outcomes, `switch`
   terminators follow the recorded arm (loops unroll), asserts follow
   the recorded outcome, and each is either cross-checked against the
-  folded value (T1) or CHECKED AT RUNTIME (T2, with
-  `uninit`/`assignIf`/`copy`) against the word the program computed —
+  folded value (T1) or CHECKED AT RUNTIME (T2, with a `check`
+  statement) against the word the program computed —
   the same word Miri's own `switchInt`/`assert` read. Since `binOp`
   landed there is no third tier: every recorded branch is checked.
 
 Not covered (rejected as `unsupported`), with the reason:
 - **loops / `switchInt` / real branches WITHOUT a certificate** — the
-  target has only forward-only `SkipIf`; general CFGs are language
+  target is straight-line code; general CFGs are language
   complexity, and no SB rule needs them;
 - **unwind paths / `abort` / certified panic paths** — exception
   machinery, no SB content;
@@ -102,13 +102,12 @@ The consolidated inventory of blockers/approximations lives in
 
 namespace conformance
 
-/-! ## Certificate checks, from existing statements only
+/-! ## Certificate checks
 
 Every recorded branch outcome the lowering cannot fold is CHECKED at
-runtime with `uninit`/`assignIf`/
-`copy` alone: "UB unless `d == v`" is `bad := uninit; assignIf d v (bad :=
-0); tmp := copy bad` — the copy reads an uninitialised cell exactly when
-the pin is wrong. The check statements carry a SENTINEL line so the
+runtime by one `check` statement: `check d ∈ [v]` (or `∉ vs` for an
+`otherwise` arm) reads `d` and is stuck unless the pin holds. The check
+statements carry a SENTINEL line so the
 harness reports a failure as "certificate rejected", not as a program
 verdict. -/
 
@@ -399,9 +398,6 @@ def resolveGlobalsRv (gmap : List (Nat × Nat)) : URvalue → Except String URva
 def resolveGlobalsStmt (gmap : List (Nat × Nat)) : LStmt → Except String LStmt
   | .assign dst rv line => do
       return .assign (← resolveGlobalRoot gmap dst) (← resolveGlobalsRv gmap rv) line
-  | .assignIf discr v dst rv line => do
-      return .assignIf (← resolveGlobalRoot gmap discr) v
-        (← resolveGlobalRoot gmap dst) (← resolveGlobalsRv gmap rv) line
   | .alloc dst sz line => do
       let sz ← match sz with
         | some op => pure (some (← resolveGlobalsOp gmap op))

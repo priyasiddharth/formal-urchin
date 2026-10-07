@@ -155,7 +155,7 @@ theorem placeToReg_spec_proj {Γ : Ctx} {L : LayEnv Γ} (kind : RefKind) {ρ τ 
           hEb.trans (StateIncr.bump_emit csb _) (Emits.bump_emit csb _), by rw [← hpmb]; rfl,
           by simp only [compile.emit, bumpReg]; omega, ⟨?_, ?_⟩, fun h => absurd h hnot⟩
         · refine hsegb.snoc (fun x hx => by have := hlive x hx; omega) (fun x h => h.elim)
-            (fun x hx => ?_) (fun r n h => by cases h) rfl (fun _ _ _ h => by cases h)
+            (fun x hx => ?_) (fun r n h => by cases h) rfl
             (Nat.le_succ _) hleb
           simp only [Instr.regs, borrowRhs, Rhs.regs, List.mem_cons, List.mem_singleton,
             List.not_mem_nil, or_false] at hx
@@ -235,7 +235,7 @@ theorem placeToReg_spec_deref {Γ : Ctx} {L : LayEnv Γ} (kind : RefKind) {σ : 
               · exact Or.inr (Or.inr ⟨hleq, by simp [ld, regIdx], hld_nd⟩)
               · exact hreg.mono (Nat.le_succ _))
             (fun r n h => by simp [acc] at h) (by simp [acc, Instr.noPtrConst])
-            (fun _ _ _ h => by simp [acc] at h) (Nat.le_succ _) hleq
+            (Nat.le_succ _) hleq
         refine ⟨segq ++ [acc], hE, by rw [← hpmq]; rfl,
           by simp only [compile.emit, bumpReg]; omega, ⟨by simpa [compile.emit, bumpReg] using hseg,
             Or.inl ⟨rfl, Or.inr (Or.inr ⟨by simp [ld, regIdx]; omega,
@@ -264,7 +264,7 @@ theorem placeToReg_spec_deref {Γ : Ctx} {L : LayEnv Γ} (kind : RefKind) {σ : 
                 · exact hfresh _ hm (by simp [Instr.regs])
                 · simp at hm)
             (fun r n h => by simp [acc] at h) (by simp [acc, Instr.noPtrConst])
-            (fun _ _ _ h => by simp [acc] at h) (Nat.le_succ _) hleq
+            (Nat.le_succ _) hleq
         rw [hseg, List.append_assoc] at hseg1
         have hclose := hseg1.close (by trivial : PushKind RefKind.Shared) hacc hfresh ⟨hw1, by omega⟩
         refine ⟨segq ++ [acc] ++ [.Die qOut.result.reg n], hE, by rw [← hpmq]; rfl,
@@ -372,7 +372,7 @@ theorem borrow_after {live : Register → Prop} {cs csb : CompilerState} {seg : 
   refine ⟨hE.trans (StateIncr.bump_emit csb _) (Emits.bump_emit csb _), ?_,
     n, seg, reg, off, rfl, rfl, hfresh, by simp [regIdx]; omega, by simp [regIdx]⟩
   refine hseg.snoc (fun x hx => by have := hlive x hx; omega) (fun x h => h.elim)
-    (fun x hx => ?_) (fun r n h => by cases h) rfl (fun _ _ _ h => by cases h) (Nat.le_succ _) hle
+    (fun x hx => ?_) (fun r n h => by cases h) rfl (Nat.le_succ _) hle
   simp only [Instr.regs, Rhs.regs, List.mem_cons, List.not_mem_nil, or_false] at hx
   rcases hx with rfl | rfl
   · exact Or.inr (Or.inr ⟨by simp [regIdx]; omega, by simp [regIdx],
@@ -537,7 +537,7 @@ theorem close_access {live : Register → Prop} {lo mid hi : Nat} {kind : RefKin
     {seg : List Instr} {res : PtrResult}
     (hlive : ∀ x, live x → regIdx x < lo) (hpo : PlaceOut live lo mid kind seg res)
     (hk : res.cleanup ≠ [] → PushKind kind) (hlm : lo ≤ mid) (hmh : mid ≤ hi)
-    {acc : Instr} (hnd : ∀ r n, acc ≠ .Die r n) (hns : ∀ dr v skip, acc ≠ .SkipIf dr v skip)
+    {acc : Instr} (hnd : ∀ r n, acc ≠ .Die r n)
     (hc : acc.noPtrConst = true) (hthr : res.cleanup ≠ [] → acc.through res.reg = true)
     (hregs : ∀ x ∈ acc.regs, x = res.reg ∨ RegOK live NoIns lo hi seg x) :
     Seg live NoIns lo hi (seg ++ [acc] ++ cleanupInstrs res.cleanup) ∧
@@ -547,7 +547,7 @@ theorem close_access {live : Register → Prop} {lo mid hi : Nat} {kind : RefKin
   rcases hres with ⟨hcl, hreg⟩ | ⟨n, pre, base, off, hcl, hsegeq, hfresh, hw1, hw2⟩
   · rw [hcl]
     simp only [cleanupInstrs, List.reverse_nil, List.map_nil, List.append_nil]
-    refine ⟨hseg.snoc hlive hins (fun x hx => ?_) hnd hc hns hmh hlm, fun x ⟨m, hm⟩ => ?_⟩
+    refine ⟨hseg.snoc hlive hins (fun x hx => ?_) hnd hc hmh hlm, fun x ⟨m, hm⟩ => ?_⟩
     · rcases hregs x hx with rfl | h
       · exact hreg.mono hmh
       · exact h
@@ -567,7 +567,7 @@ theorem close_access {live : Register → Prop} {lo mid hi : Nat} {kind : RefKin
     have h1 := hseg.snoc hlive hins (fun x hx => by
         rcases hregs x hx with rfl | h
         · exact hrok
-        · exact h) hnd hc hns hmh hlm
+        · exact h) hnd hc hmh hlm
     rw [hsegeq, List.append_assoc] at h1
     have h2 := h1.close (hk hne) (hthr hne) hfresh ⟨hw1, by omega⟩
     refine ⟨by rw [hsegeq]; simpa [List.append_assoc] using h2, fun x ⟨m, hm⟩ => ?_⟩
@@ -615,7 +615,7 @@ theorem readToReg_spec {Γ : Ctx} {L : LayEnv Γ} {τ : LayoutTy} (p : Place Γ 
         · simp [regIdx] at h
       obtain ⟨hseg, hdied⟩ := close_access (hi := csp.nextReg + 1) hlive hpo (fun _ => trivial) hle
         (Nat.le_succ _) (acc := .Assgn (Register.R csp.nextReg) (.Load (placeLayout L p) pOut.result.reg))
-        (fun r n h => by cases h) (fun _ _ _ h => by cases h) rfl
+        (fun r n h => by cases h) rfl
         (fun _ => by
           simp only [Instr.through, Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, true_and]
           intro h
@@ -688,7 +688,7 @@ theorem emit_fresh {live : Register → Prop} {cs csb : CompilerState} {seg : Li
     · simp [regIdx] at h
   refine ⟨hE.trans (StateIncr.bump_emit csb _) (Emits.bump_emit csb _), ?_, ?_, fun x hx => ?_⟩
   · refine hseg.snoc hlive (fun x h => h.elim) (fun x hx => ?_) (fun r n h => by cases h) rfl
-      (fun _ _ _ h => by cases h) (Nat.le_succ _) hle
+      (Nat.le_succ _) hle
     simp only [Instr.regs, List.mem_cons] at hx
     rcases hx with rfl | hx
     · exact Or.inr (Or.inr ⟨by simp [regIdx]; omega, by simp [regIdx],
@@ -742,16 +742,15 @@ def RhsSpec (cs cs' : CompilerState) (seg : List Instr) (store : Register → Li
 theorem Seg.append_only {live : Register → Prop} {lo hi : Nat} {seg : List Instr} {d : Register}
     (hlive : ∀ x, live x → regIdx x < lo) (hlo : lo ≤ hi) (h : Seg live NoIns lo hi seg)
     (hd : RegOK live NoIns lo hi seg d) :
-    ∀ (l : List Instr), (∀ i ∈ l, (∀ x ∈ i.regs, x = d) ∧ (∀ r n, i ≠ .Die r n) ∧
-      (∀ dr v skip, i ≠ .SkipIf dr v skip) ∧ i.noPtrConst = true) →
+    ∀ (l : List Instr), (∀ i ∈ l, (∀ x ∈ i.regs, x = d) ∧ (∀ r n, i ≠ .Die r n) ∧ i.noPtrConst = true) →
       Seg live NoIns lo hi (seg ++ l) ∧ RegOK live NoIns lo hi (seg ++ l) d := by
   intro l
   induction l generalizing seg with
   | nil => intro _; simpa using ⟨h, hd⟩
   | cons i l ih =>
       intro hl
-      obtain ⟨hx, hnd, hns, hc⟩ := hl i List.mem_cons_self
-      have h1 := h.snoc hlive (fun x h => h.elim) (fun x hx' => by rw [hx x hx']; exact hd) hnd hc hns
+      obtain ⟨hx, hnd, hc⟩ := hl i List.mem_cons_self
+      have h1 := h.snoc hlive (fun x h => h.elim) (fun x hx' => by rw [hx x hx']; exact hd) hnd hc
         (Nat.le_refl _) hlo
       have hd1 := hd.snoc (fun n h => hnd d n h)
       have := ih h1 hd1 (fun j hj => hl j (List.mem_cons_of_mem _ hj))
@@ -763,8 +762,7 @@ theorem readRhsPre_spec {Γ : Ctx} {L : LayEnv Γ} {dstL : bytes.BLayout} {σ τ
       (dstPtr : Register) → RExprToEvidence L dstPtr rhs}
     (hmk : ∀ r, (mk r).regs = [r])
     (hthr : ∀ r d, d ≠ r → (Instr.Assgn d (mk r)).through r = true)
-    (hpost : ∀ d, ∀ i ∈ post d, (∀ x ∈ i.regs, x = d) ∧ (∀ r n, i ≠ .Die r n) ∧
-      (∀ dr v skip, i ≠ .SkipIf dr v skip) ∧ i.noPtrConst = true)
+    (hpost : ∀ d, ∀ i ∈ post d, (∀ x ∈ i.regs, x = d) ∧ (∀ r n, i ≠ .Die r n) ∧ i.noPtrConst = true)
     (cs : CompilerState) (hlive : ∀ x, LiveOf cs x → regIdx x < cs.nextReg)
     {pre : RhsPre L τ rhs}
     (hv : CheckedCompilerM.value (readRhsPre L dstL rhs src mk post ev) cs = .ok pre) :
@@ -810,7 +808,7 @@ theorem readRhsPre_spec {Γ : Ctx} {L : LayEnv Γ} {dstL : bytes.BLayout} {σ τ
         · rw [← h] at hw2; simp [t, regIdx] at hw2
       obtain ⟨hseg, hdied⟩ := close_access (hi := csp.nextReg + 1) hlive hpo (fun _ => trivial) hle
         (Nat.le_succ _) (acc := .Assgn t (mk pOut.result.reg))
-        (fun r n h => by cases h) (fun _ _ _ h => by cases h) rfl
+        (fun r n h => by cases h) rfl
         (fun _ => hthr _ _ htne)
         (fun x hx => by
           simp only [Instr.regs, hmk, List.mem_cons, List.not_mem_nil, or_false] at hx
@@ -910,7 +908,7 @@ theorem thr_load (lay : bytes.BLayout) : ∀ r d, d ≠ r → (Instr.Assgn d (.L
   fun r d h => by simp [Instr.through, h]
 
 theorem post_nil : ∀ (d : Register), ∀ i ∈ ([] : List Instr), (∀ x ∈ i.regs, x = d) ∧
-    (∀ r n, i ≠ .Die r n) ∧ (∀ dr v skip, i ≠ .SkipIf dr v skip) ∧ i.noPtrConst = true :=
+    (∀ r n, i ≠ .Die r n) ∧ i.noPtrConst = true :=
   fun _ _ h => by cases h
 
 /-- A borrow lowering of kind `Mut`, no protector, no mask, is an open
@@ -999,8 +997,7 @@ theorem rexpr_spec {Γ : Ctx} {L : LayEnv Γ} (dstL : bytes.BLayout) {τ : Layou
       exact readRhsPre_spec (fun r => rfl) (thr_load _)
         (fun d i hi => by
           simp at hi; subst hi
-          refine ⟨fun x hx => by simpa [Instr.regs, Rhs.regs] using hx, (fun r n h => by cases h),
-            (fun _ _ _ h => by cases h), rfl⟩) cs hlive hv
+          refine ⟨fun x hx => by simpa [Instr.regs, Rhs.regs] using hx, (fun r n h => by cases h), rfl⟩) cs hlive hv
   | ref kind prot mask src =>
       cases hb : CheckedCompilerM.value (placeToBorrowRegChecked L kind prot
           (mirlite.maskBytes (placeLayout L src) mask) src) cs with
@@ -1056,7 +1053,7 @@ theorem rexpr_spec {Γ : Ctx} {L : LayEnv Γ} (dstL : bytes.BLayout) {τ : Layou
             intro h; rw [← h] at hreg; simp [t, regIdx] at hreg
           obtain ⟨hseg, hdied⟩ := close_access (hi := csb.nextReg + 1) hlive hbo.placeOut
             (fun _ => trivial) hle (Nat.le_succ _) (acc := .Assgn t (.Load (placeLayout L src) bOut.result.reg))
-            (fun r n h => by cases h) (fun _ _ _ h => by cases h) rfl
+            (fun r n h => by cases h) rfl
             (fun _ => thr_load _ _ _ htne)
             (fun x hx => by
               simp only [Instr.regs, Rhs.regs, List.mem_cons, List.not_mem_nil, or_false] at hx
@@ -1252,7 +1249,7 @@ def EnsureSpec (cs cs' : CompilerState) (E : List Instr) : Prop :=
     (∀ x, LiveOf cs' x → LiveOf cs x ∨ (cs.nextReg ≤ regIdx x ∧ regIdx x < cs'.nextReg)) ∧
     (∀ x, LiveOf cs x → LiveOf cs' x) ∧
     (∀ i ∈ E, ∀ x ∈ i.regs, LiveOf cs' x ∧ cs.nextReg ≤ regIdx x ∧ regIdx x < cs'.nextReg) ∧
-    (∀ i ∈ E, (∀ r n, i ≠ .Die r n) ∧ (∀ dr v skip, i ≠ .SkipIf dr v skip) ∧ i.noPtrConst = true)
+    (∀ i ∈ E, (∀ r n, i ≠ .Die r n) ∧ i.noPtrConst = true)
 
 theorem EnsureSpec.refl (cs : CompilerState) : EnsureSpec cs cs [] :=
   ⟨Emits.nil cs, StateIncr.refl cs, Nat.le_refl _, fun x h => Or.inl h, fun x h => h,
@@ -1296,7 +1293,7 @@ theorem ensureLocal_spec {Γ : Ctx} {L : LayEnv Γ} {τ : LayoutTy} (loc : Local
           by simp [regIdx, setPlaceInfo, compile.emit, bumpReg]⟩
       · intro i hi
         simp only [List.mem_singleton] at hi; subst hi
-        exact ⟨(fun r n h => by cases h), (fun _ _ _ h => by cases h), rfl⟩
+        exact ⟨(fun r n h => by cases h), rfl⟩
 
 theorem ensurePlaceRoot_spec {Γ : Ctx} {L : LayEnv Γ} :
     ∀ {τ : LayoutTy} (p : Place Γ τ) (cs : CompilerState),
@@ -1316,8 +1313,7 @@ theorem ensurePlaceRoot_spec {Γ : Ctx} {L : LayEnv Γ} :
 
 /-! ## Statements -/
 
-/-- A statement's segment. Unlike `Seg`, it may hold a `SkipIf`, which
-    jumps to the segment's end. -/
+/-- A statement's segment. -/
 structure StmtOK (cs cs' : CompilerState) (seg : List Instr) : Prop where
   emits : Emits cs cs' seg
   incr : StateIncr cs cs'
@@ -1328,7 +1324,6 @@ structure StmtOK (cs cs' : CompilerState) (seg : List Instr) : Prop where
   dies : ∀ p r n, seg[p]? = some (.Die r n) →
     ClosedAt seg p r n ∧ cs.nextReg ≤ regIdx r ∧ regIdx r < cs'.nextReg ∧ ¬ LiveOf cs' r
   cst : ∀ i ∈ seg, i.noPtrConst = true
-  skips : ∀ p dr v skip, seg[p]? = some (.SkipIf dr v skip) → p + 1 + skip = seg.length
 
 /-- A place lowering after a segment of the same frame. -/
 theorem PlaceOut.prepend {live : Register → Prop} {lo mid hi : Nat} {kind : RefKind}
@@ -1376,7 +1371,7 @@ theorem StmtOK.of_root {cs csE cs' : CompilerState} {E rest : List Instr}
       rcases hEfresh x hx with h | h
       · exact Or.inl h
       · exact Or.inr h.1,
-    fun i hi x hx => ?_, fun p r n hp => ?_, fun i hi => ?_, fun p dr v skip hp => ?_⟩
+    fun i hi x hx => ?_, fun p r n hp => ?_, fun i hi => ?_⟩
   · rw [hL]
     rcases List.mem_append.mp hi with hi | hi
     · exact Or.inl (hEregs i hi x hx).1
@@ -1398,13 +1393,8 @@ theorem StmtOK.of_root {cs csE cs' : CompilerState} {E rest : List Instr}
       rw [show E.length + (p - E.length) = p by omega] at this
       exact ⟨this, by omega, hhi, fun hl => by have := hliveE r hl; omega⟩
   · rcases List.mem_append.mp hi with hi | hi
-    · exact (hEinstr i hi).2.2
+    · exact (hEinstr i hi).2
     · exact hseg.cst i hi
-  · exfalso
-    have := List.mem_of_getElem? hp
-    rcases List.mem_append.mp this with h | h
-    · exact (hEinstr _ h).2.1 dr v skip rfl
-    · exact hseg.noskip _ h dr v skip rfl
 
 theorem compileAssign_spec {Γ : Ctx} {L : LayEnv Γ} {τ : LayoutTy} (dst : Place Γ τ)
     (rhs : RExpr Γ τ) (cs : CompilerState) (hlive : ∀ x, LiveOf cs x → regIdx x < cs.nextReg)
@@ -1468,7 +1458,7 @@ theorem compileAssign_spec {Γ : Ctx} {L : LayEnv Γ} {τ : LayoutTy} (dst : Pla
               obtain ⟨-, hlo, -⟩ := hpoD.1.dies p v m (by rw [List.getElem?_eq_getElem hp, hpe])
               omega⟩)
         obtain ⟨hseg, -⟩ := close_access hliveE hpo (fun _ => trivial) (by omega) (Nat.le_refl _)
-          (acc := .RStore lay v dOut.result.reg) (fun r n h => by cases h) (fun _ _ _ h => by cases h)
+          (acc := .RStore lay v dOut.result.reg) (fun r n h => by cases h)
           rfl
           (fun hne => by
             simp only [Instr.through, Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, true_and]
@@ -1494,7 +1484,7 @@ theorem compileAssign_spec {Γ : Ctx} {L : LayEnv Γ} {τ : LayoutTy} (dst : Pla
       · rw [hst]
         obtain ⟨hseg, -⟩ := close_access hliveE hpo (fun _ => trivial) (by omega) (Nat.le_refl _)
           (acc := .CStore lay vals dOut.result.reg) (fun r n h => by cases h)
-          (fun _ _ _ h => by cases h)
+
           (by
             simp only [Instr.noPtrConst, Bool.not_eq_true', List.any_eq_false]
             intro w hw
@@ -1521,11 +1511,9 @@ structure Code (live : Register → Prop) (lo hi : Nat) (seg : List Instr) : Pro
   dies : ∀ p r n, seg[p]? = some (.Die r n) →
     ClosedAt seg p r n ∧ lo ≤ regIdx r ∧ regIdx r < hi ∧ ¬ live r
   cst : ∀ i ∈ seg, i.noPtrConst = true
-  skips : ∀ p dr v skip, seg[p]? = some (.SkipIf dr v skip) → p + 1 + skip ≤ seg.length ∧
-    ∀ d r n, seg[d]? = some (.Die r n) → ¬ (d - 2 < p + 1 + skip ∧ p + 1 + skip ≤ d)
 
 theorem Code.nil (live : Register → Prop) (lo hi : Nat) : Code live lo hi [] :=
-  ⟨by simp, fun p r n h => by simp at h, by simp, fun p dr v skip h => by simp at h⟩
+  ⟨by simp, fun p r n h => by simp at h, by simp⟩
 
 theorem Code.append {live : Register → Prop} {lo mid hi : Nat} {s1 s2 : List Instr}
     (h1 : Code live lo mid s1) (h2 : Code live mid hi s2) (hlm : lo ≤ mid) (hmh : mid ≤ hi) :
@@ -1540,7 +1528,7 @@ theorem Code.append {live : Register → Prop} {lo mid hi : Nat} {s1 s2 : List I
     rcases h1.regs i hi r hr with h | h
     · exact hnl h
     · omega
-  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, fun i hi => ?_, fun p dr v skip hp => ?_⟩
+  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, fun i hi => ?_⟩
   · rcases List.mem_append.mp hi with hi | hi
     · rcases h1.regs i hi x hx with h | h
       · exact Or.inl h
@@ -1560,28 +1548,11 @@ theorem Code.append {live : Register → Prop} {lo mid hi : Nat} {s1 s2 : List I
   · rcases List.mem_append.mp hi with hi | hi
     · exact h1.cst i hi
     · exact h2.cst i hi
-  · by_cases hpl : p < s1.length
-    · rw [List.getElem?_append_left hpl] at hp
-      obtain ⟨hlen, hns⟩ := h1.skips p dr v skip hp
-      refine ⟨by simp; omega, fun d r n hd => ?_⟩
-      by_cases hdl : d < s1.length
-      · rw [List.getElem?_append_left hdl] at hd; exact hns d r n hd
-      · rw [List.getElem?_append_right (by omega)] at hd
-        have := (h2.dies _ r n hd).1.1
-        omega
-    · rw [List.getElem?_append_right (by omega)] at hp
-      obtain ⟨hlen, hns⟩ := h2.skips _ dr v skip hp
-      refine ⟨by simp; omega, fun d r n hd => ?_⟩
-      by_cases hdl : d < s1.length
-      · omega
-      · rw [List.getElem?_append_right (by omega)] at hd
-        have := hns _ r n hd
-        omega
 
 theorem Code.mono_live {live live' : Register → Prop} {lo hi : Nat} {seg : List Instr}
     (h : Code live lo hi seg) (h1 : ∀ x, live x → live' x)
     (h2 : ∀ x, live' x → live x ∨ hi ≤ regIdx x) : Code live' lo hi seg := by
-  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, h.cst, h.skips⟩
+  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, h.cst⟩
   · rcases h.regs i hi x hx with h' | h'
     · exact Or.inl (h1 x h')
     · exact Or.inr h'
@@ -1593,76 +1564,17 @@ theorem Code.mono_live {live live' : Register → Prop} {lo hi : Nat} {seg : Lis
 
 theorem Seg.code {live : Register → Prop} {lo hi : Nat} {seg : List Instr}
     (h : Seg live NoIns lo hi seg) (hlive : ∀ x, live x → regIdx x < lo) : Code live lo hi seg := by
-  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, h.cst, fun p dr v skip hp => ?_⟩
+  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, h.cst⟩
   · rcases h.regs i hi x hx with h' | h' | h'
     · exact Or.inl h'
     · exact h'.elim
     · exact Or.inr h'
   · obtain ⟨hc, hlo, hhi⟩ := h.dies p r n hp
     exact ⟨hc, hlo, hhi, fun hl => by have := hlive r hl; omega⟩
-  · exact absurd rfl (h.noskip _ (List.mem_of_getElem? hp) dr v skip)
 
 theorem StmtOK.code {cs cs' : CompilerState} {seg : List Instr} (h : StmtOK cs cs' seg) :
-    Code (LiveOf cs') cs.nextReg cs'.nextReg seg := by
-  refine ⟨h.regs, h.dies, h.cst, fun p dr v skip hp => ?_⟩
-  have hl := h.skips p dr v skip hp
-  refine ⟨by omega, fun d r n hd => ?_⟩
-  have := getElem?_some_lt hd
-  omega
-
-/-- A guard jumping over the code that follows it. -/
-theorem Code.cons_skip {live : Register → Prop} {lo mid hi : Nat} {B : List Instr} {g : Register}
-    {v : Word} (hB : Code live mid hi B) (hg : live g ∨ (lo ≤ regIdx g ∧ regIdx g < mid))
-    (hlm : lo ≤ mid) (hmh : mid ≤ hi) :
-    Code live lo hi (.SkipIf g v B.length :: B) := by
-  have hrB : ∀ p r n, B[p]? = some (Instr.Die r n) → r ≠ g := fun p r n hp hrg => by
-    obtain ⟨-, hlo, -, hnl⟩ := hB.dies p r n hp
-    rcases hg with h | h
-    · exact hnl (hrg ▸ h)
-    · rw [hrg] at hlo; omega
-  have hcons : Instr.SkipIf g v B.length :: B = [.SkipIf g v B.length] ++ B := rfl
-  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, fun i hi => ?_, fun p dr w skip hp => ?_⟩
-  · rcases List.mem_cons.mp hi with rfl | hi
-    · simp only [Instr.regs, List.mem_singleton] at hx; subst hx
-      rcases hg with h | h
-      · exact Or.inl h
-      · exact Or.inr ⟨h.1, by omega⟩
-    · rcases hB.regs i hi x hx with h | h
-      · exact Or.inl h
-      · exact Or.inr ⟨by omega, h.2⟩
-  · cases p with
-    | zero => simp at hp
-    | succ p =>
-        simp only [List.getElem?_cons_succ] at hp
-        obtain ⟨hc, hlo, hhi, hnl⟩ := hB.dies p r n hp
-        have := hc.append_left (seg := [.SkipIf g v B.length]) (fun i hi hr => by
-          simp only [List.mem_singleton] at hi; subst hi
-          simp only [Instr.regs, List.mem_singleton] at hr
-          exact hrB p r n hp hr)
-        rw [← hcons, show [Instr.SkipIf g v B.length].length + p = p + 1 by simp; omega] at this
-        exact ⟨this, by omega, hhi, hnl⟩
-  · rcases List.mem_cons.mp hi with rfl | hi
-    · rfl
-    · exact hB.cst i hi
-  · cases p with
-    | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq, Instr.SkipIf.injEq] at hp
-        obtain ⟨-, -, rfl⟩ := hp
-        refine ⟨by simp; omega, fun d r n hd => ?_⟩
-        have := getElem?_some_lt hd
-        simp at this
-        omega
-    | succ p =>
-        simp only [List.getElem?_cons_succ] at hp
-        obtain ⟨hlen, hns⟩ := hB.skips p dr w skip hp
-        refine ⟨by simp; omega, fun d r n hd => ?_⟩
-        cases d with
-        | zero => simp at hd
-        | succ d =>
-            simp only [List.getElem?_cons_succ] at hd
-            have := hns d r n hd
-            have := (hB.dies d r n hd).1.1
-            omega
+    Code (LiveOf cs') cs.nextReg cs'.nextReg seg :=
+  ⟨h.regs, h.dies, h.cst⟩
 
 /-! ## Statements and programs -/
 
@@ -1696,109 +1608,15 @@ theorem StmtSpec.seq {cs cs1 cs2 : CompilerState} {s1 s2 : List Instr}
 
 /-- A one-instruction statement without registers. -/
 theorem stmtSpec_single (cs : CompilerState) (hlive : ∀ x, LiveOf cs x → regIdx x < cs.nextReg)
-    {i : Instr} (hr : i.regs = []) (hnd : ∀ r n, i ≠ .Die r n)
-    (hns : ∀ dr v skip, i ≠ .SkipIf dr v skip) (hc : i.noPtrConst = true) :
+    {i : Instr} (hr : i.regs = []) (hnd : ∀ r n, i ≠ .Die r n) (hc : i.noPtrConst = true) :
     StmtSpec cs (compile.emit cs [i]) [i] := by
   refine ⟨Emits.emit cs [i], emit_state_incr cs [i], Nat.le_refl _, hlive, fun x h => Or.inl h,
-    fun x h => h, ⟨fun j hj x hx => ?_, fun p r n hp => ?_, fun j hj => ?_, fun p dr v skip hp => ?_⟩⟩
+    fun x h => h, ⟨fun j hj x hx => ?_, fun p r n hp => ?_, fun j hj => ?_⟩⟩
   · simp at hj; subst hj; rw [hr] at hx; cases hx
   · cases p with
     | zero => simp at hp; exact absurd hp (hnd r n)
     | succ p => simp at hp
   · simp at hj; subst hj; exact hc
-  · cases p with
-    | zero => simp at hp; exact absurd hp (hns dr v skip)
-    | succ p => simp at hp
-
-theorem skipIfAround_ok {α : Type} (g : Register) (v : Word) (body : CheckedCompilerM α)
-    (cs : CompilerState) {a : α} (hb : CheckedCompilerM.value body (reserveLabel cs) = .ok a) :
-    CheckedCompilerM.value (emitSkipIfAround g v body) cs = .ok () ∧
-    CheckedCompilerM.run (emitSkipIfAround g v body) cs =
-      patchLabel (CheckedCompilerM.run body (reserveLabel cs)) cs.nextLabel
-        (.SkipIf g v ((CheckedCompilerM.run body (reserveLabel cs)).nextLabel -
-          (reserveLabel cs).nextLabel)) := by
-  simp only [CheckedCompilerM.value, CheckedCompilerM.run, CompilerM.value, CompilerM.run,
-    emitSkipIfAround] at hb ⊢
-  split
-  · rename_i e he; rw [hb] at he; cases he
-  · exact ⟨rfl, rfl⟩
-
-theorem skipIfAround_err {α : Type} (g : Register) (v : Word) (body : CheckedCompilerM α)
-    (cs : CompilerState) {e : CompilerError}
-    (hb : CheckedCompilerM.value body (reserveLabel cs) = .error e) :
-    CheckedCompilerM.value (emitSkipIfAround g v body) cs = .error e := by
-  simp only [CheckedCompilerM.value, CheckedCompilerM.run, CompilerM.value, CompilerM.run,
-    emitSkipIfAround] at hb ⊢
-  split
-  · rename_i e' he; rw [hb] at he; cases he; rfl
-  · rename_i a ha; rw [hb] at ha; cases ha
-
-theorem Emits.skip {cs csB : CompilerState} {B : List Instr} (h : Emits (reserveLabel cs) csB B)
-    (g : Register) (v : Word) :
-    Emits cs (patchLabel csB cs.nextLabel (.SkipIf g v (csB.nextLabel - (reserveLabel cs).nextLabel)))
-      (.SkipIf g v B.length :: B) := by
-  obtain ⟨hl, hc⟩ := h
-  have hn : csB.nextLabel - (reserveLabel cs).nextLabel = B.length := by
-    rw [hl]; omega
-  rw [hn]
-  refine ⟨by simp only [patchLabel, List.length_cons]; rw [hl]; simp [reserveLabel]; omega,
-    fun k hk => ?_⟩
-  simp only [patchLabel]
-  cases k with
-  | zero => simp
-  | succ k =>
-      rw [if_neg (by omega)]
-      have := hc k (by simp at hk; omega)
-      simp only [reserveLabel] at this
-      rw [show cs.nextLabel + (k + 1) = cs.nextLabel + 1 + k by omega, this]
-      simp
-
-/-- A guard after a segment, jumping over the code that follows; the
-    guard's register may be one the segment made (not died). -/
-theorem Code.append_guard {live : Register → Prop} {lo mid hi : Nat} {s1 B : List Instr}
-    {g : Register} {v : Word} (h1 : Code live lo mid s1) (h2 : Code live mid hi B)
-    (hg : live g ∨ (lo ≤ regIdx g ∧ regIdx g < mid ∧ ∀ (p : Nat) r n, s1[p]? = some (Instr.Die r n) → r ≠ g))
-    (hlm : lo ≤ mid) (hmh : mid ≤ hi) :
-    Code live lo hi (s1 ++ .SkipIf g v B.length :: B) := by
-  let live' : Register → Prop := fun x => live x ∨ x = g
-  have hB' : Code live' mid hi B := by
-    refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, h2.cst, h2.skips⟩
-    · rcases h2.regs i hi x hx with h | h
-      · exact Or.inl (Or.inl h)
-      · exact Or.inr h
-    · obtain ⟨hc, hlo, hhi, hnl⟩ := h2.dies p r n hp
-      refine ⟨hc, hlo, hhi, fun h => ?_⟩
-      rcases h with h | h
-      · exact hnl h
-      · subst h
-        rcases hg with h' | h'
-        · exact hnl h'
-        · omega
-  have hS := hB'.cons_skip (v := v) (lo := mid) (Or.inl (Or.inr rfl)) (Nat.le_refl _) hmh
-  have h1' : Code live' lo mid s1 := by
-    refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, h1.cst, h1.skips⟩
-    · rcases h1.regs i hi x hx with h | h
-      · exact Or.inl (Or.inl h)
-      · exact Or.inr h
-    · obtain ⟨hc, hlo, hhi, hnl⟩ := h1.dies p r n hp
-      refine ⟨hc, hlo, hhi, fun h => ?_⟩
-      rcases h with h | h
-      · exact hnl h
-      · subst h
-        rcases hg with h' | h'
-        · exact hnl h'
-        · exact h'.2.2 p _ n hp rfl
-  have hc := h1'.append hS hlm hmh
-  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, hc.cst, hc.skips⟩
-  · rcases hc.regs i hi x hx with (h | h) | h
-    · exact Or.inl h
-    · subst h
-      rcases hg with h' | h'
-      · exact Or.inl h'
-      · exact Or.inr ⟨h'.1, by omega⟩
-    · exact Or.inr h
-  · obtain ⟨hc', hlo, hhi, hnl⟩ := hc.dies p r n hp
-    exact ⟨hc', hlo, hhi, fun h => hnl (Or.inl h)⟩
 
 theorem compileStmt_spec {Γ : Ctx} {L : LayEnv Γ} (stmt : Stmt Γ) (cs : CompilerState)
     (hlive : ∀ x, LiveOf cs x → regIdx x < cs.nextReg)
@@ -1811,21 +1629,21 @@ theorem compileStmt_spec {Γ : Ctx} {L : LayEnv Γ} (stmt : Stmt Γ) (cs : Compi
         simp only [compileStmtChecked, CheckedCompilerM.run_bind, CheckedCompilerM.value_lift,
           CheckedCompilerM.run_lift, CheckedCompilerM.run_pure, CompilerM.run_emitM]
       rw [this]
-      exact ⟨_, stmtSpec_single cs hlive rfl (fun _ _ h => by cases h) (fun _ _ _ h => by cases h) rfl⟩
+      exact ⟨_, stmtSpec_single cs hlive rfl (fun _ _ h => by cases h) rfl⟩
   | pushProtectors =>
       have : CheckedCompilerM.run (compileStmtChecked L .pushProtectors) cs =
           compile.emit cs [.PushProt] := by
         simp only [compileStmtChecked, CheckedCompilerM.run_bind, CheckedCompilerM.value_lift,
           CheckedCompilerM.run_lift, CheckedCompilerM.run_pure, CompilerM.run_emitM]
       rw [this]
-      exact ⟨_, stmtSpec_single cs hlive rfl (fun _ _ h => by cases h) (fun _ _ _ h => by cases h) rfl⟩
+      exact ⟨_, stmtSpec_single cs hlive rfl (fun _ _ h => by cases h) rfl⟩
   | popProtectors =>
       have : CheckedCompilerM.run (compileStmtChecked L .popProtectors) cs =
           compile.emit cs [.PopProt] := by
         simp only [compileStmtChecked, CheckedCompilerM.run_bind, CheckedCompilerM.value_lift,
           CheckedCompilerM.run_lift, CheckedCompilerM.run_pure, CompilerM.run_emitM]
       rw [this]
-      exact ⟨_, stmtSpec_single cs hlive rfl (fun _ _ h => by cases h) (fun _ _ _ h => by cases h) rfl⟩
+      exact ⟨_, stmtSpec_single cs hlive rfl (fun _ _ h => by cases h) rfl⟩
   | assign dst rhs =>
       simp only [compileStmtChecked] at hv ⊢
       obtain ⟨seg, h⟩ := compileAssign_spec dst rhs cs hlive hv
@@ -1848,7 +1666,7 @@ theorem compileStmt_spec {Γ : Ctx} {L : LayEnv Γ} (stmt : Stmt Γ) (cs : Compi
           generalize CheckedCompilerM.run (readToReg L dst) cs = c1 at *
           have hseg := hseg1.snoc (i := .Dealloc r) hlive (fun x h => h.elim)
             (fun x hx => by simp [Instr.regs] at hx; rw [hx]; exact hr1)
-            (fun _ _ h => by cases h) rfl (fun _ _ _ h => by cases h) (Nat.le_refl _) hle1
+            (fun _ _ h => by cases h) rfl (Nat.le_refl _) hle1
           have hL : LiveOf (compile.emit c1 [.Dealloc r]) = LiveOf cs := by
             rw [← LiveOf.eq hpm1]; rfl
           refine ⟨s1 ++ [.Dealloc r], hE1.trans (emit_state_incr _ _) (Emits.emit _ _),
@@ -1875,7 +1693,7 @@ theorem compileStmt_spec {Γ : Ctx} {L : LayEnv Γ} (stmt : Stmt Γ) (cs : Compi
           generalize CheckedCompilerM.run (readToReg L discr) cs = c1 at *
           have hseg := hseg1.snoc (i := .Check r vals member) hlive (fun x h => h.elim)
             (fun x hx => by simp [Instr.regs] at hx; rw [hx]; exact hr1)
-            (fun _ _ h => by cases h) rfl (fun _ _ _ h => by cases h) (Nat.le_refl _) hle1
+            (fun _ _ h => by cases h) rfl (Nat.le_refl _) hle1
           have hL : LiveOf (compile.emit c1 [.Check r vals member]) = LiveOf cs := by
             rw [← LiveOf.eq hpm1]; rfl
           refine ⟨s1 ++ [.Check r vals member], hE1.trans (emit_state_incr _ _) (Emits.emit _ _),
@@ -1884,96 +1702,6 @@ theorem compileStmt_spec {Γ : Ctx} {L : LayEnv Γ} (stmt : Stmt Γ) (cs : Compi
           · rw [hL]; exact fun x h => Or.inl h
           · rw [hL]; exact fun x h => h
           · rw [hL]; exact hseg.code hlive
-  | assignIf discr val dst rhs =>
-      obtain ⟨E, hE⟩ := ensurePlaceRoot_spec (L := L) dst cs
-      generalize hcsE : CompilerM.run (ensurePlaceRoot L dst) cs = csE at hE
-      have hliveE : ∀ x, LiveOf csE x → regIdx x < csE.nextReg := fun x hx => by
-        rcases hE.2.2.2.1 x hx with h | h
-        · have := hlive x h; have := hE.2.2.1; omega
-        · exact h.2
-      cases hG : CheckedCompilerM.value (readToReg L discr) csE with
-      | error e =>
-          exfalso
-          simp only [compileStmtChecked, guardRead, CheckedCompilerM.value_bind,
-            CheckedCompilerM.value_lift, CheckedCompilerM.run_lift, hcsE, hG] at hv
-          cases hv
-      | ok g =>
-      cases hB : CheckedCompilerM.value (compileAssignChecked L dst rhs)
-          (reserveLabel (CheckedCompilerM.run (readToReg L discr) csE)) with
-      | error e =>
-          exfalso
-          simp only [compileStmtChecked, guardRead, CheckedCompilerM.value_bind,
-            CheckedCompilerM.value_lift, CheckedCompilerM.run_lift, hcsE, hG,
-            skipIfAround_err g val _ _ hB] at hv
-          cases hv
-      | ok bOut =>
-          obtain ⟨-, hrunS⟩ := skipIfAround_ok g val (compileAssignChecked L dst rhs) _ hB
-          have hrun : CheckedCompilerM.run (compileStmtChecked L (.assignIf discr val dst rhs)) cs =
-              CheckedCompilerM.run (emitSkipIfAround g val (compileAssignChecked L dst rhs))
-                (CheckedCompilerM.run (readToReg L discr) csE) := by
-            simp only [compileStmtChecked, guardRead, CheckedCompilerM.run_bind,
-              CheckedCompilerM.value_bind, CheckedCompilerM.value_lift, CheckedCompilerM.run_lift,
-              hcsE, hG, (skipIfAround_ok g val _ _ hB).1, CheckedCompilerM.run_pure]
-          rw [hrun, hrunS]
-          obtain ⟨sG, hEG, hpmG, hleG, hsegG, hgok⟩ := readToReg_spec discr csE hliveE hG
-          have hiG := CheckedCompilerM.incr (readToReg L discr) csE
-          generalize CheckedCompilerM.run (readToReg L discr) csE = csG at *
-          have hlive1 : ∀ x, LiveOf (reserveLabel csG) x → regIdx x < (reserveLabel csG).nextReg := by
-            have : LiveOf (reserveLabel csG) = LiveOf csE := by rw [← LiveOf.eq hpmG]; rfl
-            rw [this]; intro x hx; have := hliveE x hx; simp only [reserveLabel]; omega
-          obtain ⟨sB, hok⟩ := compileAssign_spec dst rhs (reserveLabel csG) hlive1 hB
-          generalize CheckedCompilerM.run (compileAssignChecked L dst rhs) (reserveLabel csG) = csB
-            at hok ⊢
-          have hL1 : LiveOf (reserveLabel csG) = LiveOf csE := by rw [← LiveOf.eq hpmG]; rfl
-          have hLf : LiveOf (patchLabel csB csG.nextLabel
-              (.SkipIf g val (csB.nextLabel - (reserveLabel csG).nextLabel))) = LiveOf csB := rfl
-          obtain ⟨hEE, hiE, hleE, hfE, hmE, hrE, hiE'⟩ := hE
-          have hmB : ∀ x, LiveOf csE x → LiveOf csB x := fun x hx =>
-            LiveOf.mono hok.incr x (by rw [hL1]; exact hx)
-          have hfB : ∀ x, LiveOf csB x → LiveOf csE x ∨ csG.nextReg ≤ regIdx x := fun x hx => by
-            rcases hok.fresh x hx with h | h
-            · rw [hL1] at h; exact Or.inl h
-            · exact Or.inr h
-          -- the pieces as `Code` over the final locals
-          have hcE : Code (LiveOf csB) cs.nextReg csE.nextReg E :=
-            ⟨fun i hi x hx => Or.inl (hmB x (hrE i hi x hx).1), fun p r n hp => absurd hp
-              (fun h => (hiE' _ (List.mem_of_getElem? h)).1 r n rfl),
-             fun i hi => (hiE' i hi).2.2,
-             fun p dr v skip hp => absurd rfl ((hiE' _ (List.mem_of_getElem? hp)).2.1 dr v skip)⟩
-          have hcG : Code (LiveOf csB) csE.nextReg csG.nextReg sG :=
-            (hsegG.code hliveE).mono_live hmB hfB
-          have hcB : Code (LiveOf csB) csG.nextReg csB.nextReg sB := by
-            have := hok.code; simpa [reserveLabel] using this
-          have hgok' : LiveOf csB g ∨ (csE.nextReg ≤ regIdx g ∧ regIdx g < csG.nextReg ∧
-              ∀ (p : Nat) r n, sG[p]? = some (Instr.Die r n) → r ≠ g) := by
-            rcases hgok with h | h | h
-            · exact Or.inl (hmB g h)
-            · exact h.elim
-            · exact Or.inr ⟨h.1, h.2.1, fun p r n hp hrg => h.2.2 ⟨n, by
-                rw [← hrg]; exact List.mem_of_getElem? hp⟩⟩
-          have hleB : csG.nextReg ≤ csB.nextReg := by
-            have := hok.le; simpa [reserveLabel] using this
-          have hcode := hcE.append (hcG.append_guard (v := val) hcB hgok' hleG hleB) hleE
-            (by omega)
-          have hltL : csG.nextLabel < csB.nextLabel := by
-            have := hok.incr.nextLabel_le; simp only [reserveLabel] at this; omega
-          have hpatch : StateIncr csG (patchLabel csB csG.nextLabel
-              (.SkipIf g val (csB.nextLabel - (reserveLabel csG).nextLabel))) :=
-            StateIncr.patchLabel ((reserveLabel_state_incr csG).trans hok.incr) (Nat.le_refl _)
-              hltL _
-          refine ⟨E ++ (sG ++ (.SkipIf g val sB.length :: sB)),
-            hEE.trans (hiG.trans hpatch) (hEG.trans hpatch (Emits.skip hok.emits g val)),
-            hiE.trans (hiG.trans hpatch), ?_, ?_, ?_, ?_, ?_⟩
-          · show cs.nextReg ≤ csB.nextReg; omega
-          · rw [hLf]; exact hok.live
-          · rw [hLf]; intro x hx
-            rcases hfB x hx with h | h
-            · rcases hfE x h with h' | h'
-              · exact Or.inl h'
-              · exact Or.inr h'.1
-            · exact Or.inr (by omega)
-          · rw [hLf]; exact fun x hx => hmB x (hmE x hx)
-          · rw [hLf]; exact hcode
 
 theorem compileStmts_spec {Γ : Ctx} {L : LayEnv Γ} :
     ∀ (prog : obseq3.Prog Γ) (cs : CompilerState),
@@ -2010,11 +1738,7 @@ theorem Code.routeProg {live : Register → Prop} {hi : Nat} {seg : List Instr}
     refine ⟨d - 2, by omega, ⟨⟨k, base, off, hk, by rw [hp]; exact hb⟩,
       ⟨i, by rw [hp, show d - 2 + 1 = d - 1 by omega]; exact hi, ht⟩,
       by rw [hp, show d - 2 + 2 = d by omega]; exact hd,
-      fun l j hl hr => by rw [hp] at hl; have := hm l j hl hr; omega,
-      fun l dr w skip hl => by
-        rw [hp] at hl
-        have := (h.skips l dr w skip hl).2 d r n hd
-        omega⟩⟩
+      fun l j hl hr => by rw [hp] at hl; have := hm l j hl hr; omega⟩⟩
   · rw [hp] at hl
     have := h.cst _ (List.mem_of_getElem? hl)
     simp only [Instr.noPtrConst, Bool.not_eq_true', List.any_eq_false] at this

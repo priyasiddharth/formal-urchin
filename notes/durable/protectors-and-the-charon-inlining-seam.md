@@ -7,8 +7,11 @@ the recurring question "who decides which tags are protected?".
 ## [FACT] mirlite has NO function calls
 
     inductive Stmt (Γ : Ctx)
-    | assign | assignIf | alloc | dealloc
+    | assign | dealloc | check
     | pushProtectors | popProtectors | halt
+
+[As of 2026-10-07; `assignIf` was deleted that day and `alloc` became
+an rvalue on 2026-09-21.]
 
 A program is a flat `List (Stmt Γ)`. No call, no return, no function
 table. Protector frames are the ONLY call-shaped structure in the
@@ -72,8 +75,9 @@ around the spliced callee body:
 So the tags in a frame are exactly the fresh tags of that call's
 ARGUMENT retags, one per reference-typed component — `emitSeamCopy`
 recurses through the type, so refs inside tuples and enum payloads each
-get their own (enum payloads guarded on the discriminant with
-`assignIf`). The RETURN value is retagged after `popProt`, unprotected,
+get their own (an enum payload's retags are those of the ONE variant
+the value holds, known statically or recorded by Miri, and `check`ed at
+run time; 2026-10-07, before which they were guarded by `assignIf`). The RETURN value is retagged after `popProt`, unprotected,
 matching Miri.
 
 ## [FACT] the pipeline, and what it cannot express
@@ -139,7 +143,9 @@ relative to the frame.
 `emitSeamCopy` (:222-264) recurses over `UTy`, not over the call graph:
 `.ref` -> a `ref` retag, `.boxT` -> a Unique reborrow, `.slice` -> a
 runtime-length `refSlice`, `.tup` -> field by field, `.enum` -> write
-the discriminant then guard each payload field with `assignIf` on it.
+the discriminant then retag the payload of the one variant it holds
+(static, or Miri's recorded variant plus a `check`; 2026-10-07 — it
+used to guard each payload field with `assignIf`).
 Its own unsupported case is nested references in an enum payload.
 
 So it is not call machinery that happens to be used at calls. It has
@@ -193,7 +199,8 @@ CHANGE MEANING rather than reshape syntax.
 revisited block is `"unsupported: control-flow loop"` (:637). Unwind
 edges are never followed; reaching one is
 `"unsupported: reached unwind path"` (:663). Real branches (`switchInt`)
-are rejected — the target has only forward-only `SkipIf`.
+are rejected — the target is straight-line (no jumps at all since
+2026-10-07; before, only the forward `SkipIf`).
 
 **Asserts are discharged at lowering time, not compiled** (:652-661).
 `assert cond expected` is constant-folded: statically true -> dropped,
@@ -256,9 +263,11 @@ about.
 
 Non-empty tuples become per-field assignments; an enum variant writes the
 discriminant to payload slot 0 and field `i` to slot `1+i`. Seam retags
-into enum payloads are guarded on the discriminant with `assignIf` —
-which is where `assignIf` comes from. It exists for enum payload
-retags, NOT for general branching.
+into enum payloads retag the one variant the value holds, checked at
+run time with `check`. [SUPERSEDED → this, 2026-10-07] "guarded on the
+discriminant with `assignIf` — which is where `assignIf` comes from. It
+exists for enum payload retags, NOT for general branching." `assignIf`
+is gone: Miri now logs the variant (the fork's fn-entry retag log).
 
 **Fn pointers are tracked statically** (:309, :324, :445). A flat
 local -> defId map (`st.fnPtrs`), propagated through plain copies and

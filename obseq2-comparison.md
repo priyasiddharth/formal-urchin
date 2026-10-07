@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-07 — One Check Statement Replaces the Guarded Assignment
+
+Both languages gained a `check` statement: it reads a value the way an
+ordinary copy does and stops the run unless the value is in (or out of)
+a given set. Everything the loader takes on Miri's word, which branch a
+run took, which variant an enum holds, is now confirmed by one such
+check at run time. That left the old guarded assignment, and the
+forward jump it compiled to, with nothing to do, so we deleted both.
+The target language now has no jumps at all, and the proof is smaller:
+two proof files and the jump cases of the cleanup-instruction proofs are
+gone. All 208 tests and the compiler's own tests still pass, and the
+proof still rests only on Lean's three standard axioms.
+
+---
+
 ## 2026-10-06 — Miri Now Tells Us Which Variant an Enum Argument Holds
 
 When a function receives an enum that contains references, Rust's rules

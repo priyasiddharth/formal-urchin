@@ -46,7 +46,8 @@ all upstream and unverified — `compile_correct` starts from whatever
 **1. The `CoreProg` gate.** [As of 2026-09-22] GONE. The predicates
 `CoreRhs`/`CoreStmt`/`CoreProg` and the roots' `CoreProg prog`
 hypothesis were deleted the day the last construct joined: every
-statement — `halt`, `assign`, `assignIf`, the protector frames,
+statement — `halt`, `assign`, `assignIf` (deleted 2026-10-07; `check`
+replaced it and has its leaf, `check_simB`), the protector frames,
 `dealloc` (2026-09-22, see [[dealloc-is-copys-read-then-a-free]]) — and
 every rvalue (`refSlice` 2026-09-16, `move` 2026-09-20, `alloc` as an
 RVALUE 2026-09-21, the first whose value package extends memory, see

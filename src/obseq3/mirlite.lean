@@ -542,18 +542,6 @@ def stepStmt (state : State M Γ) : Stmt Γ → Result M Γ
       | .ok perms' => .ok { state with perms := perms', pc := state.pc + 1 }
       | .error e => .err s!"popProtectors failed: {e}"
   | .assign dst rhs => doAssign M L state dst rhs
-  | .assignIf discr val dst rhs =>
-      match ensureRoot M L state dst with
-      | .err msg => .err msg
-      | .ok s0 =>
-      match evalCopy M L s0 discr with
-      | .err e => .err e
-      | .ok output =>
-          match output.values with
-          | [.word v] =>
-              if v == val then doAssign M L output.state dst rhs
-              else .ok { output.state with pc := output.state.pc + 1 }
-          | _ => .err "assignIf discriminant is not a concrete word"
   | .check discr vals member =>
       match evalCopy M L state discr with
       | .err e => .err e

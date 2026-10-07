@@ -5,8 +5,7 @@ import obseq3.proof.check
 
 The statements covered (`StmtB`): every `StmtB0` statement (assignments to
 locals, fields at any depth and pointer chains of the covered rvalues;
-dealloc; protector push/pop), and the guarded assignment `assignIf` whose
-discriminant is a read source and whose body is a covered assignment.
+dealloc; protector push/pop), and `check` of a read source.
 -/
 
 namespace obseq3.proof
@@ -18,9 +17,6 @@ open obseq3.compile
 
 inductive StmtB {Γ : Ctx} : Stmt Γ → Prop
   | base {stmt : Stmt Γ} : StmtB0 stmt → StmtB stmt
-  | assignIf {τ : LayoutTy} {discr : Place Γ (LayoutTy.IntL tN)} {val : Word}
-      {dst : Place Γ τ} {rhs : RExpr Γ τ} :
-      ReadSrcB discr → StmtB0 (.assign dst rhs) → StmtB (.assignIf discr val dst rhs)
   | check {discr : Place Γ (LayoutTy.IntL tN)} {vals : List Word} {member : Bool} :
       ReadSrcB discr → StmtB (.check discr vals member)
 
@@ -29,10 +25,6 @@ theorem StmtB.sim {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     StmtSimBc L compProg stmt := by
   cases h with
   | base h0 => exact (h0.sim hWF hLeaf).toC
-  | assignIf hd hb =>
-      intro ρt s_mir s_mir' s_osea cs h_inv h_ok h_code h_step
-      obtain ⟨v, hv⟩ := h_ok
-      exact assignIf_simB hWF hd (hb.sim hWF hLeaf) h_inv hv h_code h_step
   | check hd => exact (check_simB hWF hd).toC
 
 /-- **Compiler correctness, for the proved fragment.** If every

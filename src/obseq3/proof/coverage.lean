@@ -90,7 +90,6 @@ decreasing_by simp only [Place.depth]; omega
 theorem StmtB.all {Γ : Ctx} (stmt : Stmt Γ) (h : stmt ≠ .halt) : StmtB stmt := by
   cases stmt with
   | assign dst rhs => exact .base (StmtB0.assign_all dst rhs)
-  | assignIf discr val dst rhs => exact .assignIf (ReadSrcB.all discr) (StmtB0.assign_all dst rhs)
   | dealloc p => exact .base (.dealloc (ReadSrcB.all p))
   | check discr vals member => exact .check (ReadSrcB.all discr)
   | pushProtectors => exact .base .pushProtectors

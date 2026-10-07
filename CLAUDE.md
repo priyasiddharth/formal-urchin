@@ -29,7 +29,7 @@ notes at: notes/
 
       ./.lake/build/bin/sb_conformance --unit
         # obseq3 tests           33/33   (mirlite SB semantics on bytes)
-        # obseq3 compiler tests  149/149 (compiler witness corpus; the
+        # obseq3 compiler tests  146/146 (compiler witness corpus; the
         #   differential ones also run on OSEA-IR_B, Die elided, and
         #   pass the route-bracket check)
 

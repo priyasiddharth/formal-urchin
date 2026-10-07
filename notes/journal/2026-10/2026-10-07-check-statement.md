@@ -33,3 +33,34 @@ seams, pass_invalid_shr_option) all had a statically known variant
 (`Some(..)` built in plain sight; as_ref's arm follows the certificate).
 Corpus 190/0/0/18 unchanged; the loader emits NO `assignIf` anywhere (97
 `check`s).
+
+## Stage 3: delete `assignIf` and `SkipIf`
+[OBS] Gone from mirlite (`Stmt.assignIf`), OSEA-IR (`Instr.SkipIf`), the
+compiler (`emitSkipIfAround`, `reserveLabel`, `patchLabel`,
+`StateIncr.patchLabel`; `StateIncr.code_none` stays, the route proof uses
+it), the loader (`LStmt.assignIf`), brackets.lean (`skipLandsIn`, the jump
+check). OSEA-IR is straight-line: no instruction moves the pc by more
+than one.
+[OBS] Proofs shrank: assignif.lean deleted (its `InvAtB.retarget`/`src_pc`
+moved to check.lean); prmpres.lean deleted too — `PrmPres` existed only
+for `assignIf`'s not-taken arm (nothing else used it). `IsBracket.nojump`,
+`Seg.noskip`, `StmtOK.skips`, `Code.skips`, `Code.cons_skip`,
+`Code.append_guard`, `skipIfAround_ok/err`, `Emits.skip` and the
+`assignIf` arm of `compileStmt_spec` deleted. 50 proof files (was 52),
+~19,100 lines (was ~19,950), 1236 declarations (was 1270), 3 axioms,
+0 sorries.
+[OBS] Tests: d16/d17/d18 (assignIf taken/skipped/body UB), the guarded
+fresh-root probe and its golden g12 deleted — they tested `assignIf`
+itself. g11 is now a golden for `check` (`Load; Check`). Tests that used
+`assignIf` as a value probe (d98, d100, d101 sliceLen, d102, d105) now
+`check` the value; strictly stronger, since a false guard silently
+passed and a false check is stuck (d100 now pins 3-5 at u64 =
+2^64-2). Units 33 + 146; corpus 190/0/0/18 of 208; `--osea` 190 matched,
+B mismatch 0, 779 Dies route-checked; `--layouts` 190.
+[DEC] `StmtSimBc` (simulation that may use compile success) kept: it was
+introduced for `assignIf`, no statement needs it now, but removing it
+touches program.lean's driver for no gain.
+Paper: grammar rows and rule `exec-check` replace `assignIf`/`skipIf`;
+the lowering table's `check` row; the "guarded assignment" prose is a
+paragraph on `check`; error classes list a failed check; counts updated.
+

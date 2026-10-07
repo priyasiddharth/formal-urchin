@@ -26,8 +26,6 @@ import obseq3.proof.program
 import obseq3.proof.fragment
 import obseq3.proof.assoc
 import obseq3.proof.chainb
-import obseq3.proof.prmpres
-import obseq3.proof.assignif
 import obseq3.proof.correct
 import obseq3.proof.coverage
 import obseq3.proof.layoutagree

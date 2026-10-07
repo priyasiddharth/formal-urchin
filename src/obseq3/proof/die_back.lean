@@ -159,8 +159,6 @@ structure IsBracket (prog : oseair.Prog) (b : Nat) (r : Register) (n : Nat) : Pr
   access : ∃ i, prog (b + 1) = some i ∧ i.through r = true
   die : prog (b + 2) = some (.Die r n)
   only : ∀ l i, prog l = some i → r ∈ i.regs → b ≤ l ∧ l ≤ b + 2
-  nojump : ∀ l dr v skip, prog l = some (.SkipIf dr v skip) →
-    ¬ (b < l + 1 + skip ∧ l + 1 + skip ≤ b + 2)
 
 /-- Every `Die` closes a route bracket, and no `CStore` stores a pointer
     literal. -/

@@ -7,8 +7,8 @@ The compiler lays down code in contiguous SEGMENTS (`Emits`). `Seg live ins
 lo hi seg` records what a segment keeps: every register it mentions is
 live (a local's), passed in (`ins`), or one it created (index in the
 window `[lo, hi)`); every `Die` closes a route bracket inside the segment,
-on a register of the window; no `CStore` writes a pointer literal; no
-`SkipIf`. Segments compose (`Seg.append`, `Seg.snoc`, `Seg.close`), and a
+on a register of the window; no `CStore` writes a pointer literal.
+Segments compose (`Seg.append`, `Seg.snoc`, `Seg.close`), and a
 program made of statement segments is a `RouteProg` (`route_compile.lean`).
 -/
 
@@ -70,19 +70,18 @@ structure Seg (live ins : Register → Prop) (lo hi : Nat) (seg : List Instr) : 
   dies : ∀ p r n, seg[p]? = some (.Die r n) →
     ClosedAt seg p r n ∧ lo ≤ regIdx r ∧ regIdx r < hi
   cst : ∀ i ∈ seg, i.noPtrConst = true
-  noskip : ∀ i ∈ seg, ∀ dr v skip, i ≠ .SkipIf dr v skip
 
 /-- A register the next instruction may mention. -/
 def RegOK (live ins : Register → Prop) (lo hi : Nat) (seg : List Instr) (x : Register) : Prop :=
   live x ∨ ins x ∨ (lo ≤ regIdx x ∧ regIdx x < hi ∧ ¬ DiedIn seg x)
 
 theorem Seg.nil (live ins : Register → Prop) (lo hi : Nat) : Seg live ins lo hi [] :=
-  ⟨by simp, fun p r n h => by simp at h, by simp, by simp⟩
+  ⟨by simp, fun p r n h => by simp at h, by simp⟩
 
 theorem Seg.mono {live ins ins' : Register → Prop} {lo hi hi' : Nat} {seg : List Instr}
     (h : Seg live ins lo hi seg) (hins : ∀ x, ins x → ins' x) (hle : hi ≤ hi') :
     Seg live ins' lo hi' seg := by
-  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, h.cst, h.noskip⟩
+  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, h.cst⟩
   · rcases h.regs i hi x hx with h1 | h1 | h1
     · exact Or.inl h1
     · exact Or.inr (Or.inl (hins x h1))
@@ -155,7 +154,7 @@ theorem Seg.append {live ins ins2 : Register → Prop} {lo mid hi : Nat} {s1 s2 
     · have := hlive r h; omega
     · have := hins r h; omega
     · omega
-  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, fun i hi => ?_, fun i hi => ?_⟩
+  refine ⟨fun i hi x hx => ?_, fun p r n hp => ?_, fun i hi => ?_⟩
   · rcases List.mem_append.mp hi with hi | hi
     · rcases h1.regs i hi x hx with h | h | h
       · exact Or.inl h
@@ -180,21 +179,18 @@ theorem Seg.append {live ins ins2 : Register → Prop} {lo mid hi : Nat} {s1 s2 
   · rcases List.mem_append.mp hi with hi | hi
     · exact h1.cst i hi
     · exact h2.cst i hi
-  · rcases List.mem_append.mp hi with hi | hi
-    · exact h1.noskip i hi
-    · exact h2.noskip i hi
 
 /-- One instruction that is not a `Die`, whose registers are allowed. -/
 theorem Seg.snoc {live ins : Register → Prop} {lo hi hi' : Nat} {seg : List Instr} {i : Instr}
     (h : Seg live ins lo hi seg) (hlive : ∀ x, live x → regIdx x < lo)
     (hins : ∀ x, ins x → regIdx x < lo)
     (hr : ∀ x ∈ i.regs, RegOK live ins lo hi' seg x)
-    (hnd : ∀ r n, i ≠ .Die r n) (hc : i.noPtrConst = true) (hns : ∀ dr v skip, i ≠ .SkipIf dr v skip)
+    (hnd : ∀ r n, i ≠ .Die r n) (hc : i.noPtrConst = true)
     (hle : hi ≤ hi') (hlo : lo ≤ hi) :
     Seg live ins lo hi' (seg ++ [i]) := by
   refine Seg.append (ins2 := fun x => x ∈ i.regs ∧ RegOK live ins lo hi seg x) (mid := hi) h ?_
     hlive hins (fun x hx => hx.2) hlo hle
-  refine ⟨fun j hj x hx => ?_, fun p r n hp => ?_, ?_, ?_⟩
+  refine ⟨fun j hj x hx => ?_, fun p r n hp => ?_, ?_⟩
   · simp only [List.mem_singleton] at hj; subst hj
     rcases hr x hx with h1 | h1 | h1
     · exact Or.inl h1
@@ -206,7 +202,6 @@ theorem Seg.snoc {live ins : Register → Prop} {lo hi hi' : Nat} {seg : List In
     | zero => simp at hp; exact absurd hp (hnd r n)
     | succ p => simp at hp
   · simpa using hc
-  · simpa using hns
 
 /-- Closing a bracket: a route borrow of a fresh `r`, one access through
     it, then `Die r n`. -/
@@ -229,7 +224,7 @@ theorem Seg.close {live ins : Register → Prop} {lo hi : Nat} {pre : List Instr
     · have := getElem?_some_lt hq
       simp only [List.length_append, List.length_cons, List.length_nil] at this
       omega
-  refine ⟨fun i hi x hx => ?_, fun p r' n' hp => ?_, fun i hi => ?_, fun i hi => ?_⟩
+  refine ⟨fun i hi x hx => ?_, fun p r' n' hp => ?_, fun i hi => ?_⟩
   · rcases List.mem_append.mp hi with hi | hi
     · exact h.regs i hi x hx
     · simp only [List.mem_singleton] at hi; subst hi
@@ -262,8 +257,5 @@ theorem Seg.close {live ins : Register → Prop} {lo hi : Nat} {pre : List Instr
   · rcases List.mem_append.mp hi with hi | hi
     · exact h.cst i hi
     · simp at hi; subst hi; rfl
-  · rcases List.mem_append.mp hi with hi | hi
-    · exact h.noskip i hi
-    · simp at hi; subst hi; intro dr v skip h; cases h
 
 end obseq3.proof

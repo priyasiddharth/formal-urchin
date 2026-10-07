@@ -549,8 +549,9 @@ otherwise. An _expression_ is a constant, a copy or a move of a place, or
 a reference to a place. A move is MIR's `move` operand: like Miri, the
 semantics reads the source through a fresh mutable borrow that it retires
 at once (#m-move), so a move invalidates the shared borrows of the moved
-place where a copy only reads it. We do not model control flow in the main
-text; the guarded assignment of the full language is in @sec:surface.
+place where a copy only reads it. Neither language has control flow:
+programs are straight-line, and the full language's `check` statement,
+which stops a run whose value is not the expected one, is in @sec:surface.
 
 *Types and layouts.* A _layout type_ $tau$ is the static type of a place:
 an integer $"Int" theta$ of integer type $theta$, a width in bits and a
@@ -1639,17 +1640,17 @@ declaration in `src/obseq3/proof/`:
   ([@thm:die-elision], [`die_elision`], [`die_elision.lean`]),
 ) <tab:lean>
 
-The proof is about 19,800 lines and 677 theorems across the 51 files of
+The proof is about 19,100 lines and 656 theorems across the 50 files of
 that directory, which also hold the Stacked Borrows lemmas it rests on.
 None of it contains an admitted goal. A checked audit prints the axioms
 that @thm:run, its corollaries, @thm:die-elision, @thm:die-iff, and @cor:nodie depend on and fails
 if that set differs in either direction from a pinned whitelist; a second
-check covers every one of the directory's 1,268 declarations. The whitelist contains exactly the
+check covers every one of the directory's 1,236 declarations. The whitelist contains exactly the
 three standard Lean axioms, propositional extensionality, choice, and
 quotient soundness, and no `sorryAx`.
 
 The executable compiler is additionally validated by testing: a compiler
-witness corpus of 149 programs, run on both machines at the uniform layout
+witness corpus of 146 programs, run on both machines at the uniform layout
 (four of them are OSEA-IR programs run with and without `die`, for
 @thm:die-elision)
 and pinned as golden listings where the shape of the code matters; a
@@ -1683,12 +1684,12 @@ same format, to the language the compiler and the theorem actually cover.
   [The remaining syntax of MIRLite (left) and OSEA-IR (right), extending @fig:mir-grammar and @fig:oseair-grammar. $d$ in `ptrOffset` and $delta$ in `offset` are integers and $i$ a boolean, set for in-bounds arithmetic; a `borrow` of length $bot$ retags the pointer's extent; $"op"$ is an integer operation at an integer type.],
   panel([MIRLite], bnf(
     prod($"Expr" in.rev e$, $dots$, $"uninit" | "alloc"("len")$, $"exposeAddr"(p) | "addr"(p)$, $"fromExposed"(p)$, $"ptrCast"(p) | "ptrOffset"(p,d,i) | "ptrOffset"(p,p_n,i)$, $"addrOf"(ell"."q)$, $"refSlice"(k,c,p)$, $"sliceLen"(p) | "subSlice"(p, p_l, p_h)$, $"binOp"("op", p_a, p_b)$),
-    prod($"Stmt" in.rev s$, $dots$, $"assignIf"(p = w, thick d := e)$, $"dealloc"(p)$, $"pushProtectors" | "popProtectors"$),
+    prod($"Stmt" in.rev s$, $dots$, $"check"(p in W) | "check"(p in.not W)$, $"dealloc"(p)$, $"pushProtectors" | "popProtectors"$),
     prod($"len"$, $"const"(n) | "from"(p)$),
   )),
   panel([OSEA-IR], bnf(
     prod($"Rhs" in.rev h$, $dots$, $"allocN"_beta (n) | "allocDyn"_beta (r)$, $"expose"_kappa (r) | "fromExposed"_kappa (r)$, $"offset"_kappa (r,delta,i) | "offsetBy"_(t,n) (r,r_n,i)$, $"placeAddr"(r,o,n)$, $"borrow"(k,c,m,bot,r,delta)$, $"sliceLen"_n (r) | "subSlice"_n (r, r_l, r_h)$, $"binOp"("op", r_a, r_b)$),
-    prod($"Instr" in.rev I$, $dots$, $"dealloc"(r)$, $"skipIf"(r, w, n)$, $"pushProt" | "popProt"$),
+    prod($"Instr" in.rev I$, $dots$, $"dealloc"(r)$, $"check"(r in W) | "check"(r in.not W)$, $"pushProt" | "popProt"$),
   )),
 ) <fig:surface-grammar>
 
@@ -1697,8 +1698,8 @@ and the pointer expressions have pointer types, with $"ptrCast"$,
 $"ptrOffset"$, $"refSlice"$, $"sliceLen"$, and $"subSlice"$ taking a
 pointer place; $"exposeAddr"(p)$, $"addr"(p)$, $"sliceLen"(p)$, and
 $"binOp"$ have any integer type, the destination's; integer operands, slice bounds,
-allocation lengths, and guard discriminants are integer places of any
-width. An integer operation carries its own integer type: it wraps at that
+allocation lengths, and checked places are integer places of any
+width; $W$ is a finite set of words. An integer operation carries its own integer type: it wraps at that
 width, compares by its signedness, and is undefined behavior on overflow
 for the unchecked forms and on division by zero. An integer cast of
 rustc's MIR is lowered by the loader to such an operation at the
@@ -1713,10 +1714,13 @@ of their place, of scalar $kappa$, rather than the whole place. `addr`
 decodes that leaf's bytes at integer type, as a pointer-to-integer
 `transmute` or `ptr.addr()` does: the address, with the provenance stripped
 and nothing exposed, so a pointer later rebuilt from it by `fromExposed`
-may not access the allocation unless some other cast exposed it. A guarded assignment first
-prepares the root of its destination, _on both paths_, then reads its
-discriminant exactly as $"copy"$ does, a real read access, and performs
-the assignment when the value read equals $w$.
+may not access the allocation unless some other cast exposed it.
+$"check"(p in W)$ reads $p$ exactly as $"copy"$ does, a real read access,
+and continues when the value read is in $W$; $"check"(p in.not W)$
+continues when it is not. Otherwise no rule applies and the run is stuck,
+as for undefined behavior. The conformance loader emits one `check` for
+each branch outcome and enum variant that it takes from Miri's execution
+rather than computing it, so a wrong outcome stops the run.
 
 == The permission model <sec:surface-perm>
 
@@ -1804,9 +1808,9 @@ access from resolving to an item that a `die` removed, which is what makes
   ir(rn[exec-dealloc],
     [$Q(j)="dealloc"(r)$, #h(3pt) $R(r)=["ptr"(b,0,e,sz,t)]$, \ $"dealloc"(Pi,b,sz,t)=Pi'$],
     [$(j,R,mu,Pi) ssea$ \ $quad (j+1, R, mu[b..b+sz) |-> "uninit", b "freed", Pi')$]),
-  ir(rn[exec-skipif],
-    [$Q(j)="skipIf"(r,w,n)$, #h(3pt) $R(r)=["dat"(w')]$, \ $j'=j+1$ if $w'=w$, else $j'=j+1+n$],
-    [$(j,R,mu,Pi) ssea (j',R,mu,Pi)$]),
+  ir(rn[exec-check],
+    [$Q(j)="check"(r in W)$, #h(3pt) $R(r)=["dat"(w)]$, #h(3pt) $w in W$],
+    [$(j,R,mu,Pi) ssea (j+1,R,mu,Pi)$]),
   ir(rn[exec-pushprot],
     [$Q(j)="pushProt"$],
     [$(j,R,mu,Pi) ssea (j+1,R,mu,"pushProt"(Pi))$]),
@@ -1835,9 +1839,10 @@ register that an ordinary `load` filled, which matches the source's
 permission-visible length read. A deallocated block is overwritten with
 uninitialized bytes and its base is recorded as freed; the bump allocator
 never reuses it, and any later access through a pointer into it fails
-before its permissions are consulted, as in Miri. `skipIf` touches neither
-memory nor permissions: the discriminant it tests was loaded into a
-register by an ordinary `load`.
+before its permissions are consulted, as in Miri. `check` touches neither
+memory nor permissions: the word it tests was loaded into a register by an
+ordinary `load`. The rule for $"check"(r in.not W)$ is the same with
+$w in.not W$.
 
 OSEA-IR errors fall into several semantic classes rather than one generic
 "stuck" state:
@@ -1850,7 +1855,7 @@ OSEA-IR errors fall into several semantic classes rather than one generic
   ([Liveness], [An access through a pointer into a freed block.], [Before the bounds check and any permission event.]),
   ([Spatial], [A complete access range exceeds its allocation, a pointer offset becomes negative or, for in-bounds arithmetic, leaves its live allocation, or a sub-slice exceeds its extent.], [Before the corresponding read/write permission event.]),
   ([Permission], [`read`, `ref`, `useMut`, `die`, `dealloc`, or a protector pop rejects the operation.], [At the permission interface; its error is propagated.]),
-  ([Value], [A load decodes an uninitialized leaf; a cast or allocation observes the wrong value constructor; a store's word does not fit its leaf; an integer operation is undefined.], [After any required permission read, so that event order remains explicit.]),
+  ([Value], [A load decodes an uninitialized leaf; a cast or allocation observes the wrong value constructor; a store's word does not fit its leaf; an integer operation is undefined; a `check` fails.], [After any required permission read, so that event order remains explicit.]),
 ) <tab:surface-errors>
 
 The forward simulation only starts from a successful source step. It
@@ -1911,17 +1916,10 @@ bracket the compiler opens therefore closes with its route tag on top.
   ([Statement], [Emitted sequence]),
   (24%, 76%),
   ([`dealloc(p)`], [Read $p$ into $r_v$; $"dealloc"(r_v)$.]),
-  ([`assignIf(p = w, d := e)`], [$"root"(d)$, before the guard; read $p$ into $r_g$; reserve the label $j_g$; compile $d := e$ by #c-assign; patch $K(j_g) = "skipIf"(r_g, w, n)$ with $n$ the number of labels the assignment emitted.]),
+  ([`check(p ∈ W)`], [Read $p$ into $r_v$; $"check"(r_v in W)$, and likewise for $in.not$.]),
   ([`pushProtectors`], [$"pushProt"$]),
   ([`popProtectors`], [$"popProt"$]),
 ) <tab:surface-stmt>
-
-For `assignIf`, the root of the destination is allocated before the guard
-because a root allocated inside the guarded fragment would be recorded in
-$L$ at compile time but would exist at run time only when the guard is
-taken. The guard _reserves_ its label and is patched once the body has been
-compiled, so the body is compiled exactly once and its measured length is
-the skip count; no statement is compiled twice.
 
 == What remains outside the theorem <sec:surface-open>
 

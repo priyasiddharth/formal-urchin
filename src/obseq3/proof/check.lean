@@ -1,4 +1,4 @@
-import obseq3.proof.assignif
+import obseq3.proof.fragment
 
 /-!
 # The `check` statement
@@ -16,6 +16,43 @@ open obseq3 obseq3.bytes obseq3.proof
 open obseq3.mirlite (MemValue)
 open obseq3.oseair (Val Register)
 open obseq3.compile
+
+/-! ## Retargeting -/
+
+/-- The invariant moves to another compile state with the same place map
+    (and no fewer registers), the target pc following its label. -/
+theorem InvAtB.retarget {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenameMap}
+    {s : mirlite.State MSB Γ} {sA : oseair.State MSB} {cs cs' : CompilerState}
+    (h : InvAtB L ρt s sA cs) (h_prm : cs'.placeRegMap = cs.placeRegMap)
+    (h_nr : cs.nextReg ≤ cs'.nextReg) :
+    InvAtB L ρt s { sA with pc := cs'.nextLabel } cs' := {
+  pc := rfl
+  lbs := fun loc b hb => by
+    obtain ⟨r, t, hpi, he, hrt, hnw⟩ := h.lbs loc b hb
+    refine ⟨r, t, ?_, he, hrt, hnw⟩
+    show List.lookup _ _ = _
+    rw [h_prm]; exact hpi
+  mem := h.mem
+  alloc := h.alloc
+  psim := h.psim
+  wf_t := h.wf_t
+  tbd := h.tbd
+  unmap := fun loc hl => by
+    show List.lookup _ _ = _
+    rw [h_prm]; exact h.unmap loc hl
+  prb := fun idx r τ' hpi => by
+    have : getPlaceInfo cs idx = some (r, τ') := by
+      show List.lookup _ _ = _
+      rw [← h_prm]; exact hpi
+    exact RegisterBelow.mono h_nr (h.prb idx r τ' this)
+}
+
+theorem InvAtB.src_pc {Γ : Ctx} {L : mirlite.LayEnv Γ} {ρt : TagRenameMap}
+    {s : mirlite.State MSB Γ} {sA : oseair.State MSB} {cs : CompilerState} {p : Nat}
+    (h : InvAtB L ρt s sA cs) : InvAtB L ρt { s with pc := p } sA cs :=
+  ⟨h.pc, h.lbs, h.mem, h.alloc, h.psim, h.wf_t, h.tbd, h.unmap, h.prb⟩
+
+/-! ## The leaf -/
 
 theorem check_simB {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     (hWF : PtrPlacesWF L) {t : IntTy} {discr : Place Γ (LayoutTy.IntL t)} {vals : List Word}

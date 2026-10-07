@@ -1220,7 +1220,11 @@ with `undef` does where the model allows it).
 **References:** journal/2026-10/2026-10-06-cert-enum-variants.md
 
 ## Enum retags without a recorded variant
-**Status:** parked 2026-10-06
+**Status:** CLOSED 2026-10-07 — the 4 programs all have a statically known
+variant; the loader retags it and `check`s it; `assignIf` is deleted. A
+seam with neither a recorded nor a static variant is `unsupported` (none
+in the corpus). Reopen with the plan below if one appears.
+**Was:** parked 2026-10-06
 **Context:** the certificate records enum variants at FN ENTRY only (the
 fork's log in `with_retag_mode(FnEntry)`). Return-value seams (3 corpus
 programs) and UB raised while the caller copies the argument (1:

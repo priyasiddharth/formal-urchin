@@ -5228,3 +5228,17 @@ A first patch ICE'd on `[(); usize::MAX]` (fixed; all 208 Miri verdicts
 agree). Remaining guarded enum retags: 3 return seams + 1 UB-before-entry.
 Corpus 190/0/0/18 of 208. Fork commits are local: push the branch.
 Journal: 2026-10/2026-10-06-cert-enum-variants.md.
+
+## 2026-10-07 (`check`; `assignIf` and `SkipIf` deleted)
+
+New statement `check p ∈ V` / `∉ V`: reads `p` as `copy` does, stuck
+unless membership agrees (mirlite `.err`, OSEA-IR `Check`, `check_simB`).
+Loader certificate checks and assumptions are single `check`s; enum
+seams retag only the one variant (recorded by Miri or static) and check
+it. Then `assignIf`/`SkipIf` were deleted everywhere (languages,
+compiler, loader, proofs — assignif.lean and prmpres.lean gone — tests,
+paper). OSEA-IR is straight-line. Units 33 + 146; corpus 190/0/0/18 of
+208; 50 proof files, 1236 declarations, 3 axioms, 0 sorries. Miri fork
+branch still unpushed (awaiting the user). Journal:
+2026-10/2026-10-07-check-statement.md.
+

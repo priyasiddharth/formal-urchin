@@ -233,14 +233,6 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
           | .PtrL _, pd, .PtrL _, .copy pl => return .assign pd (.ptrCast pl)
           | _, _, _, _ =>
             .error s!"type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
-  | .assignIf discr val dst rv line => do
-      let discrP ← elabIntPlace Γ discr "assignIf discriminant"
-      let ⟨τd, pd⟩ ← elabPlace Γ dst
-      let ⟨τr, er⟩ ← elabRvalue Γ τd rv
-      if h : τr = τd then
-        return .assignIf discrP.2 val pd (h ▸ er)
-      else
-        .error s!"assignIf type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
   | .check discr vals member _line => do
       let discrP ← elabIntPlace Γ discr "check"
       return .check discrP.2 vals member
@@ -291,7 +283,6 @@ def rvaluePlaces : URvalue → List UPlace
 
 def stmtPlaces : LStmt → List UPlace
   | .assign dst rv _ => dst :: rvaluePlaces rv
-  | .assignIf discr _ dst rv _ => discr :: dst :: rvaluePlaces rv
   | .alloc dst sz _ => dst :: (sz.map operandPlaces).getD []
   | .dealloc p _ => [p]
   | .check discr _ _ _ => [discr]

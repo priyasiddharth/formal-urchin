@@ -1,5 +1,12 @@
 # `assignIf` reads its discriminant; `SkipIf` guards a value, not a place
 
+[HISTORICAL, 2026-10-07] `assignIf` and `SkipIf` no longer exist. They
+were deleted when the `check` statement landed: the loader's runtime
+checks are `check`s and enum seam retags follow the one variant the
+value holds (journal/2026-10/2026-10-07-check-statement.md). The lesson
+below survives in `check`: it reads its place as `copy` does (a real
+Stacked Borrows read), and the target `Check` tests the loaded value.
+
 Load this before touching `assignIf`, `SkipIf`, or the enum seam; and
 before proposing to scope a proof to "event-free" discriminants.
 

@@ -54,7 +54,6 @@ inductive Instr
 | CStore (lay : BLayout) (val : List Val) (ptr : Register)
 | Die (reg : Register) (lenB : Nat)
 | Dealloc (ptr : Register)
-| SkipIf (discr : Register) (val : Word) (skip : Nat)
 -- continue iff the word in `discr` is in `vals` exactly when `member`;
 -- otherwise the run is stuck (an error): mirlite's `check`
 | Check (discr : Register) (vals : List Word) (member : Bool)
@@ -272,12 +271,6 @@ def step (M : PermissionModel) (state : State M) (prog : Prog) : Result M :=
           if vals.contains v == member then Result.Ok { state with pc := state.pc + 1 }
           else Result.Err "check failed"
        | _ => Result.Err "Check expects a concrete word"
-    | .SkipIf discr val skip =>
-       match state.reg.lookup discr with
-       | some [Val.Dat v] =>
-          if v == val then Result.Ok { state with pc := state.pc + 1 }
-          else Result.Ok { state with pc := state.pc + 1 + skip }
-       | _ => Result.Err "SkipIf expects a concrete word"
     | .PushProt => Result.Ok { state with perms := M.pushFrame state.perms, pc := state.pc + 1 }
     | .PopProt =>
        match M.popFrame state.perms with

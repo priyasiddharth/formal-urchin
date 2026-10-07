@@ -107,8 +107,6 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
     - `dealloc` frees a heap block (`std::alloc::dealloc`); allocation is
       the `alloc` RVALUE (`Box::new`, `std::alloc::alloc` — a call, so its
       destination is written after it, 2026-09-21).
-    - `assignIf` runs the assignment only when the word at `discr` equals
-      `val` — used for variant-conditional seam retags of enum payloads.
     - `check discr vals member` reads the word at `discr` (as `copy`
       does) and continues when its membership in `vals` is `member`;
       otherwise the run is stuck (an error). It assumes nothing and
@@ -116,7 +114,6 @@ inductive RExpr (Γ : Ctx) : LayoutTy → Type where
       certificate, or of an assumption, are `check`s. -/
 inductive Stmt (Γ : Ctx) : Type where
 | assign : Place Γ τ → RExpr Γ τ → Stmt Γ
-| assignIf {t : IntTy} : Place Γ (LayoutTy.IntL t) → Word → Place Γ τ → RExpr Γ τ → Stmt Γ
 | dealloc : Place Γ (LayoutTy.PtrL τ) → Stmt Γ
 | check {t : IntTy} : Place Γ (LayoutTy.IntL t) → List Word → Bool → Stmt Γ
 | pushProtectors : Stmt Γ

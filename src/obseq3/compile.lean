@@ -813,10 +813,6 @@ inductive StmtEvidence {Γ : Ctx} (L : LayEnv Γ) : Stmt Γ → Type where
       StmtEvidence L .pushProtectors
   | popProtectors :
       StmtEvidence L .popProtectors
-  | assignIf
-      {τ : LayoutTy} {t : IntTy} (discr : Place Γ (LayoutTy.IntL t)) (val : Word)
-      (dst : Place Γ τ) (rhs : RExpr Γ τ) :
-      StmtEvidence L (.assignIf discr val dst rhs)
   | dealloc
       {τ : LayoutTy} (dst : Place Γ (LayoutTy.PtrL τ)) :
       StmtEvidence L (.dealloc dst)
@@ -840,52 +836,6 @@ def compileAssignChecked {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}
       (pre.ev dstRes.reg)
   }
 
-def patchLabel (cs : CompilerState) (label : Nat) (i : Instr) : CompilerState :=
-  { cs with code := fun l => if l = label then some i else cs.code l }
-
-def reserveLabel (cs : CompilerState) : CompilerState :=
-  { cs with nextLabel := cs.nextLabel + 1,
-            code := fun l => if l = cs.nextLabel then none else cs.code l }
-
-theorem reserveLabel_state_incr (cs : CompilerState) :
-    StateIncr cs (reserveLabel cs) :=
-  ⟨Nat.le_succ _, Nat.le_refl _,
-   fun l h_l => by
-     show (if l = cs.nextLabel then none else cs.code l) = cs.code l
-     rw [if_neg (by omega)],
-   fun _ _ h => h,
-   fun h l h_l => by
-     show (if l = cs.nextLabel then none else cs.code l) = none
-     rw [if_neg (by simp only [reserveLabel] at h_l; omega)]
-     exact h l (by simp only [reserveLabel] at h_l; omega)⟩
-
-theorem StateIncr.patchLabel {cs cs' : CompilerState} (h : StateIncr cs cs')
-    {label : Nat} (h_label : cs.nextLabel ≤ label) (h_lt : label < cs'.nextLabel) (i : Instr) :
-    StateIncr cs (patchLabel cs' label i) :=
-  ⟨h.nextLabel_le, h.nextReg_le,
-   fun l h_l => by
-     show (if l = label then some i else cs'.code l) = cs.code l
-     rw [if_neg (by omega)]
-     exact h.code_eq l h_l,
-   h.placeRegMap_mono,
-   fun h0 l h_l => by
-     show (if l = label then some i else cs'.code l) = none
-     rw [if_neg (by have : l ≥ cs'.nextLabel := h_l; omega)]
-     exact h.code_none h0 l h_l⟩
-
-def emitSkipIfAround (discrReg : Register) (val : Word)
-    (body : CheckedCompilerM α) : CheckedCompilerM Unit :=
-  ⟨fun cs =>
-    let cs1 := reserveLabel cs
-    let real := body.toCompilerM cs1
-    match real.1 with
-    | .error err => (.error err, ⟨cs, StateIncr.refl cs⟩)
-    | .ok _ =>
-      let bodyLen := real.2.1.nextLabel - cs1.nextLabel
-      (.ok (), ⟨patchLabel real.2.1 cs.nextLabel (Instr.SkipIf discrReg val bodyLen),
-        StateIncr.patchLabel ((reserveLabel_state_incr cs).trans real.2.2)
-          (Nat.le_refl _) (Nat.lt_of_lt_of_le (Nat.lt_succ_self _) real.2.2.nextLabel_le) _⟩)⟩
-
 def compileStmtChecked {Γ : Ctx} (L : LayEnv Γ) :
     (stmt : Stmt Γ) → CheckedEvidenceM Unit (fun _ => StmtEvidence L stmt)
   | .halt => do
@@ -906,11 +856,6 @@ def compileStmtChecked {Γ : Ctx} (L : LayEnv Γ) :
       let r ← guardRead L discr
       let _ ← CheckedCompilerM.lift (emitM [Instr.Check r vals member])
       pure { result := (), evidence := StmtEvidence.check discr vals member }
-  | .assignIf discr val dst rhs => do
-      let _ ← CheckedCompilerM.lift (ensurePlaceRoot L dst)
-      let discrReg ← guardRead L discr
-      emitSkipIfAround discrReg val (compileAssignChecked L dst rhs)
-      pure { result := (), evidence := StmtEvidence.assignIf discr val dst rhs }
 
 def compileStmtsChecked {Γ : Ctx} (L : LayEnv Γ) : Prog Γ → CheckedCompilerM Unit
   | [] => pure ()

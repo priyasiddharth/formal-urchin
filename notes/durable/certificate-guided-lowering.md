@@ -22,10 +22,15 @@ checked arithmetic folds to `(v, 0)`; a write through a tracked pointer
 UPDATES its target) and Miri's arm must agree — disagreement is the error
 "certificate disagrees with lowering". T2: the discriminant is a faithful
 runtime word (a load, an enum's slot 0, `Eq/Ne(place, const)`) →
-`bad := uninit; assignIf d v (bad := 0); tmp := copy bad`, UB iff the
-pin is wrong; the statements carry sentinel lines (`certLineBase`) so the
-harness reports `certificate rejected at line L`. No mirlite, oseair or
-proof change; `--osea` attributes check UB like any statement.
+one `check d ∈ [v]` (or `∉ vs` for `otherwise`), stuck iff the pin is
+wrong; the statement carries a sentinel line (`certLineBase`) so the
+harness reports `certificate rejected at line L`. [As of 2026-10-07]
+`check` is a mirlite statement and an OSEA-IR instruction (`Check`),
+inside the theorem (`check_simB`).
+[SUPERSEDED → this paragraph, 2026-10-07] "`bad := uninit; assignIf d v
+(bad := 0); tmp := copy bad`, UB iff the pin is wrong ... No mirlite,
+oseair or proof change" — `assignIf` and `SkipIf` were deleted the day
+`check` landed; see journal/2026-10/2026-10-07-check-statement.md.
 
 [SUPERSEDED 2026-09-24] There WAS a third tier: a comparison on words
 Miri did not log took its arm on Miri's word alone, with the result a

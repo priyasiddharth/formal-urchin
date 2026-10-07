@@ -217,22 +217,6 @@ theorem stepStmt_pc {Γ : Ctx} {L : mirlite.LayEnv Γ} {s s' : mirlite.State MSB
       · simp only [mirlite.Result.ok.injEq] at h; rw [← h]
       · cases h
   | assign dst rhs => exact doAssign_pc h
-  | assignIf discr val dst rhs =>
-      simp only [mirlite.stepStmt] at h
-      split at h
-      · cases h
-      rename_i s0 h0
-      split at h
-      · cases h
-      rename_i out h_e
-      split at h
-      · split at h
-        · rw [doAssign_pc h, evalCopy_pc h_e, ensureRoot_pc dst h0]
-        · simp only [mirlite.Result.ok.injEq] at h
-          rw [← h]
-          show out.state.pc + 1 = s.pc + 1
-          rw [evalCopy_pc h_e, ensureRoot_pc dst h0]
-      · cases h
   | check discr vals member =>
       simp only [mirlite.stepStmt] at h
       split at h
@@ -366,8 +350,7 @@ def StmtSimB {Γ : Ctx} (L : mirlite.LayEnv Γ) (compProg : oseair.Prog) (stmt :
       TagRenameIncr ρt ρt' ∧ oseair.runN MSB n s_osea compProg = .Ok s_osea' ∧
       InvAtB L ρt' s_mir' s_osea' (CheckedCompilerM.run (compileStmtChecked L stmt) cs)
 
-/-- `StmtSimB` that may also use the statement's compile success (the
-    guarded assignment needs it for the body it skips). -/
+/-- `StmtSimB` that may also use the statement's compile success. -/
 def StmtSimBc {Γ : Ctx} (L : mirlite.LayEnv Γ) (compProg : oseair.Prog) (stmt : Stmt Γ) : Prop :=
   ∀ (ρt : TagRenameMap) (s_mir s_mir' : mirlite.State MSB Γ) (s_osea : oseair.State MSB)
     (cs : CompilerState),

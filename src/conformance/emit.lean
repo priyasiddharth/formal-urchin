@@ -24,7 +24,6 @@ deriving Repr, BEq, Inhabited
 
 /-- A lowered program: one global local space, straight-line statements.
     `pushProt`/`popProt` bracket an inlined call's protector frame;
-    `assignIf` is a variant-guarded assignment (enum seam retags);
     `check` is a runtime check (a certificate's arm or variant, an
     assumption): stuck unless the word at `discr` is in `vals` exactly
     when `member`;
@@ -33,7 +32,6 @@ deriving Repr, BEq, Inhabited
     (`Box::new`). -/
 inductive LStmt
 | assign (dst : UPlace) (rv : URvalue) (line : Nat)
-| assignIf (discr : UPlace) (val : Nat) (dst : UPlace) (rv : URvalue) (line : Nat)
 | alloc (dst : UPlace) (n : Option UOperand) (line : Nat)
 | dealloc (ptr : UPlace) (line : Nat)
 | check (discr : UPlace) (vals : List Nat) (member : Bool) (line : Nat)
@@ -43,7 +41,6 @@ deriving Repr, BEq, Inhabited
 
 def LStmt.line : LStmt → Nat
   | .assign _ _ l => l
-  | .assignIf _ _ _ _ l => l
   | .alloc _ _ l => l
   | .dealloc _ l => l
   | .check _ _ _ l => l

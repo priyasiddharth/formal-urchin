@@ -12,8 +12,9 @@ use, one access through it, and the `Die`:
     l+2   Die r n
 
 `bracketIssues` checks that every `Die` of a program closes such a
-bracket, that the bracket's register appears nowhere else in the program,
-and that no `SkipIf` jumps into a bracket. Then the route tag never
+bracket, and that the bracket's register appears nowhere else in the
+program. Code is straight-line (OSEA-IR has no jumps), so a bracket runs
+as a unit. Then the route tag never
 leaves its register, the `Die` finds it on top, and after the `Die` no
 instruction holds it: this is what makes OSEA-IR and OSEA-IR_B (`Die`
 elided) agree on compiled code. The check is decidable and per program,
@@ -40,7 +41,6 @@ def Instr.regs : Instr → List Register
   | .CStore _ _ p => [p]
   | .Die r _ => [r]
   | .Dealloc p => [p]
-  | .SkipIf d _ _ => [d]
   | .Check d _ _ => [d]
   | .PushProt | .PopProt | .Halt => []
 
@@ -98,15 +98,6 @@ def bracketIssues (code : List (Option Instr)) : List String := Id.run do
                   issues := issues ++ [s!"label {l}: mentions {reprStr r}, the register of the bracket at {b}"]
             | none => pure ()
     | _ => pure ()
-  -- no jump lands inside a bracket
-  for l in List.range code.length do
-    match at? l with
-    | some (.SkipIf _ _ skip) =>
-        let t := l + 1 + skip
-        for (b, d) in inBracket do
-          if b < t && t ≤ d then
-            issues := issues ++ [s!"label {l}: SkipIf lands at {t}, inside the bracket at {b}"]
-    | _ => pure ()
   return issues
 
 /-! ## The decidable check the proof uses
@@ -131,10 +122,6 @@ def Instr.noPtrConst : Instr → Bool
   | .CStore _ vals _ => !(vals.any Val.isPtr)
   | _ => true
 
-def Instr.skipLandsIn (l lo hi : Nat) : Instr → Bool
-  | .SkipIf _ _ skip => lo < l + 1 + skip && l + 1 + skip ≤ hi
-  | _ => false
-
 /-- The `Die` at `d`, if any, closes a route bracket. -/
 def bracketAt (prog : Nat → Option Instr) (len d : Nat) : Bool :=
   match prog d with
@@ -143,8 +130,7 @@ def bracketAt (prog : Nat → Option Instr) (len d : Nat) : Bool :=
       ((prog (d - 2)).map (Instr.routeBorrowOf r n)).getD false &&
       ((prog (d - 1)).map (Instr.through r)).getD false &&
       (List.range len).all (fun l =>
-        (d - 2 ≤ l && l ≤ d) || ((prog l).map (fun i => !(i.regs.contains r))).getD true) &&
-      (List.range len).all (fun l => !(((prog l).map (Instr.skipLandsIn l (d - 2) d)).getD false))
+        (d - 2 ≤ l && l ≤ d) || ((prog l).map (fun i => !(i.regs.contains r))).getD true)
   | _ => true
 
 def routeOK (prog : Nat → Option Instr) (len : Nat) : Bool :=

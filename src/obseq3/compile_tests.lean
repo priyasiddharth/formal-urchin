@@ -127,7 +127,8 @@ def g5_compiler_total : IO Unit := do
        .pushProtectors,
        .assign p2 (.ref .Mut true [] x2),
        .popProtectors,
-       .assignIf x2 1 (.deref p2) (.constInit 2),
+       .check x2 [1] true,
+       .assign (.deref p2) (.constInit 2),
        .assign p2 (.ptrCast p2),
        .assign p2 (.refSlice (.Raw true) false p2),
        .assign x2 (.exposeAddr p2),
@@ -189,25 +190,21 @@ def g9_dealloc : IO Unit :=
      Instr.Halt]
     "g9 dealloc"
 
-/-- `assignIf` READS its discriminant (a `Load` at `NatTy`, as `copy`
-    would) and then guards on the loaded value with a `SkipIf` whose skip
-    count is the measured length of the guarded block (Borrow + CStore +
-    Die here). `fld0B` is at offset 0 of a local, so its lowering emits no
-    borrow and the `Load` reads through the root register. -/
-def g11_assign_if_skip : IO Unit :=
+/-- `check` READS its place (a `Load` at `NatTy`, as `copy` would) and
+    tests the loaded word with one `Check`. `fld0B` is at offset 0 of a
+    local, so its lowering emits no borrow and the `Load` reads through
+    the root register. -/
+def g11_check : IO Unit :=
   expectCode ΓB
     [.assign fld0B (.constInit 1),
-     .assignIf fld0B 1 fld1B (.constInit 7),
+     .check fld0B [1] true,
      .halt]
     [Instr.Assgn (Register.R 0) (Rhs.Alloc (pairB)),
      Instr.CStore natB [Val.Dat 1] (Register.R 0),
      Instr.Assgn (Register.R 1) (Rhs.Load natB (Register.R 0)),
-     Instr.SkipIf (Register.R 1) 1 3,
-     Instr.Assgn (Register.R 2) (Rhs.Borrow .Mut false [] (some 8) (Register.R 0) 8),
-     Instr.CStore natB [Val.Dat 7] (Register.R 2),
-     Instr.Die (Register.R 2) 8,
+     Instr.Check (Register.R 1) [1] true,
      Instr.Halt]
-    "g11 assignIf skip"
+    "g11 check"
 
 def ΓA' : Ctx := [natL, ptrNat, natL]
 def xA' : Place ΓA' natL := .local ⟨⟨0, by decide⟩, rfl⟩
@@ -503,38 +500,6 @@ def d15_exposed_then_invalidated : IO Unit :=
      .assign qE (.fromExposed aE),
      .assign (.deref qE) (.constInit 5)]
     (.ub 5) "d15 exposed then invalidated"
-
-/-- Positive: guard true — the guarded write happens on both machines. -/
-def d16_assign_if_taken : IO Unit :=
-  expectDiff ΓB
-    [.assign fld0B (.constInit 1),
-     .assignIf fld0B 1 fld1B (.constInit 7),
-     .assign tB (.copy fld1B)]
-    .ok "d16 assignIf taken"
-
-/-- Positive: guard false — the skip must suppress the block's SB events,
-    not just its store: if the guarded Borrow executed, it would pop the
-    `&mut` and the final deref copy would be UB. -/
-def d17_assign_if_skipped_suppresses_events : IO Unit :=
-  expectDiff ΓB
-    [.assign fld0B (.constInit 0),
-     .assign fld1B (.constInit 2),
-     .assign pB (.ref .Mut false [] fld1B),
-     .assignIf fld0B 1 fld1B (.constInit 9),
-     .assign tB (.copy (.deref pB))]
-    .ok "d17 assignIf skipped suppresses events"
-
-/-- Negative: guard true and the guarded assignment itself is UB (write
-    through a popped borrow) — attributed to the assignIf statement on
-    both machines. -/
-def d18_assign_if_body_ub : IO Unit :=
-  expectDiff ΓA'
-    [.assign xA' (.constInit 1),
-     .assign pA' (.ref .Mut false [] xA'),
-     .assign xA' (.constInit 2),
-     .assign tA' (.constInit 1),
-     .assignIf tA' 1 (.deref pA') (.constInit 5)]
-    (.ub 4) "d18 assignIf body ub"
 
 def ptrPair := LayoutTy.PtrL pairL
 def ΓF : Ctx := [pairL, ptrPair, ptrNat, natL]
@@ -867,45 +832,11 @@ def rs_mut_slice_retag_pops_projection_borrow : IO Unit := do
   expectDiff ΓRS prog .ok
     "rs Mut slice retag pops the projection borrow; the Die is a no-op"
 
-/-- Differential PROBE (2026-09-17): a guarded write to a local that is
-    NOT yet rooted, skipped, and then an unguarded write to the same
-    local. mirlite: the guard is skipped, `x` stays unbound, the second
-    write allocates it — `.ok`. The compiler roots `x` at COMPILE time
-    inside the guarded block; if the guard is skipped the root `Alloc`
-    never runs, and the second write is compiled as a store through a
-    register that was never assigned. -/
+/-! ## `move` (2026-09-20): the value, and the source's stacks cleared -/
+
 def ΓGR : Ctx := [natL, natL]
 def dGR : Place ΓGR natL := .local ⟨⟨0, by decide⟩, rfl⟩
 def xGR : Place ΓGR natL := .local ⟨⟨1, by decide⟩, rfl⟩
-
-def rs_guarded_fresh_root_then_write : IO Unit :=
-  expectDiff ΓGR
-    [.assign dGR (.constInit 0),
-     .assignIf dGR 1 xGR (.constInit 5),
-     .assign xGR (.constInit 7),
-     .halt]
-    .ok "rs guarded write to an unrooted local, skipped, then written"
-
-/-- Golden for the fix: the root `Alloc` of a guarded destination sits
-    BEFORE the discriminant `Load` and the `SkipIf`, outside the guarded
-    block, so it runs on both paths. -/
-def g12_assign_if_roots_before_guard : IO Unit :=
-  expectCode ΓGR
-    [.assign dGR (.constInit 0),
-     .assignIf dGR 1 xGR (.constInit 5),
-     .assign xGR (.constInit 7),
-     .halt]
-    [Instr.Assgn (Register.R 0) (Rhs.Alloc natB),
-     Instr.CStore natB [Val.Dat 0] (Register.R 0),
-     Instr.Assgn (Register.R 1) (Rhs.Alloc natB),
-     Instr.Assgn (Register.R 2) (Rhs.Load natB (Register.R 0)),
-     Instr.SkipIf (Register.R 2) 1 1,
-     Instr.CStore natB [Val.Dat 5] (Register.R 1),
-     Instr.CStore natB [Val.Dat 7] (Register.R 1),
-     Instr.Halt]
-    "g12 assignIf roots its destination before the guard"
-
-/-! ## `move` (2026-09-20): the value, and the source's stacks cleared -/
 
 /-- Golden: `y := move x` at a bare local is `Borrow(Mut); Load; Die` then
     the store — the borrow lowering `&mut x` gets, read through, retired. -/
@@ -2344,15 +2275,16 @@ def g15_binop : IO Unit :=
      Instr.Halt]
     "g15 binOp"
 
-/-- Positive: an add, then a comparison feeding a guard; both machines
-    take the guard. -/
+/-- Positive: an add, then a comparison feeding a check; both machines
+    pass it. -/
 def d98_binop_add_then_guard : IO Unit :=
   expectDiff ΓA
     [.assign xA (.constInit 3),
      .assign tA (.constInit 4),
      .assign xA (.binOp (.add .u64) xA tA),
      .assign tA (.binOp .eq xA tA),
-     .assignIf tA 0 xA (.constInit 9),
+     .check tA [0] true,
+     .assign xA (.constInit 9),
      .assign tA (.copy xA)]
     .ok "d98 binOp add then guard"
 
@@ -2373,7 +2305,8 @@ def d100_binop_sub_truncates : IO Unit :=
      .assign tA (.constInit 5),
      .assign xA (.binOp (.sub .u64) xA tA),
      .assign tA (.binOp .eq xA tA),
-     .assignIf xA 0 tA (.constInit 1)]
+     .check xA [18446744073709551614] true,
+     .check tA [0] true]
     .ok "d100 binOp sub truncates"
 
 /-- MIR's arithmetic UB (`binOpUB`) is UB at the same statement on both
@@ -2442,7 +2375,8 @@ def d101_slice_len_of_cast : IO Unit :=
      .assign rF (.ref (.Raw true) false [] tupF),
      .assign qF (.ptrCast rF),
      .assign tF (.sliceLen qF),
-     .assignIf tF 2 fld1F (.constInit 9),
+     .check tF [2] true,
+     .assign fld1F (.constInit 9),
      .assign tF (.copy fld1F)]
     .ok "d101 sliceLen of a cast"
 
@@ -2453,7 +2387,8 @@ def d102_slice_len_after_retag : IO Unit :=
      .assign rF (.ref (.Raw true) false [] tupF),
      .assign qF (.refSlice .Mut false rF),
      .assign tF (.sliceLen qF),
-     .assignIf tF 2 fld1F (.constInit 9),
+     .check tF [2] true,
+     .assign fld1F (.constInit 9),
      .assign tF (.copy fld1F)]
     .ok "d102 sliceLen after a slice retag"
 
@@ -2532,7 +2467,8 @@ def d105_sub_slice_len : IO Unit :=
      .assign hiS (.constInit 1),
      .assign qS (.subSlice qS loS hiS),
      .assign loS (.sliceLen qS),
-     .assignIf loS 1 fld1S (.constInit 9),
+     .check loS [1] true,
+     .assign fld1S (.constInit 9),
      .assign loS (.copy fld1S)]
     .ok "d105 subSlice then sliceLen"
 
@@ -2757,7 +2693,7 @@ a retired one) and the direction it allows (B may succeed where A
 fails). -/
 
 /-- An OSEA-IR program's verdict under `Mt`: `ok` at `Halt`, else the
-    first error. No loops (`SkipIf` jumps forward), so the fuel suffices. -/
+    first error. Straight-line code, so the fuel suffices. -/
 def oseaVerdict (Mt : PermissionModel) (code : List Instr) : Except String Unit :=
   go (code.length + 2) (oseair.State.initial Mt)
 where
@@ -2863,7 +2799,7 @@ def allTests : List (IO Unit) := [
   g8_heap_alloc,
   g9_dealloc,
   g10_expose_addr,
-  g11_assign_if_skip,
+  g11_check,
   g12_ptr_offset_prescaled,
   g13_ref_slice,
   g14_paper_running_example,
@@ -2882,9 +2818,6 @@ def allTests : List (IO Unit) := [
   d13_dynamic_alloc_len,
   d14_expose_roundtrip,
   d15_exposed_then_invalidated,
-  d16_assign_if_taken,
-  d17_assign_if_skipped_suppresses_events,
-  d18_assign_if_body_ub,
   d19_ptr_cast_roundtrip,
   d20_cast_then_offset_into_pair,
   d21_offset_before_base,
@@ -2901,8 +2834,6 @@ def allTests : List (IO Unit) := [
   d32_field_copy_zero_offset,
   px_write_through_projected_ptroffset,
   rs_mut_slice_retag_pops_projection_borrow,
-  rs_guarded_fresh_root_then_write,
-  g12_assign_if_roots_before_guard,
   g13_move_local,
   d93_move_pops_raw_borrow,
   d94_move_pops_mut_borrow,

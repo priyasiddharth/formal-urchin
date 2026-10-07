@@ -82,8 +82,6 @@ def dumpTest (charonDir : String) (m : Manifest) (id : String) : IO UInt32 := do
                     match s with
                     | .assign dst rv line =>
                         IO.println s!"  {tag line} {reprStr dst} := {reprStr rv}"
-                    | .assignIf discr v dst rv line =>
-                        IO.println s!"  {tag line} if {reprStr discr} == {v}: {reprStr dst} := {reprStr rv}"
                     | .alloc dst sz line =>
                         IO.println s!"  [line {line}] {reprStr dst} := alloc {reprStr sz}"
                     | .dealloc p line =>

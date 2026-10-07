@@ -43,8 +43,8 @@ theorem routeOK_sound {prog : Nat → Option Instr} {len : Nat} (h : routeOK pro
   refine ⟨fun d r n hd => ?_, fun l lay vals ptr hl v hv b o e s t he => ?_⟩
   · have hbd := all_range_true hb (hlt hd)
     simp only [bracketAt, hd, Bool.and_eq_true, decide_eq_true_eq] at hbd
-    obtain ⟨⟨⟨⟨h2, hbor⟩, hthr⟩, honly⟩, hjump⟩ := hbd
-    refine ⟨d - 2, by omega, ?_, ?_, ?_, ?_, ?_⟩
+    obtain ⟨⟨⟨h2, hbor⟩, hthr⟩, honly⟩ := hbd
+    refine ⟨d - 2, by omega, ?_, ?_, ?_, ?_⟩
     · cases hp : prog (d - 2) with
       | none => rw [hp] at hbor; cases hbor
       | some i =>
@@ -67,12 +67,6 @@ theorem routeOK_sound {prog : Nat → Option Instr} {len : Nat} (h : routeOK pro
       · exfalso
         have : i.regs.contains r = true := by simpa using hr
         rw [this] at hc'; cases hc'
-    · intro l dr v skip hl hland
-      have := all_range_true hjump (hlt hl)
-      rw [hl] at this
-      simp only [Option.map_some, Option.getD_some, Instr.skipLandsIn, Bool.not_eq_true',
-        Bool.and_eq_false_iff, decide_eq_false_iff_not] at this
-      omega
   · have := all_range_true hc (hlt hl)
     rw [hl] at this
     simp only [Option.map_some, Option.getD_some, Instr.noPtrConst, Bool.not_eq_true',

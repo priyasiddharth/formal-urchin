@@ -8,8 +8,8 @@ execution. A CERTIFICATE records that execution's branch outcomes — the
 arm every `switch` took, whether every `assert` passed — as Miri saw
 them (`MIRI_LOG=info`; see conformance/scripts/miri_cert.py). The seam
 consumes it to emit the one path that runs as straight-line mirlite,
-unrolling loops, and to emit runtime CHECKS (built from `uninit`,
-`assignIf` and `copy` alone) that reject a wrong branch before any code
+unrolling loops, and to emit runtime CHECKS (`check` statements) that
+reject a wrong branch before any code
 that depends on it runs. Since mirlite gained `binOp` (2026-09-24) the
 discriminant of every recorded branch is a word the program actually
 computed, so every branch is either folded-and-cross-checked or
