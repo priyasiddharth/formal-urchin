@@ -820,6 +820,9 @@ inductive StmtEvidence {Γ : Ctx} (L : LayEnv Γ) : Stmt Γ → Type where
   | dealloc
       {τ : LayoutTy} (dst : Place Γ (LayoutTy.PtrL τ)) :
       StmtEvidence L (.dealloc dst)
+  | check
+      {t : IntTy} (discr : Place Γ (LayoutTy.IntL t)) (vals : List Word) (member : Bool) :
+      StmtEvidence L (.check discr vals member)
 
 def compileAssignChecked {Γ : Ctx} (L : LayEnv Γ) {τ : LayoutTy}
     (dst : Place Γ τ) (rhs : RExpr Γ τ) :
@@ -899,6 +902,10 @@ def compileStmtChecked {Γ : Ctx} (L : LayEnv Γ) :
       let loadedReg ← readToReg L dst
       let _ ← CheckedCompilerM.lift (emitM [Instr.Dealloc loadedReg])
       pure { result := (), evidence := StmtEvidence.dealloc dst }
+  | .check discr vals member => do
+      let r ← guardRead L discr
+      let _ ← CheckedCompilerM.lift (emitM [Instr.Check r vals member])
+      pure { result := (), evidence := StmtEvidence.check discr vals member }
   | .assignIf discr val dst rhs => do
       let _ ← CheckedCompilerM.lift (ensurePlaceRoot L dst)
       let discrReg ← guardRead L discr

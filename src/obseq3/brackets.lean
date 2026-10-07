@@ -41,6 +41,7 @@ def Instr.regs : Instr → List Register
   | .Die r _ => [r]
   | .Dealloc p => [p]
   | .SkipIf d _ _ => [d]
+  | .Check d _ _ => [d]
   | .PushProt | .PopProt | .Halt => []
 
 /-- A route borrow: no protector, no mask, a static length, and a kind

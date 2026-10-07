@@ -532,6 +532,19 @@ theorem step_back {prog : oseair.Prog} (hp : RouteProg prog) {pc : Nat} {reg : R
           simp only at hpc'
           exact absurd ⟨by omega, by omega⟩ (hb.nojump pc discr val skip hi)
       · cases h
+  | Check discr vals member =>
+      try simp only at h ⊢
+      split at h
+      · rename_i v hl
+        split at h
+        · rename_i hv
+          rw [if_pos hv]
+          cases h
+          exact ⟨_, rfl, ⟨⟨rfl, rfl, rfl, hs⟩, hpi, hm,
+            regs_mono (Nat.le_succ pc) (Nat.le_refl _) rfl,
+            pend_vacuous (NotInBracket.of_shape hi (fun _ _ h => by cases h) (fun _ => rfl))⟩⟩
+        · cases h
+      · cases h
   | PushProt =>
       cases h
       refine ⟨_, rfl, ⟨⟨rfl, rfl, rfl, hs.pushFrame⟩, ?_, hm,

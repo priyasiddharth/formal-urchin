@@ -1857,6 +1857,33 @@ theorem compileStmt_spec {Γ : Ctx} {L : LayEnv Γ} (stmt : Stmt Γ) (cs : Compi
           · rw [hL]; exact fun x h => Or.inl h
           · rw [hL]; exact fun x h => h
           · rw [hL]; exact hseg.code hlive
+  | check discr vals member =>
+      cases h1 : CheckedCompilerM.value (readToReg L discr) cs with
+      | error e =>
+          exfalso
+          simp only [compileStmtChecked, guardRead, CheckedCompilerM.value_bind, h1] at hv
+          cases hv
+      | ok r =>
+          obtain ⟨s1, hE1, hpm1, hle1, hseg1, hr1⟩ := readToReg_spec discr cs hlive h1
+          have hrun : CheckedCompilerM.run (compileStmtChecked L (.check discr vals member)) cs =
+              compile.emit (CheckedCompilerM.run (readToReg L discr) cs) [.Check r vals member] := by
+            simp only [compileStmtChecked, guardRead, CheckedCompilerM.run_bind, CheckedCompilerM.value_bind,
+              h1, CheckedCompilerM.value_lift, CheckedCompilerM.run_lift, CheckedCompilerM.run_pure,
+              CompilerM.run_emitM]
+          rw [hrun]
+          have hi1 := CheckedCompilerM.incr (readToReg L discr) cs
+          generalize CheckedCompilerM.run (readToReg L discr) cs = c1 at *
+          have hseg := hseg1.snoc (i := .Check r vals member) hlive (fun x h => h.elim)
+            (fun x hx => by simp [Instr.regs] at hx; rw [hx]; exact hr1)
+            (fun _ _ h => by cases h) rfl (fun _ _ _ h => by cases h) (Nat.le_refl _) hle1
+          have hL : LiveOf (compile.emit c1 [.Check r vals member]) = LiveOf cs := by
+            rw [← LiveOf.eq hpm1]; rfl
+          refine ⟨s1 ++ [.Check r vals member], hE1.trans (emit_state_incr _ _) (Emits.emit _ _),
+            hi1.trans (emit_state_incr _ _), hle1, ?_, ?_, ?_, ?_⟩
+          · rw [hL]; intro x hx; have := hlive x hx; simp only [compile.emit]; omega
+          · rw [hL]; exact fun x h => Or.inl h
+          · rw [hL]; exact fun x h => h
+          · rw [hL]; exact hseg.code hlive
   | assignIf discr val dst rhs =>
       obtain ⟨E, hE⟩ := ensurePlaceRoot_spec (L := L) dst cs
       generalize hcsE : CompilerM.run (ensurePlaceRoot L dst) cs = csE at hE

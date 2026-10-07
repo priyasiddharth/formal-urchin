@@ -554,6 +554,15 @@ def stepStmt (state : State M Γ) : Stmt Γ → Result M Γ
               if v == val then doAssign M L output.state dst rhs
               else .ok { output.state with pc := output.state.pc + 1 }
           | _ => .err "assignIf discriminant is not a concrete word"
+  | .check discr vals member =>
+      match evalCopy M L state discr with
+      | .err e => .err e
+      | .ok output =>
+          match output.values with
+          | [.word v] =>
+              if vals.contains v == member then .ok { output.state with pc := output.state.pc + 1 }
+              else .err "check failed"
+          | _ => .err "check: the place is not a concrete word"
   | .dealloc dst =>
       match evalCopy M L state dst with
       | .err e => .err s!"dealloc pointer read failed: {e}"

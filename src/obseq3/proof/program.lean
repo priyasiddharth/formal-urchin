@@ -233,6 +233,19 @@ theorem stepStmt_pc {Γ : Ctx} {L : mirlite.LayEnv Γ} {s s' : mirlite.State MSB
           show out.state.pc + 1 = s.pc + 1
           rw [evalCopy_pc h_e, ensureRoot_pc dst h0]
       · cases h
+  | check discr vals member =>
+      simp only [mirlite.stepStmt] at h
+      split at h
+      · cases h
+      rename_i out h_e
+      split at h
+      · split at h
+        · simp only [mirlite.Result.ok.injEq] at h
+          rw [← h]
+          show out.state.pc + 1 = s.pc + 1
+          rw [evalCopy_pc h_e]
+        · cases h
+      · cases h
   | dealloc dst =>
       simp only [mirlite.stepStmt] at h
       split at h

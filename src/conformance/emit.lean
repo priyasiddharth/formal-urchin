@@ -25,6 +25,9 @@ deriving Repr, BEq, Inhabited
 /-- A lowered program: one global local space, straight-line statements.
     `pushProt`/`popProt` bracket an inlined call's protector frame;
     `assignIf` is a variant-guarded assignment (enum seam retags);
+    `check` is a runtime check (a certificate's arm or variant, an
+    assumption): stuck unless the word at `discr` is in `vals` exactly
+    when `member`;
     `alloc`/`dealloc` come from the heap shims; `alloc`'s `n` counts
     POINTEES of `dst` (bytes for a `*mut u8`), `none` meaning one
     (`Box::new`). -/
@@ -33,6 +36,7 @@ inductive LStmt
 | assignIf (discr : UPlace) (val : Nat) (dst : UPlace) (rv : URvalue) (line : Nat)
 | alloc (dst : UPlace) (n : Option UOperand) (line : Nat)
 | dealloc (ptr : UPlace) (line : Nat)
+| check (discr : UPlace) (vals : List Nat) (member : Bool) (line : Nat)
 | pushProt (line : Nat)
 | popProt (line : Nat)
 deriving Repr, BEq, Inhabited
@@ -42,6 +46,7 @@ def LStmt.line : LStmt → Nat
   | .assignIf _ _ _ _ l => l
   | .alloc _ _ l => l
   | .dealloc _ l => l
+  | .check _ _ _ l => l
   | .pushProt l => l
   | .popProt l => l
 
@@ -204,18 +209,10 @@ def natLocal (i : Nat) : UPlace := { root := .local i, projs := [], ty := .nat }
 
 /-- A lowering assumption, checked when the program runs: the word at `ok`
     must be 1 (a shim chose its output's shape from it — `format!`'s digit
-    counts, its unescaped strings). Fails as `bad := uninit; assignIf ok 1
-    (bad := 0); tmp := copy bad`, on lines the harness reports as a failed
-    assumption, never as a program verdict. -/
+    counts, its unescaped strings). A `check ok ∈ [1]`, on a line the
+    harness reports as a failed assumption, never as a program verdict. -/
 def emitAssume (st : LowerSt) (line : Nat) (ok : UPlace) : LowerSt :=
-  let t := st.locals.length
-  let st := { st with locals := st.locals ++ [.nat, .nat] }
-  let bad := natLocal t
-  let tmp := natLocal (t + 1)
-  let l := 3 * certLineBase + line
-  let st := pushOut st (.assign bad .uninit l)
-  let st := pushOut st (.assignIf ok 1 bad (.use (.const 0)) l)
-  pushOut st (.assign tmp (.use (.copy bad)) l)
+  pushOut st (.check ok [1] true (3 * certLineBase + line))
 
 /-- The end of a UB/panic certificate prefix: mirlite must have failed
     before reaching this; reaching it is the distinct verdict
@@ -632,14 +629,9 @@ def certBump (st : LowerSt) (checked : Nat) (runtime : Nat := 0) : LowerSt :=
   { st with cert := st.cert.map fun c =>
       { c with checked := c.checked + checked, runtime := c.runtime + runtime } }
 
-/-- UB unless `discr == v`. -/
+/-- Stuck unless `discr == v` (a `check`). -/
 def emitCheckEq (st : LowerSt) (line : Nat) (discr : UPlace) (v : Nat) : LowerSt :=
-  let bad := natLocal st.certBad
-  let tmp := natLocal st.certTmp
-  let l := certLineBase + line
-  let st := pushOut st (.assign bad .uninit l)
-  let st := pushOut st (.assignIf discr v bad (.use (.const 0)) l)
-  certBump (pushOut st (.assign tmp (.use (.copy bad)) l)) 1 1
+  certBump (pushOut st (.check discr [v] true (certLineBase + line))) 1 1
 
 /-- Retag/copy `src` into `dst` at a retag point (inline seam or a
     reference-typed load through a deref): every reference — including

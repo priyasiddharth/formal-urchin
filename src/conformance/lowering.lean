@@ -117,12 +117,7 @@ def emitCheckNotIn (st : LowerSt) (line : Nat) (discr : UPlace) (vs : List Nat) 
   -- an `otherwise` arm with NO cases to exclude is vacuous: nothing to
   -- check at runtime, and nothing the certificate could get wrong
   if vs.isEmpty then certBump st 1 else
-  let bad := natLocal st.certBad
-  let tmp := natLocal st.certTmp
-  let l := certLineBase + line
-  let st := pushOut st (.assign bad .uninit l)
-  let st := vs.foldl (fun st v => pushOut st (.assignIf discr v tmp (.use (.copy bad)) l)) st
-  certBump st 1 1
+  certBump (pushOut st (.check discr vs false (certLineBase + line))) 1 1
 
 /-- Take the next recorded event. `none` with `halted` set means the
     certificate's UB/panic prefix ended here. -/
@@ -412,6 +407,8 @@ def resolveGlobalsStmt (gmap : List (Nat × Nat)) : LStmt → Except String LStm
         | some op => pure (some (← resolveGlobalsOp gmap op))
         | none => pure none
       return .alloc (← resolveGlobalRoot gmap dst) sz line
+  | .check discr vs m line => do
+      return .check (← resolveGlobalRoot gmap discr) vs m line
   | .dealloc p line => do
       return .dealloc (← resolveGlobalRoot gmap p) line
   | s => .ok s

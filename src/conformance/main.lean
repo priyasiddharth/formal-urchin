@@ -88,6 +88,8 @@ def dumpTest (charonDir : String) (m : Manifest) (id : String) : IO UInt32 := do
                         IO.println s!"  [line {line}] {reprStr dst} := alloc {reprStr sz}"
                     | .dealloc p line =>
                         IO.println s!"  [line {line}] dealloc {reprStr p}"
+                    | .check discr vs m line =>
+                        IO.println s!"  {tag line} check {reprStr discr} {if m then "∈" else "∉"} {vs}"
                     | .pushProt line => IO.println s!"  [line {line}] pushProtectors"
                     | .popProt line => IO.println s!"  [line {line}] popProtectors"
                   match elabProg lp with

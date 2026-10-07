@@ -1,4 +1,4 @@
-import obseq3.proof.assignif
+import obseq3.proof.check
 
 /-!
 # Compiler correctness, for the proved fragment
@@ -21,6 +21,8 @@ inductive StmtB {Γ : Ctx} : Stmt Γ → Prop
   | assignIf {τ : LayoutTy} {discr : Place Γ (LayoutTy.IntL tN)} {val : Word}
       {dst : Place Γ τ} {rhs : RExpr Γ τ} :
       ReadSrcB discr → StmtB0 (.assign dst rhs) → StmtB (.assignIf discr val dst rhs)
+  | check {discr : Place Γ (LayoutTy.IntL tN)} {vals : List Word} {member : Bool} :
+      ReadSrcB discr → StmtB (.check discr vals member)
 
 theorem StmtB.sim {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) {stmt : Stmt Γ} (h : StmtB stmt) :
@@ -31,6 +33,7 @@ theorem StmtB.sim {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
       intro ρt s_mir s_mir' s_osea cs h_inv h_ok h_code h_step
       obtain ⟨v, hv⟩ := h_ok
       exact assignIf_simB hWF hd (hb.sim hWF hLeaf) h_inv hv h_code h_step
+  | check hd => exact (check_simB hWF hd).toC
 
 /-- **Compiler correctness, for the proved fragment.** If every
     pointer-typed place has a pointer-sized layout, `prog` compiles, and

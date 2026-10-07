@@ -328,6 +328,18 @@ theorem step_msim (hM : ModelSim M1 M2 R) {s1 : oseair.State M1} {s2 : oseair.St
           cases h
           exact ⟨_, rfl, rfl, rfl, rfl, hp⟩
       · cases h
+  | Check discr vals member =>
+      try simp only at h ⊢
+      split at h
+      · rename_i v hl
+        try simp only
+        split at h
+        · rename_i hv
+          rw [if_pos hv]
+          cases h
+          exact ⟨_, rfl, rfl, rfl, rfl, hp⟩
+        · cases h
+      · cases h
   | PushProt =>
       cases h
       exact ⟨_, rfl, rfl, rfl, rfl, hM.pushFrame hp⟩

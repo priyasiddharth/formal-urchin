@@ -2734,6 +2734,20 @@ def d121_addrof_write_pops_shared : IO Unit :=
      .assign tF (.copy (.proj (.deref rF) path1F))]
     (.ub 5) "d121 addrOf: a write through it pops the shared borrow"
 
+def d122_check_passes : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 3),
+     .check xA [1, 3] true,
+     .check xA [2] false]
+    .ok "d122 check: membership as required, the run continues"
+
+def d123_check_fails : IO Unit :=
+  expectDiff ΓA
+    [.assign xA (.constInit 3),
+     .check xA [3] false,
+     .assign xA (.constInit 4)]
+    (.ub 1) "d123 check: a failed check stops the run, on both machines"
+
 /-! ## Die elision witnesses (OSEA-IR → OSEA-IR_B)
 
 Hand-written OSEA-IR, run on OSEA-IR and on OSEA-IR_B (`Die` a no-op).
@@ -2984,6 +2998,8 @@ def allTests : List (IO Unit) := [
   d119_addrof_read_keeps_shared,
   d120_raw_mut_retag_keeps_shared,
   d121_addrof_write_pops_shared,
+  d122_check_passes,
+  d123_check_fails,
   w1_die_of_exposed,
   w2_expose_of_retired,
   w3_die_then_use,

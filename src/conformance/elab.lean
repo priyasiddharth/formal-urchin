@@ -241,6 +241,9 @@ def elabStmt (Γ : Ctx) : LStmt → Except String (Stmt Γ)
         return .assignIf discrP.2 val pd (h ▸ er)
       else
         .error s!"assignIf type mismatch at line {line}: dst {reprStr τd} vs rhs {reprStr τr}"
+  | .check discr vals member _line => do
+      let discrP ← elabIntPlace Γ discr "check"
+      return .check discrP.2 vals member
   | .alloc dst szOp _line => do
       let ⟨τd, pd⟩ ← elabPlace Γ dst
       match τd, pd with
@@ -291,6 +294,7 @@ def stmtPlaces : LStmt → List UPlace
   | .assignIf discr _ dst rv _ => discr :: dst :: rvaluePlaces rv
   | .alloc dst sz _ => dst :: (sz.map operandPlaces).getD []
   | .dealloc p _ => [p]
+  | .check discr _ _ _ => [discr]
   | .pushProt _ | .popProt _ => []
 
 def elabProg (lp : LProg) : Except String Loaded := do
