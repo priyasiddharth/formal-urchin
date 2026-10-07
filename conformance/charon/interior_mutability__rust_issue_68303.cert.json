@@ -2,7 +2,7 @@
  "version": 1,
  "source": "corpus/tests/formal-urchin/interior_mutability__rust_issue_68303.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -30,7 +30,7 @@
       ]
      ],
      "otherwise": 6,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _9) -> [0: bb7, otherwise: bb6]",
+     "descr": "switchInt(move _9) -> [0: bb7, otherwise: bb6]",
      "next": 6,
      "arm": "otherwise"
     }
@@ -54,7 +54,7 @@
       ]
      ],
      "otherwise": 1,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb2, 1: bb3, otherwise: bb1]",
+     "descr": "switchInt(move _2) -> [0: bb2, 1: bb3, otherwise: bb1]",
      "next": 3,
      "arm": "1"
     }
@@ -78,7 +78,7 @@
       ]
      ],
      "otherwise": 1,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb2, 1: bb3, otherwise: bb1]",
+     "descr": "switchInt(move _2) -> [0: bb2, 1: bb3, otherwise: bb1]",
      "next": 3,
      "arm": "1"
     }
@@ -106,7 +106,7 @@
       ]
      ],
      "otherwise": 1,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [1: bb2, otherwise: bb1]",
+     "descr": "switchInt(move _2) -> [1: bb2, otherwise: bb1]",
      "next": 2,
      "arm": "1"
     }

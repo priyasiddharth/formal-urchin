@@ -2,7 +2,7 @@
  "version": 1,
  "source": "local/enum_payload_read.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -30,7 +30,7 @@
       ]
      ],
      "otherwise": 1,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _6) -> [0: bb2, 1: bb3, otherwise: bb1]",
+     "descr": "switchInt(move _6) -> [0: bb2, 1: bb3, otherwise: bb1]",
      "next": 3,
      "arm": "1"
     }

@@ -2,7 +2,7 @@
  "version": 1,
  "source": "prep/basic_aliasing_model__disjoint_mutable_subborrows.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -29,7 +29,7 @@
       ]
      ],
      "otherwise": 14,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _44) -> [0: bb15, otherwise: bb14]",
+     "descr": "switchInt(move _44) -> [0: bb15, otherwise: bb14]",
      "next": 14,
      "arm": "otherwise"
     }

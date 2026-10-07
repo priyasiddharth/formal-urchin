@@ -6,11 +6,17 @@ along an execution CERTIFICATE: `conformance/charon/<name>.cert.json`
 entry order, the arm every `switch` took and whether every `assert`
 passed. Source: `scripts/gen_cert.sh` → the pinned Miri (submodule
 `conformance/vendor/miri`, driver run directly since 2026-09-28; was
-`cargo +nightly-2026-06-01 miri`) with `-Zmir-opt-level=0` and `MIRI_LOG="rustc_const_eval::interpret::step=info,…stack=info,…call=info"`,
-parsed by `scripts/miri_cert.py`. Events are matched by KIND in
-execution ORDER (block/local numbers differ between charon's built MIR
-and Miri's runtime MIR); a frame ends at `popping stack frame` (or its
-executed `return` when that module is absent from the log). The Lean
+`cargo +nightly-2026-06-01 miri`) with `-Zmir-opt-level=0`. [As of
+2026-10-07] the fork writes the events itself (`FORMAL_URCHIN_EVENTS`:
+push/pop, `switchInt`/`assert`, the block entered, `_N = ...`, enum
+argument variants; observation only), converted by
+`scripts/miri_cert.py`. Events are matched by KIND in execution ORDER
+(block/local numbers differ between charon's built MIR and Miri's
+runtime MIR); a frame ends at its `pop` event.
+[SUPERSEDED → this, 2026-10-07] "`MIRI_LOG="rustc_const_eval::interpret::step=info,…stack=info,…call=info"`,
+parsed by `scripts/miri_cert.py` ... a frame ends at `popping stack
+frame` (or its executed `return` when that module is absent from the
+log)" — journal/2026-10/2026-10-07-cert-from-miri-hooks.md. The Lean
 side: `src/conformance/certificate.lean` (`Cert`, `CertCursor`),
 `lowering.lean` (`walkBlock` `.switch`/`.assert` arms, `inlineCall`
 open/close frames, `emitCheckEq`/`emitCheckNotIn`, `consumeEvent`).

@@ -5242,3 +5242,15 @@ paper). OSEA-IR is straight-line. Units 33 + 146; corpus 190/0/0/18 of
 branch still unpushed (awaiting the user). Journal:
 2026-10/2026-10-07-check-statement.md.
 
+## 2026-10-07 (later: `StmtSimBc` removed; certificates from Miri events)
+
+`StmtSimBc` removed (every leaf a `StmtSimB`; 1234 declarations). Pushed
+the Miri fork branch and `byteaddress` (no merge). Certificates now come
+from the fork's observation-only event stream (FORMAL_URCHIN_EVENTS,
+machine.rs + scheduler.rs; tool d5a505f56) instead of MIRI_LOG scraping;
+the variant walk no longer reads through the interpreter (raw tag
+bytes). All 76 certificates identical modulo the toolchain string and
+`descr`'s log prefix; all 208 Miri verdicts equal the manifest. Fork
+commit d5a505f56 is local (not pushed). Journal:
+2026-10/2026-10-07-cert-from-miri-hooks.md.
+

@@ -2,7 +2,7 @@
  "version": 1,
  "source": "local/ptr_add_runtime_ok.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -31,7 +31,7 @@
       ]
      ],
      "otherwise": 4,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _11) -> [0: bb5, otherwise: bb4]",
+     "descr": "switchInt(move _11) -> [0: bb5, otherwise: bb4]",
      "next": 5,
      "arm": "0"
     }

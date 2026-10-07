@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn a Miri MIRI_LOG=info trace into an execution certificate.
+"""Turn a Miri execution's event stream into an execution certificate.
 
 The certificate records, per USER-function frame instance in Miri's entry
 order, the branch outcomes of that execution: which arm every `switchInt`
@@ -9,30 +9,29 @@ branches to straight-line mirlite with runtime checks. Events are matched
 by kind in execution order, never by block or local numbers (charon's
 built MIR and Miri's runtime MIR number them differently).
 
+The events come from formal-urchin's Miri fork (vendor/miri, observation
+only, `machine::formal_urchin`): with FORMAL_URCHIN_EVENTS=FILE it writes
+one JSON object per line -- frame push/pop, each `switchInt`/`assert` about
+to run, the block a terminator entered, each `_N = ...` statement about to
+run, and the active variants of enum arguments after fn-entry retags.
+Miri's stderr still decides the outcome (UB, panic, ok).
+
 Usage:
-  miri_cert.py --log miri.log --ullbc X.ullbc.json --source prep/X.rs \
-               --out X.cert.json [--exit-status N] [--flag -Zmiri-...]...
+  miri_cert.py --events X.events --stderr miri.stderr --ullbc X.ullbc.json \
+               --source prep/X.rs --out X.cert.json [--exit-status N] \
+               [--flag -Zmiri-...]...
 """
 import argparse
 import json
 import re
 import sys
 
-RE_FRAME = re.compile(r"stack::frame frame=(.*)$")
-# a frame ends at `popping stack frame` (module `interpret::call`, selected
-# by gen_cert.sh's MIRI_LOG); when that module is absent from a log, the
-# executed `return` terminator stands in (one per frame in every probe)
-RE_POP = re.compile(r"popping stack frame")
-RE_RETURN = re.compile(r"interpret::step return\s*$")
-RE_EXEC = re.compile(r"// executing bb(\d+)\s*$")
-RE_SWITCH = re.compile(r"\bswitchInt\((.*?)\) -> \[(.*)\]\s*$")
-RE_ASSERT = re.compile(r"\bassert\((.*)\) -> \[success: bb(\d+)")
-RE_ASSIGN = re.compile(r"^\s*(?:\d+ms\s+INFO\s+\S+\s+)?(_\d+) = (.*)$")
+# the TEXT of a `term` event is the terminator kind (Debug), of an `assign`
+# event the statement kind (Debug)
+RE_SWITCH = re.compile(r"^switchInt\((.*?)\) -> \[(.*)\]\s*$")
+RE_ASSERT = re.compile(r"^assert\((.*)\) -> \[success: bb(\d+)")
+RE_ASSIGN = re.compile(r"^(_\d+) = (.*)$")
 RE_TARGET = re.compile(r"(\d+|otherwise): bb(\d+)")
-# formal-urchin's Miri fork (logging only): after a call's arguments are
-# passed, the active variant of every enum inside each argument, by
-# argument local and field path (`miri::machine=info`)
-RE_VARIANT = re.compile(r"formal-urchin variant: arg=(\d+) path=\[([^\]]*)\] variant=(\d+) ty=(.*)$")
 
 
 def strip_generics(s):
@@ -204,16 +203,13 @@ def is_box_drop_frame(path):
             and last_segment(path) == "drop")
 
 
-def parse_log(lines, user_fns):
+def parse_events(events, user_fns):
     stack = []
     frames = []          # user frame instances in entry order
-    have_pop = any("popping stack frame" in l for l in lines)
-    pop_re = RE_POP if have_pop else RE_RETURN
-    for raw in lines:
-        line = raw.rstrip("\n")
-        m = RE_FRAME.search(line)
-        if m:
-            path = m.group(1).strip()
+    for ev in events:
+        k = ev["e"]
+        if k == "push":
+            path = ev["fn"].strip()
             if is_box_drop_frame(path):
                 # a `drop` event in the innermost USER frame (a drop inside
                 # `mem::drop` or other std code belongs to its user caller);
@@ -232,7 +228,7 @@ def parse_log(lines, user_fns):
             if fr.user:
                 frames.append(fr)
             continue
-        if pop_re.search(line):
+        if k == "pop":
             if stack:
                 fr = stack.pop()
                 fr.abandon("frame popped")
@@ -241,54 +237,51 @@ def parse_log(lines, user_fns):
         if not stack:
             continue
         top = stack[-1]
-        m = RE_EXEC.search(line)
-        if m:
-            top.resolve(int(m.group(1)))
+        if k == "enter":
+            top.resolve(ev["bb"])
             continue
         if not top.user:
             continue
-        m = RE_VARIANT.search(line)
-        if m:
-            path = [int(x) for x in m.group(2).split(".") if x != ""]
-            top.variants.append({"arg": int(m.group(1)), "path": path,
-                                 "variant": int(m.group(3)), "ty": m.group(4).strip()})
-            continue
-        m = RE_SWITCH.search(line)
-        if m:
-            targets = RE_TARGET.findall(m.group(2))
-            cases = [(int(v), int(b)) for v, b in targets if v != "otherwise"]
-            other = [int(b) for v, b in targets if v == "otherwise"]
-            if len(other) != 1:
-                raise SystemExit(f"switch without a single otherwise: {line.strip()!r}")
-            top.switched.add(m.group(1).strip())
-            top.pending = ("switch", {"k": "switch", "discr": m.group(1).strip(),
-                                       "cases": cases, "otherwise": other[0],
-                                       "descr": line.strip().split("INFO")[-1].strip()})
-            continue
-        m = RE_ASSERT.search(line)
-        if m:
-            top.pending = ("assert", {"k": "assert", "cond": m.group(1).split(",")[0].strip(),
-                                       "success": int(m.group(2)),
-                                       "descr": line.strip().split("INFO")[-1].strip()})
-            continue
-        # the statement text follows the module path (`INFO
-        # rustc_const_eval::interpret::step _9 = const false`); matching on
-        # the text after `INFO` alone never matched, so until 2026-10-01 no
-        # drop-flag switch was ever classified
-        m = RE_ASSIGN.match(line.split("interpret::step", 1)[-1] if "interpret::step" in line else line)
-        if m:
-            top.record_assign(m.group(1), m.group(2))
-    # the log ended: whatever is still open ended with Miri
+        if k == "variant":
+            path = [int(x) for x in ev["path"].split(".") if x != ""]
+            top.variants.append({"arg": ev["arg"], "path": path,
+                                 "variant": ev["variant"], "ty": ev["ty"].strip()})
+        elif k == "term":
+            t = ev["t"].strip()
+            m = RE_SWITCH.match(t)
+            if m:
+                targets = RE_TARGET.findall(m.group(2))
+                cases = [(int(v), int(b)) for v, b in targets if v != "otherwise"]
+                other = [int(b) for v, b in targets if v == "otherwise"]
+                if len(other) != 1:
+                    raise SystemExit(f"switch without a single otherwise: {t!r}")
+                top.switched.add(m.group(1).strip())
+                top.pending = ("switch", {"k": "switch", "discr": m.group(1).strip(),
+                                           "cases": cases, "otherwise": other[0],
+                                           "descr": t})
+                continue
+            m = RE_ASSERT.match(t)
+            if m:
+                top.pending = ("assert", {"k": "assert", "cond": m.group(1).split(",")[0].strip(),
+                                           "success": int(m.group(2)), "descr": t})
+                continue
+            raise SystemExit(f"unexpected terminator event: {t!r}")
+        elif k == "assign":
+            m = RE_ASSIGN.match(ev["s"].strip())
+            if m:
+                top.record_assign(m.group(1), m.group(2))
+    # the run ended: whatever is still open ended with Miri
     while stack:
         fr = stack.pop()
-        fr.abandon("log ended")
+        fr.abandon("run ended")
         fr.finish()
     return frames
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--log", required=True)
+    ap.add_argument("--events", required=True)
+    ap.add_argument("--stderr", required=True)
     ap.add_argument("--ullbc", required=True)
     ap.add_argument("--source", required=True)
     ap.add_argument("--out", required=True)
@@ -298,9 +291,8 @@ def main():
     a = ap.parse_args()
 
     user_fns = user_fns_of(a.ullbc)
-    with open(a.log, errors="replace") as f:
-        lines = f.readlines()
-    text = "".join(lines)
+    with open(a.stderr, errors="replace") as f:
+        text = f.read()
     if "error: Undefined Behavior" in text:
         outcome = "ub"
     elif "panicked at" in text or "error: abnormal termination" in text:
@@ -310,9 +302,11 @@ def main():
     else:
         raise SystemExit(f"miri exited {a.exit_status} without a recognisable UB/panic marker")
 
-    frames = parse_log(lines, user_fns)
+    with open(a.events) as f:
+        events = [json.loads(l) for l in f if l.strip()]
+    frames = parse_events(events, user_fns)
     if not frames:
-        raise SystemExit("no user frames found in the log (is user_fns right? is MIRI_LOG set?)")
+        raise SystemExit("no user frames in the events (is user_fns right? is the Miri the fork?)")
     cert = {
         "version": 1,
         "source": a.source,

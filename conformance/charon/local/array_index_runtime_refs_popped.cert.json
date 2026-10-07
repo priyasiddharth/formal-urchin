@@ -2,7 +2,7 @@
  "version": 1,
  "source": "local/array_index_runtime_refs_popped.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -25,7 +25,7 @@
      "k": "assert",
      "cond": "move _13",
      "success": 3,
-     "descr": "rustc_const_eval::interpret::step assert(move _13, \"index out of bounds: the length is {} but the index is {}\", const 2_usize, copy _12) -> [success: bb3, unwind continue]",
+     "descr": "assert(move _13, \"index out of bounds: the length is {} but the index is {}\", const 2_usize, copy _12) -> [success: bb3, unwind continue]",
      "next": 3,
      "outcome": "success"
     }

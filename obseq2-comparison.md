@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-07 (later) — Miri Writes the Certificate's Events Itself
+
+Certificates used to be scraped out of Miri's debug log with pattern
+matching on its text. Our copy of Miri now writes the events we need
+directly, in a structured file: functions entered and left, the branches
+it is about to take and the block it lands in, and which variant each
+enum argument holds. It only watches: it never reads program memory the
+way the program does, so it cannot disturb what Miri checks. While doing
+this we found that the earlier variant logging did read memory that way,
+and fixed it. Every certificate came out the same as before, all 208
+Miri verdicts are unchanged, and a certificate now takes a fraction of a
+second to produce.
+
+---
+
 ## 2026-10-07 — One Check Statement Replaces the Guarded Assignment
 
 Both languages gained a `check` statement: it reads a value the way an

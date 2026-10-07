@@ -6,7 +6,7 @@ import conformance.ullbc_ast
 A conformance program is closed and deterministic, so it has exactly one
 execution. A CERTIFICATE records that execution's branch outcomes — the
 arm every `switch` took, whether every `assert` passed — as Miri saw
-them (`MIRI_LOG=info`; see conformance/scripts/miri_cert.py). The seam
+them (the Miri fork's event stream; see conformance/scripts/miri_cert.py). The seam
 consumes it to emit the one path that runs as straight-line mirlite,
 unrolling loops, and to emit runtime CHECKS (`check` statements) that
 reject a wrong branch before any code

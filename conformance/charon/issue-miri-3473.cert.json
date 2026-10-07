@@ -2,7 +2,7 @@
  "version": 1,
  "source": "corpus/tests/pass/issues/issue-miri-3473.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -28,7 +28,7 @@
       ]
      ],
      "otherwise": 7,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _18) -> [0: bb8, otherwise: bb7]",
+     "descr": "switchInt(move _18) -> [0: bb8, otherwise: bb7]",
      "next": 7,
      "arm": "otherwise"
     },

@@ -8,9 +8,15 @@ pass tests must run clean. Design: `plans/sb_conformance_obseq3.md`.
 
 - `vendor/miri` — git SUBMODULE on OUR FORK, github.com/priyasiddharth/miri
   branch `formal-urchin`: upstream Miri at `PIN`'s `miri_commit`, plus ONE
-  logging-only patch in `src/machine.rs` (`PIN`'s `miri_tool_commit`: after
-  a call's arguments are passed, it logs the active variant of every enum
-  inside each argument, for the certificates; it reads, never writes), plus
+  observation-only patch in `src/machine.rs` and
+  `src/concurrency/scheduler.rs` (`PIN`'s `miri_tool_commit`): with
+  `FORMAL_URCHIN_EVENTS=FILE` it writes the certificate's event stream —
+  frame push/pop, each `switchInt`/`assert`, the block a terminator
+  entered, `_N = ...` statements, and the active variant of every enum
+  inside a call's arguments after the fn-entry retags. Inert without the
+  variable; it reads no memory through the interpreter (an enum's tag is
+  read from the raw allocation bytes), so no Stacked Borrows hook sees
+  it. Plus
   `tests/formal-urchin/` (the rewrites that REPLACE std code with
   user-written code — a local `Option` with std's bodies, a local trait
   for a std operator, named `fn`s for closures, `dealloc` for a Box drop).
@@ -171,18 +177,19 @@ execution. `<name>.cert.json` (beside the artifact; named by the entry's
 `certificate` field) records that execution's branch outcomes as Miri
 saw them — per user-function frame instance in entry order, the arm every
 `switch` took and whether every `assert` passed — extracted by
-`scripts/gen_cert.sh` from a `MIRI_LOG` trace on the pinned toolchain
-(`scripts/miri_cert.py`). The lowering follows it: loops unroll, dynamic
+`scripts/gen_cert.sh` from the pinned fork's event stream
+(`FORMAL_URCHIN_EVENTS`, converted by `scripts/miri_cert.py`; until
+2026-10-07 it scraped a `MIRI_LOG` trace). The lowering follows it: loops unroll, dynamic
 `if`/`match` take the recorded arm, and every branch is one of
 
 - **T1 checked statically** — the lowering folds the discriminant and
   Miri's arm must agree ("certificate disagrees with lowering" otherwise);
 - **T2 checked at runtime** — the discriminant is a word the program
   computed (a load, an enum's discriminant, a `binOp` result — the same
-  word Miri's own `switchInt`/`assert` read), and the check is built
-  from existing statements only: `bad := uninit; assignIf d v (bad := 0);
-  tmp := copy bad` is UB exactly when the recorded arm is wrong, reported
-  as `certificate rejected at line L`, never as a program verdict.
+  word Miri's own `switchInt`/`assert` read), and one `check d ∈ [v]`
+  (or `∉ vs` for `otherwise`) stops the run exactly when the recorded arm
+  is wrong, reported as `certificate rejected at line L`, never as a
+  program verdict.
 
 There is no third tier since mirlite gained the word `binOp` rvalue
 (2026-09-24): arithmetic the seam cannot fold is EMITTED rather than
@@ -192,11 +199,11 @@ check.
 **Enum arguments at inline seams** (2026-10-06): a certificate frame
 also records, for each enum inside the function's arguments, the variant
 Miri's fn-entry retags walked (`variants`: argument, field path, variant;
-logged by the fork's patch, `MIRI_LOG=…,miri::machine=info`). The loader
-retags only that variant's references and CHECKS the variant at runtime
-with the same construction (`emitCheckEq`); without a recorded variant it
-falls back to one guarded retag per variant (return-value seams, and UB
-raised before the callee's frame exists).
+from the fork's event stream). The loader retags only that variant's
+references and CHECKS the variant at runtime (`emitCheckEq`, a `check`);
+without a recorded variant it uses the variant the lowering knows
+statically, and a seam with neither is `unsupported` (2026-10-07; before,
+one guarded retag per variant).
 
 Coverage as of 2026-09-25 — **every recorded event is checked**: the 24
 certificates record 43 branch events between them (6 record none: those

@@ -2,7 +2,7 @@
  "version": 1,
  "source": "corpus/tests/fail/both_borrows/buggy_split_at_mut.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -32,7 +32,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _8) -> [0: bb4, otherwise: bb3]",
+     "descr": "switchInt(move _8) -> [0: bb4, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     },
@@ -40,7 +40,7 @@
      "k": "assert",
      "cond": "!move (_18.1: bool)",
      "success": 5,
-     "descr": "rustc_const_eval::interpret::step assert(!move (_18.1: bool), \"attempt to compute `{} - {}`, which would overflow\", move _16, move _17) -> [success: bb5, unwind continue]",
+     "descr": "assert(!move (_18.1: bool), \"attempt to compute `{} - {}`, which would overflow\", move _16, move _17) -> [success: bb5, unwind continue]",
      "next": 5,
      "outcome": "success"
     },
@@ -48,7 +48,7 @@
      "k": "assert",
      "cond": "!move (_28.1: bool)",
      "success": 8,
-     "descr": "rustc_const_eval::interpret::step assert(!move (_28.1: bool), \"attempt to compute `{} - {}`, which would overflow\", move _26, move _27) -> [success: bb8, unwind continue]",
+     "descr": "assert(!move (_28.1: bool), \"attempt to compute `{} - {}`, which would overflow\", move _26, move _27) -> [success: bb8, unwind continue]",
      "next": 8,
      "outcome": "success"
     }

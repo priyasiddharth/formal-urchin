@@ -2,7 +2,7 @@
  "version": 1,
  "source": "prep/basic_aliasing_model__mut_raw_then_mut_shr.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -26,7 +26,7 @@
       ]
      ],
      "otherwise": 1,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _13) -> [0: bb2, otherwise: bb1]",
+     "descr": "switchInt(move _13) -> [0: bb2, otherwise: bb1]",
      "next": 1,
      "arm": "otherwise"
     },
@@ -40,7 +40,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _33) -> [0: bb4, otherwise: bb3]",
+     "descr": "switchInt(move _33) -> [0: bb4, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     }

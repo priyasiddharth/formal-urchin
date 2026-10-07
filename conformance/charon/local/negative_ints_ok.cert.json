@@ -2,7 +2,7 @@
  "version": 1,
  "source": "local/negative_ints_ok.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -21,7 +21,7 @@
      "k": "assert",
      "cond": "!move _9",
      "success": 2,
-     "descr": "rustc_const_eval::interpret::step assert(!move _9, \"attempt to negate `{}`, which would overflow\", copy _6) -> [success: bb2, unwind continue]",
+     "descr": "assert(!move _9, \"attempt to negate `{}`, which would overflow\", copy _6) -> [success: bb2, unwind continue]",
      "next": 2,
      "outcome": "success"
     },
@@ -29,7 +29,7 @@
      "k": "assert",
      "cond": "!move _12",
      "success": 3,
-     "descr": "rustc_const_eval::interpret::step assert(!move _12, \"attempt to negate `{}`, which would overflow\", copy _11) -> [success: bb3, unwind continue]",
+     "descr": "assert(!move _12, \"attempt to negate `{}`, which would overflow\", copy _11) -> [success: bb3, unwind continue]",
      "next": 3,
      "outcome": "success"
     },
@@ -37,7 +37,7 @@
      "k": "assert",
      "cond": "!move (_25.1: bool)",
      "success": 4,
-     "descr": "rustc_const_eval::interpret::step assert(!move (_25.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _23, move _24) -> [success: bb4, unwind continue]",
+     "descr": "assert(!move (_25.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _23, move _24) -> [success: bb4, unwind continue]",
      "next": 4,
      "outcome": "success"
     }
@@ -57,7 +57,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "descr": "switchInt(move _2) -> [0: bb1, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     }
@@ -77,7 +77,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "descr": "switchInt(move _2) -> [0: bb1, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     }
@@ -97,7 +97,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "descr": "switchInt(move _2) -> [0: bb1, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     }
@@ -117,7 +117,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "descr": "switchInt(move _2) -> [0: bb1, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     }
@@ -137,7 +137,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "descr": "switchInt(move _2) -> [0: bb1, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     }
@@ -157,7 +157,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "descr": "switchInt(move _2) -> [0: bb1, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     }
@@ -177,7 +177,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "descr": "switchInt(move _2) -> [0: bb1, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     }
@@ -197,7 +197,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "descr": "switchInt(move _2) -> [0: bb1, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     }
@@ -217,7 +217,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _2) -> [0: bb1, otherwise: bb3]",
+     "descr": "switchInt(move _2) -> [0: bb1, otherwise: bb3]",
      "next": 3,
      "arm": "otherwise"
     }

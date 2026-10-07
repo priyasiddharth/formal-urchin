@@ -2,7 +2,7 @@
  "version": 1,
  "source": "prep/stacked_borrows__two_phase_aliasing_violation.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -27,7 +27,7 @@
       ]
      ],
      "otherwise": 2,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _14) -> [0: bb3, otherwise: bb2]",
+     "descr": "switchInt(move _14) -> [0: bb3, otherwise: bb2]",
      "next": 2,
      "arm": "otherwise"
     }
@@ -41,7 +41,7 @@
      "k": "assert",
      "cond": "!move (_5.1: bool)",
      "success": 1,
-     "descr": "rustc_const_eval::interpret::step assert(!move (_5.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _3, move _4) -> [success: bb1, unwind continue]",
+     "descr": "assert(!move (_5.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _3, move _4) -> [success: bb1, unwind continue]",
      "next": 1,
      "outcome": "success"
     }

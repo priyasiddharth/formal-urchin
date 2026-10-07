@@ -2,7 +2,7 @@
  "version": 1,
  "source": "corpus/tests/formal-urchin/2phase__two_phase_overlapping2.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -21,7 +21,7 @@
      "k": "assert",
      "cond": "!move (_8.1: bool)",
      "success": 1,
-     "descr": "rustc_const_eval::interpret::step assert(!move (_8.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _6, move _7) -> [success: bb1, unwind continue]",
+     "descr": "assert(!move (_8.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _6, move _7) -> [success: bb1, unwind continue]",
      "next": 1,
      "outcome": "success"
     }
@@ -35,7 +35,7 @@
      "k": "assert",
      "cond": "!move (_4.1: bool)",
      "success": 1,
-     "descr": "rustc_const_eval::interpret::step assert(!move (_4.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_1), move _3) -> [success: bb1, unwind continue]",
+     "descr": "assert(!move (_4.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_1), move _3) -> [success: bb1, unwind continue]",
      "next": 1,
      "outcome": "success"
     }

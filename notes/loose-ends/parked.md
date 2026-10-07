@@ -1233,3 +1233,16 @@ pass_invalid_shr_option, no callee frame) still use the guarded retags.
 but the current statement (`ecx.frame()`'s location) is an `Assign` whose
 place can be walked after the copy; key the record by frame + statement
 order, as branch events are.
+
+## Certificate user frames by crate, not by name
+**Status:** parked 2026-10-07
+**Context:** the certificate now comes from the Miri fork's event stream
+(journal/2026-10/2026-10-07-cert-from-miri-hooks.md), but `miri_cert.py`
+still decides user frames from the frame's printed path against charon's
+function names (`is_user_frame`, `last_segment`; the turbofish bug came
+from there) and drop flags from assignment text. The fork could emit the
+frame's crate (`instance.def_id().krate == LOCAL_CRATE`) and closure-ness.
+**To resume:** add `"local": bool` to `push` events; switch
+`is_user_frame` to it; regenerate and diff every certificate — a change
+is a finding to explain, not noise.
+

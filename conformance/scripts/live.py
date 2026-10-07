@@ -179,7 +179,8 @@ def main():
 
     # The pin guard: the Miri doing the judging must be the submodule's.
     # the TOOL pin: PIN's miri_tool_commit (upstream Miri plus our
-    # logging-only patch; vendor/miri adds tests/formal-urchin on top)
+    # observation-only certificate-event patch; vendor/miri adds
+    # tests/formal-urchin on top)
     rev = next(l.split(":", 1)[1].strip() for l in open(os.path.join(HERE, "PIN"))
                if l.startswith("miri_tool_commit:"))
     ver = subprocess.run(["cargo", f"+{TOOLCHAIN}", "miri", "--version"],

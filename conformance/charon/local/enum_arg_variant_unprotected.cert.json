@@ -2,7 +2,7 @@
  "version": 1,
  "source": "local/enum_arg_variant_unprotected.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -32,7 +32,7 @@
       ]
      ],
      "otherwise": 3,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _7) -> [0: bb4, otherwise: bb3]",
+     "descr": "switchInt(move _7) -> [0: bb4, otherwise: bb3]",
      "next": 4,
      "arm": "0"
     }

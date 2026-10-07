@@ -2,7 +2,7 @@
  "version": 1,
  "source": "local/vec_deref_mut_invalidates_slice.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -20,7 +20,7 @@
      "k": "assert",
      "cond": "move _17",
      "success": 6,
-     "descr": "rustc_const_eval::interpret::step assert(move _17, \"index out of bounds: the length is {} but the index is {}\", move _16, copy _14) -> [success: bb6, unwind: bb9]",
+     "descr": "assert(move _17, \"index out of bounds: the length is {} but the index is {}\", move _16, copy _14) -> [success: bb6, unwind: bb9]",
      "next": 6,
      "outcome": "success"
     },
@@ -28,7 +28,7 @@
      "k": "assert",
      "cond": "move _21",
      "success": 7,
-     "descr": "rustc_const_eval::interpret::step assert(move _21, \"index out of bounds: the length is {} but the index is {}\", move _20, copy _19) -> [success: bb7, unwind: bb9]",
+     "descr": "assert(move _21, \"index out of bounds: the length is {} but the index is {}\", move _20, copy _19) -> [success: bb7, unwind: bb9]",
      "next": 7,
      "outcome": "success"
     }

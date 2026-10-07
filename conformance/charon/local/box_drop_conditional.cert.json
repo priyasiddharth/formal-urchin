@@ -2,7 +2,7 @@
  "version": 1,
  "source": "local/box_drop_conditional.rs",
  "miri": {
-  "toolchain": "miri 0.1.0 (d5bcab3bc9 2026-10-06)",
+  "toolchain": "miri 0.1.0 (d5a505f56d 2026-10-07)",
   "flags": [
    "-Zmir-opt-level=0"
   ]
@@ -27,7 +27,7 @@
       ]
      ],
      "otherwise": 4,
-     "descr": "rustc_const_eval::interpret::step switchInt(move _4) -> [0: bb6, otherwise: bb4]",
+     "descr": "switchInt(move _4) -> [0: bb6, otherwise: bb4]",
      "next": 4,
      "arm": "otherwise"
     },
@@ -51,7 +51,7 @@
       ]
      ],
      "otherwise": 12,
-     "descr": "rustc_const_eval::interpret::step switchInt(copy _9) -> [0: bb9, otherwise: bb12]",
+     "descr": "switchInt(copy _9) -> [0: bb9, otherwise: bb12]",
      "next": 9,
      "arm": "0",
      "drop_flag": true

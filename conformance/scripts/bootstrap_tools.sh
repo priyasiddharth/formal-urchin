@@ -24,10 +24,11 @@ export MIRI_AUTO_OPS=no   # ./miri: no automatic toolchain/fmt/clippy runs
 git -C "$REPO" submodule update --init conformance/vendor/miri conformance/vendor/charon
 charon_rev="$(git -C "$HERE/vendor/charon" rev-parse HEAD)"
 # vendor/miri is the formal-urchin FORK (branch formal-urchin): upstream Miri
-# at PIN's miri_commit, plus ONE logging-only patch in src/machine.rs
+# at PIN's miri_commit, plus ONE observation-only patch (the certificate
+# event stream) in src/machine.rs and src/concurrency/scheduler.rs
 # (miri_tool_commit, from which the TOOL is built), plus our tests under
 # tests/formal-urchin/. Test edits never rebuild Miri (or miss the CI cache);
-# the tool may differ from upstream only in src/machine.rs.
+# the tool may differ from upstream only in those two files.
 miri_up="$(sed -n 's/^miri_commit: *//p' "$HERE/PIN")"
 miri_rev="$(sed -n 's/^miri_tool_commit: *//p' "$HERE/PIN")"
 for c in "$miri_up" "$miri_rev"; do
@@ -35,7 +36,7 @@ for c in "$miri_up" "$miri_rev"; do
     git -C "$HERE/vendor/miri" fetch -q --depth=1 origin "$c"
 done
 patch="$(git -C "$HERE/vendor/miri" diff --name-only "$miri_up" "$miri_rev" -- . ':!tests/formal-urchin')"
-if [ "$patch" != "src/machine.rs" ]; then
+if [ "$patch" != "$(printf 'src/concurrency/scheduler.rs\nsrc/machine.rs')" ]; then
   echo "bootstrap: the Miri tool commit $miri_rev differs from upstream $miri_up in:" >&2
   echo "$patch" >&2
   exit 1
