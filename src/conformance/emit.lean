@@ -635,9 +635,9 @@ def emitCheckEq (st : LowerSt) (line : Nat) (discr : UPlace) (v : Nat) : LowerSt
 
 /-- Retag/copy `src` into `dst` at a retag point (inline seam or a
     reference-typed load through a deref): every reference — including
-    refs inside tuples and enum payloads — is retagged; enum payload
-    accesses are guarded on the discriminant (`assignIf`). Non-ref
-    components are plain copies. -/
+    refs inside tuples and enum payloads — is retagged; for an enum, those
+    of the variant it holds (recorded or known statically, checked at run
+    time). Non-ref components are plain copies. -/
 partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace)
     (ty : UTy) (src : UPlace) (vk : Option (Nat × List Nat) := none) :
     Except String LowerSt := do
@@ -666,57 +666,40 @@ partial def emitSeamCopy (st : LowerSt) (line : Nat) (prot : Bool) (dst : UPlace
           (vk.map fun (a, p) => (a, p ++ [i]))
       return st
   | .enum variants => do
-      -- a fn-entry argument whose variant Miri recorded (`CertVariant`):
-      -- CHECK it when the program runs, then retag that variant's fields
-      -- only, unguarded
+      -- Retag the references of the variant the value HOLDS (Miri reads
+      -- the discriminant and walks the active variant only). The variant
+      -- is the one Miri recorded at a fn-entry seam (`CertVariant`), or the
+      -- discriminant the lowering knows statically; either way the program
+      -- CHECKS it when it runs. With neither, the seam is unsupported.
       let recorded? : Option Nat := do
         let (a, path) ← vk
         let c ← st.cert
-        let v ← c.variantOf? a path
-        if v < variants.length then some v else none
-      if let some v := recorded? then
-        let mut st := if dst == src then st
-          else pushOut st (.assign (fld dst 0) (.use (.copy (fld src 0))) line)
-        st := emitCheckEq st line (fld src 0) v
-        let fields := variants[v]!
-        for h2 : i in [0:fields.length] do
-          let dstF := fld dst (1 + i)
-          let srcF := fld src (1 + i)
-          match fields[i] with
-          | .ref mutbl finner =>
-              st := pushOut st (.assign dstF
-                (.ref (if mutbl then .mut else .shared) prot
-                  { pointee srcF with ty := finner }) line)
-          | fty =>
-              if containsRef fty then
-                throw s!"unsupported: nested references in enum payload (line {line})"
-              else if dst == src then
-                pure ()
-              else
-                st := pushOut st (.assign dstF (.use (.copy srcF)) line)
-        return st
-      -- discriminant is payload slot 0; variant v's field i lives at 1+i.
-      -- IN-PLACE retags (dst == src, a moved argument already bound):
-      -- no plain copies, only the guarded reborrows
+        c.variantOf? a path
+      let static? : Option Nat := (constOfPlace st (fld src 0)).bind fun i =>
+        if i ≥ 0 then some i.toNat else none
+      let some v := recorded? <|> static?
+        | throw s!"unsupported: enum retag of an unknown variant (line {line})"
+      if v ≥ variants.length then
+        throw s!"unsupported: enum variant {v} out of range (line {line})"
       let mut st := if dst == src then st
         else pushOut st (.assign (fld dst 0) (.use (.copy (fld src 0))) line)
-      for h : v in [0:variants.length] do
-        let fields := variants[v]
-        for h2 : i in [0:fields.length] do
-          let dstF := fld dst (1 + i)
-          let srcF := fld src (1 + i)
-          match fields[i] with
-          | .ref mutbl finner =>
-              st := pushOut st (.assignIf (fld src 0) v dstF
-                (.ref (if mutbl then .mut else .shared) prot
-                  { pointee srcF with ty := finner }) line)
-          | fty =>
-              if containsRef fty then
-                throw s!"unsupported: nested references in enum payload (line {line})"
-              else if dst == src then
-                pure ()
-              else
-                st := pushOut st (.assignIf (fld src 0) v dstF (.use (.copy srcF)) line)
+      st := emitCheckEq st line (fld src 0) v
+      let fields := variants[v]!
+      for h2 : i in [0:fields.length] do
+        let dstF := fld dst (1 + i)
+        let srcF := fld src (1 + i)
+        match fields[i] with
+        | .ref mutbl finner =>
+            st := pushOut st (.assign dstF
+              (.ref (if mutbl then .mut else .shared) prot
+                { pointee srcF with ty := finner }) line)
+        | fty =>
+            if containsRef fty then
+              throw s!"unsupported: nested references in enum payload (line {line})"
+            else if dst == src then
+              pure ()
+            else
+              st := pushOut st (.assign dstF (.use (.copy srcF)) line)
       return st
   | _ => return if dst == src then st else pushOut st (.assign dst (.use (.copy src)) line)
 

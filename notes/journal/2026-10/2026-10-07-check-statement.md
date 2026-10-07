@@ -22,3 +22,14 @@ assumption are now single `check`s on their sentinel lines (the
 gives "certificate rejected"; `--osea` matches the failure. Witnesses
 d122 (passes), d123 (fails at stmt 1 on all three machines).
 Units 33 + 151; corpus 190/0/0/18; audit 1270 declarations.
+
+## Stage 2: enum seams without guards
+[OBS] `emitSeamCopy`'s enum case now retags only the variant the value
+holds: the certificate's recorded fn-entry variant, else the discriminant
+the lowering knows STATICALLY (`constOfPlace` of the discriminant slot),
+and emits `check discr ∈ [v]` either way; with neither the seam is
+`unsupported`. The four programs that still used guarded retags (3 return
+seams, pass_invalid_shr_option) all had a statically known variant
+(`Some(..)` built in plain sight; as_ref's arm follows the certificate).
+Corpus 190/0/0/18 unchanged; the loader emits NO `assignIf` anywhere (97
+`check`s).
