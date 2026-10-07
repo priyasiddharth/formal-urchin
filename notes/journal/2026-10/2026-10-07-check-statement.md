@@ -57,9 +57,12 @@ itself. g11 is now a golden for `check` (`Load; Check`). Tests that used
 passed and a false check is stuck (d100 now pins 3-5 at u64 =
 2^64-2). Units 33 + 146; corpus 190/0/0/18 of 208; `--osea` 190 matched,
 B mismatch 0, 779 Dies route-checked; `--layouts` 190.
-[DEC] `StmtSimBc` (simulation that may use compile success) kept: it was
-introduced for `assignIf`, no statement needs it now, but removing it
-touches program.lean's driver for no gain.
+[DEC] `StmtSimBc` (simulation that may use compile success) was first
+kept, then removed at the user's request: it existed for `assignIf`'s
+body. Every leaf is a plain `StmtSimB` again, `StmtSimB.toC` is gone,
+and `stmt_in_prog` no longer returns the statement's compile success.
+The step theorem (paper `thm:step`) no longer assumes the statement
+compiles. 1234 declarations.
 Paper: grammar rows and rule `exec-check` replace `assignIf`/`skipIf`;
 the lowering table's `check` row; the "guarded assignment" prose is a
 paragraph on `check`; error classes list a failed check; counts updated.

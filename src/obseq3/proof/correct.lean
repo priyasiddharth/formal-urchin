@@ -22,10 +22,10 @@ inductive StmtB {Γ : Ctx} : Stmt Γ → Prop
 
 theorem StmtB.sim {Γ : Ctx} {L : mirlite.LayEnv Γ} {compProg : oseair.Prog}
     (hWF : PtrPlacesWF L) (hLeaf : LeafWF L) {stmt : Stmt Γ} (h : StmtB stmt) :
-    StmtSimBc L compProg stmt := by
+    StmtSimB L compProg stmt := by
   cases h with
-  | base h0 => exact (h0.sim hWF hLeaf).toC
-  | check hd => exact (check_simB hWF hd).toC
+  | base h0 => exact h0.sim hWF hLeaf
+  | check hd => exact check_simB hWF hd
 
 /-- **Compiler correctness, for the proved fragment.** If every
     pointer-typed place has a pointer-sized layout, `prog` compiles, and

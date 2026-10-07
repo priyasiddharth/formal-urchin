@@ -1391,8 +1391,8 @@ _every_ statement and expression of the full language (@sec:surface).
 
 #theorem("One-step forward simulation")[
   Let $Lambda$ be well formed (@def:layoutwf), $s != "halt"$ a statement,
-  $C$ a compiler state from which $s$ compiles to $C'$, and $Q$ a program
-  that contains the code of $C'$. If
+  $C$ a compiler state, $C'$ the state after compiling $s$ from $C$, and
+  $Q$ a program that contains the code of $C'$. If
   $ S scripts(approx)_(rho_t)^C T quad "and" quad "step"(S,s)="ok"(S'), $
   then there exist $rho'_t supset.eq rho_t$, a target state $T'$, and
   $n_t$ such that
@@ -1640,12 +1640,12 @@ declaration in `src/obseq3/proof/`:
   ([@thm:die-elision], [`die_elision`], [`die_elision.lean`]),
 ) <tab:lean>
 
-The proof is about 19,100 lines and 656 theorems across the 50 files of
+The proof is about 19,100 lines and 655 theorems across the 50 files of
 that directory, which also hold the Stacked Borrows lemmas it rests on.
 None of it contains an admitted goal. A checked audit prints the axioms
 that @thm:run, its corollaries, @thm:die-elision, @thm:die-iff, and @cor:nodie depend on and fails
 if that set differs in either direction from a pinned whitelist; a second
-check covers every one of the directory's 1,236 declarations. The whitelist contains exactly the
+check covers every one of the directory's 1,234 declarations. The whitelist contains exactly the
 three standard Lean axioms, propositional extensionality, choice, and
 quotient soundness, and no `sorryAx`.
 
