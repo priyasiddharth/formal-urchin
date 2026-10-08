@@ -1,0 +1,44 @@
+{
+ "version": 1,
+ "source": "local/closure_unpin_dealloc_protected_ub.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (308d2ca931 2026-10-08)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ub",
+ "user_fns": [
+  "as_fn",
+  "call",
+  "call_mut",
+  "call_once",
+  "drop_glue",
+  "inner",
+  "main",
+  "{closure#0}"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "inner",
+   "miri_path": "inner",
+   "events": []
+  },
+  {
+   "fn": "{closure#0}",
+   "miri_path": "main::{closure#0}",
+   "events": [
+    {
+     "k": "drop",
+     "ty": "Box<Thing>",
+     "descr": "<std::boxed::Box<Thing> as std::ops::Drop>::drop"
+    }
+   ]
+  }
+ ]
+}

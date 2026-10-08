@@ -88,7 +88,7 @@ Not covered (rejected as `unsupported`), with the reason:
   dereference, `(*p).f[i]`, and an index inside an operation's operand;
 - **recursion & deep (>8) call chains, unknown/bodyless callees,
   unresolved indirect calls** — inlining must terminate statically;
-- **drop glue, closures, containers, threads, unions** (as they arise in
+- **drop glue, containers, threads, unions** (as they arise in
   the corpus) — std/language machinery beyond the fragment; the SB rules
   they would exercise are already witnessed by simpler tests;
 - **nested references in enum payloads** — would need per-variant
@@ -314,11 +314,16 @@ partial def inlineCall (crate : UCrate) (depth : Nat) (st : LowerSt)
       -- std frames on Miri's side, which the extractor drops) BEFORE the
       -- arguments: the enum variants Miri's fn-entry retags walked are
       -- recorded in it (`CertVariant`)
-      match st.cert with
-      | some c =>
+      -- a closure's forwarding methods and `as_fn` are shims on Miri's
+      -- side (no frame); its body is the frame `{closure#N}`
+      match st.cert, f.role with
+      | some c, .plain =>
           let c ← c.openFrame f.name
           st := { st with cert := some c }
-      | none => pure ()
+      | some c, .closureBody n =>
+          let c ← c.openFrame n
+          st := { st with cert := some c }
+      | _, _ => pure ()
       -- bind args into callee arg locals (indices 1..argCount), with
       -- protected fn-entry retags for reference-typed components
       for h : i in [0:args.length] do
@@ -338,11 +343,14 @@ partial def inlineCall (crate : UCrate) (depth : Nat) (st : LowerSt)
       -- walk the body
       st ← walkBlock crate (depth - 1) st f offset 0 []
       if st.halted then return st
-      match st.cert with
-      | some c =>
+      match st.cert, f.role with
+      | some c, .plain =>
           let c ← c.closeFrame f.name
           st := { st with cert := some c }
-      | none => pure ()
+      | some c, .closureBody n =>
+          let c ← c.closeFrame n
+          st := { st with cert := some c }
+      | _, _ => pure ()
       -- leave the call: protectors end before the return value flows back
       st := { st with out := .popProt line :: st.out }
       -- bind the return value (callee local 0) into dest

@@ -1,0 +1,30 @@
+{
+ "version": 1,
+ "source": "local/closure_capture_popped_ub.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (308d2ca931 2026-10-08)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ub",
+ "user_fns": [
+  "call_mut",
+  "call_once",
+  "drop_glue",
+  "main",
+  "{closure#0}"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "{closure#0}",
+   "miri_path": "main::{closure#0}",
+   "events": []
+  }
+ ]
+}

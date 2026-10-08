@@ -1654,11 +1654,11 @@ witness corpus of 146 programs, run on both machines at the uniform layout
 (four of them are OSEA-IR programs run with and without `die`, for
 @thm:die-elision)
 and pinned as golden listings where the shape of the code matters; a
-corpus of 208 entries, drawn from Miri's Stacked Borrows tests and
+corpus of 215 entries, drawn from Miri's Stacked Borrows tests and
 completed by local witnesses, loaded from rustc's MIR through Charon with
-rustc's own layouts, whose 190 supported programs reach Miri's verdict
+rustc's own layouts, whose 198 supported programs reach Miri's verdict
 and, where Miri reports undefined behavior, the same statement and, with
-four documented exceptions, the same reason; and a differential run that compiles each of those 190
+four documented exceptions, the same reason; and a differential run that compiles each of those 198
 programs and requires the same verdict from both machines, and the same
 OSEA-IR verdict with every `die` elided. The layout
 check of @def:layoutwf passes on all of them. The running program of this

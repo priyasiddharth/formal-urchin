@@ -1,0 +1,79 @@
+{
+ "version": 1,
+ "source": "local/closure_branch_ok.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (308d2ca931 2026-10-08)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "call",
+  "call_mut",
+  "call_once",
+  "drop_glue",
+  "main",
+  "{closure#0}"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "drop",
+     "ty": "Box<u32>",
+     "descr": "<std::boxed::Box<u32> as std::ops::Drop>::drop"
+    },
+    {
+     "k": "switch",
+     "discr": "move _6",
+     "cases": [
+      [
+       0,
+       5
+      ]
+     ],
+     "otherwise": 4,
+     "descr": "switchInt(move _6) -> [0: bb5, otherwise: bb4]",
+     "next": 5,
+     "arm": "0"
+    }
+   ]
+  },
+  {
+   "fn": "call",
+   "miri_path": "call::<{closure@local/closure_branch_ok.rs:9:18: 9:21}>",
+   "events": []
+  },
+  {
+   "fn": "{closure#0}",
+   "miri_path": "main::{closure#0}",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _3",
+     "cases": [
+      [
+       0,
+       3
+      ]
+     ],
+     "otherwise": 1,
+     "descr": "switchInt(move _3) -> [0: bb3, otherwise: bb1]",
+     "next": 1,
+     "arm": "otherwise"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_8.1: bool)",
+     "success": 2,
+     "descr": "assert(!move (_8.1: bool), \"attempt to compute `{} - {}`, which would overflow\", move _6, move _7) -> [success: bb2, unwind continue]",
+     "next": 2,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

@@ -97,14 +97,25 @@ def user_fns_of(ullbc):
         idents = [e["Ident"][0] for e in fd.get("item_meta", {}).get("name", []) if "Ident" in e]
         if idents:
             names.add(idents[-1])
+    # a closure's body frame is `{closure#N}` (its type's last name segment)
+    tdecls = d.get("translated", d).get("type_decls", [])
+    if isinstance(tdecls, dict):
+        tdecls = tdecls.get("vector") or next(iter(tdecls.values()))
+    for td in tdecls:
+        if td and isinstance(td.get("src"), dict) and "Closure" in td["src"]:
+            last = td["item_meta"]["name"][-1].get("Ident")
+            if last and last[0] == "closure":
+                names.add("{closure#%d}" % last[1])
     return names
 
 
 # a USER frame runs code the program itself defines: a function or method
 # of the local crate, run as its own body (not a compiler shim for it) --
-# what charon translates and the loader inlines. Closures and constants
-# are local too but are not functions of their own to charon.
-USER_KINDS = ("Fn", "AssocFn")
+# what charon translates and the loader inlines. A closure's body is its own
+# frame (`f::{closure#N}`; charon: the closure's call method of its kind);
+# the shims Miri runs around it (`call_once` of an `Fn` closure, the `fn`
+# pointer coercion) are not items. Constants are local but no functions.
+USER_KINDS = ("Fn", "AssocFn", "Closure")
 
 
 def is_user_frame(ev):

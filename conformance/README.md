@@ -19,7 +19,8 @@ pass tests must run clean. Design: `plans/sb_conformance_obseq3.md`.
   it. Plus
   `tests/formal-urchin/` (the rewrites that REPLACE std code with
   user-written code — a local `Option` with std's bodies, a local trait
-  for a std operator, named `fn`s for closures, `dealloc` for a Box drop).
+  for a std operator, `dealloc` for a Box drop; closures are lowered
+  since 2026-10-08, so none rewrites one).
   The Miri TOOL is built from `miri_tool_commit` (a worktree in
   `.tools/miri-src`), so editing those tests never rebuilds Miri or
   misses the CI cache; the bootstrap refuses a tool commit that differs
@@ -93,7 +94,7 @@ unsupported-marked test now loads — update the manifest).
 mechanism of the aliasing model is implemented and witnessed by
 conformant tests; the remaining unsupported tests exercise those same
 rules through unimplemented *language/std* features (slice lengths,
-containers, threads, drop glue, closures, unions), not through
+containers, threads, drop glue, unions), not through
 un-modeled SB rules. Control flow is no longer a blocker: dynamic
 branches and loops are lowered along a Miri-derived CERTIFICATE (see
 "Certificates" below). Rule → witness map:
@@ -300,8 +301,26 @@ tests). Struct and tuple fields are retagged alike at seams (one `UTy.tup`
 since 2026-10-01; nothing behind a pointer is). Since 2026-09-23 a pointer value
 carries its EXTENT (the slice's length in cells), so a slice retag covers
 exactly its slice. Remaining exclusions: slice lengths (`.len()`/metadata)
-and range sub-slicing, Vec/String, threads, general closures, drop glue,
+and range sub-slicing, Vec/String, threads, drop glue,
 unions, MaybeUninit, Rc, runtime VALUES for indices/offsets/sizes.
+
+## Closures (2026-10-08)
+
+Charon (monomorphised) translates a closure as a struct of its captures
+plus trait-impl methods `call_once`/`call_mut`/`call`, and `as_fn` for
+its coercion to a `fn` pointer. The loader resolves a call through a
+trait to the impl's method and inlines it like any call. Only the method
+of the closure's own kind (its type's `Closure.info.kind`) holds the
+BODY; the others and `as_fn` forward to it. The body is the certificate
+frame `{closure#N}` — Miri's frame `f::{closure#N}`, a `Closure`-kind
+item of the local crate — while the forwarders are Miri shims and open
+no frame (`FrameRole`). A capture through a `&mut` the closure does not
+own is a `UniqueImmutable` borrow, retagged as `&mut`. `&mut T`/`Box<T>`
+with `T: !Unpin` (a `PhantomPinned` by value) get Miri's two-phase
+permission (`SharedReadWrite`, no access, never protected). Witnesses:
+`local/closure_*`, `basic_aliasing_model::not_unpin_not_protected`, and
+the four upstream tests that used to be prepared with "closure -> named
+fn" (deallocate_against_protector1/2, newtype_(pair_)retagging).
 
 ## Local witnesses (`local/`)
 

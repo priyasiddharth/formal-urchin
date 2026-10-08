@@ -916,12 +916,24 @@ partial def emitAssign (st : LowerSt) (line : Nat) (dst : UPlace) (rv : URvalue)
             if (obseq3.binOpUB bop xw yw).isSome then none
             else some (obseq3.evalBinOp bop xw yw, flag?.map (obseq3.evalBinOp · xw yw))
         | _, _ => none
+      -- a fold still READS its place operands: Miri's operation reads them
+      -- (a Stacked Borrows access, UB through an invalidated pointer), so
+      -- each is copied into a fresh local before the folded value is
+      -- written (2026-10-08: `*pb += 1` after a write popped `pb` was
+      -- folded and its UB missed)
+      let readPlaces (st : LowerSt) : Except String LowerSt :=
+        [a, b].foldlM (init := st) fun st op =>
+          match op with
+          | .copy p | .move p =>
+              let tmp : UPlace := { root := .local st.locals.length, projs := [], ty := p.ty }
+              emitAssign { st with locals := st.locals ++ [p.ty] } line tmp (.use (.copy p))
+          | _ => pure st
       match folded with
       | some (v, some f) =>
           -- `(wrapped value, overflowed)`: a real flag; an overflowing
           -- checked op then fails the `Assert` that follows, as in Miri
-          emitAssign st line dst (.aggregate none [.const v, .const f])
-      | some (v, none) => emitAssign st line dst (.use (.const v))
+          emitAssign (← readPlaces st) line dst (.aggregate none [.const v, .const f])
+      | some (v, none) => emitAssign (← readPlaces st) line dst (.use (.const v))
       | none => do
           -- both operands must be word PLACES: a constant is materialised
           -- into a fresh word local (one write nobody aliases)

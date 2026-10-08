@@ -4,6 +4,22 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-08 — Closures Are In; Threads Stay Out
+
+The loader now handles closures. The compiler front end we use already
+turns every closure call into a call to a known function, so closures
+needed no help from Miri's certificates, only teaching the loader which
+of a closure's generated functions holds its body. Eight more tests run:
+seven new small programs of our own and one upstream test about pinned
+types, which also needed Miri's rule that references to such types are
+not protected. Four upstream tests that we used to rewrite by hand now run
+unmodified. Along the way we found and fixed a loader bug that could hide
+undefined behaviour when it simplified arithmetic. Programs with threads
+stay unsupported: Miri rejects them for data races, which our languages
+do not model at all.
+
+---
+
 ## 2026-10-07 (later) — Miri Writes the Certificate's Events Itself
 
 Certificates used to be scraped out of Miri's debug log with pattern

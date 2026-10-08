@@ -940,7 +940,7 @@
     {
       "id": "fail/both_borrows/deallocate_against_protector1",
       "source": "corpus/tests/fail/both_borrows/deallocate_against_protector1.rs",
-      "prep": "corpus/tests/formal-urchin/deallocate_against_protector1.rs",
+      "prep": null,
       "artifact": "deallocate_against_protector1.ullbc.json",
       "status": "supported",
       "reason": null,
@@ -949,26 +949,24 @@
       },
       "miri_error": "deallocating while item \\[Unique for .*\\] is strongly protected",
       "rewrites": [
-        "dropped //@ headers and error annotations",
-        "closure -> named fn free_it"
+        "none: runs the upstream file (its closure is lowered since 2026-10-08)"
       ],
       "note": "verdict-only since 2026-10-01: with the upstream drop(Box::from_raw(raw)) Miri raises the error inside std's Box drop (upstream's error-in-other-file); the model reports the drop's line, 19"
     },
     {
       "id": "fail/both_borrows/deallocate_against_protector2",
       "source": "corpus/tests/fail/both_borrows/deallocate_against_protector2.rs",
-      "prep": "corpus/tests/formal-urchin/deallocate_against_protector2.rs",
+      "prep": null,
       "artifact": "deallocate_against_protector2.ullbc.json",
       "status": "supported",
       "reason": null,
       "expected": {
         "verdict": "ub",
-        "line": 21
+        "line": 19
       },
       "miri_error": "attempting deallocation using .* tag does not exist in the borrow stack",
       "rewrites": [
-        "dropped //@ headers and error annotations",
-        "closure -> named fn free_it"
+        "none: runs the upstream file (its closure is lowered since 2026-10-08)"
       ]
     },
     {
@@ -1148,7 +1146,7 @@
     {
       "id": "fail/both_borrows/newtype_pair_retagging",
       "source": "corpus/tests/fail/both_borrows/newtype_pair_retagging.rs",
-      "prep": "corpus/tests/formal-urchin/newtype_pair_retagging.rs",
+      "prep": null,
       "artifact": "newtype_pair_retagging.ullbc.json",
       "status": "supported",
       "reason": null,
@@ -1157,15 +1155,14 @@
       },
       "miri_error": "not granting access to tag .* because that would remove \\[Unique for .*\\] which is strongly protected",
       "rewrites": [
-        "dropped //@ headers, error annotations and #[rustfmt::skip]",
-        "closure -> named fn free_it; captured ptr -> static PTR"
+        "none: runs the upstream file (its closure is lowered since 2026-10-08)"
       ],
       "note": "verdict-only: Miri raises the error inside std's Box drop (upstream's error-in-other-file); the model reports the dealloc in free_it"
     },
     {
       "id": "fail/both_borrows/newtype_retagging",
       "source": "corpus/tests/fail/both_borrows/newtype_retagging.rs",
-      "prep": "corpus/tests/formal-urchin/newtype_retagging.rs",
+      "prep": null,
       "artifact": "newtype_retagging.ullbc.json",
       "status": "supported",
       "reason": null,
@@ -1174,8 +1171,7 @@
       },
       "miri_error": "not granting access to tag .* because that would remove \\[Unique for .*\\] which is strongly protected",
       "rewrites": [
-        "dropped //@ headers, error annotations and #[rustfmt::skip]",
-        "closure -> named fn free_it; captured ptr -> static PTR"
+        "none: runs the upstream file (its closure is lowered since 2026-10-08)"
       ],
       "note": "verdict-only: Miri raises the error inside std's Box drop (upstream's error-in-other-file); the model reports the dealloc in free_it"
     },
@@ -1444,14 +1440,17 @@
     {
       "id": "pass/both_borrows/basic_aliasing_model::not_unpin_not_protected",
       "source": "corpus/tests/pass/both_borrows/basic_aliasing_model.rs",
-      "prep": null,
-      "artifact": null,
-      "status": "unsupported",
-      "reason": "Box + closures + fn ptrs",
+      "prep": "prep/basic_aliasing_model__not_unpin_not_protected.rs",
+      "artifact": "basic_aliasing_model__not_unpin_not_protected.ullbc.json",
+      "status": "supported",
+      "reason": null,
       "expected": {
         "verdict": "ok"
       },
-      "rewrites": []
+      "rewrites": [
+        "scenario extracted (verbatim; the closure stays)"
+      ],
+      "certificate": "basic_aliasing_model__not_unpin_not_protected.cert.json"
     },
     {
       "id": "pass/both_borrows/basic_aliasing_model::write_does_not_invalidate_all_aliases",
@@ -2892,6 +2891,85 @@
         "verdict": "ok"
       },
       "provenance": "Miri pass test outside the SB directories, run under both models upstream (//@revisions: stack tree); added 2026-10-01"
+    },
+    {
+      "id": "local/closure_fnonce_capture_ok",
+      "artifact": "local/closure_fnonce_capture_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/closure_fnonce_capture_ok.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
+      "notes": "a closure capturing &mut state, passed by value to a generic FnOnce and called there: the trait call resolves to the closure's call_once (its body), the certificate frame {closure#0}"
+    },
+    {
+      "id": "local/closure_fn_pointer_ok",
+      "artifact": "local/closure_fn_pointer_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/closure_fn_pointer_ok.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
+      "notes": "a non-capturing closure coerced to a fn pointer: Charon's as_fn -> call_once -> call_mut -> call chain, of which only `call` (the body) is a certificate frame (Miri runs a shim, then the body)"
+    },
+    {
+      "id": "local/closure_fnmut_twice_ok",
+      "artifact": "local/closure_fnmut_twice_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/closure_fnmut_twice_ok.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
+      "notes": "an FnMut closure called twice through &mut F (call_mut, the body of an FnMut closure)"
+    },
+    {
+      "id": "local/closure_branch_ok",
+      "artifact": "local/closure_branch_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/closure_branch_ok.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
+      "notes": "a run-time branch inside a closure body, recorded in the closure's own certificate frame and checked at run time"
+    },
+    {
+      "id": "local/closure_capture_popped_ub",
+      "artifact": "local/closure_capture_popped_ub.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 9
+      },
+      "certificate": "local/closure_capture_popped_ub.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
+      "notes": "a write through a raw pointer pops the closure's captured &mut (a UniqueImmutable capture borrow, retagged as &mut); the closure's use of it is UB"
+    },
+    {
+      "id": "local/closure_unpin_dealloc_protected_ub",
+      "artifact": "local/closure_unpin_dealloc_protected_ub.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub"
+      },
+      "certificate": "local/closure_unpin_dealloc_protected_ub.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
+      "notes": "counterpart of basic_aliasing_model::not_unpin_not_protected with an Unpin struct: &mut Thing is protected at fn entry, so deallocating it from the closure is UB"
+    },
+    {
+      "id": "local/binop_fold_reads_operand_ub",
+      "artifact": "local/binop_fold_reads_operand_ub.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 11
+      },
+      "certificate": "local/binop_fold_reads_operand_ub.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
+      "notes": "an arithmetic operand the lowering knows statically is still read: `*pb += 1` after `pb` was popped is UB (a fold used to skip the read, 2026-10-08)"
     }
   ]
 }

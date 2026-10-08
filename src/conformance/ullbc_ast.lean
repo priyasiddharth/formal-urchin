@@ -42,6 +42,9 @@ structure StructLay where
   offsetsB : List Nat
   sizeB : Nat
   alignB : Nat
+  -- `core::marker::PhantomPinned` (a field-less struct): a type holding one
+  -- by value is `!Unpin` (`UTy.notUnpin`)
+  pinned : Bool := false
 deriving Repr, BEq, Inhabited
 
 /-- Untyped types. `ref`/`raw` both erase to a pointer layout, but the
@@ -70,6 +73,18 @@ inductive UTy
 | vecT (elem : UTy)
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
+
+/-- `T: !Unpin`: `T` holds a `PhantomPinned` by value (through tuples,
+    structs, enum payloads and `UnsafeCell`, not behind a pointer). Miri
+    retags `&mut T` and `Box<T>` of such a `T` as `SharedReadWrite` with no
+    access and no protector -- what it does for a two-phase borrow
+    (`stacked_borrows/mod.rs`, `NewPermission::from_ref_ty`). -/
+partial def UTy.notUnpin : UTy → Bool
+  | .structT tys lay => (lay.map (·.pinned)).getD false || tys.any UTy.notUnpin
+  | .tup tys => tys.any UTy.notUnpin
+  | .enum vs => vs.any (·.any UTy.notUnpin)
+  | .cell t => t.notUnpin
+  | _ => false
 
 /-- A `Vec<T>`'s header as the model lays it out: the buffer pointer, the
     capacity and the length, in elements. -/
@@ -258,6 +273,18 @@ structure UBlock where
   termLine : Nat
 deriving Repr, BEq, Inhabited
 
+/-- How a function's frame appears in a certificate. A closure is a struct
+    of its captures plus `call_once`/`call_mut`/`call` methods (and `as_fn`,
+    its coercion to a `fn` pointer); the method of the closure's own kind
+    holds the BODY, which Miri runs as the closure's frame (`f::{closure#N}`).
+    The other methods and `as_fn` only forward to it: on Miri's side they
+    are compiler shims, not frames of the program's own code. -/
+inductive FrameRole
+| plain                       -- an ordinary function: its frame is its name
+| closureBody (name : String) -- the closure's body: Miri's `{closure#N}`
+| shim                        -- forwards to a closure's body: no frame
+deriving Repr, Inhabited, BEq
+
 structure UFun where
   defId : Nat
   name : String            -- last path ident
@@ -269,6 +296,7 @@ structure UFun where
   -- the monomorphised instantiation (`Instantiated` in the item name):
   -- what a bodyless generic like `Layout::new::<T>()` is ABOUT
   tyArgs : List UTy := []
+  role : FrameRole := .plain
 deriving Repr, Inhabited
 
 structure UGlobal where
@@ -351,6 +379,11 @@ structure ParseCtx where
   boxPointee : List (Nat × Json)    -- Box/NonNull/ManuallyDrop decl id ↦ inner type Json
   cellPointee : List (Nat × Json)   -- UnsafeCell/Cell decl id ↦ inner type Json
   funPaths : List (Nat × List String) -- fun decl id ↦ path segments (`funName`)
+  -- trait-impl methods: (impl id, method index) ↦ fun decl id, for calls
+  -- through a trait (`f(x)` on a closure `f`, monomorphised by Charon)
+  implMethods : List ((Nat × Nat) × Nat) := []
+  -- fun decl id ↦ its certificate frame role (`FrameRole`), when not plain
+  roles : List (Nat × FrameRole) := []
 
 partial def collectTable (j : Json) (acc : TyTable) : TyTable :=
   match j with
@@ -850,6 +883,9 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                   else if info.path == ["alloc", "string", "String"] then
                     -- `String { vec: Vec<u8> }`: the same header
                     .vecT (.int { bits := 8 })
+                  else if info.path == ["core", "marker", "PhantomPinned"] then
+                    -- zero-sized; makes its holder `!Unpin` (`UTy.notUnpin`)
+                    .structT [] (some { offsetsB := [], sizeB := 0, alignB := 1, pinned := true })
                   else if last == "Layout" then
                     .nat  -- Layout carries only its size (constructor is shimmed)
                   else if last == "UnsafeCell" || last == "Cell" || last == "RefCell" then
@@ -1053,6 +1089,10 @@ def parseRefRvalueKind (kindJ : Json) (isRaw : Bool) : Except String URefKind :=
   | Json.str "Mut" => .ok (if isRaw then .rawMut else .mut)
   | Json.str "Shared" => .ok (if isRaw then .rawConst else .shared)
   | Json.str "TwoPhaseMut" => .ok .twoPhase
+  -- a closure's capture of `*r` through a `&mut r` it does not own: rustc's
+  -- `BorrowKind::Mut { kind: ClosureCapture }`, a `&mut` value Miri
+  -- retags as any other (Unique)
+  | Json.str "UniqueImmutable" => .ok .mut
   | _ =>
       match sumKey kindJ with
       | some (k, _) => .error s!"borrow kind {k}"
@@ -1383,9 +1423,20 @@ def parseTerm (ctx : ParseCtx) (j : Json) : UTerm :=
     | some ("Call", payload) =>
         let callJ := (getK payload "call").getD Json.null
         let target? := getK payload "target" >>= asNat
-        let funIdx? :=
+        let direct? :=
           (getK callJ "func" >>= (getK · "Regular") >>= (getK · "kind")
             >>= (getK · "Fun") >>= (getK · "Regular")) >>= asNat
+        -- a call through a trait whose impl Charon resolved (monomorphised):
+        -- `Trait: [trait ref (kind TraitImpl {id}), method index]`
+        let viaTrait? : Option Nat := do
+          let k ← getK callJ "func" >>= (getK · "Regular") >>= (getK · "kind") >>= (getK · "Trait")
+          match asArr k with
+          | trJ :: midJ :: _ =>
+              let implId ← getK (resolveTyJson ctx.tbl trJ) "kind" >>= (getK · "TraitImpl")
+                >>= (getK · "id") >>= asNat
+              ctx.implMethods.lookup (implId, ← asNat midJ)
+          | _ => none
+        let funIdx? := direct? <|> viaTrait?
         let args := ((getK callJ "args").map asArr).getD [] |>.map (parseOperand ctx)
         let dest? := (getK callJ "dest").map (parsePlace ctx)
         let dynFunc? :=
@@ -1469,7 +1520,8 @@ def parseFun (ctx : ParseCtx) (j : Json) : UFun :=
         | some ts => acc ++ ((asArr ts).map (parseTy ctx 16))
         | none => acc) []
   match getK j "body" >>= (getK · "Unstructured") with
-  | none => { defId, name, path, argCount := 0, locals := [], blocks := [], hasBody := false, tyArgs }
+  | none => { defId, name, path, argCount := 0, locals := [], blocks := [], hasBody := false, tyArgs,
+              role := (ctx.roles.lookup defId).getD .plain }
   | some bodyJ =>
       let localsJ := getK bodyJ "locals"
       let argCount := (localsJ >>= (getK · "arg_count") >>= asNat).getD 0
@@ -1477,7 +1529,8 @@ def parseFun (ctx : ParseCtx) (j : Json) : UFun :=
         ((localsJ >>= (getK · "locals")).map asArr).getD []
           |>.map (fun l => parseTy ctx 16 ((getK l "ty").getD Json.null))
       let blocks := ((getK bodyJ "body").map asArr).getD [] |>.map (parseBlock ctx)
-      elideFakeMetadataBorrows { defId, name, path, argCount, locals, blocks, hasBody := true }
+      elideFakeMetadataBorrows { defId, name, path, argCount, locals, blocks, hasBody := true,
+                                 role := (ctx.roles.lookup defId).getD .plain }
 
 def parseGlobal (ctx : ParseCtx) (j : Json) : UGlobal :=
   let gid := ((getK j "def_id") >>= asNat).getD 0
@@ -1504,6 +1557,53 @@ def userDropImpl? (root : Json) : Option String := do
   let src := (getK hit "item_meta" >>= (getK · "source_text") >>= asStr).getD "impl Drop"
   pure (String.mk (src.toList.takeWhile (· != '\n')))
 
+/-- Closure type decls: id ↦ (Miri's frame segment `{closure#N}`, the
+    closure's kind `FnOnce`/`FnMut`/`Fn`). -/
+def closureTypes (root : Json) : List (Nat × (String × String)) :=
+  (((getK root "translated" >>= (getK · "type_decls")).map asArr).getD []).filterMap fun td => do
+    let did ← getK td "def_id" >>= asNat
+    let kind ← getK td "src" >>= (getK · "Closure") >>= (getK · "info") >>= (getK · "kind") >>= asStr
+    let last ← ((getK td "item_meta" >>= (getK · "name")).map asArr).getD [] |>.getLast?
+    let n ← match getK last "Ident" with
+      | some idJ => match asArr idJ with
+          | [Json.str "closure", nJ] => asNat nJ
+          | _ => none
+      | none => none
+    pure (did, (s!"\{closure#{n}}", kind))
+
+/-- Trait-impl methods ((impl id, method index) ↦ fun id) and the frame
+    roles of closure methods and `as_fn` coercions (`FrameRole`). -/
+def implTables (root : Json) (tbl : TyTable) (paths : List (Nat × List String)) :
+    List ((Nat × Nat) × Nat) × List (Nat × FrameRole) := Id.run do
+  let closures := closureTypes root
+  let funs := ((getK root "translated" >>= (getK · "fun_decls")).map asArr).getD []
+  let mut methods : List ((Nat × Nat) × Nat) := []
+  let mut roles : List (Nat × FrameRole) := []
+  for f in funs do
+    let some did := getK f "def_id" >>= asNat | continue
+    let path := (paths.lookup did).getD []
+    let name := path.getLast?.getD ""
+    match getK f "src" >>= (getK · "TraitImpl") with
+    | some ti =>
+        if let (some implId, some mid) :=
+            (getK ti "impl_ref" >>= (getK · "id") >>= asNat,
+             getK ti "item_id" >>= (getK · "Method") >>= asNat) then
+          methods := ((implId, mid), did) :: methods
+        -- `Self` of the implemented trait: is it a closure?
+        let selfJ := (((getK ti "trait_ref" >>= (getK · "generics") >>= (getK · "types")).map asArr).getD []).head?
+        match selfJ.bind (adtDeclId tbl ·) >>= (closures.lookup ·) with
+        | some (frame, kind) =>
+            let body := match kind with
+              | "FnOnce" => "call_once" | "FnMut" => "call_mut" | _ => "call"
+            if name == body then roles := (did, .closureBody frame) :: roles
+            else if ["call_once", "call_mut", "call"].contains name then roles := (did, .shim) :: roles
+        | none => pure ()
+    | none =>
+        -- `as_fn`: the closure's coercion to a `fn` pointer (`f::closure::as_fn`)
+        if name == "as_fn" && path.dropLast.getLast? == some "closure" then
+          roles := (did, .shim) :: roles
+  return (methods, roles)
+
 def parseCrate (root : Json) : Except String UCrate := do
   if let some d := userDropImpl? root then
     throw s!"unsupported: user Drop impl ({d}): its drop glue is not modelled"
@@ -1512,7 +1612,8 @@ def parseCrate (root : Json) : Except String UCrate := do
   let paths := funPaths (mkNameCtx root tbl decls) root
   let boxPointee := collectBoxPointees tbl decls paths root []
   let cellPointee := collectCellPointees tbl paths root []
-  let ctx : ParseCtx := { tbl, decls, boxPointee, cellPointee, funPaths := paths }
+  let (implMethods, roles) := implTables root tbl paths
+  let ctx : ParseCtx := { tbl, decls, boxPointee, cellPointee, funPaths := paths, implMethods, roles }
   let globals :=
     match getK root "translated" >>= (getK · "global_decls") with
     | some gJ =>

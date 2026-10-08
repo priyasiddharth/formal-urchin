@@ -5264,3 +5264,15 @@ on all 27,390 frames of the 76 certificate runs; certificates identical
 but for the toolchain string; all 208 Miri verdicts unchanged. Tool
 308d2ca93 (fork commit local, not pushed).
 
+## 2026-10-08 (closures in the loader)
+
+Closures are lowered: trait calls resolve to the impl method (Charon
+monomorphises), a closure's body is the certificate frame `{closure#N}`,
+forwarders/`as_fn` are shims; `UniqueImmutable` captures; `!Unpin`
+`&mut`/Box get Miri's two-phase permission; `Box::from_raw` retags.
+Fixed a loader bug: folded arithmetic dropped its operand reads (missed
+UB). Corpus 198/0/0/17 of 215 (+7 local witnesses, not_unpin_not_protected,
+4 tests now run upstream). Threads stay out: their UB is a data race.
+Fork: tool 308d2ca93 unchanged, head 8a7527ab4 (tests only). Journal:
+2026-10/2026-10-08-closures.md.
+

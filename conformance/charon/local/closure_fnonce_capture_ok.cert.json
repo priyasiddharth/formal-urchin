@@ -1,0 +1,75 @@
+{
+ "version": 1,
+ "source": "local/closure_fnonce_capture_ok.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (308d2ca931 2026-10-08)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "apply",
+  "call_once",
+  "drop_glue",
+  "main",
+  "{closure#0}"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_12.1: bool)",
+     "success": 2,
+     "descr": "assert(!move (_12.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _10, move _11) -> [success: bb2, unwind continue]",
+     "next": 2,
+     "outcome": "success"
+    },
+    {
+     "k": "switch",
+     "discr": "move _13",
+     "cases": [
+      [
+       0,
+       4
+      ]
+     ],
+     "otherwise": 3,
+     "descr": "switchInt(move _13) -> [0: bb4, otherwise: bb3]",
+     "next": 4,
+     "arm": "0"
+    }
+   ]
+  },
+  {
+   "fn": "apply",
+   "miri_path": "apply::<{closure@local/closure_fnonce_capture_ok.rs:12:19: 12:22}>",
+   "events": []
+  },
+  {
+   "fn": "{closure#0}",
+   "miri_path": "main::{closure#0}",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_3.1: bool)",
+     "success": 1,
+     "descr": "assert(!move (_3.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_2), const 1_u32) -> [success: bb1, unwind continue]",
+     "next": 1,
+     "outcome": "success"
+    },
+    {
+     "k": "assert",
+     "cond": "!move (_4.1: bool)",
+     "success": 2,
+     "descr": "assert(!move (_4.1: bool), \"attempt to compute `{} + {}`, which would overflow\", copy (*_6), const 1_u32) -> [success: bb2, unwind continue]",
+     "next": 2,
+     "outcome": "success"
+    }
+   ]
+  }
+ ]
+}

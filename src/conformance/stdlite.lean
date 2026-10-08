@@ -362,12 +362,20 @@ def sliceAsPtr (mutbl : Bool) : Shim := fun st args dest line => do
         (.refSlice (if mutbl then .rawMut else .rawConst) false tmp) line)
   | _ => .error s!"unsupported: as_ptr argument is not a place (line {line})"
 
-/-- Box::from_raw: adopts the raw pointer's tag (a plain value copy;
-    the box retag happens at the next seam) -/
+/-- Box::from_raw(p): std builds the Box value from the raw pointer
+    (`Box(Unique::new_unchecked(raw), alloc)` in `from_raw_in`), and Miri
+    RETAGS the new Box there: a Unique reborrow of `*p` with a write access
+    (a Box's retag, unprotected outside a call's entry). That write is what
+    is UB when `*p` is protected for a running call (newtype_retagging).
+    (Until 2026-10-08 a plain copy adopting `p`'s tag, which missed it.) -/
 def boxFromRaw : Shim := fun st args dest line => do
   match args with
   | [.copy p] | [.move p] =>
-      return pushOut st (.assign dest (.use (.copy p)) line)
+      let inner ← match p.ty, dest.ty with
+        | .raw _ i, _ | .ref _ i, _ => pure i
+        | _, .boxT i => pure i
+        | _, _ => throw s!"unsupported: Box::from_raw of a non-pointer (line {line})"
+      return pushOut st (.assign dest (.ref .boxMut false { pointee p with ty := inner }) line)
   | _ => .error s!"unsupported: from_raw argument is not a place (line {line})"
 
 /-- Box::into_raw(b) -> *mut T. The std body is

@@ -1,0 +1,44 @@
+{
+ "version": 1,
+ "source": "prep/basic_aliasing_model__not_unpin_not_protected.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (308d2ca931 2026-10-08)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "as_fn",
+  "call",
+  "call_mut",
+  "call_once",
+  "drop_glue",
+  "inner",
+  "main",
+  "{closure#0}"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": []
+  },
+  {
+   "fn": "inner",
+   "miri_path": "main::inner",
+   "events": []
+  },
+  {
+   "fn": "{closure#0}",
+   "miri_path": "main::{closure#0}",
+   "events": [
+    {
+     "k": "drop",
+     "ty": "Box<main::NotUnpin>",
+     "descr": "<std::boxed::Box<main::NotUnpin> as std::ops::Drop>::drop"
+    }
+   ]
+  }
+ ]
+}

@@ -120,6 +120,12 @@ def elabRvalue (Γ : Ctx) (expected : LayoutTy) :
   | .use (.unsupported d) => .error s!"unsupported: {d}"
   | .ref kind prot p => do
       let ⟨τ, pl⟩ ← elabPlace Γ p
+      -- `&mut T`/`Box<T>` with `T: !Unpin`: Miri's two-phase permission
+      -- (`SharedReadWrite`, no access, never protected), whatever the
+      -- retag's origin -- an explicit borrow, a seam, a shim
+      let (kind, prot) :=
+        if (kind == .mut || kind == .boxMut) && p.ty.notUnpin then (URefKind.twoPhase, false)
+        else (kind, prot)
       return ⟨.PtrL τ, .ref (toRefKind kind) prot (freezeMask p.ty) pl⟩
   | .exposeAddr p => do
       let ⟨τ, pl⟩ ← elabPlace Γ p

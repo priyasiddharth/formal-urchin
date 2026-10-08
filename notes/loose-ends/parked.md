@@ -1248,3 +1248,24 @@ frame's crate (`instance.def_id().krate == LOCAL_CRATE`) and closure-ness.
 `is_user_frame` to it; regenerate and diff every certificate — a change
 is a finding to explain, not noise.
 
+## Closure frames in certificates
+**Status:** DONE 2026-10-08 — option (b): closures are lowered and a
+closure's body is a user frame `{closure#N}`
+(journal/2026-10/2026-10-08-closures.md). Threads stay unsupported
+(their verdicts are data races).
+**Was:** parked 2026-10-08 (the user: "park this, we will get back to it")
+**Context:** certificate user frames are local `Fn`/`AssocFn` frames
+running their own body (journal 2026-10/2026-10-07-cert-from-miri-hooks.md,
+"User frames by crate"). A local closure frame (`kind` = `Closure`) is
+silently NOT a user frame, as under the old name rule (`{closure#`). No
+supported entry runs a closure today: the 7 corpus entries with closures
+are unsupported (threads 4, dyn 1, coroutines 1, "Box + closures + fn
+ptrs" 1) and 4 supported ones were prepared with "closure -> named fn"
+(deallocate_against_protector1/2, newtype_retagging,
+newtype_pair_retagging); the loader lists closures as not covered
+(lowering.lean:91).
+**To resume:** decide: (a) make a local closure frame a hard error in
+miri_cert.py, or (b) support closures — charon translates them as
+functions, the loader would inline them, and the closure frame becomes a
+user frame (cross-checked against charon's function list).
+
