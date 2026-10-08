@@ -388,7 +388,7 @@ def judge (e : TestEntry) (v : Verdict) : Outcome :=
       | .fuelExhausted => .fail "fuel exhausted"
       | .certRejected _ line => .fail s!"certificate rejected at line {line}: mirlite did not take Miri's recorded branch"
       | .certExhausted _ line => .fail s!"missed UB: ran past Miri's UB point (line {line})"
-      | .assumeFailed _ line => .fail s!"a lowering assumption failed at line {line} (the shim's output shape was wrong)"
+      | .assumeFailed _ line => .fail s!"a lowering assumption failed at line {line} (a shim's assumption about the run: an output's shape, or RefCell's borrow flag at a borrow)"
       | v =>
           if verdictMatches e v then .pass
           else if e.expectUB then .fail s!"missed UB: expected ub, got {v.render}"

@@ -4,6 +4,21 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-08 (later) — RefCell Keeps Its Borrow Count
+
+RefCell tracks at run time how many borrows of its contents are alive,
+in a counter stored in front of the value. Our model used to leave that
+counter out, which moved the value to a different position in memory
+than in real Rust; two tests reported their error at a different byte
+than Miri for that reason alone. The model now has the counter: borrowing
+updates it as the standard library does, and giving a borrow back
+restores it. Every borrow also checks that the counter allows it; since
+Miri's run of the test did not fail there, a mistake in our bookkeeping
+now stops the run instead of going unnoticed. Both tests now agree with
+Miri byte for byte, and three new small tests cover the bookkeeping.
+
+---
+
 ## 2026-10-08 — Closures Are In; Threads Stay Out
 
 The loader now handles closures. The compiler front end we use already

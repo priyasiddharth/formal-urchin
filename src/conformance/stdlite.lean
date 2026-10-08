@@ -200,31 +200,91 @@ def cellSet : Shim := fun st args _dest line => do
       emitAssign st line (pointee tmp) (.use valOp)
   | _ => .error s!"unsupported: Cell::set arguments (line {line})"
 
-/-- RefCell::borrow (flag-elided): a masked shared reborrow of the
-    value region; the guard holds the resulting pointer -/
+/-- The RefCell behind a pointer-typed place: the RefCell place and its
+    value type. -/
+def refCellAt? (p : UPlace) : Option (UPlace × UTy) :=
+  match p.ty with
+  | .ref _ t@(.structT [_, .cell inner] (some lay)) | .raw _ t@(.structT [_, .cell inner] (some lay)) =>
+      if lay.refCell then some ({ pointee p with ty := t }, inner) else none
+  | _ => none
+
+/-- A word: `isize` -1, RefCell's "mutably borrowed" flag. -/
+def flagWriting : Nat := (⟨64, true⟩ : obseq3.IntTy).ofInt (-1)
+
+/-- RefCell::borrow (2026-10-08, with the flag): std's `BorrowRef::new`
+    (CHECK the flag is not -1 — Miri's run did not panic — then flag + 1,
+    `refCellFlagUpdate`), whose `&Cell` the guard keeps; then the value
+    pointer, a masked shared reborrow of the value region. -/
 def refCellBorrow : Shim := fun st args dest line => do
   match args with
   | [.copy p] | [.move p] =>
-      let inner := match p.ty with
-        | .ref _ i => i
-        | .raw _ i => i
-        | _ => .unsupported "borrow on non-pointer"
-      return pushOut st (.assign dest
-        (.ref .shared false { pointee p with ty := inner }) line)
+      let some (rc, inner) := refCellAt? p
+        | throw s!"unsupported: RefCell::borrow on {reprStr p.ty} (line {line})"
+      let cellRef : UPlace := { fld dest 1 with ty := .ref false (.cell refCellFlagTy) }
+      let st := pushOut st (.assign cellRef
+        (.ref .shared false { fld rc 0 with ty := .cell refCellFlagTy }) line)
+      let st := refCellFlagUpdate st line cellRef (some ([flagWriting], false)) "Add.Wrap" 1
+      return pushOut st (.assign { fld dest 0 with ty := .raw false inner }
+        (.ref .shared false { fld rc 1 with ty := .cell inner }) line)
   | _ => .error s!"unsupported: borrow argument is not a place (line {line})"
 
-/-- RefCell::borrow_mut (flag-elided): a unique reborrow of the value
-    region (the parent's SharedReadWrite cell items grant the write) -/
+/-- RefCell::borrow_mut (2026-10-08, with the flag): std's
+    `BorrowRefMut::new` (CHECK the flag is 0, then flag - 1); then the
+    value pointer, a unique reborrow of the value region (the parent's
+    SharedReadWrite cell items grant the write). -/
 def refCellBorrowMut : Shim := fun st args dest line => do
   match args with
   | [.copy p] | [.move p] =>
-      let inner := match p.ty with
-        | .ref _ i => i
-        | .raw _ i => i
-        | _ => .unsupported "borrow_mut on non-pointer"
-      return pushOut st (.assign dest
-        (.ref .mut false { pointee p with ty := inner }) line)
+      let some (rc, inner) := refCellAt? p
+        | throw s!"unsupported: RefCell::borrow_mut on {reprStr p.ty} (line {line})"
+      let cellRef : UPlace := { fld dest 1 with ty := .ref false (.cell refCellFlagTy) }
+      let st := pushOut st (.assign cellRef
+        (.ref .shared false { fld rc 0 with ty := .cell refCellFlagTy }) line)
+      let st := refCellFlagUpdate st line cellRef (some ([0], true)) "Sub.Wrap" 1
+      return pushOut st (.assign { fld dest 0 with ty := .raw true inner }
+        (.ref .mut false { fld rc 1 with ty := .cell inner }) line)
   | _ => .error s!"unsupported: borrow_mut argument is not a place (line {line})"
+
+/-- RefCell::new(v): `RefCell { value: UnsafeCell::new(v), borrow: Cell::new(0) }`. -/
+def refCellNew : Shim := fun st args dest line => do
+  match dest.ty, args with
+  | .structT [_, .cell inner] (some lay), [valOp] =>
+      if !lay.refCell then throw s!"unsupported: RefCell::new into {reprStr dest.ty} (line {line})"
+      let st ← emitAssign st line { fld dest 1 with ty := .cell inner } (.use valOp)
+      emitAssign st line { fld dest 0 with ty := .cell refCellFlagTy } (.use (.const 0))
+  | _, _ => .error s!"unsupported: RefCell::new into {reprStr dest.ty} (line {line})"
+
+/-- RefCell::replace(&self, v) -> T: std's `mem::replace(&mut
+    *self.borrow_mut(), v)` — a RefMut's flag check and update, a unique
+    reborrow of the value, the read and the write, then the RefMut's drop
+    giving the borrow back. -/
+def refCellReplace : Shim := fun st args dest line => do
+  match args with
+  | [.copy p, valOp] | [.move p, valOp] =>
+      let some (rc, inner) := refCellAt? p
+        | throw s!"unsupported: RefCell::replace on {reprStr p.ty} (line {line})"
+      let n := st.locals.length
+      let cellRef : UPlace := { root := .local n, projs := [], ty := .ref false (.cell refCellFlagTy) }
+      let vref : UPlace := { root := .local (n + 1), projs := [], ty := .ref true inner }
+      let st := { st with locals := st.locals ++ [cellRef.ty, vref.ty] }
+      let st := pushOut st (.assign cellRef
+        (.ref .shared false { fld rc 0 with ty := .cell refCellFlagTy }) line)
+      let st := refCellFlagUpdate st line cellRef (some ([0], true)) "Sub.Wrap" 1
+      let st := pushOut st (.assign vref (.ref .mut false { fld rc 1 with ty := .cell inner }) line)
+      let st ← emitAssign st line dest (.use (.copy { pointee vref with ty := inner }))
+      let st ← emitAssign st line { pointee vref with ty := inner } (.use valOp)
+      return refCellFlagUpdate st line cellRef none "Add.Wrap" 1
+  | _ => .error s!"unsupported: replace arguments (line {line})"
+
+/-- RefCell::get_mut(&mut self) -> &mut T: a unique reborrow of the value
+    field (no flag access: `&mut self` proves there is no guard). -/
+def refCellGetMut : Shim := fun st args dest line => do
+  match args with
+  | [.copy p] | [.move p] =>
+      let some (rc, inner) := refCellAt? p
+        | throw s!"unsupported: RefCell::get_mut on {reprStr p.ty} (line {line})"
+      return pushOut st (.assign dest (.ref .mut false { fld rc 1 with ty := .cell inner }) line)
+  | _ => .error s!"unsupported: RefCell::get_mut argument is not a place (line {line})"
 
 /-- Ref/RefMut deref: a typed load of the guard's pointer at the
     destination's reference type — the load-retag rule then produces
@@ -232,11 +292,12 @@ def refCellBorrowMut : Shim := fun st args dest line => do
 def guardDeref : Shim := fun st args dest line => do
   match args with
   | [.copy p] | [.move p] =>
-      emitAssign st line dest (.use (.copy { pointee p with ty := dest.ty }))
+      -- the guard's value pointer (field 0), loaded at the reference type
+      emitAssign st line dest (.use (.copy { fld (pointee p) 0 with ty := dest.ty }))
   | _ => .error s!"unsupported: guard deref argument is not a place (line {line})"
 
-/-- Cell/RefCell::replace(&self, v) -> T (flag-elided): masked shared
-    reborrow, read the old value, write the new one -/
+/-- Cell::replace(&self, v) -> T: masked shared reborrow, read the old
+    value, write the new one -/
 def cellReplace : Shim := fun st args dest line => do
   match args with
   | [.copy p, valOp] | [.move p, valOp] =>
@@ -511,9 +572,9 @@ def manuallyDropDeref (mutbl : Bool) : Shim := fun st args dest line => do
 /-- mem::forget: no drop, no access; protectors end at fn return anyway -/
 def memForget : Shim := fun st _args _dest _line => return st
 
-/-- mem::drop: consumes the value and drops it — real for Boxes
-    (`emitDropGlue`); for the other modelled types drop glue is nothing or
-    elided flag maintenance (RefCell guards). -/
+/-- mem::drop: consumes the value and drops it — real for Boxes and
+    RefCell guards (`emitDropGlue`); the other modelled types have no
+    drop glue. -/
 def memDrop : Shim := fun st args _dest line => do
   -- `fn drop<T>(_x: T) {}`: the argument is moved in and dropped when the
   -- call returns — for a Box, its drop glue (the caller then counts it
@@ -1266,7 +1327,7 @@ def table : List (List String × Shim) :=
   , (["core", "alloc", "layout", "Layout", "from_size_align_unchecked"], layoutFromSizeAlignUnchecked)
   , (["core", "cell", "Cell", "new"], cellNew)
   , (["core", "cell", "UnsafeCell", "new"], cellNew)
-  , (["core", "cell", "RefCell", "new"], cellNew)
+  , (["core", "cell", "RefCell", "new"], refCellNew)
   , (["core", "sync", "atomic", "Atomic", "new"], cellNew)
   , (["core", "cell", "Cell", "get"], cellGet)
   , (["core", "cell", "UnsafeCell", "get"], unsafeCellGet)
@@ -1290,7 +1351,7 @@ def table : List (List String × Shim) :=
   , (["core", "cell", "<RefMut as Deref>", "deref"], guardDeref)
   , (["core", "cell", "<RefMut as DerefMut>", "deref_mut"], guardDeref)
   , (["core", "cell", "Cell", "replace"], cellReplace)
-  , (["core", "cell", "RefCell", "replace"], cellReplace)
+  , (["core", "cell", "RefCell", "replace"], refCellReplace)
   , (["core", "ptr", "mut_ptr", "*mut T", "add"], ptrOffset true)
   , (["core", "ptr", "const_ptr", "*const T", "add"], ptrOffset true)
   , (["core", "ptr", "mut_ptr", "*mut T", "offset"], ptrOffset true)
@@ -1341,7 +1402,7 @@ def table : List (List String × Shim) :=
   , (["core", "ptr", "drop_in_place"], dropInPlace)
   , (["core", "cell", "Cell", "get_mut"], cellGetMut)
   , (["core", "cell", "UnsafeCell", "get_mut"], cellGetMut)
-  , (["core", "cell", "RefCell", "get_mut"], cellGetMut)
+  , (["core", "cell", "RefCell", "get_mut"], refCellGetMut)
   , (["alloc", "vec", "Vec", "new"], vecNew)
   , (["alloc", "vec", "Vec", "len"], vecLen)
   , (["alloc", "string", "String", "len"], vecLen)

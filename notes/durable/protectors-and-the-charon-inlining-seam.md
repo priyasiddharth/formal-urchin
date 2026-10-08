@@ -280,7 +280,9 @@ the map is flat, not per-place.
 looked up in `stdlite.table` by `shimCall`; 2026-09-29). `Box::new` / `alloc::alloc` / `dealloc` become
 dedicated `LStmt.alloc`/`.dealloc`; `Layout` is modeled as its size
 word; `UnsafeCell`/`Cell`/`RefCell` become type-directed freeze masks,
-with RefCell's borrow flag elided as SB-irrelevant.
+with RefCell's borrow flag elided as SB-irrelevant. [SUPERSEDED
+2026-10-08: the flag is modelled and checked —
+journal/2026-10/2026-10-08-refcell-flag.md]
 
 **Bookkeeping dropped:** `StorageLive`/`Dead`, `Borrowck`/`FakeRead`,
 `Nop`, `PlaceMention`.

@@ -326,14 +326,58 @@ partial def toBLayout : UTy → obseq3.bytes.BLayout
 /-- A type's size in BYTES (`size_of`, `Layout::new`, `Layout::for_value`). -/
 def sizeB (t : UTy) : Nat := (toBLayout t).sizeB
 
-/-- Drop the value at `p`, as far as Boxes and Vecs go: a Box drops its contents and
+/-- `RefCell`'s flag update through the `&Cell<isize>` at `cellRef`, as
+    std does it with `Cell::get` then `Cell::set`: read the flag; optionally
+    CHECK it (`check? = (vals, member)`, a lowering assumption: Miri's run
+    did not panic, so at a borrow the flag held an allowed value — if the
+    loader's guard bookkeeping were wrong, the run stops here instead of
+    going on silently); then write `flag op k` through a fresh `&mut isize`
+    (`Cell::set`'s `mem::replace(&mut *self.value.get(), v)`, which also
+    reads the old value). -/
+def refCellFlagUpdate (st : LowerSt) (line : Nat) (cellRef : UPlace)
+    (check? : Option (List Nat × Bool)) (op : String) (k : Nat) : LowerSt := Id.run do
+  let fty := refCellFlagTy
+  let cellPl : UPlace := { pointee cellRef with ty := .cell fty }
+  let n := st.locals.length
+  let tv : UPlace := { root := .local n, projs := [], ty := fty }
+  let tk : UPlace := { root := .local (n + 1), projs := [], ty := fty }
+  let tn : UPlace := { root := .local (n + 2), projs := [], ty := fty }
+  let tm : UPlace := { root := .local (n + 3), projs := [], ty := .ref true (.cell fty) }
+  let told : UPlace := { root := .local (n + 4), projs := [], ty := fty }
+  let mut st := { st with locals := st.locals ++ [fty, fty, fty, .ref true (.cell fty), fty] }
+  st := pushOut st (.assign tv (.use (.copy cellPl)) line)
+  if let some (vals, member) := check? then
+    st := pushOut st (.check tv vals member (3 * certLineBase + line))
+  st := pushOut st (.assign tk (.use (.const k)) line)
+  st := pushOut st (.assign tn (.binOp op { bits := 64, signed := true } (.copy tv) (.copy tk)) line)
+  st := pushOut st (.assign tm (.ref .mut false cellPl) line)
+  let flagThrough : UPlace := { pointee tm with ty := .cell fty }
+  st := pushOut st (.assign told (.use (.copy flagThrough)) line)
+  return pushOut st (.assign flagThrough (.use (.copy tn)) line)
+
+/-- Does a value of this type hold a RefCell guard (whose drop restores
+    the flag)? -/
+partial def containsGuard : UTy → Bool
+  | .structT tys lay => (lay.bind (·.guard)).isSome || tys.any containsGuard
+  | .tup tys => tys.any containsGuard
+  | .enum vs => vs.any (·.any containsGuard)
+  | _ => false
+
+/-- Drop the value at `p`, as far as Boxes, Vecs and RefCell guards go: a Box drops its contents and
     then frees its allocation through its own pointer (std's
     `<Box as Drop>::drop`: `if layout.size() != 0 { deallocate }`); a tuple
     or struct drops its fields in order; everything else has no drop glue
     the model needs. With a certificate, each Box drop must be the one
     Miri made next in this frame (`consumeDrop`). -/
 partial def emitDropGlue (st : LowerSt) (line : Nat) (p : UPlace) : Except String LowerSt := do
-  if st.halted || isMoved st p || !containsBox p.ty then return st
+  if st.halted || isMoved st p || !(containsBox p.ty || containsGuard p.ty) then return st
+  -- a RefCell guard: `BorrowRef(Mut)::drop` gives its borrow back
+  -- (`Ref`: flag - 1, `RefMut`: flag + 1) through the guard's `&Cell`
+  if let .structT _ (some lay) := p.ty then
+    if let some mutbl := lay.guard then
+      let cellRef : UPlace := { fld p 1 with ty := .ref false (.cell refCellFlagTy) }
+      return markMoved (refCellFlagUpdate st line cellRef none
+        (if mutbl then "Add.Wrap" else "Sub.Wrap") 1) p
   match p.ty with
   | .boxT inner =>
       let st ← emitDropGlue st line { pointee p with ty := inner }

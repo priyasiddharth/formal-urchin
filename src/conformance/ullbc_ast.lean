@@ -45,6 +45,11 @@ structure StructLay where
   -- `core::marker::PhantomPinned` (a field-less struct): a type holding one
   -- by value is `!Unpin` (`UTy.notUnpin`)
   pinned : Bool := false
+  -- a `RefCell` (`{ borrow: Cell<isize>, value: UnsafeCell<T> }`), or a
+  -- guard: `some false` a `Ref`, `some true` a `RefMut` (`{ value, borrow:
+  -- &Cell<isize> }`), whose drop restores the flag (2026-10-08)
+  refCell : Bool := false
+  guard : Option Bool := none
 deriving Repr, BEq, Inhabited
 
 /-- Untyped types. `ref`/`raw` both erase to a pointer layout, but the
@@ -73,6 +78,9 @@ inductive UTy
 | vecT (elem : UTy)
 | unsupported (desc : String)
 deriving Repr, BEq, Inhabited
+
+/-- `RefCell`'s borrow flag (`isize`): 0 unused, `n > 0` shared, -1 mutable. -/
+def refCellFlagTy : UTy := .int { bits := 64, signed := true }
 
 /-- `T: !Unpin`: `T` holds a `PhantomPinned` by value (through tuples,
     structs, enum payloads and `UnsafeCell`, not behind a pointer). Miri
@@ -521,6 +529,9 @@ def parseDecls (j : Json) : List (Nat × DeclInfo) :=
           let offs ← ((getK vl "field_offsets").map asArr).bind (·.mapM asNat)
           match kind with
           | .struct fs => if offs.length == fs.length then some { offsetsB := offs, sizeB := size, alignB := align } else none
+          -- an opaque std struct whose fields the loader knows from std's
+          -- declaration (RefCell and its guards, `parseTy`)
+          | .opaque => some { offsetsB := offs, sizeB := size, alignB := align }
           | _ => none
         pure (did, { path, kind, tyArgs, layout })
 
@@ -888,9 +899,22 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     .structT [] (some { offsetsB := [], sizeB := 0, alignB := 1, pinned := true })
                   else if last == "Layout" then
                     .nat  -- Layout carries only its size (constructor is shimmed)
-                  else if last == "UnsafeCell" || last == "Cell" || last == "RefCell" then
-                    -- RefCell is flag-elided: modeled as its value region
-                    -- (the borrow-flag discipline is orthogonal to SB)
+                  else if last == "RefCell" then
+                    -- `RefCell { borrow: Cell<isize>, value: UnsafeCell<T> }`
+                    -- at rustc's offsets (Charon reports the layout of the
+                    -- opaque decl, fields in declaration order); the flag is
+                    -- maintained by the shims (`stdlite`, 2026-10-08)
+                    let inner := match ctx.cellPointee.lookup did, info.tyArgs with
+                      | some inner, _ => parseTy ctx (fuel - 1) inner
+                      | none, [inner] => parseTy ctx (fuel - 1) inner
+                      | none, _ => .nat
+                    match info.layout with
+                    | some lay =>
+                        if lay.offsetsB.length == 2 then
+                          .structT [.cell refCellFlagTy, .cell inner] (some { lay with refCell := true })
+                        else .unsupported "RefCell layout without two fields"
+                    | none => .unsupported "RefCell without a layout"
+                  else if last == "UnsafeCell" || last == "Cell" then
                     match ctx.cellPointee.lookup did, info.tyArgs with
                     | some inner, _ => .cell (parseTy ctx (fuel - 1) inner)
                     -- no constructor call reveals it: the instantiation does
@@ -898,15 +922,27 @@ partial def parseTy (ctx : ParseCtx) (fuel : Nat := 16) (j : Json) : UTy :=
                     | none, _ => .cell .nat  -- fallback: one interior-mutable word
                   else if info.path == ["core", "cell", "Ref"] ||
                           info.path == ["core", "cell", "RefMut"] then
-                    -- RefCell guards: a raw-layout pointer to the value region
-                    -- (raw, not ref: guards are NOT protected/retagged at
-                    -- seams — see the ref_protector pass test)
+                    -- RefCell guards: `{ value: NonNull<T>, borrow: BorrowRef(Mut)
+                    -- { borrow: &Cell<isize> } (, marker) }`. The value
+                    -- pointer is raw (NonNull: not retagged at seams — see
+                    -- the ref_protector pass test); the `&Cell` is a
+                    -- reference into the RefCell's flag, through which the
+                    -- guard's drop restores it
                     let mutbl := info.path.getLast? == some "RefMut"
-                    match ctx.cellPointee.lookup did, info.tyArgs with
-                    | some inner, _ => .raw mutbl (parseTy ctx (fuel - 1) inner)
-                    -- no constructor call reveals it: the instantiation does
-                    | none, [inner] => .raw mutbl (parseTy ctx (fuel - 1) inner)
-                    | none, _ => .raw mutbl .nat
+                    let inner := match ctx.cellPointee.lookup did, info.tyArgs with
+                      | some inner, _ => parseTy ctx (fuel - 1) inner
+                      -- no constructor call reveals it: the instantiation does
+                      | none, [inner] => parseTy ctx (fuel - 1) inner
+                      | none, _ => .nat
+                    let fields := [UTy.raw mutbl inner, .ref false (.cell refCellFlagTy)]
+                    match info.layout with
+                    | some lay =>
+                        -- RefMut's third field is a zero-sized PhantomData
+                        let fields := if lay.offsetsB.length == 3 then fields ++ [.tup []] else fields
+                        if fields.length == lay.offsetsB.length then
+                          .structT fields (some { lay with guard := some mutbl })
+                        else .unsupported s!"{last} layout with {lay.offsetsB.length} fields"
+                    | none => .unsupported s!"{last} without a layout"
                   else if last.startsWith "Atomic" then
                     -- Atomic* = UnsafeCell around its integer
                     match info.tyArgs with

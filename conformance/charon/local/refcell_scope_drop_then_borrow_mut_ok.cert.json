@@ -1,0 +1,58 @@
+{
+ "version": 1,
+ "source": "local/refcell_scope_drop_then_borrow_mut_ok.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (308d2ca931 2026-10-08)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "assert",
+     "cond": "!move (_15.1: bool)",
+     "success": 6,
+     "descr": "assert(!move (_15.1: bool), \"attempt to compute `{} + {}`, which would overflow\", move _9, move _12) -> [success: bb6, unwind: bb22]",
+     "next": 6,
+     "outcome": "success"
+    },
+    {
+     "k": "switch",
+     "discr": "move _7",
+     "cases": [
+      [
+       0,
+       8
+      ]
+     ],
+     "otherwise": 7,
+     "descr": "switchInt(move _7) -> [0: bb8, otherwise: bb7]",
+     "next": 8,
+     "arm": "0"
+    },
+    {
+     "k": "switch",
+     "discr": "move _21",
+     "cases": [
+      [
+       0,
+       18
+      ]
+     ],
+     "otherwise": 16,
+     "descr": "switchInt(move _21) -> [0: bb18, otherwise: bb16]",
+     "next": 18,
+     "arm": "0"
+    }
+   ]
+  }
+ ]
+}

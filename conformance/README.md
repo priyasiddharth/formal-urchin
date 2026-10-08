@@ -128,7 +128,7 @@ protector is modeled with the same pop-blocking as strong protectors
 the call — unexercised by any reachable test); plain Box-typed
 assignments (`let b2 = b`) are not retagged (no test exercises it);
 wildcard resolution is determinized (topmost exposed granting item) vs
-miri's angelic reading; RefCell shims elide the borrow flag; globals
+miri's angelic reading; globals
 are initialized by inlining their initializer before `main` (a const
 whose initializer does not lower is unsupported; such a static starts
 uninitialized, e.g. `null_mut()`); the retag×data-race interaction (threads) is out of
@@ -162,9 +162,10 @@ dealloc), cause (tag missing, permission too weak, protector, no exposed
 tag, uninitialised, out-of-bounds / freed) and the byte offset in the
 allocation — and requires them to agree (the offset wherever Miri reports
 one). An unrecorded difference fails the suite; a difference explained in
-the manifest (`reason_known`: RefCell's elided borrow flag shifts an
-offset by 8; immutable statics are read-only memory in Miri but a frozen
-item here) is reported as known. Current (after merging
+the manifest (`reason_known`: immutable statics are read-only memory in
+Miri but a frozen item here; an int-to-ptr cast resolves only exposed
+allocations in Miri) is reported as known (RefCell's elided flag was a
+third until 2026-10-08). Current (after merging
 `conformance-drop-in-place`, 2026-10-02): 81 as Miri, 3 known, 0 differ.
 
 The single consolidated inventory of everything unimplemented or
@@ -275,14 +276,21 @@ same check every access performs)
 into a wildcard pointer whose accesses re-derive authority from the
 topmost exposed granting item (a determinization of miri's angelic
 wildcard; matches `-Zmiri-permissive-provenance`). Remaining
-RefCell is supported via flag-elided shims: `borrow`/`borrow_mut` are
-masked/unique reborrows of the value region, `Ref`/`RefMut` guards are
-raw-layout values (unprotected at seams — the ref_protector tests'
-point), guard `deref`/`deref_mut` are typed loads (the load-retag rule
-produces the reborrow), `replace` reads+writes through a masked
-reborrow, `mem::drop` is a no-op. Valid for executions without borrow
-conflicts — exactly what the corpus exercises; a test relying on a
-borrow-flag panic would stay unsupported. The model now also implements
+RefCell (with its borrow flag since 2026-10-08): `RefCell<T>` is
+`{ borrow: Cell<isize>, value: UnsafeCell<T> }` at rustc's offsets (Charon
+reports the opaque decl's layout). `borrow`/`borrow_mut` do what std's
+`BorrowRef(Mut)::new` does — read the flag, CHECK it (`check flag ∉ [-1]`
+/ `check flag ∈ [0]`, a lowering assumption: Miri's run did not panic, so
+a wrong guard drop in the loader stops the run instead of going on), and
+write it through a fresh `&mut isize` (`Cell::set`) — then reborrow the
+value (masked shared / unique). `Ref`/`RefMut` are `{ value pointer (raw,
+unprotected at seams — the ref_protector tests' point), &Cell<isize> }`;
+their drop (scope end, `mem::drop`) gives the borrow back through the
+`&Cell`. Guard `deref`/`deref_mut` are typed loads of the value pointer
+(the load-retag rule produces the reborrow); `replace` is borrow_mut,
+read, write, drop. A test relying on a borrow-flag PANIC stays
+unsupported. Witnesses: `local/refcell_*` (each fails if a guard drop is
+missed: the next borrow's check rejects the run). The model now also implements
 SharedReadWrite *grouping* (writes through an SRW item pop only above
 its contiguous SRW run) and Miri's *Disabled* state (reads disable
 Uniques in place instead of removing them, so SRW groups never merge —

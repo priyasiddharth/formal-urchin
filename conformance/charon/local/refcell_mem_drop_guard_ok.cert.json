@@ -1,0 +1,36 @@
+{
+ "version": 1,
+ "source": "local/refcell_mem_drop_guard_ok.rs",
+ "miri": {
+  "toolchain": "miri 0.1.0 (308d2ca931 2026-10-08)",
+  "flags": [
+   "-Zmir-opt-level=0"
+  ]
+ },
+ "outcome": "ok",
+ "user_fns": [
+  "main"
+ ],
+ "frames": [
+  {
+   "fn": "main",
+   "miri_path": "main",
+   "events": [
+    {
+     "k": "switch",
+     "discr": "move _10",
+     "cases": [
+      [
+       0,
+       8
+      ]
+     ],
+     "otherwise": 7,
+     "descr": "switchInt(move _10) -> [0: bb8, otherwise: bb7]",
+     "next": 8,
+     "arm": "0"
+    }
+   ]
+  }
+ ]
+}

@@ -5276,3 +5276,13 @@ UB). Corpus 198/0/0/17 of 215 (+7 local witnesses, not_unpin_not_protected,
 Fork: tool 308d2ca93 unchanged, head 8a7527ab4 (tests only). Journal:
 2026-10/2026-10-08-closures.md.
 
+## 2026-10-08 (later: RefCell's borrow flag)
+
+RefCell is laid out at rustc's offsets with a real `Cell<isize>` flag;
+borrow/borrow_mut update it as std does and CHECK it at each borrow (an
+assumption: Miri did not panic); guards carry the `&Cell` and their drop
+restores the flag. The two RefCell known differences are gone (reasons
+105 as Miri + 2 known). +3 witnesses (local/refcell_*), which a missed
+guard drop makes fail (mutation-tested). Corpus 201/0/0/17 of 218.
+Journal: 2026-10/2026-10-08-refcell-flag.md.
+

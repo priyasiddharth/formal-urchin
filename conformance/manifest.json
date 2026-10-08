@@ -513,8 +513,7 @@
         "dropped rustfmt attr, normalize directive and error annotation"
       ],
       "certificate": "illegal_read5.cert.json",
-      "note": "the old reason (\"Rc + interior mutability\") was stale: no Rc; RefCell shims + ptr::read already covered it (survey 2026-09-27)",
-      "reason_known": "the model elides RefCell's borrow flag (documented approximation): Miri's value sits at offset 8 after the 8-byte flag, the model's at 0 — same tag, same failure"
+      "note": "the old reason (\"Rc + interior mutability\") was stale: no Rc; RefCell shims + ptr::read already covered it (survey 2026-09-27)"
     },
     {
       "id": "fail/stacked_borrows/illegal_read7",
@@ -700,8 +699,7 @@
       "rewrites": [
         "dropped normalize directive and error annotation"
       ],
-      "miri_error": "read access .* tag does not exist in the borrow stack",
-      "reason_known": "the model elides RefCell's borrow flag (documented approximation): Miri's value sits at offset 8 after the 8-byte flag, the model's at 0 — same tag, same failure"
+      "miri_error": "read access .* tag does not exist in the borrow stack"
     },
     {
       "id": "fail/stacked_borrows/static_memory_modification",
@@ -2970,6 +2968,39 @@
       "certificate": "local/binop_fold_reads_operand_ub.cert.json",
       "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
       "notes": "an arithmetic operand the lowering knows statically is still read: `*pb += 1` after `pb` was popped is UB (a fold used to skip the read, 2026-10-08)"
+    },
+    {
+      "id": "local/refcell_scope_drop_then_borrow_mut_ok",
+      "artifact": "local/refcell_scope_drop_then_borrow_mut_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/refcell_scope_drop_then_borrow_mut_ok.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
+      "notes": "two shared guards end at scope end; the later borrow_mut's flag check (flag == 0) passes only if both guard drops gave their borrow back"
+    },
+    {
+      "id": "local/refcell_mem_drop_guard_ok",
+      "artifact": "local/refcell_mem_drop_guard_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/refcell_mem_drop_guard_ok.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
+      "notes": "a RefMut released by drop(guard); the shared borrow after it checks the flag is no longer -1"
+    },
+    {
+      "id": "local/refcell_replace_then_borrow_mut_ok",
+      "artifact": "local/refcell_replace_then_borrow_mut_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/refcell_replace_then_borrow_mut_ok.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
+      "notes": "RefCell::replace borrows mutably and gives the borrow back; borrow_mut afterwards checks the flag is 0"
     }
   ]
 }

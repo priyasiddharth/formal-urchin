@@ -55,7 +55,7 @@ Covered (interpreted):
 - heap: `alloc`/`dealloc` via the std shims (`Box::new`, `alloc::alloc`,
   `Layout::*`), incl. `Box` unique retags at seams;
 - interior mutability: `UnsafeCell`/`Cell`/`RefCell` shims with freeze
-  masks (RefCell flag elided — SB-irrelevant);
+  masks; RefCell with its borrow flag, checked at each borrow (2026-10-08);
 - calls: inlined up to depth 8, with fn-entry/exit seam retags;
   statically-resolved indirect calls;
 - statics: hoisted to locals, materialized `uninit` (initializers NOT

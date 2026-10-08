@@ -596,7 +596,14 @@ a+j (small shims), h i, then q, p, t, w.
    are. Witness local/box_arg_dealloc_weak; unit t19. Was: strong-style
    pop-blocking, weak protector's dealloc allowance unexercised. Plain Box-typed assignments (`let b2 = b`) are
    not retagged (miri's AddRetag would; unexercised).
-3. **RefCell flag elision**: borrow/borrow_mut/deref/replace shims skip
+3. **RefCell flag elision** — DONE 2026-10-08 with option (2) plus a flag
+   CHECK (journal/2026-10/2026-10-08-refcell-flag.md): RefCell is laid out
+   at rustc's offsets with a real `Cell<isize>` flag, borrow/borrow_mut
+   update it as std does and check it (`check`, an assumption: Miri's run
+   did not panic), guards carry the `&Cell` and their drop restores the
+   flag. Both `reason_known` entries removed. Borrow-conflict PANIC tests
+   stay unsupported (the check rejects rather than panics).
+   Was: borrow/borrow_mut/deref/replace shims skip
    the borrow flag — valid only for conflict-free executions (all the
    corpus exercises); a test relying on a borrow-flag panic stays
    unsupported.
