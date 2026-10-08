@@ -5254,3 +5254,13 @@ bytes). All 76 certificates identical modulo the toolchain string and
 commit d5a505f56 is local (not pushed). Journal:
 2026-10/2026-10-07-cert-from-miri-hooks.md.
 
+## 2026-10-08 (certificate user frames by crate)
+
+The fork's `push` events say whether a frame is the program's own code
+(local crate, the item's own body, `DefKind`); `miri_cert.py` picks user
+frames from that instead of parsing printed paths (name heuristics
+deleted; charon's function list kept as a cross-check). Both rules agreed
+on all 27,390 frames of the 76 certificate runs; certificates identical
+but for the toolchain string; all 208 Miri verdicts unchanged. Tool
+308d2ca93 (fork commit local, not pushed).
+

@@ -10,7 +10,7 @@
 # new upstream commit and updating both commits here; then
 # scripts/live.py --update and commit the regenerated artifacts.
 miri_commit: 34d6a7954425f3d97d6a7ff19bdf0f7a51560754
-miri_tool_commit: d5a505f56dbe6681ef4a5d80d4e92a687ad9bf75
+miri_tool_commit: 308d2ca931185f826cbbf6448acf9496026412f9
 miri_date: 2026-08-13
 miri_rustc: 4667d75565e47ba5df36c0df598c556b543e8624 (vendor/miri/rust-version; installed as the rustup toolchain `miri`)
 charon_commit: 0c229235fe28aeea953d03fb5d5096db574ccc1a (= release tag nightly-2026.08.14, charon 0.1.232)

@@ -100,38 +100,15 @@ def user_fns_of(ullbc):
     return names
 
 
-STD_CRATES = ("std::", "core::", "alloc::", "libc::")
-PRIMITIVES = {"bool", "char", "str", "u8", "u16", "u32", "u64", "u128", "usize",
-              "i8", "i16", "i32", "i64", "i128", "isize", "f32", "f64", "!"}
+# a USER frame runs code the program itself defines: a function or method
+# of the local crate, run as its own body (not a compiler shim for it) --
+# what charon translates and the loader inlines. Closures and constants
+# are local too but are not functions of their own to charon.
+USER_KINDS = ("Fn", "AssocFn")
 
 
-def is_std_type(t):
-    """A std path, or a primitive / builtin type constructor (`usize`,
-    `[T]`, `[T; N]`, `&T`, `*const T`, `(A, B)`, `fn(..)`): no user impl
-    can be keyed on it alone."""
-    t = strip_generics(t).strip()
-    return t.startswith(STD_CRATES) or t in PRIMITIVES or \
-        t.startswith(("[", "&", "*", "(", "fn(", "dyn "))
-
-
-def is_user_frame(path, user_fns):
-    if any(x in path for x in ("{closure#", "{constant#")):
-        return False
-    q = qualified_self(path)
-    if q is not None:
-        # `<Self as Trait>::f` is user code when the impl could only be the
-        # user's: the self type or the trait is not a std one
-        # (`<std::cell::Cell<i32> as main::Thing>::do_the_thing`)
-        self_ty, trait = q
-        if all(is_std_type(t) for t in (self_ty, trait) if t):
-            return False
-    elif strip_generics(path).startswith(STD_CRATES) or \
-            any(x in strip_generics(path) for x in STD_CRATES):
-        # judged on the path WITHOUT its generic arguments: a user method
-        # instantiated at a std type (`Option::<std::cell::RefCell<bool>>::as_ref`)
-        # is still user code
-        return False
-    return last_segment(path) in user_fns
+def is_user_frame(ev):
+    return ev["local"] and ev["item"] and ev["kind"] in USER_KINDS
 
 
 class Frame:
@@ -219,7 +196,10 @@ def parse_events(events, user_fns):
                     q = qualified_self(path)
                     owner.events.append({"k": "drop", "ty": q[0][len("std::boxed::"):],
                                          "descr": path})
-            fr = Frame(path, is_user_frame(path, user_fns))
+            fr = Frame(path, is_user_frame(ev))
+            if fr.user and last_segment(path) not in user_fns:
+                # the loader inlines what charon translated with a body
+                raise SystemExit(f"user frame {path!r} is no function charon translated")
             if stack and stack[-1].pending is not None:
                 # a call cannot follow a switch/assert directly except via the
                 # panic machinery: the pending assert did not succeed

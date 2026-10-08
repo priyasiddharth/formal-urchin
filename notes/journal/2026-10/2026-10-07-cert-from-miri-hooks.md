@@ -84,3 +84,19 @@ unchanged (units 33 + 146, corpus 190/0/0/18, --osea 190, --layouts 190).
 assignment text) so certificates stay identical; replacing them with the
 frame's def_id/crate is a follow-up, parked.
 
+## User frames by crate (2026-10-08)
+[OBS] Fork commit 308d2ca93: `push` events carry `local`
+(`def_id.is_local()`), `item` (`InstanceKind::Item`: the definition's
+own body, not a shim built for it) and `kind` (`DefKind`, Debug).
+`miri_cert.py`: a user frame is `local && item && kind ∈ {Fn, AssocFn}`
+(closures and constants are local but not charon functions of their
+own). The name heuristics (`is_std_type`, `STD_CRATES`, `PRIMITIVES`,
+the `<Self as Trait>` rule) are deleted; charon's function list stays
+as a cross-check — a user frame charon did not translate with a body is
+an error (the loader could not inline it).
+[OBS] Before switching, both rules on every pushed frame of all 76
+certificate runs: 27,390 frames, agreement on all (143 user: 132 `Fn`,
+11 `AssocFn`; no local closure or constant frame occurs). Certificates
+regenerate identically (only the toolchain string changes); live.py:
+all 208 Miri verdicts equal the manifest; suites unchanged.
+

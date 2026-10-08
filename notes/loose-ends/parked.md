@@ -1235,7 +1235,9 @@ place can be walked after the copy; key the record by frame + statement
 order, as branch events are.
 
 ## Certificate user frames by crate, not by name
-**Status:** parked 2026-10-07
+**Status:** DONE 2026-10-08 (tool 308d2ca93; see the journal entry
+2026-10/2026-10-07-cert-from-miri-hooks.md, "User frames by crate").
+**Was:** parked 2026-10-07
 **Context:** the certificate now comes from the Miri fork's event stream
 (journal/2026-10/2026-10-07-cert-from-miri-hooks.md), but `miri_cert.py`
 still decides user frames from the frame's printed path against charon's
