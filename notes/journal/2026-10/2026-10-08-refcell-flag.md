@@ -34,8 +34,13 @@ line ("a lowering assumption failed") — the check catches missed drops.
 [OBS] Corpus 201 / 0 / 17 of 218; --osea 201 (996 Dies); --layouts 201;
 live.py: all 218 Miri verdicts equal the manifest, no drift.
 [DEC] The guard's value pointer stays a MASKED shared reborrow for
-`borrow` (as before). Miri's `&*self.value.get()` is `&T`, frozen for a
-Freeze `T`; not changed here — no test distinguishes it, and changing it
-is a semantic step of its own (recorded, not parked as urgent).
+`borrow` (as before).
+[SUPERSEDED → correct as is, 2026-10-09] "Miri's `&*self.value.get()`
+is `&T`, frozen for a Freeze `T`; not changed here — no test
+distinguishes it" — wrong reading of std: `try_borrow` stores
+`NonNull::new_unchecked(self.value.get())`, a RAW pointer from a
+SharedReadWrite `&UnsafeCell<T>`; the freeze is at the deref's `&T`. A
+test does distinguish it, and the model was already right; see
+2026-10-09-refcell-guard-pointer.md.
 [DEC] Borrow-conflict PANIC tests stay unsupported: the check rejects
 the run rather than panicking.

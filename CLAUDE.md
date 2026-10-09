@@ -36,19 +36,19 @@ notes at: notes/
       ./.lake/build/bin/sb_conformance \
         --manifest conformance/manifest.json --charon-dir conformance/charon
         # ULLBC corpus, Charon artifacts vs Miri verdicts
-        # 201 pass / 0 fail / 0 xfail / 17 unsupported (218 total)
+        # 203 pass / 0 fail / 0 xfail / 17 unsupported (220 total)
 
       ...same, plus --osea
         # differential: compile each program and require the SAME verdict
         # from both machines, and the same OSEA-IR verdict with Die
         # elided (OSEA-IR_B), and that the compiled code passes the
         # route-bracket check (`oseair.routeOK`, the hypothesis of
-        # `compiled_die_elision_iff`). 201 matched / 0 mismatch /
+        # `compiled_die_elision_iff`). 203 matched / 0 mismatch /
         # 0 skipped / 0 OSEA-IR_B mismatch / 0 route-bracket issues
 
       ...same, with --layouts instead
         # the loader's byte layouts have their types' shape (the proof's
-        # layout hypothesis): 201 agree / 0 disagree
+        # layout hypothesis): 203 agree / 0 disagree
 
   The validation build above does NOT relink this binary: run
   `lake build sb_conformance` after touching a test file, or `--unit`

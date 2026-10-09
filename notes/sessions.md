@@ -5286,3 +5286,13 @@ restores the flag. The two RefCell known differences are gone (reasons
 guard drop makes fail (mutation-tested). Corpus 201/0/0/17 of 218.
 Journal: 2026-10/2026-10-08-refcell-flag.md.
 
+
+## 2026-10-09 (RefCell guard pointer: no fix, two witnesses)
+
+Asked to make borrow's value pointer a frozen `&T`. std's `Ref` holds
+`self.value.get()`, a raw pointer from an SRW `&UnsafeCell`; the freeze
+is at deref. The model was already right, and the change would have been
+a regression no test caught. Added the witness that catches it
+(local/refcell_guard_ptr_survives_sibling_write_ok, mutation-tested) and
+its UB half. Corrected the 2026-10-08 [DEC]. Corpus 203/0/0/17 of 220.
+Journal: 2026-10/2026-10-09-refcell-guard-pointer.md.

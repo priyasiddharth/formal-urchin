@@ -3001,6 +3001,29 @@
       "certificate": "local/refcell_replace_then_borrow_mut_ok.cert.json",
       "provenance": "local; real-Miri verified (pinned submodule), 2026-10-08 via scripts/live.py",
       "notes": "RefCell::replace borrows mutably and gives the borrow back; borrow_mut afterwards checks the flag is 0"
+    },
+    {
+      "id": "local/refcell_guard_ptr_survives_sibling_write_ok",
+      "artifact": "local/refcell_guard_ptr_survives_sibling_write_ok.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ok"
+      },
+      "certificate": "local/refcell_guard_ptr_survives_sibling_write_ok.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-09 via scripts/live.py",
+      "notes": "RefCell::borrow's value pointer is SharedReadWrite (std's UnsafeCell::get, a raw pointer), not a frozen &T: a sibling raw write to the value keeps it"
+    },
+    {
+      "id": "local/refcell_deref_frozen_popped_ub",
+      "artifact": "local/refcell_deref_frozen_popped_ub.ullbc.json",
+      "status": "supported",
+      "expected": {
+        "verdict": "ub",
+        "line": 14
+      },
+      "certificate": "local/refcell_deref_frozen_popped_ub.cert.json",
+      "provenance": "local; real-Miri verified (pinned submodule), 2026-10-09 via scripts/live.py",
+      "notes": "the &u32 made by &*g is frozen (Freeze T); the sibling raw write that the guard pointer survives pops it, so the read through it is UB"
     }
   ]
 }

@@ -4,6 +4,20 @@ Entries are newest-first. Each entry records a design discussion or decision mad
 
 ---
 
+## 2026-10-09 — The RefCell Pointer Was Already Right
+
+A note from yesterday claimed that the pointer a RefCell borrow holds is
+read-only in Miri but read-write in our model. Reading the standard
+library again showed the note was wrong: the borrow holds a plain raw
+pointer with read-write permission, and the read-only reference only
+appears when the program looks through the borrow. The model already did
+this. Changing it as the note suggested would have made the model reject
+a valid program, and no existing test would have noticed. Two small tests
+now pin the behaviour: one that the suggested change breaks, and its
+counterpart where the read-only reference really is invalidated.
+
+---
+
 ## 2026-10-08 (later) — RefCell Keeps Its Borrow Count
 
 RefCell tracks at run time how many borrows of its contents are alive,

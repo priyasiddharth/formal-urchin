@@ -283,7 +283,12 @@ reports the opaque decl's layout). `borrow`/`borrow_mut` do what std's
 / `check flag ∈ [0]`, a lowering assumption: Miri's run did not panic, so
 a wrong guard drop in the loader stops the run instead of going on), and
 write it through a fresh `&mut isize` (`Cell::set`) — then reborrow the
-value (masked shared / unique). `Ref`/`RefMut` are `{ value pointer (raw,
+value (masked shared / unique). The shared one is SharedReadWrite, as
+std's is: `Ref` holds `self.value.get()`, a raw pointer from a
+`&UnsafeCell<T>`, and the freeze of a Freeze `T` happens only at the
+`&T` the deref yields (`local/refcell_guard_ptr_survives_sibling_write_ok`
+fails if the guard's pointer is frozen;
+`local/refcell_deref_frozen_popped_ub` is the other half). `Ref`/`RefMut` are `{ value pointer (raw,
 unprotected at seams — the ref_protector tests' point), &Cell<isize> }`;
 their drop (scope end, `mem::drop`) gives the borrow back through the
 `&Cell`. Guard `deref`/`deref_mut` are typed loads of the value pointer
