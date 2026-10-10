@@ -1276,3 +1276,23 @@ miri_cert.py, or (b) support closures — charon translates them as
 functions, the loader would inline them, and the closure frame becomes a
 user frame (cross-checked against charon's function list).
 
+
+## Data races: threads by schedule certificate
+**Status:** parked 2026-10-10 (the user: "note the research ... for
+future exploration"); not started.
+**Context:** 3 unsupported entries are data races
+(retag_data_race_{read,protected_read,write}, deterministic schedule;
+a retag counts as a read). The design, its proof impact and cost are in
+journal/2026-10/2026-10-10-data-race-delta.md: Miri's schedule in the
+certificate, `onThread`/`sync`/atomics in mirlite, a vector-clock race
+model beside `PermissionModel`, per-thread `protFrames`; the new proof
+obligation is that the compiler's extra accesses add no races.
+**To resume:** start with the fork's `thread`/`spawn`/`join` events and
+a per-thread cursor in miri_cert.py (no semantics change); then the race
+model on mirlite alone against the three entries; then per-thread
+protectors and the proof. box-custom-alloc-aliasing is separate: a
+`thread::current().id()` shim.
+**Effort estimate:** fork + lowering small; race model moderate;
+per-thread protectors touch every frame lemma; one new no-added-race
+lemma.
+**References:** journal/2026-10/2026-10-10-data-race-delta.md

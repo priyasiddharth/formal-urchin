@@ -5296,3 +5296,11 @@ a regression no test caught. Added the witness that catches it
 (local/refcell_guard_ptr_survives_sibling_write_ok, mutation-tested) and
 its UB half. Corrected the 2026-10-08 [DEC]. Corpus 203/0/0/17 of 220.
 Journal: 2026-10/2026-10-09-refcell-guard-pointer.md.
+
+## 2026-10-10 (data races: research noted, parked)
+
+Recorded what catching data races would take (schedule certificate,
+`onThread`/`sync`/atomics, a vector-clock race model, per-thread
+protectors; proof stays sequential plus a no-added-race lemma). Nothing
+implemented. Journal: 2026-10/2026-10-10-data-race-delta.md; parked.md
+"Data races: threads by schedule certificate".
